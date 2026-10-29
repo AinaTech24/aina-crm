@@ -7,12 +7,14 @@ export const COMPLIANCE_GUIDES: StarterGuide[] = [
     title: "Documents — one place for every file",
     hook: "Upload client and firm documents, tag them, and watch expiry dates.",
     minutes: 2,
-    shots: [{ file: "documents", caption: "Documents with total, expiring-in-30-days and expired counts." }],
+    shots: [{ file: "documents", caption: "Documents with total, expiring-in-30-days and expired counts." }, { file: "nav-documents", caption: "Find it: the highlighted item opens this page." }],
     body: `The Documents module keeps files in one searchable library instead of in email and folders.
 
 ![Documents](shot:1)
 
 ## Upload
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Compliance → Documents** and click **Upload document**.
 2. Choose the file, give it a name and category, link it to a client if it belongs to one, and add an expiry date if it has one.
@@ -30,12 +32,14 @@ export const COMPLIANCE_GUIDES: StarterGuide[] = [
     title: "DDQ readiness — the AMFI audit checklist",
     hook: "A score out of 100 for your AMFI Due Diligence Questionnaire readiness, with expiry watch and an audit trail.",
     minutes: 3,
-    shots: [{ file: "ddq", caption: "Compliance & DDQ readiness: the score, its seven parts and the expiry watch." }],
+    shots: [{ file: "ddq", caption: "Compliance & DDQ readiness: the score, its seven parts and the expiry watch." }, { file: "nav-ddq", caption: "Find it: the highlighted item opens this page." }],
     body: `This page tells you how ready the firm would be for an AMFI due-diligence audit, and what to fix first.
 
 ![DDQ readiness](shot:1)
 
 ## Read the score
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Compliance → DDQ readiness**. The **DDQ readiness score** is out of 100; click **Recalculate score** to refresh it.
 2. The seven parts each show a score: **NISM validity**, **ARN renewal**, **KYD docs**, **Complaint register**, **Empanelment docs**, **SOP sign-off**, **Audit trail** and **Consent ledger**. A part near zero is your next task.
@@ -52,10 +56,12 @@ export const COMPLIANCE_GUIDES: StarterGuide[] = [
     title: "Nomination compliance",
     hook: "Find individual clients with no nominee on record and fix them, starting with the largest AUM.",
     minutes: 2,
-    shots: [{ file: "nomination-tracker", caption: "Nomination Compliance: coverage, missing nominees and AUM exposed." }],
+    shots: [{ file: "nomination-tracker", caption: "Nomination Compliance: coverage, missing nominees and AUM exposed." }, { file: "nav-nomination-tracker", caption: "Find it: the highlighted item opens this page." }],
     body: `Nomination is a SEBI requirement for individual investors.
 
 ![Nomination compliance](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Insights → Reports → Nomination compliance**.
 2. The tiles show **Clients**, **Coverage** (the share with a nominee), **Missing nominee** and the **AUM exposed**.
@@ -69,10 +75,12 @@ Only individual clients (including NRIs and sole proprietors) nominate. Minors, 
     title: "Audit log",
     hook: "A record of who did what and when, kept for seven years, with PII access flagged.",
     minutes: 2,
-    shots: [{ file: "audit-log", caption: "Audit log filters and the most recent events." }],
+    shots: [{ file: "audit-log", caption: "Audit log filters and the most recent events." }, { file: "nav-audit-log", caption: "Find it: the highlighted item opens this page." }],
     body: `The audit log records the important actions in the CRM.
 
 ![Audit log](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Compliance → Audit log**.
 2. The tiles show the events in the window, **PII access events**, the window (7 days by default) and the **retention** (7 years).
@@ -88,10 +96,12 @@ Each row shows when, who and what: for example lead.update, insurance.create or 
     title: "Legal registrations and expiry",
     hook: "Track ARN, EUIN, NISM, empanelments and other registrations with renewal dates.",
     minutes: 2,
-    shots: [{ file: "legal-registrations", caption: "Legal registrations with renewal and expiry counts." }],
+    shots: [{ file: "legal-registrations", caption: "Legal registrations with renewal and expiry counts." }, { file: "nav-legal-registrations", caption: "Find it: the highlighted item opens this page." }],
     body: `Keep every registration the firm and its people depend on in one list, so none lapses unnoticed.
 
 ![Legal registrations](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Compliance → Legal registrations** and click **Add registration** (or **Add the first registration**).
 2. Choose the type, enter the number, the issuing body and the validity dates and save.
@@ -104,10 +114,12 @@ Each row shows when, who and what: for example lead.update, insurance.create or 
     title: "Sub-distributors",
     hook: "Register the sub-brokers and referrers who work with your ARN.",
     minutes: 2,
-    shots: [{ file: "sub-distributors", caption: "Sub-distributors by status." }],
+    shots: [{ file: "sub-distributors", caption: "Sub-distributors by status." }, { file: "nav-sub-distributors", caption: "Find it: the highlighted item opens this page." }],
     body: `Maintain a register of the sub-distributors you work with.
 
 ![Sub-distributors](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Compliance → Sub-distributors** and click **Add sub-distributor** (or **Register the first sub-distributor**).
 2. Enter their details and registration, and save.

@@ -7,12 +7,14 @@ export const DATA_GUIDES: StarterGuide[] = [
     title: "RTA file imports — CAMS and KFintech",
     hook: "Upload the registrar's files, or let the CRM read them from your mailbox, and keep every number in step.",
     minutes: 4,
-    shots: [{ file: "rta-imports", caption: "RTA File Imports: what to do next, data trust score and each file type." }],
+    shots: [{ file: "rta-imports", caption: "RTA File Imports: what to do next, data trust score and each file type." }, { file: "nav-rta-imports", caption: "Find it: the highlighted item opens this page." }],
     body: `RTA file imports bring the registrars' data — clients, folios, holdings, transactions, SIPs and brokerage — into the CRM.
 
 ![RTA File Imports](shot:1)
 
 ## Upload a file
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Data & Admin → RTA File Imports**.
 2. Click **Upload file**, or **Sync Mailbox Now** if the CRM reads the registrar's emails.
@@ -35,10 +37,12 @@ An import matches each registrar row to your client by PAN (following merges), k
     title: "Holdings reconciliation",
     hook: "Compare the CRM's units with the registrar's feed and fix every break.",
     minutes: 2,
-    shots: [{ file: "reconciliation", caption: "Holdings Reconciliation with open breaks, severity and exposure." }],
+    shots: [{ file: "reconciliation", caption: "Holdings Reconciliation with open breaks, severity and exposure." }, { file: "nav-reconciliation", caption: "Find it: the highlighted item opens this page." }],
     body: `Reconciliation shows where the CRM and the registrar disagree.
 
 ![Holdings reconciliation](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Data & Admin → Holdings Reconciliation** and click **Run reconciliation** (after importing a registrar or CAS feed).
 2. The tiles show **Open breaks**, **High severity**, the **exposure** (absolute value difference) and **Resolved**.
@@ -51,10 +55,12 @@ An import matches each registrar row to your client by PAN (following merges), k
     title: "Brokerage reconciliation",
     hook: "Compare the trail you expected with what the AMCs paid, and chase the shortfall.",
     minutes: 3,
-    shots: [{ file: "commission-reconciliation", caption: "Brokerage Reconciliation by period." }],
+    shots: [{ file: "commission-reconciliation", caption: "Brokerage Reconciliation by period." }, { file: "nav-commission-reconciliation", caption: "Find it: the highlighted item opens this page." }],
     body: `Brokerage reconciliation catches trail that the AMCs under-paid.
 
 ![Brokerage Reconciliation](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Data & Admin → Brokerage Reconciliation** and choose the **Period**.
 2. Expand **Import AMC payout statement**, paste the lines and click **Recompute reconciliation**.
@@ -72,12 +78,15 @@ Expected trail is the empanelment rate times average folio AUM. A variance over 
     shots: [
       { file: "duplicates", caption: "Find Duplicates: duplicate clients, shared contact details and families." },
       { file: "merge-clients", caption: "Merge Clients: suggested duplicates, merge by search and merge history." },
+      { file: "nav-duplicates", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `A client entered twice splits their history and inflates your numbers.
 
 ![Find Duplicates](shot:1)
 
 ## Find them
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Data & Admin → Find Duplicates**.
 2. The tabs list **Duplicates** (the same PAN, or a name nothing else tells apart), **Shared contact details** and **Families**.
@@ -98,10 +107,12 @@ To move only some folios between two clients, use **Merge** on the clients list 
     title: "Activity log — calls, visits and follow-ups",
     hook: "Log a call, visit or check-in against a client or lead and see the day's activity.",
     minutes: 2,
-    shots: [{ file: "activities", caption: "Activity Log with calls today, visits this week and follow-ups due." }],
+    shots: [{ file: "activities", caption: "Activity Log with calls today, visits this week and follow-ups due." }, { file: "nav-activities", caption: "Find it: the highlighted item opens this page." }],
     body: `The Activity Log records the touchpoints behind a relationship.
 
 ![Activity Log](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Data & Admin → Activity Log** and click **Log activity**, or use **Check In** or **Log activity** from a client or lead page.
 2. Choose the type (call, visit, WhatsApp, email), the person and the outcome, add notes and a follow-up date, and save.
@@ -118,12 +129,15 @@ When you call or message a client from the CRM, it asks "How did it go?" so a ca
     shots: [
       { file: "schemes", caption: "Scheme Master with Sync from AMFI." },
       { file: "amc-empanelments", caption: "AMC Empanelments by status." },
+      { file: "nav-schemes", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `Two masters feed pricing, trail and recommendations.
 
 ![Scheme Master](shot:1)
 
 ## Scheme master
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Settings → Scheme master** and click **Sync from AMFI** to pull the full scheme universe, or **New scheme** to add one by hand.
 2. The tiles show **Schemes (regular plans)**, **Shortlisted (buy-list)**, **Active / open** and **IC-evaluated**.
@@ -144,10 +158,12 @@ Empanelment rates drive the expected trail in brokerage reconciliation.`,
     title: "Products and services offered",
     hook: "List what your firm offers, with its status, for proposals and the website.",
     minutes: 2,
-    shots: [{ file: "product-offerings", caption: "Products & services offered, by status." }],
+    shots: [{ file: "product-offerings", caption: "Products & services offered, by status." }, { file: "nav-product-offerings", caption: "Find it: the highlighted item opens this page." }],
     body: `Keep the firm's list of products and services.
 
 ![Products and services](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Products & services** and click **Add offering** (or **Add the first offering**).
 2. Describe the offering and set its status.
@@ -159,10 +175,12 @@ Empanelment rates drive the expected trail in brokerage reconciliation.`,
     title: "Trash — restore deleted records",
     hook: "Deleted clients, tasks and employees stay for 30 days and can be restored exactly as they were.",
     minutes: 1,
-    shots: [{ file: "trash", caption: "Trash." }],
+    shots: [{ file: "trash", caption: "Trash." }, { file: "nav-trash", caption: "Find it: the highlighted item opens this page." }],
     body: `Nothing is lost the moment you delete it.
 
 ![Trash](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Trash** to see deleted clients, tasks and employees.
 2. Restore an item to bring it back exactly as it was.

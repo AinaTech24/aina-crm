@@ -1,6 +1,6 @@
 /**
  * One-off generator for the migration that ships the help-centre guides:
- *   npx tsx scripts/gen-kb-guides-migration.ts > drizzle/migrations/0248_kb_starter_guides.sql
+ *   npx tsx scripts/gen-kb-guides-migration.ts > drizzle/migrations/<next>_kb_guides.sql   (see KB section of CLAUDE.md)
  *
  * The migration is committed as plain SQL (migrations are append-only); this script only exists
  * so the SQL is produced from the same data the "Add starter guides" button uses.
@@ -21,18 +21,9 @@ out.push(`-- The shipped help-centre guides: one per module, with their screensh
 --
 -- Idempotent and non-destructive:
 --   * the category / folders are created only if their slug is free;
---   * a guide is created only if its slug is free, and a guide that exists but was never published
---     and never given screenshots (an untouched draft from the earlier "Add starter guides") is
---     brought up to date. A guide an admin published or edited is NEVER overwritten.
-`);
-// The earlier "Add starter guides" button created short drafts under other slugs. Untouched ones (still
-// drafts, no screenshots) are superseded by the guides below and removed; anything an admin edited stays.
-out.push(`DELETE FROM kb_articles
- WHERE series = 'Guide' AND published = false AND screenshots = '[]'::jsonb
-   AND lower(slug) IN ('using-dashboards','managing-tasks','meetings-and-action-items','service-requests-and-complaints','leads-pipeline',
-       'adding-a-client','merging-duplicate-clients','creating-a-family','client-opportunities','risk-profiles','client-exit-and-demise',
-       'financial-health-check','fixed-deposits','sip-rejections','business-entries','automations-and-templates','whatsapp-templates',
-       'importing-rta-files','kyc-status-check','email-introduction-and-signature','daily-job-tracker');
+--   * a guide is created only if its slug is free; one that exists is brought up to date only while
+--     nobody has edited it (updated_at still equals created_at — an admin save moves updated_at), or
+--     it is an untouched draft. A guide an admin edited is NEVER overwritten.
 `);
 out.push(`INSERT INTO kb_categories (slug, name, description, sort_order)
 VALUES (${q(STARTER_CATEGORY.slug)}, ${q(STARTER_CATEGORY.name)}, ${q(STARTER_CATEGORY.description)}, 0)
@@ -52,8 +43,9 @@ SELECT 'Guide', f.id, ${q(g.slug)}, ${q(g.title)}, ${q(g.hook)}, ${q(g.body)}, $
 ON CONFLICT (lower(slug)) DO UPDATE
    SET folder_id = EXCLUDED.folder_id, title = EXCLUDED.title, hook = EXCLUDED.hook, solution_md = EXCLUDED.solution_md,
        screenshots = EXCLUDED.screenshots, read_minutes = EXCLUDED.read_minutes, published = true,
-       published_at = now(), sort_order = EXCLUDED.sort_order, updated_at = now()
- WHERE kb_articles.series = 'Guide' AND kb_articles.published = false AND kb_articles.screenshots = '[]'::jsonb;
+       published_at = COALESCE(kb_articles.published_at, now()), sort_order = EXCLUDED.sort_order, updated_at = kb_articles.created_at
+ WHERE kb_articles.series = 'Guide'
+   AND (kb_articles.updated_at = kb_articles.created_at OR (kb_articles.published = false AND kb_articles.screenshots = '[]'::jsonb));
 `);
 });
 console.log(out.join("\n"));

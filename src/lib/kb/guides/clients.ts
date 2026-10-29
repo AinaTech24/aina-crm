@@ -10,12 +10,15 @@ export const CLIENT_GUIDES: StarterGuide[] = [
     shots: [
       { file: "leads", caption: "The pipeline board: New, Contacted, Meeting Scheduled, Meeting Done, Proposal Sent and onward." },
       { file: "leads-new", caption: "New lead: name, phone, source and owner." },
+      { file: "nav-leads", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `A lead is a new person who might become a client. (An existing client asking for another product is an **opportunity**, not a lead.)
 
 ![Leads pipeline](shot:1)
 
 ## Add a lead
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Clients → Leads** and click **New lead**.
 2. Enter the **Name** (required), **Phone** and **Email**, and pick the **Source** (Manual entry by default; Google, Website, Client Referral, Seminar, Walk-in, Webinar and more).
@@ -49,12 +52,15 @@ Conversion counts toward the "Won" figure on the dashboards.`,
     shots: [
       { file: "clients", caption: "The Clients list with AUM, SIP, KYC, health score and status." },
       { file: "client-new", caption: "Add client: the form asks for what that type of client needs." },
+      { file: "nav-clients", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `Everything about a client — profile, family, holdings, SIPs, policies, goals, tasks, documents and communication — hangs off one record.
 
 ![Clients list](shot:1)
 
 ## Find a client
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Clients → Clients**.
 2. Search by name, PAN or phone. The result count shows beside the search box.
@@ -107,12 +113,15 @@ The page opens with a summary strip (family, RM, AUM, SIP, last meeting, next re
     shots: [
       { file: "opportunities", caption: "The Opportunities module (shown before the first opportunity is created)." },
       { file: "opps-new", caption: "New opportunity: pick the client and the product." },
+      { file: "nav-opportunities", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `An opportunity is an existing client wanting another product. It keeps the person as one client record instead of creating a duplicate lead.
 
 ![Opportunities](shot:1)
 
 ## Start an opportunity
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Clients → Opportunities** and click **New opportunity**, or use **New opportunity** on the client's page.
 2. Search for the **Client** by name, PAN or mobile, pick the **Product** and who it is **Assigned to**. An **Expected amount** is optional.
@@ -151,12 +160,15 @@ The module shows every opportunity you can see on a board by journey step, or as
     shots: [
       { file: "families", caption: "The Families list with combined AUM, SIP and review dates." },
       { file: "families-new", caption: "New family: pick the head and the notes — the rest fills from the head." },
+      { file: "nav-families", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `A family groups related clients so you can see the household's combined position and review them together.
 
 ![Families](shot:1)
 
 ## Create a family
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Clients → Families** and click **New family**.
 2. Choose the **head** of the family. The name follows the firm's pattern (for example "Sharma Family") and can be edited; the family code (FAM-0001…) is automatic.
@@ -185,12 +197,15 @@ The module shows every opportunity you can see on a board by journey step, or as
     shots: [
       { file: "risk-profiles", caption: "Risk Profiles with Not profiled, Due for review, Current, Expired and Awaiting client confirmation." },
       { file: "risk-new", caption: "A new risk profile: start the questionnaire for a client." },
+      { file: "nav-risk-profiles", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `A risk profile records how much risk a client can and wants to take. It is also the gate for mutual-fund proposals.
 
 ![Risk Profiles](shot:1)
 
 ## See who needs one
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 Open **Clients → Risk Profiles**. The tabs show **Not profiled**, **Due for review**, **Current**, **Expired** and **Awaiting client confirmation**, each with a count.
 
@@ -216,12 +231,15 @@ Profiles have a next review date. Clients due for review show under **Due for re
     shots: [
       { file: "discovery", caption: "Discovery (Fact-find) list." },
       { file: "discovery-new", caption: "New discovery for a client or lead." },
+      { file: "nav-discovery", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `The fact-find records what you learn in the first conversations so the advice and proposal that follow rest on facts.
 
 ![Discovery list](shot:1)
 
 ## Start a discovery
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Clients → Discovery (Fact-find)** and click **New discovery**.
 2. In "Start a financial discovery", type at least two letters of a name, or a PAN, mobile or email, to find the client or lead the fact-find is for. Use the arrow keys to move, **Enter** to start and **Esc** to close.
@@ -237,12 +255,14 @@ A completed fact-find can be used to start a Financial Health Check.`,
     title: "Client feedback (NPS)",
     hook: "Send a 0–10 feedback survey to clients and see the Net Promoter Score and every response in one place.",
     minutes: 2,
-    shots: [{ file: "client-feedback", caption: "Client Feedback: Net Promoter Score, promoters, passives and detractors." }],
+    shots: [{ file: "client-feedback", caption: "Client Feedback: Net Promoter Score, promoters, passives and detractors." }, { file: "nav-client-feedback", caption: "Find it: the highlighted item opens this page." }],
     body: `Feedback helps you see who is happy and who is at risk.
 
 ![Client Feedback](shot:1)
 
 ## Read the page
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Clients → Client Feedback**.
 2. The tiles show the **Net Promoter Score** (it needs at least 5 responses), and the **Promoters (9–10)**, **Passives (7–8)** and **Detractors (1–6)** with their share of all responses.

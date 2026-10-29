@@ -10,12 +10,15 @@ export const WORK_GUIDES: StarterGuide[] = [
     shots: [
       { file: "tasks", caption: "The Tasks list with tabs for All open, Overdue, Today, Upcoming and Completed." },
       { file: "tasks-new", caption: "New task: title, client or lead, due date, priority and assignee." },
+      { file: "nav-tasks", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `Tasks keep the firm's follow-ups from living in anyone's head. Tasks also appear on your dashboard, calendar and the client's page.
 
 ![The Tasks list](shot:1)
 
 ## Find your work
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Work → Tasks**.
 2. Use the tabs: **All open**, **Overdue**, **Today**, **Upcoming**, **Completed**.
@@ -59,12 +62,15 @@ When the owner turns on the escalation ladder (Settings → Escalation), a task 
     shots: [
       { file: "meetings", caption: "Upcoming meetings on top, past meetings below." },
       { file: "meetings-new", caption: "Add Meeting: client or lead, date and time, attendees." },
+      { file: "nav-meetings", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `The Meetings module keeps every review and client conversation in one place and links it to the client or lead.
 
 ![Meetings](shot:1)
 
 ## Schedule a meeting
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Work → Meetings** and click **Add Meeting**.
 2. The **Schedule review meeting** page opens. Type a **Subject**, then choose **Who is the meeting with?** — **Client**, **Lead** or **Family** — and search for them by name or PAN.
@@ -94,12 +100,14 @@ Mark a meeting done and it moves to **Past meetings**.`,
     title: "Calendar — everything due, in one view",
     hook: "Tasks, follow-ups, meetings, reviews, SIP dates, campaigns and compliance dates on a month or week calendar.",
     minutes: 2,
-    shots: [{ file: "calendar", caption: "Month view with coloured chips for each kind of event." }],
+    shots: [{ file: "calendar", caption: "Month view with coloured chips for each kind of event." }, { file: "nav-calendar", caption: "Find it: the highlighted item opens this page." }],
     body: `The calendar collects every dated item you are responsible for.
 
 ![Calendar](shot:1)
 
 ## Use the calendar
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Work → Calendar**. It opens on the current month.
 2. Use **← Sept** and **Nov →** to move between months, or switch **Month View** and **Week View**.
@@ -119,12 +127,15 @@ Click **Sync to Calendar** to connect these items to your own calendar app.`,
     shots: [
       { file: "service-requests", caption: "Open, Escalated, Waiting on client and Closed tabs with a ticket number for each request." },
       { file: "service-new", caption: "New request: client, request type, subject and due date." },
+      { file: "nav-service-requests", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `A service request is any ask from a client that needs tracking: a statement, a nominee update, a bank change, a complaint. Each one gets its own ticket number such as SR-2026-00002 and a service clock.
 
 ![Service Requests](shot:1)
 
 ## Log a request
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Work → Service Requests** and click **New request**.
 2. Search the **Investor** by name, PAN or phone — or leave it blank for a general request.

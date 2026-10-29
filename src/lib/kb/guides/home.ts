@@ -54,10 +54,13 @@ The built-in role dashboards are locked, so everyone sees the same trusted numbe
     shots: [
       { file: "team-dashboard", caption: "The Team Dashboard in three columns: Open, Periodic and Result." },
       { file: "team-scorecard", caption: "The Team Scorecard ranks people on a KRA score." },
+      { file: "nav-team-dashboard", caption: "Find it: the highlighted item opens this page." },
     ],
     body: `The Team Dashboard is for owners, branch heads and team leads. It shows the work of the people who report to you.
 
 ## Read the dashboard
+
+![Find it: the highlighted item opens this page.](shot:3)
 
 1. Open **Home → Team Dashboard**.
 2. Choose **Viewing → Whole team** or one person, and a period: **This month**, **Last 30 days**, **This FY** or **Custom**.

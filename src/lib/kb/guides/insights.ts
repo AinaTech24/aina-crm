@@ -7,12 +7,14 @@ export const INSIGHT_GUIDES: StarterGuide[] = [
     title: "Reports — 96 reports in 18 groups",
     hook: "Find the right report fast, star your favourites and build custom reports.",
     minutes: 3,
-    shots: [{ file: "reports", caption: "The Reports hub: most used, favourites and every group." }],
+    shots: [{ file: "reports", caption: "The Reports hub: most used, favourites and every group." }, { file: "nav-reports", caption: "Find it: the highlighted item opens this page." }],
     body: `Reports is the library of ready-made reports for every part of the practice.
 
 ![Reports](shot:1)
 
 ## Find a report
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Insights → Reports**.
 2. **Most used** shows the reports you open often (AUM Movement, Active SIP Book, Net Business, SIP Rejected, Realised Capital Gain, Review Pending).
@@ -33,10 +35,12 @@ Some analyses have their own pages: the churn-risk radar, tax-harvesting, cross-
     title: "Trail Forecast and revenue at risk",
     hook: "Project the trail income your AUM will earn and how much is at risk.",
     minutes: 2,
-    shots: [{ file: "trail-forecast", caption: "Trail Forecast & Revenue-at-Risk, shown here before any AUM has been imported." }],
+    shots: [{ file: "trail-forecast", caption: "Trail Forecast & Revenue-at-Risk, shown here before any AUM has been imported." }, { file: "nav-trail-forecast", caption: "Find it: the highlighted item opens this page." }],
     body: `The forecast turns the AUM on your book into projected trail income.
 
 ![Trail forecast](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Insights → Reports → Trail Forecast & Revenue-at-Risk**.
 2. If the page says "No AUM on the book yet", click **Import RTA file** — the forecast appears once folios with AUM are imported from the registrar or a transaction feed.
@@ -48,10 +52,12 @@ Some analyses have their own pages: the churn-risk radar, tax-harvesting, cross-
     title: "Portfolio Insights",
     hook: "How your clients' money is spread across AMCs, schemes and asset classes — firm-wide or just your book.",
     minutes: 2,
-    shots: [{ file: "portfolio-intelligence", caption: "Portfolio Insights summary tiles and breakdowns." }],
+    shots: [{ file: "portfolio-intelligence", caption: "Portfolio Insights summary tiles and breakdowns." }, { file: "nav-portfolio-intelligence", caption: "Find it: the highlighted item opens this page." }],
     body: `Portfolio Insights analyses the holdings behind your AUM.
 
 ![Portfolio Insights](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Insights → Portfolio Insights**.
 2. Choose **Firm-wide** or **My book**.
@@ -65,10 +71,12 @@ Holdings flow in from your RTA or CAS imports; the page says "No folio holdings 
     title: "Churn-risk radar",
     hook: "See which clients are drifting — no SIP, no contact, no recent investment — and call them first.",
     minutes: 2,
-    shots: [{ file: "churn-risk", caption: "Churn-risk radar with a risk score and the top reasons for each client." }],
+    shots: [{ file: "churn-risk", caption: "Churn-risk radar with a risk score and the top reasons for each client." }, { file: "nav-churn-risk", caption: "Find it: the highlighted item opens this page." }],
     body: `The churn-risk radar scores each client on signals that someone may leave.
 
 ![Churn-risk radar](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Insights → Reports** and choose **Churn-risk radar**.
 2. The tiles show **High risk**, **Watch**, **Total scored** and the **AUM at risk**.
@@ -81,10 +89,12 @@ Holdings flow in from your RTA or CAS imports; the page says "No folio holdings 
     title: "Tax-harvesting opportunities",
     hook: "Find clients with long-term equity gains that could be harvested before 31 March.",
     minutes: 2,
-    shots: [{ file: "tax-harvesting", caption: "Tax-harvesting opportunities with a countdown to 31 March." }],
+    shots: [{ file: "tax-harvesting", caption: "Tax-harvesting opportunities with a countdown to 31 March." }, { file: "nav-tax-harvesting", caption: "Find it: the highlighted item opens this page." }],
     body: `Use this report in the months before the financial year ends.
 
 ![Tax-harvesting](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Insights → Reports** and choose **Tax-harvesting**.
 2. The tiles show clients with an opportunity, the total harvestable gain, the estimated tax saved and the days left to 31 March.
@@ -98,10 +108,12 @@ It is an estimate for planning only: FIFO cost basis from imported transactions,
     title: "Cross-sell radar",
     hook: "See how many clients have an open opportunity for another product and the AUM they hold.",
     minutes: 2,
-    shots: [{ file: "cross-sell", caption: "Cross-sell opportunities by product and top clients." }],
+    shots: [{ file: "cross-sell", caption: "Cross-sell opportunities by product and top clients." }, { file: "nav-cross-sell", caption: "Find it: the highlighted item opens this page." }],
     body: `The cross-sell radar shows the product conversations still to be had.
 
 ![Cross-sell](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Insights → Reports** and choose **Cross-sell Radar**.
 2. The tiles show **clients with opportunities**, the **AUM in play** and the **coverage** of the book.
@@ -115,10 +127,12 @@ The data comes from the cross-sell card on each client — mark what a client ho
     title: "Practice Finances",
     hook: "Your own firm's expenses, profit and loss, targets and ten-year projection.",
     minutes: 3,
-    shots: [{ file: "finances", caption: "Practice Finances: expense ledger, P&L, monthly progress, projections and checklist." }],
+    shots: [{ file: "finances", caption: "Practice Finances: expense ledger, P&L, monthly progress, projections and checklist." }, { file: "nav-finances", caption: "Find it: the highlighted item opens this page." }],
     body: `Practice Finances is for running your own firm as a business.
 
 ![Practice Finances](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Insights → Practice Finances**.
 2. Choose a card:
@@ -135,10 +149,12 @@ The data comes from the cross-sell card on each client — mark what a client ho
     title: "Aina Copilot — ask your data",
     hook: "Ask questions about your firm in plain English and get answers from your live data.",
     minutes: 2,
-    shots: [{ file: "ai-assistant", caption: "Aina Copilot with suggested questions." }],
+    shots: [{ file: "ai-assistant", caption: "Aina Copilot with suggested questions." }, { file: "nav-ai-assistant", caption: "Find it: the highlighted item opens this page." }],
     body: `Aina Copilot (beta) answers questions about your own firm.
 
 ![Aina Copilot](shot:1)
+
+![Find it: the highlighted item opens this page.](shot:2)
 
 1. Open **Insights → Aina Copilot**.
 2. Click a suggested question — "What's my total AUM?", "Top 10 clients by AUM", "AUM by RM", "How many clients are KYC-pending?", "How many open tasks are overdue?", "How many new clients this month?" — or type your own in the box and send.
