@@ -6,7 +6,8 @@
   /* ---------- scroll progress, nav highlight ---------- */
   const bar = $("#progress");
   const navLinks = $$("#navLinks a");
-  const sections = navLinks.map((a) => $(a.getAttribute("href")));
+  // Only "#section" links point at a section on this page; others (e.g. /knowledge-base) are not selectors.
+  const sections = navLinks.map((a) => { const h = a.getAttribute("href") || ""; return h.startsWith("#") ? $(h) : null; });
   function onScroll() {
     const h = document.documentElement.scrollHeight - innerHeight;
     bar.style.transform = `scaleX(${h > 0 ? scrollY / h : 0})`;
