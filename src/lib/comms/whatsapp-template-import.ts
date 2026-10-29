@@ -173,9 +173,20 @@ export async function importWhatsappTemplatesForTenant(tx: Tx, tenantId: string,
       templateId = existing.id;
       await tx.update(templates).set({ status: tplStatus as any, category: category as any, updatedAt: new Date() } as any).where(eq(templates.id, existing.id));
       if (existing.currentVersionId) {
+        // A template the CRM created itself (the required set made on connect)
+        // already has named variables the send fills. Meta's copy only has bare
+        // {{1}}, {{2}} — take its STATUS, keep our body and variables.
+        const [cur] = await tx
+          .select({ body: templateVersions.body })
+          .from(templateVersions)
+          .where(eq(templateVersions.id, existing.currentVersionId));
+        const ours = (cur?.body as { autoProvisioned?: boolean } | null)?.autoProvisioned === true;
         await tx
           .update(templateVersions)
-          .set({ body, variables, approvalStatus: verApproval as any, externalRef: name, externalStatus: metaStatus, externalSyncedAt: new Date(), updatedAt: new Date() } as any)
+          .set({
+            ...(ours ? {} : { body, variables }),
+            approvalStatus: verApproval, externalRef: name, externalStatus: metaStatus, externalSyncedAt: new Date(), updatedAt: new Date(),
+          } as any)
           .where(eq(templateVersions.id, existing.currentVersionId));
       }
     } else {

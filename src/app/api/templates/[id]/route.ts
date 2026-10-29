@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -80,10 +80,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const tpl = (await tx.select().from(templates).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId))).limit(1))[0];
       if (!tpl) return null;
 
-      // Get current version
-      const ver = tpl.currentVersionId
-        ? (await tx.select().from(templateVersions).where(and(eq(templateVersions.id, tpl.currentVersionId), eq(templateVersions.tenantId, session.tenantId))).limit(1))[0]
-        : null;
+      // The version being edited: the open draft when there is one (an older
+      // approved version may be the one in use meanwhile), else the current one.
+      const draft = (await tx
+        .select()
+        .from(templateVersions)
+        .where(and(eq(templateVersions.templateId, id), eq(templateVersions.tenantId, session.tenantId), eq(templateVersions.approvalStatus, "draft")))
+        .orderBy(desc(templateVersions.versionNumber))
+        .limit(1))[0];
+      const ver = draft
+        ?? (tpl.currentVersionId
+          ? (await tx.select().from(templateVersions).where(and(eq(templateVersions.id, tpl.currentVersionId), eq(templateVersions.tenantId, session.tenantId))).limit(1))[0]
+          : null);
 
       // If updating body/variables, check if version is draft
       if ((body !== undefined || variables !== undefined) && ver && ver.approvalStatus !== "draft") {

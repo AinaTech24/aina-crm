@@ -72,12 +72,21 @@ type TransitionTask = {
   dueInDays: number;
 };
 const TASK_ON_TRANSITION: Record<string, TransitionTask> = {
+  // Fresh KYC: the pop-up also asks Online or Physical KYC (KYC_MODES), and the
+  // task's title follows that choice — the title here is the fallback.
   kyc_registered: { title: "Register fresh KYC with the KRA", type: "kyc_renewal", department: "compliance", priority: "high", dueInDays: 2 },
   modify_kyc: { title: "Correct & resubmit KYC (address / bank / nominee)", type: "kyc_renewal", department: "compliance", priority: "high", dueInDays: 2 },
   physical_kyc: { title: "Complete physical KYC / IPV (in-person verification)", type: "kyc_renewal", department: "operations", priority: "high", dueInDays: 3 },
   ucc_create: { title: "Create UCC (BSE / NSE Unique Client Code)", type: "follow_up", department: "operations", priority: "high", dueInDays: 2 },
   mandate_create: { title: "Register the SIP mandate (NACH / e-mandate)", type: "follow_up", department: "operations", priority: "high", dueInDays: 3 },
 };
+
+/** The KYC route picked when a FRESH KYC is registered — it names the task that is created. */
+const KYC_MODES = {
+  online: { label: "Online KYC", hint: "e-KYC via Aadhaar OTP / DigiLocker", title: "Online KYC (fresh) — e-KYC via Aadhaar OTP / DigiLocker" },
+  physical: { label: "Physical KYC", hint: "In-person verification (IPV) with documents", title: "Physical KYC (fresh) — in-person verification (IPV)" },
+} as const;
+type KycMode = keyof typeof KYC_MODES;
 
 /** Steps whose pop-up opens every time: the task ones (assignee + due date) and
  *  the two "already active" ones (UCC number, mandate details). */
@@ -159,6 +168,7 @@ export function GuidedStageActions({
   // Required when transitioning to "ucc_create" — who the auto-created UCC task
   // is assigned to.
   const [taskAssigneeId, setTaskAssigneeId] = useState("");
+  const [kycMode, setKycMode] = useState<KycMode | "">("");
   // Default due date for the auto-created task (today + spec.dueInDays); editable.
   const [taskDueAt, setTaskDueAt] = useState("");
   const [teamUsers, setTeamUsers] = useState<Array<{ id: string; name: string }>>([]);
@@ -603,6 +613,11 @@ export function GuidedStageActions({
     // Task-creating transitions (KYC, UCC, Mandate, …) require an assignee — we
     // auto-create the pre-filled task for them after the stage moves.
     const taskSpec = TASK_ON_TRANSITION[transitioningAction.targetStage];
+    const isFreshKyc = transitioningAction.targetStage === "kyc_registered";
+    if (isFreshKyc && !kycMode) {
+      setError("Choose Online KYC or Physical KYC.");
+      return;
+    }
     if (taskSpec && !taskAssigneeId) {
       setError("Please choose who to assign the task to.");
       return;
@@ -650,10 +665,12 @@ export function GuidedStageActions({
             ? {
                 assigneeId: taskAssigneeId,
                 dueAt: taskDueAt ? new Date(taskDueAt).toISOString() : undefined,
-                title: taskSpec.title,
+                title: isFreshKyc && kycMode ? KYC_MODES[kycMode].title : taskSpec.title,
                 type: taskSpec.type,
                 priority: taskSpec.priority,
-                description: `Auto-created on the "${transitioningAction.targetStage.replace(/_/g, " ")}" transition.`,
+                description: isFreshKyc && kycMode
+                  ? `${KYC_MODES[kycMode].label} chosen for the client's fresh KYC (${KYC_MODES[kycMode].hint}).`
+                  : `Auto-created on the "${transitioningAction.targetStage.replace(/_/g, " ")}" transition.`,
               }
             : undefined,
           uccNumber: isUccActivated ? uccNumber.trim() : undefined,
@@ -674,6 +691,7 @@ export function GuidedStageActions({
       setLostReason("");
       setNotConnectedCount(null);
       setTaskAssigneeId("");
+      setKycMode("");
       setTaskDueAt("");
       setUccNumber("");
       setMandateBanks([]);
@@ -966,6 +984,29 @@ export function GuidedStageActions({
               </div>
             )}
 
+            {/* Fresh KYC — which KYC the client will do; the task is named after it. */}
+            {transitioningAction.targetStage === "kyc_registered" && (
+              <fieldset className="space-y-2">
+                <legend className="text-xs text-foreground font-medium">
+                  Which KYC does the client want? <span className="text-rose-500">*</span>
+                </legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {(Object.keys(KYC_MODES) as KycMode[]).map((m) => (
+                    <label
+                      key={m}
+                      className={`cursor-pointer rounded-lg border p-3 text-xs transition ${
+                        kycMode === m ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border hover:bg-secondary/50"
+                      }`}
+                    >
+                      <input type="radio" name={`${uid}-kyc-mode`} value={m} checked={kycMode === m} onChange={() => setKycMode(m)} className="sr-only" />
+                      <span className="block font-semibold text-foreground">{KYC_MODES[m].label}</span>
+                      <span className="mt-0.5 block text-muted-foreground">{KYC_MODES[m].hint}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+
             {/* Task assignee + due date — required for task-creating transitions;
                 auto-creates a pre-filled task and notifies the assignee. */}
             {TASK_ON_TRANSITION[transitioningAction.targetStage] && (
@@ -996,7 +1037,9 @@ export function GuidedStageActions({
                   />
                 </div>
                 <p className="text-2xs text-muted-foreground">
-                  We&apos;ll create a high-priority task — &ldquo;{TASK_ON_TRANSITION[transitioningAction.targetStage].title}&rdquo; — assigned to them, and notify them.
+                  We&apos;ll create a high-priority task — &ldquo;{transitioningAction.targetStage === "kyc_registered" && kycMode
+                    ? KYC_MODES[kycMode].title
+                    : TASK_ON_TRANSITION[transitioningAction.targetStage].title}&rdquo; — assigned to them, and notify them.
                 </p>
               </div>
             )}
@@ -1102,6 +1145,7 @@ export function GuidedStageActions({
                   setCallBackAt("");
                   setLostReason("");
                   setTaskAssigneeId("");
+                  setKycMode("");
                   setTaskDueAt("");
                   setMandateBanks([]);
                   setMandateBankIdx("");
@@ -1250,7 +1294,8 @@ function toLocalInput(ms: number): string {
 }
 
 /** Steps that move in one click, with no "Transition notes" pop-up — the click
- *  itself is the record (KYC Validated also sets the client's KYC status). */
+ *  itself is the record (KYC Validated also sets the client's KYC status). The
+ *  Online / Physical KYC question belongs to a FRESH KYC (kyc_registered). */
 const NO_NOTES_STAGES = new Set(["kyc_validated"]);
 
 /**

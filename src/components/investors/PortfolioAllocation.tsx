@@ -12,6 +12,9 @@ type FolioWithSchemes = {
   }> | null;
 };
 
+/** A priced holding from the live valuation (lib/finance/valuation.ts) — same figures as the headline "Current value". */
+type LiveHolding = { schemeName: string | null; amcName: string | null; currentValue: number | null };
+
 const CATEGORY_BUCKETS: Array<{
   label: string;
   match: RegExp[];
@@ -38,16 +41,34 @@ function bucketize(category: string | undefined): string {
 
 export function PortfolioAllocation({
   folios,
+  holdings,
 }: {
   folios: FolioWithSchemes[];
+  /**
+   * The client's live holdings. When they carry a value the card is built from
+   * them: the folio rows' own `aum` / scheme `value` are only a registrar
+   * statement snapshot, and are 0 for a client whose holdings come from the
+   * transaction ledger — that showed Rs 0 per AMC beside a Rs 1.26 L value.
+   */
+  holdings?: LiveHolding[];
 }) {
+  const live = (holdings ?? []).filter((h) => (h.currentValue ?? 0) > 0);
   // Aggregate by asset-class bucket and by AMC
   const byBucket: Record<string, number> = {};
   const byAmc: Record<string, number> = {};
   let totalSchemeValue = 0;
   let totalFolioAum = 0;
 
-  for (const f of folios) {
+  for (const h of live) {
+    const v = Number(h.currentValue);
+    if (h.amcName) byAmc[h.amcName] = (byAmc[h.amcName] ?? 0) + v;
+    const bucket = bucketize(h.schemeName ?? undefined);
+    byBucket[bucket] = (byBucket[bucket] ?? 0) + v;
+    totalSchemeValue += v;
+    totalFolioAum += v;
+  }
+
+  for (const f of live.length ? [] : folios) {
     const folAum = Number(f.aum ?? 0);
     totalFolioAum += folAum;
     if (f.amcName) byAmc[f.amcName] = (byAmc[f.amcName] ?? 0) + folAum;
@@ -98,7 +119,7 @@ export function PortfolioAllocation({
         </span>
       </div>
 
-      {folios.length === 0 ? (
+      {folios.length === 0 && live.length === 0 ? (
         <p className="text-sm text-muted-foreground py-6 text-center">
           No folios yet — allocation will appear once transactions are imported.
         </p>

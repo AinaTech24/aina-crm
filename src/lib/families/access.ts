@@ -25,12 +25,51 @@
 
 import { sql, type SQL } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
-import { can, requireAny } from "@/lib/auth/rbac";
+import { can, requireAny, type Capability } from "@/lib/auth/rbac";
 import { canViewAllInvestors, investorScopeSql, isDataScopeRestricted } from "@/lib/investors/access";
 import { isBranchScoped } from "@/lib/leads/access";
 
-const VIEW_CAPS = ["family.view", "investor.view.all", "investor.view.assigned"] as const;
+const VIEW_CAPS = ["family.view", "family.map.view", "family.map.view_assigned", "investor.view.all", "investor.view.assigned"] as const;
 const EDIT_CAPS = ["family.edit", "family.manage", "investor.edit.all", "investor.edit.assigned"] as const;
+
+/**
+ * What each family-mapping action needs: its own capability, or any household edit capability (as before).
+ *
+ * "Assigned only": a person with `family.map.edit_assigned` and WITHOUT the action's own capability
+ * may do the action only on households they are the RM of — the group's own ticks decide, so the
+ * older household / client edit capabilities (which a role grants by default) do not widen it.
+ */
+export type MapAction = "create" | "edit" | "delete";
+const MAP_CAPS: Record<MapAction, readonly Capability[]> = {
+  create: ["family.map.create", ...EDIT_CAPS],
+  edit: ["family.map.edit", ...EDIT_CAPS],
+  delete: ["family.map.delete", ...EDIT_CAPS],
+};
+
+const hasCap = (s: SessionUser, c: Capability) => can(s.roles, c, s.permissions);
+
+/** "all": any household · "assigned": only the person's own households · null: not allowed. */
+export function mapScope(session: SessionUser, action: MapAction): "all" | "assigned" | null {
+  if (hasCap(session, `family.map.${action}` as Capability)) return "all";
+  if (hasCap(session, "family.map.edit_assigned")) return "assigned";
+  return MAP_CAPS[action].some((c) => hasCap(session, c)) ? "all" : null;
+}
+
+/** Whether `action` may be done on this household (`familyRmId` = the family's RM). */
+export function canMapFamily(session: SessionUser, action: MapAction, familyRmId: string | null | undefined) {
+  const scope = mapScope(session, action);
+  return scope === "all" || (scope === "assigned" && !!familyRmId && familyRmId === session.userId);
+}
+
+/** Can start households / do the action anywhere (not just on their own). */
+export function canMapFamilies(session: SessionUser, action: MapAction) {
+  return mapScope(session, action) === "all";
+}
+
+/** Sees only the households they are the RM of (View assigned families only, without View family mapping). */
+export function viewsAssignedFamiliesOnly(session: SessionUser) {
+  return !hasCap(session, "family.map.view") && hasCap(session, "family.map.view_assigned");
+}
 
 /** Throws 403 when the caller may not see families at all. */
 export function requireFamilyView(session: SessionUser) {
@@ -59,6 +98,8 @@ export async function familyScopeSql(tx: any, session: SessionUser, alias = "f")
   const rm = sql.raw(`${a}.rm_id`);
   const branch = sql.raw(`${a}.branch_id`);
   const id = sql.raw(`${a}.id`);
+
+  if (viewsAssignedFamiliesOnly(session)) return sql`${rm} = ${session.userId}::uuid`;
 
   if (canViewAllInvestors(session)) return sql`TRUE`;
 
@@ -90,10 +131,21 @@ export async function loadViewableFamily(tx: any, session: SessionUser, familyId
   return (r.rows[0] as { id: string } | undefined) ?? null;
 }
 
-/** Throws 404 unless the family is visible and the caller may edit families. */
-export async function assertFamilyEditable(tx: any, session: SessionUser, familyId: string): Promise<void> {
-  requireFamilyEdit(session);
+/** Throws 404 unless the family is visible and the caller may edit families (an assigned-only editor: their own). */
+export async function assertFamilyEditable(
+  tx: any, session: SessionUser, familyId: string, mapAction?: MapAction,
+): Promise<void> {
+  const scope = mapAction ? mapScope(session, mapAction) : null;
+  if (mapAction) {
+    if (!scope) requireAny(session.roles, [...MAP_CAPS[mapAction]], session.permissions);
+  } else requireFamilyEdit(session);
   if (!(await loadViewableFamily(tx, session, familyId))) {
     throw Object.assign(new Error("family not found"), { status: 404 });
+  }
+  if (scope === "assigned") {
+    const r = await tx.execute(sql`SELECT rm_id FROM families WHERE id = ${familyId}::uuid AND tenant_id = ${session.tenantId}::uuid`);
+    if ((r.rows[0] as { rm_id: string | null } | undefined)?.rm_id !== session.userId) {
+      throw Object.assign(new Error("family not found"), { status: 404 });
+    }
   }
 }

@@ -36,7 +36,6 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
   {
     title: "Home",
     items: [
-      { key: "/dashboard/next-best-action", label: "Next Best Action" },
     ],
   },
   {
@@ -116,7 +115,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/documents", label: "Documents", module: "documents" },
       { key: "/dashboard/compliance", label: "DDQ Readiness", module: "ddq" },
       { key: "/dashboard/reports/nomination-tracker", label: "Nomination Tracker" },
-      { key: "/dashboard/sops", label: "SOP Library" },
+      { key: "/dashboard/sops", label: "Operations Manual" },
       { key: "/dashboard/audit-log", label: "Audit Log", module: "audit_log" },
       { key: "/dashboard/legal-registrations", label: "Legal Registrations" },
       { key: "/dashboard/sub-distributors", label: "Sub-Distributors" },

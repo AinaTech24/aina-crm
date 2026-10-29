@@ -46,6 +46,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         .limit(1)
         .for("update"))[0];
       if (!ver) throw Object.assign(new Error("no draft version"), { status: 400 });
+      // Another (approved) version is the one being sent — "Use this version".
+      const liveElsewhere = tpl.currentVersionId !== ver.id && tpl.status === "approved";
 
       const t = (await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
 
@@ -109,10 +111,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
             complianceScore: String(compliance.score),
           } as any)
           .where(and(eq(templateVersions.id, ver.id), eq(templateVersions.tenantId, session.tenantId)));
-        await tx
-          .update(templates)
-          .set({ status: "pending_approval" } as any)
-          .where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
+        // An older approved version switched back on keeps sending meanwhile;
+        // "Use this version" picks the new one up once Meta approves it.
+        if (!liveElsewhere) {
+          await tx
+            .update(templates)
+            .set({ status: "pending_approval" } as any)
+            .where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
+        }
         return {
           compliance,
           nextStatus: "submitted",
@@ -156,7 +162,15 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         } as any)
         .where(and(eq(templateVersions.id, ver.id), eq(templateVersions.tenantId, session.tenantId)));
 
-      await tx.update(templates).set({ status: templateStatus } as any).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
+      if (templateStatus === "approved") {
+        // Approved straight away: this version replaces whichever one was in use.
+        await tx
+          .update(templates)
+          .set({ status: "approved", currentVersionId: ver.id })
+          .where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
+      } else if (!liveElsewhere) {
+        await tx.update(templates).set({ status: templateStatus } as any).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
+      }
 
       return { compliance, nextStatus, templateStatus };
     });

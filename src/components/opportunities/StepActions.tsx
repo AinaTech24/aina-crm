@@ -96,6 +96,10 @@ function specsFor(o: OpportunityView): Spec[] {
       return [{ action: "executed", label: "Executed", title: "Executed", icon: <Sparkles className="size-4" />, primary: true, moves: true, fields: ["on"], onLabel: "Executed on", followUp: false }, assign];
     case "txn_review":
       return [];
+    case "rta_check":
+      // The RTA data check task is completed from the card first; then this wins it.
+      return [{ action: "move", label: "Mark won", title: "Mark won", icon: <Sparkles className="size-4" />,
+        primary: !o.gate.some((g) => g.completeTaskId), moves: true, fields: ["on"], onLabel: "Done on", followUp: false }];
     default:
       return o.next
         ? [{ action: "move", label: ends ? "Mark won" : `Move to: ${nextName}`, title: ends ? "Mark won" : `Move to: ${nextName}`,

@@ -22,6 +22,7 @@ import { sql } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
 import { getTenantIntegration } from "@/lib/comms/integrations";
 import { fetchVartifyTemplatesDetailed } from "@/lib/comms/adapters/vartify";
+import { retryFailedSubmissions } from "@/lib/templates/whatsapp-provision";
 
 export async function syncAllTenants(): Promise<{ tenants: number; updated: number }> {
   let updated = 0;
@@ -41,6 +42,13 @@ export async function syncAllTenants(): Promise<{ tenants: number; updated: numb
     );
     const apiKey = (integ?.config as any)?.apiKey as string | undefined;
     if (!integ?.isActive || !apiKey) continue;
+
+    // A required template that never reached Meta (Vartify was down, a name
+    // clash) is sent again here, after a wait. Existing rows only — nothing is
+    // created, so a template the firm archived stays archived.
+    await retryFailedSubmissions(t.id).catch((err) =>
+      console.warn(`[vartify-template-sync] tenant ${t.id}: resubmit failed: ${err?.message ?? err}`)
+    );
 
     // ?status=all — a PENDING/REJECTED template must be mirrored too, otherwise
     // its status can never move in the registry.
@@ -96,6 +104,30 @@ export async function syncAllTenants(): Promise<{ tenants: number; updated: numb
           )
       `);
       updated += (res as any).rowCount ?? 0;
+
+      // Carry Meta's verdict onto the version too, so the Templates screen shows
+      // "approved" / "rejected" with Meta's reason rather than "submitted".
+      await tx.execute(sql`
+        UPDATE template_versions v
+        SET approval_status = CASE w.meta_status WHEN 'APPROVED' THEN 'approved_external' ELSE 'rejected' END,
+            external_status = w.meta_status,
+            rejection_reason = CASE w.meta_status WHEN 'REJECTED' THEN w.meta_rejection_reason ELSE v.rejection_reason END,
+            external_synced_at = now(), updated_at = now()
+        FROM templates tp
+        JOIN whatsapp_templates w
+          ON w.tenant_id = tp.tenant_id AND w.meta_template_name = tp.key AND w.meta_status IN ('APPROVED', 'REJECTED')
+        WHERE v.id = tp.current_version_id AND tp.tenant_id = ${t.id}::uuid AND tp.channel = 'whatsapp'
+          AND v.approval_status = 'submitted'
+      `);
+      // A template Meta turned down is not sendable and must say so.
+      await tx.execute(sql`
+        UPDATE templates SET status = 'rejected', updated_at = now()
+        WHERE tenant_id = ${t.id}::uuid AND channel = 'whatsapp' AND status = 'pending_approval'
+          AND key IN (
+            SELECT meta_template_name FROM whatsapp_templates
+            WHERE tenant_id = ${t.id}::uuid AND meta_status = 'REJECTED'
+          )
+      `);
     });
   }
 

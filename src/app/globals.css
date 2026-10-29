@@ -1474,3 +1474,18 @@ a:hover > .dash-tile {
   .dashboard-content:has(.dash-canvas) { background: none; }
 }
 
+
+/* Public website headings — `font-brand` (Plus Jakarta Sans, loaded on the
+   marketing pages only). Bold with slightly tight tracking; an <em> inside a
+   heading is emphasised by its crimson colour, not by italics. A plain class
+   selector, because Tailwind's preflight (h1, h2 { font-weight: inherit })
+   outranks :where(); it sits after the utilities, so give a font-brand element
+   a different weight here rather than with a font-* utility.
+   Plain top-level CSS on purpose — see the @layer components note above. */
+.font-brand {
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+.font-brand em {
+  font-style: normal;
+}

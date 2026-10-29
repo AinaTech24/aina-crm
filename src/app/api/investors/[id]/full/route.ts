@@ -6,7 +6,6 @@
  * mobile detail shows identical numbers. Read-only; logs a DPDP PII-access row.
  */
 
-import { withSchemeCategories } from "@/lib/investors/scheme-categories";
 import { handleApiError } from "@/lib/api/error-handler";
 import { NextResponse } from "next/server";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
@@ -17,6 +16,7 @@ import { can } from "@/lib/auth/rbac";
 import { loadViewableInvestor } from "@/lib/investors/access";
 import { valueInvestor } from "@/lib/finance/valuation";
 import { churnForInvestor } from "@/lib/churn/scan";
+import { loadExposureBook } from "@/lib/investors/exposure-book";
 import { assetClassExposure } from "@/lib/investors/asset-class";
 import { assessSuitability } from "@/lib/investors/suitability";
 import { clientCompleteness } from "@/lib/investors/completeness";
@@ -97,7 +97,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
         const churn = await churnForInvestor(tx as any, id, valuation.xirr);
         // Same category fill as the client page and the suitability email.
-        const exposure = assetClassExposure((await withSchemeCategories(tx as any, foliosRows as any)) as any);
+        const exposure = assetClassExposure((await loadExposureBook(tx as any, session.tenantId, id, valuation)) as any);
         const completeness = clientCompleteness(inv as any);
         const suitability = assessSuitability((inv as any).riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
         const crossSell = crossSellOpportunities((inv as any).crossSell);

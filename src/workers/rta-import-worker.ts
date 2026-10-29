@@ -42,6 +42,7 @@ import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
 import { retireEmptyPlaceholdersAfterImport } from "@/lib/rta/placeholder-sweep";
 import { restoreTrashedHoldersAfterImport } from "@/lib/investors/holds-money";
 import { reactivateReturningClientsAfterImport } from "@/lib/investors/client-return";
+import { warnIfOverClientLimitAfterImport } from "@/lib/billing/client-limit";
 import { syncRtaJourneysAfterImport } from "@/lib/blueprints/rta-route";
 
 export type RtaImportJob = {
@@ -949,6 +950,7 @@ export function startRtaImportWorker() {
           await retireEmptyPlaceholdersAfterImport((job.data as any)?.tenantId);
           await restoreTrashedHoldersAfterImport((job.data as any)?.tenantId);
           await reactivateReturningClientsAfterImport((job.data as any)?.tenantId);
+          await warnIfOverClientLimitAfterImport((job.data as any)?.tenantId);
           return summary;
         }
         await runRtaImportJob(job.data as RtaImportJob);
@@ -966,6 +968,9 @@ export function startRtaImportWorker() {
         // …and a dormant / exited client who invested again is Active again
         // (lib/investors/client-return.ts).
         await reactivateReturningClientsAfterImport((job.data as RtaImportJob).tenantId);
+        // …and a firm the registrar has taken past its plan's client limit is told
+        // (never cut short — lib/billing/client-limit.ts).
+        await warnIfOverClientLimitAfterImport((job.data as RtaImportJob).tenantId);
       } finally {
         // Purge the source file ONLY once it has actually been imported.
         //

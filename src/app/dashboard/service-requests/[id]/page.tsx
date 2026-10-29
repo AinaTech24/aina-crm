@@ -1,4 +1,5 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { RowActions } from "@/components/common/RowActions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
@@ -70,7 +71,16 @@ export default async function ServiceRequestDetailPage({ params }: { params: Pro
         </div>
         <PageHeaderCard
       title={<>{TYPE_LABEL[sr.type] ?? sr.type}</>}
-      actions={<span className={`chip capitalize ${STATUS_TONE[sr.status] ?? ""}`}>{sr.status.replace(/_/g, " ")}</span>}
+      actions={
+        <div className="flex items-center gap-2">
+          <span className={`chip capitalize ${STATUS_TONE[sr.status] ?? ""}`}>{sr.status.replace(/_/g, " ")}</span>
+          {/* Delete for good — never a complaint, which can only be closed (lib/service-requests/delete.ts). */}
+          {sr.type !== "complaint" && can(session.roles, "service_request.delete", session.permissions) && (
+            <RowActions inline deleteUrl={`/api/service-requests/${sr.id}?permanent=1`} itemLabel="ticket" itemName={sr.ticketNo}
+              verb="Delete" permanent redirectTo="/dashboard/service-requests" />
+          )}
+        </div>
+      }
     >
       <div className="text-sm text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
             <span className="font-mono">{sr.ticketNo}</span>

@@ -19,6 +19,7 @@ import { usePathname } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { openLogActivity } from "@/lib/activities/contact-log";
 
 export type QuickAddItem = {
   label: string;
@@ -27,6 +28,8 @@ export type QuickAddItem = {
   icon?: React.ReactNode;
   /** Shown under the label — used where the destination isn't a plain form. */
   hint?: string;
+  /** Opens in place instead of navigating: "log-activity" is the Log activity drawer. */
+  action?: "log-activity";
 };
 
 export function QuickAdd({ items }: { items: QuickAddItem[] }) {
@@ -79,27 +82,42 @@ export function QuickAdd({ items }: { items: QuickAddItem[] }) {
           <ul role="menu" aria-label="Create new" className="max-h-[70vh] overflow-y-auto">
             {items.map((it) => (
               <li key={it.href + it.label}>
-                <Link
-                  href={it.href}
-                  role="menuitem"
-                  onClick={() => setOpen(false)}
-                  className="flex items-start gap-2.5 rounded-lg px-2.5 py-2 text-sm hover:bg-secondary transition-colors"
-                >
-                  {it.icon ? (
-                    <span className="mt-0.5 text-muted-foreground shrink-0">{it.icon}</span>
-                  ) : null}
-                  <span className="min-w-0">
-                    <span className="block truncate">{it.label}</span>
-                    {it.hint ? (
-                      <span className="block text-2xs text-muted-foreground truncate">{it.hint}</span>
-                    ) : null}
-                  </span>
-                </Link>
+                {it.action === "log-activity" ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setOpen(false); openLogActivity("call"); }}
+                    className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-secondary transition-colors"
+                  >
+                    <ItemBody it={it} />
+                  </button>
+                ) : (
+                  <Link
+                    href={it.href}
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                    className="flex items-start gap-2.5 rounded-lg px-2.5 py-2 text-sm hover:bg-secondary transition-colors"
+                  >
+                    <ItemBody it={it} />
+                  </Link>
+                )}
               </li>
             ))}
           </ul>
         </Card>
       )}
     </div>
+  );
+}
+
+function ItemBody({ it }: { it: QuickAddItem }) {
+  return (
+    <>
+      {it.icon ? <span className="mt-0.5 text-muted-foreground shrink-0">{it.icon}</span> : null}
+      <span className="min-w-0">
+        <span className="block truncate">{it.label}</span>
+        {it.hint ? <span className="block text-2xs text-muted-foreground truncate">{it.hint}</span> : null}
+      </span>
+    </>
   );
 }

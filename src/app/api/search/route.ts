@@ -33,6 +33,11 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") ?? "").trim();
     if (q.length < 2) return NextResponse.json({ groups: [] });
+    // `modules=clients,leads` limits the search to those groups (the palette's
+    // module picker); absent means every group. Unknown names match nothing.
+    const modulesParam = url.searchParams.get("modules");
+    const only = modulesParam ? new Set(modulesParam.split(",").map((m) => m.trim()).filter(Boolean)) : null;
+    const wants = (name: string) => !only || only.has(name);
 
     const like = `%${q}%`;
     const likeUpper = `%${q.toUpperCase()}%`;
@@ -67,7 +72,7 @@ export async function GET(req: NextRequest) {
       // route is six hand-written queries the schema guard cannot check.
       const group = async (name: string, q: SQL): Promise<unknown[]> => {
         // The person typed on: the browser dropped this search, so stop here.
-        if (req.signal.aborted) return [];
+        if (req.signal.aborted || !wants(name)) return [];
         try {
           return (await tx.transaction(async (sp) => sp.execute(q))).rows;
         } catch (err) {
@@ -170,8 +175,16 @@ export async function GET(req: NextRequest) {
           LEFT JOIN leads l ON l.id = CASE WHEN t.subject_type = 'lead' THEN t.subject_id END
           LEFT JOIN users u ON u.id = t.assignee_id
           WHERE t.tenant_id = ${session.tenantId}::uuid AND ${taskScope}
-            AND t.deleted_at IS NULL AND (t.title ILIKE ${like}
-                 OR (i.name ILIKE ${like} AND ${invScope}) OR (l.name ILIKE ${like} AND ${taskLeadScope}))
+            -- The name arms look the matching clients / leads up first (their
+            -- own trigram indexes) instead of filtering every task's joined
+            -- row, and lower(title) is what tasks_title_trgm_idx is built on.
+            AND t.deleted_at IS NULL AND (lower(t.title) ILIKE ${like}
+                 OR COALESCE(t.related_investor_id, CASE WHEN t.subject_type = 'investor' THEN t.subject_id END) IN (
+                      SELECT i.id FROM investors i
+                       WHERE i.tenant_id = ${session.tenantId}::uuid AND i.name ILIKE ${like} AND ${invScope})
+                 OR (t.subject_type = 'lead' AND t.subject_id IN (
+                      SELECT l.id FROM leads l
+                       WHERE l.tenant_id = ${session.tenantId}::uuid AND l.name ILIKE ${like} AND ${taskLeadScope})))
           ORDER BY (t.status IN ('open', 'in_progress', 'blocked')) DESC, t.due_at ASC NULLS LAST
           LIMIT 5
         `);

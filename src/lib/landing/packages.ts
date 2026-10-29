@@ -32,7 +32,7 @@ export const FALLBACK_PLANS: LandingPlan[] = [
     name: "Growth",
     tagline: "Everything an MFD firm needs to run day-to-day — clients, money, service, automation & AI alerts in one organised place.",
     priceLabel: "₹9,499", unitLabel: "/ user / year", setupLabel: "₹45,000", setupOriginalLabel: null, discountBadge: null, seatsLabel: "3 users = ₹28,497 / year",
-    inheritsLabel: null, featured: false, badgeLabel: null, isCustom: false, ctaLabel: "Start Free Trial", ctaHref: "/signup",
+    inheritsLabel: null, featured: false, badgeLabel: null, isCustom: false, ctaLabel: "Book a demo", ctaHref: "/signup",
     features: [
       "Dashboard, Tasks, Meetings & Calendar", "Leads, Clients & Family Mapping", "Risk Profile & Any 20 Calculators",
       "Insurance Policies & Claims", "Insurance Renewal Alerts", "Business Entities — All Products", "Email Automation",
@@ -45,7 +45,7 @@ export const FALLBACK_PLANS: LandingPlan[] = [
     name: "Premium",
     tagline: "Full AI, compliance & practice management for firms scaling seriously.",
     priceLabel: "₹12,499", unitLabel: "/ user / year", setupLabel: "₹75,000", setupOriginalLabel: null, discountBadge: null, seatsLabel: "3 users = ₹37,497 / year",
-    inheritsLabel: "Everything in Growth, plus:", featured: true, badgeLabel: null, isCustom: false, ctaLabel: "Start Free Trial", ctaHref: "/signup",
+    inheritsLabel: "Everything in Growth, plus:", featured: true, badgeLabel: null, isCustom: false, ctaLabel: "Book a demo", ctaHref: "/signup",
     features: [
       "AI Assistant & AI Tool Training", "RTA File Import", "Advanced Goal Planning", "Brokerage Management",
       "DDQ Compliance Management & Audit", "Portfolio Intelligence", "Practice & Finance Tools", "Advanced Automation",

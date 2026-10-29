@@ -178,6 +178,7 @@ export function ClientDetailsForm({
     lastReviewAt: day(investor.lastReviewAt),
     nextReviewAt: day(investor.nextReviewAt),
     anniversaryDate: day(investor.anniversaryDate),
+    dateOfDemise: day(investor.dateOfDemise),
     status: investor.status ?? "active",
     notes: investor.notes ?? "",
   });
@@ -326,6 +327,7 @@ export function ClientDetailsForm({
         lastReviewAt: f.lastReviewAt || null,
         nextReviewAt: f.nextReviewAt || null,
         anniversaryDate: f.anniversaryDate || null,
+        dateOfDemise: f.dateOfDemise || null,
         status: inSet(f.status, CLIENT_STATUSES),
         notes: f.notes,
         // Optimistic-concurrency token: the version we loaded. The API rejects
@@ -436,6 +438,9 @@ export function ClientDetailsForm({
         {adult && <Field label="Anniversary">
           {(id) => <DateField id={id} value={f.anniversaryDate} onChange={(e) => set("anniversaryDate", e.target.value)} className="w-full" />}
         </Field>}
+        <Field label="Date of death (demise)" hint="Saving a date marks the client Inactive, stops their active SIPs and cancels pending orders. Clear it to undo the status.">
+          {(id) => <DateField id={id} value={f.dateOfDemise} onChange={(e) => set("dateOfDemise", e.target.value)} className="w-full" />}
+        </Field>
       </FieldSection>
       </div>
 

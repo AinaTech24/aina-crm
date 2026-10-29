@@ -20,6 +20,7 @@ import { buttonClass } from "@/components/ui/button-class";
 import { overdueTaskSql, staffWhere, taskAwaitingSql } from "@/lib/metrics";
 import { FINANCIAL_TASK_TYPES } from "@/lib/dashboard/my/window";
 import { taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
+import { escalatedToSql } from "@/lib/tasks/escalation-ladder";
 
 export const dynamic = "force-dynamic";
 
@@ -113,10 +114,12 @@ export default async function TasksPage({
         eq(tasks.createdById, session.userId),
         // A teammate's "Need information" question waiting on me.
         sql`${tasks.meta}->'infoRequest'->>'askedToId' = ${session.userId}`,
+        // An overdue task the escalation ladder brought to me.
+        escalatedToSql("tasks", session.userId),
       )!);
     } else {
       // view.all reaches other people's tasks only when their client / lead
-      // is in the viewer's scope (lib/tasks/scope.ts).
+      // is in the viewer's scope (lib/tasks/scope.ts; escalated to them counts as their own).
       conds.push(await taskScopeSql(tx, session, "tasks"));
     }
 
@@ -177,6 +180,7 @@ export default async function TasksPage({
     if (flagFilter.includes("requires_approval")) conds.push(eq(tasks.requiresApproval, true));
     // "Need information" (lib/tasks/info-request): waiting on me / waiting on anyone.
     if (flagFilter.includes("awaiting_my_reply")) conds.push(sql`${tasks.meta}->'infoRequest'->>'askedToId' = ${session.userId}`);
+    if (flagFilter.includes("escalated_to_me")) conds.push(escalatedToSql("tasks", session.userId));
     if (flagFilter.includes("awaiting_info")) conds.push(sql`${tasks.meta} ? 'infoRequest'`);
     if (flagFilter.includes("recurring")) conds.push(sql`tasks.recurrence is not null`);
     if (flagFilter.includes("has_attachments"))
@@ -299,9 +303,12 @@ export default async function TasksPage({
       <PageHeaderCard
         title={<><ListChecks className="size-6 text-muted-foreground" /> Tasks</>}
         actions={
-          <Link href="/dashboard/tasks/new" className={buttonClass("primary")}>
-            <Plus className="size-4" /> New task
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/dashboard/tasks/qa" className={buttonClass("secondary")}>QA queue</Link>
+            <Link href="/dashboard/tasks/new" className={buttonClass("primary")}>
+              <Plus className="size-4" /> New task
+            </Link>
+          </div>
         }
       />
 
@@ -395,6 +402,7 @@ export default async function TasksPage({
             label: "Flags",
             options: [
               { value: "awaiting_my_reply", label: "Waiting for my reply" },
+              { value: "escalated_to_me", label: "Escalated to me" },
               { value: "awaiting_info", label: "Waiting for information" },
               { value: "requires_approval", label: "Requires approval" },
               { value: "recurring", label: "Recurring" },
@@ -414,6 +422,7 @@ export default async function TasksPage({
               { id: "urgent", name: "Urgent / High", params: "status=open&priority=urgent,high" },
               { id: "approval", name: "Awaiting my approval", params: "approval=mine" },
               { id: "my-reply", name: "Waiting for my reply", params: "flag=awaiting_my_reply" },
+              { id: "escalated", name: "Escalated to me", params: "flag=escalated_to_me" },
               { id: "done", name: "Completed", params: "status=completed" },
             ]}
           />

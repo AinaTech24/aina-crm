@@ -14,6 +14,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requireInvestorView } from "@/lib/investors/access";
 import { canWorkOpportunities, loadViewableOpportunity } from "@/lib/opportunities/access";
 import { listOpportunities } from "@/lib/opportunities/journey";
+import { opportunityAssignees } from "@/lib/opportunities/assignees";
 import { stageName } from "@/lib/opportunities/stages";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { Badge } from "@/components/ui/Badge";
@@ -21,6 +22,7 @@ import { buttonClass } from "@/components/ui/button-class";
 import { OpportunityDetailsCard, OpportunityJourney } from "@/components/opportunities/OpportunityWorkspace";
 import { formatDate, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { contactLogAttrs } from "@/lib/activities/contact-log";
 
 export const dynamic = "force-dynamic";
 
@@ -68,11 +70,12 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
            ORDER BY name LIMIT 300`)).rows as Array<{ id: string; name: string; roles: string[] }>)
           .map((u) => ({ id: u.id, name: cleanName(u.name) ?? u.name, insurance: (u.roles ?? []).includes("insurance_team") }))
       : [];
-    return { view, client, history, tasks, staff };
+    const assignees = canWork && view.status === "open" ? await opportunityAssignees(tx, session, view.investorId) : [];
+    return { view, client, history, tasks, staff, assignees };
   }, { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
 
   if (!data) notFound();
-  const { view: o, client, history, tasks, staff } = data;
+  const { view: o, client, history, tasks, staff, assignees } = data;
   const nowMs = Date.now();
 
   return (
@@ -126,13 +129,13 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
             </Link>
             <ul className="mt-2 space-y-1.5 text-sm text-muted-foreground">
               {client.rm_name && <li className="flex items-center gap-2"><UserRound className="size-3.5" aria-hidden /> RM {cleanName(client.rm_name)}</li>}
-              {client.phone && <li className="flex items-center gap-2"><Phone className="size-3.5" aria-hidden /> <a href={`tel:${client.phone}`} className="hover:text-foreground">{client.phone}</a></li>}
-              {client.email && <li className="flex items-center gap-2"><Mail className="size-3.5" aria-hidden /> <a href={`mailto:${client.email}`} className="truncate hover:text-foreground">{client.email}</a></li>}
+              {client.phone && <li className="flex items-center gap-2"><Phone className="size-3.5" aria-hidden /> <a {...contactLogAttrs({ type: "investor", id: String(client.id), name: String(client.name) })} href={`tel:${client.phone}`} className="hover:text-foreground">{client.phone}</a></li>}
+              {client.email && <li className="flex items-center gap-2"><Mail className="size-3.5" aria-hidden /> <a {...contactLogAttrs({ type: "investor", id: String(client.id), name: String(client.name) })} href={`mailto:${client.email}`} className="truncate hover:text-foreground">{client.email}</a></li>}
               {client.aum != null && Number(client.aum) > 0 && <li>AUM with you {formatMoney(Number(client.aum))}</li>}
             </ul>
           </section>
 
-          <OpportunityDetailsCard o={o} canWork={canWork} staff={staff} />
+          <OpportunityDetailsCard o={o} canWork={canWork} staff={staff} assignees={assignees} />
 
           <section className="card-surface p-5">
             <h2 className="section-title">Tasks</h2>

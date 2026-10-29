@@ -35,7 +35,7 @@ import { FamilyPortfolioAllocation } from "@/components/families/FamilyPortfolio
 import { FamilyTouchpoints } from "@/components/families/FamilyTouchpoints";
 import { EngageNextGenButton } from "@/components/families/EngageNextGenButton";
 import { FamilyTreeVisualizer } from "@/components/families/FamilyTreeVisualizer";
-import { canEditFamilies } from "@/lib/families/access";
+import { canEditFamilies, canMapFamily } from "@/lib/families/access";
 import { goalProjection, loadFamilyDetail } from "@/lib/families/detail";
 import { familyReviewState, hasNominee, isLiveMember } from "@/lib/families/health";
 import { familyReviewFrequencyLabel } from "@/lib/families/cadence";
@@ -178,6 +178,10 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
   const { family, members, liveMembers, head, totals } = data;
   const familyName = family.familyName ?? family.headName;
   const canEdit = canEditFamilies(session);
+  // Family mapping has its own add / update / remove permissions.
+  const canMapAdd = canMapFamily(session, "create", family.rmId);
+  const canMapEdit = canMapFamily(session, "edit", family.rmId);
+  const canMapRemove = canMapFamily(session, "delete", family.rmId);
   // Merging clients is the owner's tool (Merge Clients).
   const canMerge = can(session.roles, "dashboard.view.owner", session.permissions);
   const canDelete = can(session.roles, "family.delete", session.permissions) || can(session.roles, "investor.edit.all", session.permissions);
@@ -309,7 +313,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
             <div id="family-members" className="scroll-mt-24" />
             <CardHeader
               title={`Members (${members.length})`}
-              action={canEdit ? <AddMemberDialog familyId={id} familyName={familyName} /> : undefined}
+              action={canMapAdd ? <AddMemberDialog familyId={id} familyName={familyName} /> : undefined}
             />
             {canMerge && data.repeated.length > 0 && (
               <div className="mx-5 mb-4 space-y-3 rounded-lg border border-warning/50 bg-warning/5 p-4">
@@ -337,7 +341,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
                       <th className="py-2 text-right font-medium">AUM</th>
                       <th className="py-2 text-right font-medium">SIP / month</th>
                       <th className="py-2 pl-4 text-left font-medium">Gaps</th>
-                      {canEdit && <th className="relative px-4 py-2"><span className="sr-only">Actions</span></th>}
+                      {canMapRemove && <th className="relative px-4 py-2"><span className="sr-only">Actions</span></th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -371,7 +375,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
                               investorName={m.name}
                               role={m.familyRole}
                               isHead={isHead}
-                              canEdit={canEdit}
+                              canEdit={canMapEdit}
                             />
                           </td>
                           <td className="py-2.5 font-mono text-xs text-muted-foreground">{m.pan ?? "—"}</td>
@@ -389,7 +393,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
                               <span className="text-xs text-muted-foreground">—</span>
                             )}
                           </td>
-                          {canEdit && (
+                          {canMapRemove && (
                             <td className="px-4 py-2.5 text-right">
                               <RemoveMemberButton familyId={id} investorId={m.id} investorName={m.name} />
                             </td>

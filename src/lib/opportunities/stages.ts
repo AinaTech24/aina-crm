@@ -4,7 +4,7 @@
  * here, the engine (journey.ts) walks it, and the tests read it.
  *
  *   identified → discussion → suitability → proposal → accepted
- *      ├─ mf         mf_transaction → txn_review
+ *      ├─ mf         mf_transaction → txn_review → rta_check
  *      ├─ insurance  ins_proposal_form → ins_underwriting → ins_issued
  *      └─ general    gen_executed                   (no suitability stage)
  *   → won.   "lost" is reachable from every open stage.
@@ -26,7 +26,7 @@ export const OPPORTUNITY_MODULE = "opportunities";
 
 export type OpportunityStageKey =
   | "identified" | "discussion" | "suitability" | "proposal" | "accepted"
-  | "mf_transaction" | "txn_review"
+  | "mf_transaction" | "txn_review" | "rta_check"
   | "ins_proposal_form" | "ins_underwriting" | "ins_issued"
   | "gen_executed" | "won" | "lost";
 
@@ -50,24 +50,27 @@ export const OPPORTUNITY_STAGES: SeedStage[] = [
     allowedActions: ["place_order"], description: "Needs KYC verified, a UCC and, for a SIP, a mandate covering it. Done when the purchase or SIP appears on the client." },
   { key: "txn_review", name: "Approve / reject transaction", order: 7, ownerRole: "back_office", requiredFields: [], slaDays: 2,
     allowedActions: ["approve_transaction", "reject_transaction"],
-    description: "Operations checks the transaction. Approved: a task is created and the client is won. Rejected: it goes back to Transaction placed with a task to fix it." },
-  { key: "ins_proposal_form", name: "Proposal form submitted", order: 8, ownerRole: "sales", requiredFields: [], slaDays: 5,
+    description: "Operations checks the transaction. Approved: it moves to the RTA data check. Rejected: it goes back to Transaction placed with a task to fix it." },
+  { key: "rta_check", name: "RTA data check", order: 8, ownerRole: "back_office", requiredFields: [], slaDays: 5,
+    allowedActions: ["check_rta_status"],
+    description: "A task is created to check the transaction against the RTA (CAMS / KFintech) data. The client is won only once that task is completed." },
+  { key: "ins_proposal_form", name: "Proposal form submitted", order: 9, ownerRole: "sales", requiredFields: [], slaDays: 5,
     allowedActions: ["submit_proposal_form"], description: "The insurer's proposal form is filled and submitted." },
-  { key: "ins_underwriting", name: "Underwriting / medicals", order: 9, ownerRole: "sales", requiredFields: [], slaDays: 15,
+  { key: "ins_underwriting", name: "Underwriting / medicals", order: 10, ownerRole: "sales", requiredFields: [], slaDays: 15,
     allowedActions: ["track_medicals"], description: "Medicals and insurer questions." },
-  { key: "ins_issued", name: "Policy issued", order: 10, ownerRole: "sales", requiredFields: [], slaDays: 3,
+  { key: "ins_issued", name: "Policy issued", order: 11, ownerRole: "sales", requiredFields: [], slaDays: 3,
     allowedActions: ["record_policy"], description: "Done when the issued policy is recorded on the client." },
-  { key: "gen_executed", name: "Executed", order: 11, ownerRole: "back_office", requiredFields: [], slaDays: 7,
+  { key: "gen_executed", name: "Executed", order: 12, ownerRole: "back_office", requiredFields: [], slaDays: 7,
     allowedActions: ["record_execution"], description: "The account is opened or the investment made." },
-  { key: "won", name: "Won — held with us", order: 12, ownerRole: "sales", requiredFields: [], allowedActions: [],
+  { key: "won", name: "Won — held with us", order: 13, ownerRole: "sales", requiredFields: [], allowedActions: [],
     flavour: "terminal_success" },
-  { key: "lost", name: "Lost", order: 13, ownerRole: "sales", requiredFields: [], allowedActions: [],
+  { key: "lost", name: "Lost", order: 14, ownerRole: "sales", requiredFields: [], allowedActions: [],
     flavour: "terminal_failure" },
 ];
 
 /** The stages an opportunity of each pipeline walks, in order. */
 export const OPPORTUNITY_PATHS: Record<OpportunityPipeline, OpportunityStageKey[]> = {
-  mf: ["identified", "discussion", "suitability", "proposal", "accepted", "mf_transaction", "txn_review", "won"],
+  mf: ["identified", "discussion", "suitability", "proposal", "accepted", "mf_transaction", "txn_review", "rta_check", "won"],
   insurance: ["identified", "discussion", "suitability", "proposal", "accepted", "ins_proposal_form", "ins_underwriting", "ins_issued", "won"],
   general: ["identified", "discussion", "proposal", "accepted", "gen_executed", "won"],
 };
@@ -85,7 +88,7 @@ export function opportunityTransitions(): Array<{ from: string; to: string; name
       out.push({ from: path[i], to: path[i + 1], name: name(path[i + 1]) });
     }
   }
-  // A rejected transaction goes back to be placed again.
+  // A rejected transaction goes back to be placed again (the RTA check only follows an approval).
   out.push({ from: "txn_review", to: "mf_transaction", name: "Transaction rejected — place again" });
   for (const s of OPPORTUNITY_STAGES) {
     if (s.key === "won" || s.key === "lost") continue;

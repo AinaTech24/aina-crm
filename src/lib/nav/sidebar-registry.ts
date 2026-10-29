@@ -20,10 +20,8 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Home", href: "/dashboard/manage", label: "Manage dashboards" },
   { group: "Home", href: "/dashboard/team", label: "Team Dashboard" },
   { group: "Home", href: "/dashboard/team/scorecard", label: "Team Scorecard" },
-  { group: "Home", href: "/dashboard/next-best-action", label: "Next Best Action" },
   // Work
   { group: "Work", href: "/dashboard/tasks", label: "Tasks" },
-  { group: "Work", href: "/dashboard/tasks/daily", label: "Daily Tracker" },
   { group: "Work", href: "/dashboard/review-meetings", label: "Meetings" },
   { group: "Work", href: "/dashboard/calendar", label: "Calendar" },
   { group: "Work", href: "/dashboard/service-requests", label: "Service Requests" },
@@ -74,7 +72,6 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Compliance", href: "/dashboard/documents", label: "Documents" },
   { group: "Compliance", href: "/dashboard/compliance", label: "DDQ Readiness" },
   { group: "Compliance", href: "/dashboard/reports/nomination-tracker", label: "Nomination Tracker" },
-  { group: "Compliance", href: "/dashboard/sops", label: "SOP Library" },
   { group: "Compliance", href: "/dashboard/audit-log", label: "Audit Log" },
   { group: "Compliance", href: "/dashboard/legal-registrations", label: "Legal Registrations" },
   { group: "Compliance", href: "/dashboard/sub-distributors", label: "Sub-Distributors" },
@@ -95,4 +92,7 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Data & Admin", href: "/dashboard/product-offerings", label: "Products & Services" },
   { group: "Data & Admin", href: "/dashboard/merge-clients", label: "Merge Clients" },
   { group: "Data & Admin", href: "/dashboard/trash", label: "Trash" },
+  // Practice
+  { group: "Practice", href: "/dashboard/practice", label: "Practice Systems" },
+  { group: "Practice", href: "/dashboard/sops", label: "Operations Manual" },
 ];

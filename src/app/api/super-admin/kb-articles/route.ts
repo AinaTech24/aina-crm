@@ -25,6 +25,7 @@ export async function GET() {
         .select({
           id: kbArticles.id,
           series: kbArticles.series,
+          folderId: kbArticles.folderId,
           episodeNo: kbArticles.episodeNo,
           slug: kbArticles.slug,
           title: kbArticles.title,
@@ -60,7 +61,8 @@ export async function POST(req: NextRequest) {
       const [r] = await tx
         .insert(kbArticles)
         .values({
-          series: d.series ?? "KAIZEN",
+          series: d.series ?? "Guide",
+          folderId: d.folderId ?? null,
           episodeNo: d.episodeNo ?? null,
           slug: d.slug,
           title: d.title,
@@ -81,7 +83,7 @@ export async function POST(req: NextRequest) {
         .returning({ id: kbArticles.id, slug: kbArticles.slug });
       return r;
     });
-    revalidatePath("/knowledge-base");
+    revalidatePath("/knowledge-base", "layout");
     revalidatePath(`/knowledge-base/${row.slug}`);
     return NextResponse.json({ id: row.id, slug: row.slug }, { status: 201 });
   } catch (err: any) {

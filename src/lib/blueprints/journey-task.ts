@@ -3,8 +3,9 @@
  *
  * Every step of the client phase of the journey (Request Documents … Add in
  * Review Sheet) puts ONE task in the Tasks module, so the person who owns the
- * step sees it in their list and the client page's Open tasks. Moving on closes
- * the task of the step that was left. Called from `transitionTo`, so every way
+ * step sees it in their list and the client page's Open tasks. The task is never
+ * closed by the journey: it stays open, moving on or not, until its assignee
+ * completes it in the Tasks module. Called from `transitionTo`, so every way
  * of moving a step (buttons, auto-advance, Kanban, multi-hop) is covered.
  *
  * Idempotent: a stage keeps at most one open journey task per lead
@@ -48,18 +49,6 @@ export interface JourneyTaskInput {
 }
 
 const DAY = 86_400_000;
-
-/** Close the open journey task(s) of the stage the lead has just left. */
-export async function closeJourneyTask(tx: Tx, tenantId: string, leadId: string, stageKey: string, userId?: string | null) {
-  await tx.execute(sql`
-    UPDATE tasks SET status = 'completed', completed_at = now(), updated_at = now()
-    WHERE tenant_id = ${tenantId}::uuid
-      AND deleted_at IS NULL
-      AND status NOT IN ('completed', 'cancelled')
-      AND meta->>'journeyLeadId' = ${leadId}
-      AND meta->>'journeyStageKey' = ${stageKey}
-  `);
-}
 
 export async function createJourneyTask(
   tx: Tx,

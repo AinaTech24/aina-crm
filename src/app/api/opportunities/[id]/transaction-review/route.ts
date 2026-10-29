@@ -1,6 +1,8 @@
 /**
  * POST /api/opportunities/[id]/transaction-review
- *   { decision: "approve", remarks? }   → client won; a "client won" task is created
+ *   { decision: "approve", remarks?, assigneeId?, dueOn? }
+ *                                       → moves to "RTA data check"; a task is created to check the RTA data,
+ *                                         for assigneeId (default the opportunity's owner), due dueOn (YYYY-MM-DD)
  *   { decision: "reject", remarks }     → back to "Transaction placed"; reason required
  *
  * Only valid while the opportunity stands at "Approve / reject transaction".
@@ -11,6 +13,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { handleApiError } from "@/lib/api/error-handler";
+import { assertAssignable } from "@/lib/opportunities/assignees";
 import { loadViewableOpportunity, requireWorkOpportunities } from "@/lib/opportunities/access";
 import { decideTransaction, listOpportunities } from "@/lib/opportunities/journey";
 
@@ -19,6 +22,8 @@ export const dynamic = "force-dynamic";
 const Body = z.object({
   decision: z.enum(["approve", "reject"]),
   remarks: z.string().max(1000).optional(),
+  assigneeId: z.string().uuid().optional(),
+  dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -31,7 +36,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
     const out = await withTenant(session.tenantId, async (tx) => {
-      await loadViewableOpportunity(tx, session, id);
+      const opp = await loadViewableOpportunity(tx, session, id);
+      if (parsed.data.decision === "approve" && parsed.data.assigneeId) {
+        await assertAssignable(tx, session, opp.investorId, parsed.data.assigneeId);
+      }
       const r = await decideTransaction(tx, { tenantId: session.tenantId, userId: session.userId }, id, parsed.data);
       const [view] = await listOpportunities(tx, session.tenantId, { ids: [id] });
       return { r, view };

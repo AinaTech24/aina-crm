@@ -255,29 +255,42 @@ export function clientTypeFromTaxStatus(text: string | null | undefined): Client
   if (s.includes("proprietor")) return "sole_proprietor";
   if (s.includes("trust")) return "trust";
   if (/society|\baop\b|\bboi\b|association of persons|body of individuals/.test(s)) return "aop_boi";
-  if (/company|\bltd\b|limited|corporate|body corp|\bpvt\b/.test(s)) return "company";
-  if (s.includes("nri") || s.includes("non resident") || s.includes("non-resident")) return "nri";
+  if (/provident fund|superannuation|gratuity|pension fund/.test(s)) return "trust";
+  if (/company|\bltd\b|limited|corporate|body corp|\bpvt\b|mutual fund|\bbank\b|insurance|financial institution|\bdfi\b|foreign institutional|\bfii\b|foreign portfolio|\bfpi\b/.test(s)) return "company";
+  if (/\bnri\b|non resident|non-resident|person of indian origin|\bpio\b|qualified foreign investor|\bqfi\b/.test(s)) return "nri";
   return "individual";
 }
 
 /* ─────────────────────────── the master's dropdowns ─────────────────────────── */
 
-/** Tax status as the registrars and exchanges word it, by client type. */
+/**
+ * Tax status as the registrars and exchanges (CAMS, KFintech, BSE/NSE) word
+ * it, by client type. The first entry is the default for a new record. Every
+ * status here must round-trip through `clientTypeFromTaxStatus`.
+ */
+const COMPANY_STATUSES = [
+  "Company", "Body corporate", "Overseas Corporate Body", "Foreign Institutional Investor (FII)",
+  "Foreign Portfolio Investor (FPI)", "QFI – Corporate", "Financial Institution (DFI)", "Bank",
+  "Insurance Company", "Mutual Fund",
+];
 const TAX_STATUS_BY_TYPE: Record<ClientType, string[]> = {
   individual: ["Resident Individual"],
-  nri: ["NRI – Repatriable (NRE)", "NRI – Non-repatriable (NRO)"],
-  minor: ["On behalf of minor", "NRI minor"],
+  nri: [
+    "NRI – Repatriable (NRE)", "NRI – Non-repatriable (NRO)", "NRI – Others",
+    "Person of Indian Origin (PIO)", "QFI – Individual",
+  ],
+  minor: ["On behalf of minor", "NRI minor", "QFI – Minors"],
   sole_proprietor: ["Sole proprietorship"],
   huf: ["HUF"],
-  company: ["Company", "Body corporate"],
-  corporate: ["Company", "Body corporate"],
+  company: COMPANY_STATUSES,
+  corporate: COMPANY_STATUSES,
   llp: ["LLP"],
   partnership: ["Partnership firm"],
-  trust: ["Trust"],
+  trust: ["Trust", "Provident Fund", "Superannuation Fund", "Gratuity Fund", "Pension Fund"],
   aop_boi: ["Society", "AOP / BOI"],
   other: [],
 };
-export const ALL_TAX_STATUSES = [...new Set(Object.values(TAX_STATUS_BY_TYPE).flat())];
+export const ALL_TAX_STATUSES = [...new Set([...Object.values(TAX_STATUS_BY_TYPE).flat(), "Others"])];
 
 /** The tax statuses that fit the type (all of them for "Other"). */
 export function taxStatusOptions(type: string | null | undefined): string[] {

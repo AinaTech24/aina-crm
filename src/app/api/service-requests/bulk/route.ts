@@ -6,6 +6,8 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   action = "assign"  value = userId (uuid) | null   → reassign
  *          = "status"  value = status enum            → set status
  *          = "close"   (no value)                     → status='closed'
+ *          = "delete"  (no value)                     → delete for good
+ *            (service_request.delete; complaints are skipped and reported)
  *
  * Tenant isolation via RLS (withTenant); scoped by id only, like the
  * single-record + other bulk routes. Audited as one bulk action.
@@ -21,6 +23,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { serviceRequests } from "@/db/schema";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { serviceRequestScopeSql } from "@/lib/service-requests/access";
+import { deleteServiceRequests } from "@/lib/service-requests/delete";
 
 export const dynamic = "force-dynamic";
 
@@ -28,19 +31,24 @@ const STATUSES = ["open", "in_progress", "waiting_customer", "resolved", "closed
 
 const Body = z.object({
   ids: z.array(z.string().uuid()).min(1).max(1000),
-  action: z.enum(["assign", "status", "close"]),
+  action: z.enum(["assign", "status", "close", "delete"]),
   value: z.string().nullable().optional(),
 });
 
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "service_request.manage", session.permissions);
-    await assertActiveLicense(session.tenantId, session.roles);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
     const { ids, action, value } = parsed.data;
+    requireCap(session.roles, action === "delete" ? "service_request.delete" : "service_request.manage", session.permissions);
+    await assertActiveLicense(session.tenantId, session.roles);
     const meta = clientMetaFromHeaders(req.headers);
+
+    if (action === "delete") {
+      const r = await withTenant(session.tenantId, (tx) => deleteServiceRequests(tx, session, ids, meta));
+      return NextResponse.json({ ok: true, deleted: r.deleted.length, complaintsSkipped: r.complaints.length });
+    }
 
     const now = new Date();
     const patch: Record<string, any> = { updatedAt: now };

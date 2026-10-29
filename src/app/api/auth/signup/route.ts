@@ -27,6 +27,11 @@ export const dynamic = "force-dynamic";
 const TRIAL_DAYS = 14;
 
 export async function POST(req: NextRequest) {
+  // Self-serve sign-up is closed (the firm's call, 2026-10-19): workspaces are
+  // created by Aina. The rest of this handler stays for when it reopens.
+  if (process.env.ALLOW_SELF_SIGNUP !== "1") {
+    return NextResponse.json({ error: "Sign-up is not available. Please contact Aina to get a workspace." }, { status: 403 });
+  }
   // 5 tenant creations per IP per hour. Stops drive-by spam of fake tenants
   // (which is also a customer-acquisition-cost waste if you have welcome
   // emails / WhatsApp sends configured).

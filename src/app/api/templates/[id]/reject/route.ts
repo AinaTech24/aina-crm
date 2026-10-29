@@ -64,8 +64,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         } as any)
         .where(and(eq(templateVersions.id, ver.id), eq(templateVersions.tenantId, session.tenantId)));
 
-      // Update parent template status
-      const tpl = (await tx.update(templates).set({ status: "rejected", updatedAt: new Date() } as any).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId))).returning())[0];
+      // Update parent template status — unless another approved version is the
+      // one in use ("Use this version"), which keeps sending.
+      const cur = (await tx.select().from(templates).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId))).limit(1))[0];
+      const liveElsewhere = !!cur && cur.currentVersionId !== ver.id && cur.status === "approved";
+      const tpl = liveElsewhere
+        ? cur
+        : (await tx.update(templates).set({ status: "rejected", updatedAt: new Date() } as any).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId))).returning())[0];
 
       await recordAudit(tx, {
         tenantId: session.tenantId,

@@ -4,7 +4,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { isHeadRole, roleLabel } from "@/lib/families/roles";
-import { hasNominee } from "@/lib/families/health";
+import { nomineeGap as needsNominee } from "@/lib/families/health";
 
 type Member = {
   id: string;
@@ -87,7 +87,7 @@ function MemberNode({ member, isHead }: { member: Member; isHead: boolean }) {
   const kycGap =
     member.kycStatus !== "verified" ||
     (member.ckycExpiryAt != null && new Date(member.ckycExpiryAt).getTime() <= Date.now() + 30 * 86_400_000);
-  const nomineeGap = !hasNominee(member as any);
+  const nomineeGap = needsNominee(member as any);
 
   return (
     <div className={`w-56 rounded-xl border bg-card p-3.5 ${isHead ? "border-primary/50" : "border-border"} ${closed ? "opacity-60" : ""}`}>

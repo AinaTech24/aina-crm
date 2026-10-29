@@ -4,6 +4,7 @@ import { withPlatformAdmin } from "@/db/client";
 import { kbArticles } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
+import { loadFolderOptions } from "@/lib/kb/admin";
 import { KbArticleForm, type KbShot } from "@/components/super-admin/KbArticleForm";
 
 export const dynamic = "force-dynamic";
@@ -12,15 +13,17 @@ export default async function EditKbArticlePage({ params }: { params: Promise<{ 
   const { id } = await params;
   const session = await requireSession();
   requirePlatform(session.roles, "platform.package.manage");
-  const row = await withPlatformAdmin(session.userId, async (tx) => {
+  const { row, folders } = await withPlatformAdmin(session.userId, async (tx) => {
     const [r] = await tx.select().from(kbArticles).where(eq(kbArticles.id, id)).limit(1);
-    return r ?? null;
+    return { row: r ?? null, folders: await loadFolderOptions(tx) };
   });
   if (!row) notFound();
 
   return (
     <KbArticleForm
+      folders={folders}
       initial={{
+        folderId: row.folderId,
         id: row.id,
         series: row.series,
         episodeNo: row.episodeNo,

@@ -23,6 +23,7 @@
  */
 
 import type { HealthBand } from "@/lib/investors/health";
+import { canNominate, type ClientTypeDetails } from "@/lib/investors/client-types";
 
 export type FamilyForHealth = {
   primaryInvestorId?: string | null;
@@ -42,6 +43,9 @@ export type MemberForHealth = {
   kycStatus?: string | null;
   nomineeName?: string | null;
   nominees?: unknown;
+  /** The client type — only an individual nominates. */
+  investorCategory?: string | null;
+  typeDetails?: ClientTypeDetails | null;
   riskProfile?: string | null;
   riskProfileSignedAt?: Date | string | null;
   aum?: string | number | null;
@@ -94,6 +98,23 @@ export function memberAge(m: Pick<MemberForHealth, "dob">, now = new Date()): nu
 export function hasNominee(m: Pick<MemberForHealth, "nomineeName" | "nominees">): boolean {
   if (m.nomineeName && m.nomineeName.trim() !== "") return true;
   return Array.isArray(m.nominees) && m.nominees.some((n: any) => n && String(n.name ?? "").trim() !== "");
+}
+
+/**
+ * Whether this member nominates at all. Only an individual does (SEBI; the
+ * firm's rule, lib/investors/client-types.ts): an HUF, a minor or an entity
+ * never has a nominee gap.
+ */
+export function nominationApplies(m: Pick<MemberForHealth, "investorCategory">): boolean {
+  return canNominate(m.investorCategory);
+}
+
+/**
+ * A member who should have a nominee and has neither one on file nor a
+ * recorded opt-out — lib/investors/type-rules needsNominee, for a member.
+ */
+export function nomineeGap(m: Pick<MemberForHealth, "investorCategory" | "typeDetails" | "nomineeName" | "nominees">): boolean {
+  return nominationApplies(m) && !m.typeDetails?.nominationOptOut && !hasNominee(m);
 }
 
 /**
@@ -179,16 +200,18 @@ export function familyHealth(
   }
 
   // 4. Coverage across live members (only when there are any)
-  const withNominee = live.filter(hasNominee).length;
+  // Nominee coverage counts only members who nominate (individuals).
+  const nominating = live.filter(nominationApplies);
+  const withNominee = nominating.filter((m) => !nomineeGap(m)).length;
   const withKyc = live.filter((m) => m.kycStatus === "verified").length;
   const withRp = live.filter((m) => m.riskProfile && m.riskProfileSignedAt).length;
 
-  const nomineePct = total > 0 ? (withNominee / total) * 100 : 0;
+  const nomineePct = nominating.length > 0 ? (withNominee / nominating.length) * 100 : 100;
   const kycPct = total > 0 ? (withKyc / total) * 100 : 0;
   const riskProfilePct = total > 0 ? (withRp / total) * 100 : 0;
 
-  if (total > 0 && nomineePct < 100) {
-    const gap = total - withNominee;
+  if (nominating.length > 0 && nomineePct < 100) {
+    const gap = nominating.length - withNominee;
     const ded = nomineePct < 50 ? 15 : nomineePct < 80 ? 10 : 5;
     factors.push({
       key: "nominee",
@@ -317,7 +340,7 @@ export function familyMissingChecklist(
 
   for (const m of live) {
     const who = m.name ?? "member";
-    if (!hasNominee(m)) {
+    if (nomineeGap(m)) {
       items.push({ key: `nominee-${m.id}`, label: `Add a nominee for ${who}`, severity: "high", action: { href: `/dashboard/investors/${m.id}#rel-nominees`, label: "Open" } });
     }
     if (m.kycStatus !== "verified") {

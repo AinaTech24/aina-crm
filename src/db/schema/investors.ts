@@ -284,6 +284,8 @@ export const investors = pgTable(
     })
       .notNull()
       .default("active"),
+    /** Date of demise, any client type. Setting it stops the client's SIPs and pending orders (lib/investors/demise.ts). */
+    dateOfDemise: date("date_of_demise"),
     dormantSince: timestamp("dormant_since", { withTimezone: true }),
     exitedAt: timestamp("exited_at", { withTimezone: true }),
     /** When `redemption_risk` was flagged (auto by workflow or manual). */

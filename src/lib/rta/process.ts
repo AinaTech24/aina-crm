@@ -1044,7 +1044,10 @@ async function processSipBook(
               start_date = COALESCE(${r.startDate ?? null}::date, start_date),
               end_date = COALESCE(${r.endDate ?? null}::date, end_date),
               mandate_id = COALESCE(${mandateId ?? null}::uuid, mandate_id),
-              status = ${sipStatus},
+              -- A deceased client's SIP stays stopped in the CRM (lib/investors/demise.ts).
+              status = CASE WHEN ${sipStatus}::text = 'active'
+                             AND EXISTS (SELECT 1 FROM investors dz WHERE dz.id = sips.investor_id AND dz.date_of_demise IS NOT NULL)
+                            THEN sips.status ELSE ${sipStatus}::text END,
               remarks = CASE WHEN ${reg.reason ?? null}::text IS NULL THEN NULLIF(regexp_replace(COALESCE(remarks, ''), ${REG_PREFIX_RE}, ''), '')
                              ELSE left(${reg.reason ?? null}::text || COALESCE(' · ' || NULLIF(regexp_replace(COALESCE(remarks, ''), ${REG_PREFIX_RE}, ''), ''), ''), 500) END,
               updated_at = now()

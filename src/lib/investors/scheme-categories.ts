@@ -15,13 +15,21 @@
  * name two schemes share with DIFFERENT categories is left alone rather than
  * guessed.
  *
+ * A registrar spells a scheme its own way ("WhiteOak Capital - Flexi Cap Fund -
+ * Regular Plan Growth" for AMFI's "WhiteOak Capital Flexi Cap Fund - Regular Plan
+ * - Growth"), so an exact code / ISIN / name match misses it. What is still
+ * unplaced is then matched the way the valuation prices a holding — the NAV
+ * resolver (lookupNav: plan-specific, refuses an ambiguous name) — and takes the
+ * category of the AMFI scheme it lands on. A holding the valuation can price
+ * therefore gets a category too. Nothing is guessed from the name's wording.
+ *
  * Returns copies; the stored folios are not changed.
  */
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { assetClassOf } from "@/lib/investors/asset-class";
-import { normSchemeName } from "@/lib/finance/scheme-match";
+import { loadNavIndex, lookupNav, normSchemeName } from "@/lib/finance/scheme-match";
 
 type Leg = { schemeCode?: string | null; schemeName?: string | null; isin?: string | null; category?: string | null; [k: string]: unknown };
 type FolioLike = { schemes?: Leg[] | null; [k: string]: unknown };
@@ -74,13 +82,39 @@ export async function withSchemeCategories<F extends FolioLike>(tx: Tx, folios: 
     byName.get(normSchemeName(l.schemeName)) ??
     null;
 
+  // What the exact lookups missed goes through the valuation's own matcher.
+  const viaMatcher = new Map<Leg, string>();
+  const unplaced = legs.filter((l) => !resolve(l));
+  if (unplaced.length) {
+    const index = await loadNavIndex(tx);
+    const landed = new Map<Leg, string>();
+    for (const l of unplaced) {
+      const hit = lookupNav(index, String(l.schemeCode ?? "").trim() || null, l.schemeName, null, l.isin ?? null);
+      if (hit) landed.set(l, hit.code);
+    }
+    if (landed.size) {
+      const landedCodes = [...new Set(landed.values())];
+      const cats = await tx.execute(sql`
+        SELECT scheme_code, COALESCE(NULLIF(scheme_category, ''), scheme_type) AS category
+          FROM scheme_nav
+         WHERE COALESCE(NULLIF(scheme_category, ''), scheme_type) IS NOT NULL
+           AND scheme_code IN (SELECT jsonb_array_elements_text(${JSON.stringify(landedCodes)}::jsonb))
+      `);
+      const byLanded = new Map((cats.rows as any[]).map((r) => [String(r.scheme_code), String(r.category)]));
+      for (const [l, code] of landed) {
+        const cat = byLanded.get(code);
+        if (cat) viaMatcher.set(l, cat);
+      }
+    }
+  }
+
   return folios.map((f) =>
     f.schemes?.some(needsCategory)
       ? {
           ...f,
           schemes: f.schemes.map((l) => {
             if (!needsCategory(l)) return l;
-            const cat = resolve(l);
+            const cat = resolve(l) ?? viaMatcher.get(l) ?? null;
             return cat ? { ...l, category: cat } : l;
           }),
         }

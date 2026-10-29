@@ -32,6 +32,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const pick = (m: any) => ({
       id: m.id, name: m.name, pan: m.pan, familyRole: m.familyRole, segmentTag: m.segmentTag,
       aum: m.aum, activeSipAmount: m.activeSipAmount, nomineeName: m.nomineeName, isMinor: m.isMinor,
+      investorCategory: m.investorCategory,
       dob: m.dob, kycStatus: m.kycStatus, status: m.status,
     });
 

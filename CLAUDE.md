@@ -217,13 +217,67 @@ Prefer the block over hand-writing "Warm regards, {{investor.rm_name}}" in a
 text block: the block also carries the image and contact details, and one
 template then signs correctly for whichever RM owns the client.
 
+### The firm's introduction: `{{firm.*}}`
+
+Settings → Email introduction (`tenants.email_intro`, migration 0246,
+`src/lib/firm/email-intro.ts`, 2026-10-26) holds what a firm says about
+itself: `firm.company_intro`, `firm.services` (one per line, sent as
+bullets), `firm.office_timing`, `firm.mission`, `firm.founder_name`,
+`firm.founder_designation`, `firm.founder_photo_url` (an uploaded image, made
+absolute on send) and `firm.founder_intro` — plus up to 20 fields the firm
+names itself, each `{{firm.<slug of its name>}}` ("Awards" → `firm.awards`).
+`dispatch()` fills them on every send, the designer preview uses the firm's
+own values once it has any, and the designer's picker lists the firm's own
+fields under "Firm introduction".
+
+- **A blank field is absent, not empty.** Give a block `showIf: "firm.mission"`
+  (the designer's "Show this block" control) and it drops out of the email —
+  heading and text together — for a firm that never wrote one. An image whose
+  URL resolves to nothing draws nothing.
+- **The new-lead welcome uses all of it** (`leadWelcomeBody` in
+  `lib/templates/starters.ts`, template keys `lead_welcome` /
+  `lead_welcome_referral`, sent by the "Welcome email to a new lead"
+  automation). Migration 0246 moved every firm's UNEDITED copy to it as a new
+  version; a copy the firm had edited was left alone. Changing the body later
+  needs its own upgrade migration in the same shape (point the drift check in
+  `tests/firm-email-intro.test.ts` at it) — never edit an applied one.
+
 Two constraints worth knowing before authoring a template:
 
 - **Merge values are HTML-escaped.** A token carrying markup (`<li>…</li>`)
   prints its own tags to the client. Emit plain text and let the block do the
-  formatting.
+  formatting. A value typed over several lines keeps its line breaks.
 - **Every public form path needs a `PUBLIC_PATH_PREFIXES` entry** in
   `src/middleware.ts`, or the link 307s the client to `/login`.
+
+### Emailing a client about ONE record — a rejected SIP, a switch / STP / SWP
+
+An **Email** button on SIP Rejections (rows still being worked) and on the
+Transactions screen (processed switch / STP / SWP rows) posts to
+`POST /api/investors/[id]/record-email` (`{ kind, recordId }`). The values come
+from THAT record (`lib/comms/record-email.ts`), not the template's auto-fill,
+which reads the client's most recent transaction. A value the record lacks is
+sent as "—": `dispatch()` treats a blank caller variable as "not supplied" and
+fills it from the newest record, which would print another record's folio.
+
+- The emails are the designer starters `sip_rejection` and `switch_stp_swp`
+  (`RECORD_EMAIL_TEMPLATE_KEYS`), installed as the firm's own approved templates
+  the first time they are used (`installEmailStarters`); a template the firm
+  archived is left alone. A transactional email, so it goes unless the client
+  opted out, through the compliance gate, from the RM's own mailbox when
+  connected. The key is stable for ten minutes, so a double click sends once.
+- A switch confirmation is refused unless the transaction is processed /
+  successful; a SIP-rejection email unless the rejection is open (pending,
+  client contacted, bank or mandate issue).
+- **A workflow's email step installs these too** (`ensureEmailStarter`, in
+  `send_email`) — only these two and the old names in `EMAIL_STARTER_ALIASES`
+  (the "SIP rejection follow-up" recipe once named `sip_rejection_mandate_expired_email`,
+  a template that never existed; a firm's installed copy keeps that name). An
+  explicit list, never "any starter": what installs here is approved with nobody's
+  sign-off. The recipe now passes the triggering rejection's scheme / amount /
+  reason / date.
+- Recipe `defaultTemplates` are NOT installed anywhere: the recipe's WhatsApp
+  templates still have to exist in the firm for its WhatsApp steps to send.
 
 ### Adding a new compliance rule
 
@@ -247,7 +301,7 @@ the client page's Overview tab.
   us", and the owner gets a follow-up task (closed with the opportunity).
 - **The journey is a blueprint** (subject_type `opportunity`, module
   `opportunities`): identified → discussion → suitability → proposal → accepted
-  → the product branch (MF: transaction → review; insurance: proposal form →
+  → the product branch (MF: transaction → review → RTA data check; insurance: proposal form →
   underwriting → issued; general: executed) → won. Lost from any open stage,
   with a reason and an optional revisit task. **KYC, UCC and mandate are not
   steps** (removed at the firm's request 2026-10-17, migration 0249 — they are
@@ -305,6 +359,16 @@ the client page's Overview tab.
   ("Assign to operations": a task with `meta.opportunityStepOf`, not the
   follow-up). Every pop-up offers the next follow-up date and no notes box.
   Gates still apply.
+- **RTA data check** (2026-10-19, migration 0240). Approving an MF transaction
+  no longer wins the client: it moves to `rta_check` and creates a high-priority
+  task (`meta.opportunityId` + `rtaCheck: true`) to check the transaction against
+  the RTA data, assigned to whoever the approver picks in the Approve dialog
+  (default the opportunity's owner; the assignee is notified) and due the day they
+  choose (default tomorrow). **Won** is gated on that task being completed (`gateFor("won")`);
+  the "client won" task is created at that point (`createWonTask`). The gate's link opens that
+  task itself (`/dashboard/tasks/<id>`), and at the RTA data check step the card offers
+  **Complete RTA data check** (`Prerequisite.completeTaskId`), which completes the task through
+  the ordinary `PATCH /api/tasks/[id]` so it reads completed in the Tasks module too.
 - **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
   open task with `meta.opportunityId` — there is no column. The follow-up date
   chosen at creation is the first task's due date (10:00 IST; default two
@@ -326,6 +390,36 @@ the client page's Overview tab.
   later") or the New opportunity dialog (Now / Later). Diwali dates are a
   table in later-core — add the next year as the calendar rolls on.
 
+## Fresh KYC — Online or Physical KYC
+
+When a client needs a **fresh KYC** ("Register Fresh KYC" / the KYC Registered
+step of the onboarding journey), the app asks which KYC the client will do —
+**Online** (e-KYC via Aadhaar OTP / DigiLocker) or **Physical** (in-person
+verification) — and creates that high-priority task in the Tasks module for the
+person picked, due the date chosen (2026-10-26). **KYC Validated** asks nothing:
+one click marks the KYC verified and moves on (the firm's correction — a
+validated KYC has nothing left to choose).
+Lead-backed journeys ask in the step pop-up (`KYC_MODES` in
+`components/leads/GuidedStageActions.tsx`, on `kyc_registered`; the engine's
+journey task takes the chosen title). Every other client — a direct entry or an
+import, whose journey bar is read-only — opens `KycRouteDialog` from the KYC
+Registered step (`components/investors/InvestorBlueprintStageBar.tsx`), which
+posts the task to `/api/tasks` linked to the client.
+
+## Date of demise — a client who has died
+
+`investors.date_of_demise` (migration 0241), on every client type: the client
+form, Add client and the inline edit on the client page. Recording one
+(`lib/investors/demise.ts`, called by the investor PATCH / POST in the same
+transaction) marks the client **Inactive** (not Closed / Exited — they may
+still hold units pending transmission, so AUM keeps counting), **stops** their
+Active / Paused / Pending SIPs (remarks "Stopped — client deceased on …") and
+**cancels** orders still Pending / Submitted. Processed transactions are the
+registrar's history and are never deleted. Audited as `investor.demise_recorded`.
+Clearing the date returns an Inactive client to Active; SIPs stay stopped. The
+RTA SIP import (`processSipBook`) does not turn a stopped SIP of a deceased
+client back to Active. The client page shows a "Deceased" banner.
+
 ## Moving folios between two clients
 
 Clients list → select exactly two → **Merge** (bulk bar) opens
@@ -335,6 +429,136 @@ listed), optionally move their transactions and SIPs, and confirm
 branch head, merge scope, a PAN clash needs an explicit tick). The unit is the
 folio — a folio belongs to one client, so schemes inside it travel with it. To
 fold a whole duplicate record away use Merge Clients (`mergeInvestors`).
+
+## Overdue tasks — the escalation ladder
+
+Settings → Escalation (`/dashboard/settings/escalation`, 2026-10-24, CEO
+review S4). Rules in `lib/tasks/escalation-ladder.ts`, one pass in
+`lib/tasks/escalation-run.ts`, run every five minutes by the task reminder
+scanner. Stored in `dashboard_settings.settings.escalationLadder` — the
+dashboard-thresholds save and reset keep that key.
+
+- **Off until the firm switches it on**, and then only tasks that fall due
+  AFTER that moment (`activeSince`) climb — never the backlog.
+- A rule per department / task type / priority (most specific wins, else
+  "Everything else", 24 / 48 / 72 h) gives the hours overdue at which a task
+  reaches: L1 the assignee's reporting manager, L2 the branch head(s) of the
+  assignee's branch, L3 the owner(s). A blank hour skips that level.
+- Each level is told once (`task.escalated` notification + audit) and
+  recorded in `tasks.meta.escalation` (`l1`/`l2`/`l3`: at, to; `to`: everyone;
+  `done` once every level is reached). The assignee is never escalated to.
+- While it is on, the scanner's instant "team follow-up overdue" ping to the
+  branch head is not sent — the ladder does that job at the firm's hours.
+- **Escalated to me counts as my own task**: `own()` in `lib/tasks/scope.ts`,
+  the task page and its comments let that person open and discuss it; the
+  Tasks list has the "Escalated to me" flag (`?flag=escalated_to_me`).
+
+## Daily habits — the cues that bring people back (2026-10-08)
+
+Built from an Atomic Habits review of adoption: make the cue obvious, the
+action easy, the result satisfying.
+
+- **Morning cue.** The 8 am briefing (`workers/daily-briefing.ts`) is in
+  `MOBILE_ALERTS`, so it reaches the phone.
+- **Removed at the firm's request (2026-10-29) — do not restore:** the Daily
+  Job Tracker and Next Best Action pages and sidebar items, the 6:30 pm "close
+  your day" nudge, the first clock-in opening the tracker, the tracker
+  reminder, the Team tracker, the weekly team pack and Settings → Daily
+  tracker. Their addresses redirect (`/dashboard/next-best-action` →
+  Dashboard, `/dashboard/tasks/daily`, `/daily/team`, `/weekly-pack` →
+  Tasks). Kept because other things use them: `lib/nba/engine.ts` (the client
+  page's Recommended actions card, the AI client brief), `lib/daily-tracker.ts`
+  + `/api/daily-tracker` + the `daily_trackers` table (the mobile app's
+  Daily screen, until a mobile release drops it).
+- **A call is logged in one tap.** Any Call / WhatsApp / SMS / Email launcher
+  carrying `contactLogAttrs(subject)` (`lib/activities/contact-log.ts`; or
+  `ContactQuickActions logFor=…`, or `announceContact` after a `window.open`)
+  makes `ActivityLauncher` (mounted once in the layout) ask "How did it go?".
+  One tap posts to `/api/activities`; "No answer" / "Busy" never move
+  `last_contact_at`. A NEW contact launcher for a client or lead should carry
+  the attributes. "Log a call" in Ctrl/Cmd+K, "+ Add" and the mobile "+" opens
+  the drawer with a client / lead picker (`openLogActivity`).
+
+## The practice as a system (2026-10-08)
+
+Built from *The E-Myth Revisited*: help the owner work ON the firm, not just
+in it. Sidebar group **Practice**: Practice Systems (owner, branch head,
+compliance) and the Operations Manual (the SOP library, open to everyone).
+Migration 0245; schema `db/schema/practice.ts`; code `src/lib/practice/`;
+pages `/dashboard/practice/*` with `PracticeNav`; access `lib/practice/access.ts`
+(`canViewPractice` to see, `canManagePractice` — owner / settings.users — to change).
+
+- **The vocabulary is code** (`catalog.ts`): 12 core processes (each with its
+  default owner position, recipes, Automations-rule modules, task / request
+  types and one measure), 7 default positions with contracts, the default
+  service promise per tier. Per-firm settings live in the tables.
+- **Systems map** (`map.ts`, `/dashboard/practice`): each process scored on
+  documented (an SOP linked to it, its task / request types or its journey
+  stages), owned (a position WITH a holder), measured (`measures.ts` has data)
+  and automated (an enabled recipe workflow, or an enabled `workflow_rules`
+  rule on one of its modules). "Turn on" publishes a draft recipe workflow via
+  `/api/workflows/[id]/publish` — flipping `enabled` alone never fires it.
+- **Positions** (`positions.ts`): jobs, not people; seeding suggests holders
+  by role and gives each process its default owner. Owner dependency is
+  `lib/metrics/owner-dependency.ts` and an Owner Dashboard card.
+- **SOPs in the work** (`sop-links.ts`, `/api/sop-links`): an SOP links to a
+  process, task type, task template (tasks record `meta.templateId`),
+  position, journey stage (`"<subjectType>:<stageKey>"`, e.g. `lead:call_done`)
+  or request type. The task drawer's "How we do this" shows only the MOST
+  specific SOPs (the task's own links, else its process's — never the
+  assignee's position, which belongs in `/dashboard/practice/manual`). The
+  lead page shows the script for its stage. SOP markdown renders as React
+  elements (`sop-markdown.ts`), never HTML.
+- **Starter manual** (`starter-manual.ts`): 30 MFD SOPs + 8 lead-stage call
+  scripts, keys `mfd_*`, installed idempotently from the Operations Manual;
+  a deleted one is never resurrected. Distributor wording: never "advise".
+- **Service promise** (`promise.ts`), **strategic objective** (`strategy.ts`,
+  money on a compound path, counts on a straight one; baseline captured on
+  first save) and **message tests** (`experiments.ts`: templates grouped by key
+  minus a variant suffix `_v2`/`_b`/`_alt`…, two-proportion test at ≥ 30 sends).
+  Anything the CRM does not record reads "Not recorded", never 0%.
+- **Route gotcha:** import the RBAC check as `import { require as requireCap }`.
+  A bare `require(…)` in a route makes Next's bundler treat it as CommonJS and
+  every request 500s; `check:rbac` accepts `requireCap(`.
+
+## QA sampling — a check of completed work
+
+Settings → QA sampling and Tasks → QA queue (`/dashboard/tasks/qa`,
+2026-10-26, CEO review S7). Code `lib/qa/sampling.ts` (settings, the weekly
+pass, the verdict) and `lib/qa/results.ts` (queue, pass rate).
+
+- **Off until the firm switches it on.** Then every week (the task reminder
+  scanner, any pass from Monday) a share of each person's tasks completed the
+  week BEFORE (Mon–Mon IST; firm-set %, rounded up; chosen types or all) is
+  picked — deterministic per week (md5 order), never twice for a person-week.
+- **A check is a task** (`qa_review`, meta `qaOf` / `qaDoerId` / `qaWeek`) for
+  the person's reporting manager, else their branch head, else an owner —
+  never the doer. It escalates under the ladder like any task.
+- **The verdict** (`POST /api/qa/reviews/[id]`, the checker or an owner):
+  closes the check (meta.qa), stamps the task checked (meta.qaResult); a Fail
+  needs a reason and gives the doer a `qa_correction` task. Audited
+  `task.qa_reviewed`. Pass rate = passes ÷ checks with a verdict.
+- Stored in `dashboard_settings.settings.qaSampling`; the thresholds save and
+  reset keep it (`KEPT_KEYS` in that route — add any new key stored there).
+- Not built yet: enrolling someone in an SOP's induction lesson after N fails
+  on that SOP — it needs the SOP link on tasks (S1).
+
+## Bottlenecks — where work waits
+
+Reports → "Bottlenecks — Where Work Waits" (`/dashboard/reports/bottlenecks`,
+2026-10-26, CEO review S10). Loaders `lib/reports/bottlenecks.ts`, maths
+`bottlenecks-core.ts` (pure, tested).
+
+- Two journeys keep stage history: Lead → client (`lead_stage_history`, the
+  sales SOP and the onboarding) and Opportunities (`blueprint_stage_history`).
+  A new journey with history needs its own branch in `loadStays`.
+- Per stage: stays that FINISHED in the period give the typical (median) and
+  slowest-10% wait; open stays of running cases give "in it now". A stage
+  with no transition onward is never "waiting". A won lead whose onboarding
+  never started IS waiting (Won Lead has onward steps).
+- Person = the case's owner, branch = the lead's / client's branch; what the
+  viewer sees is `resolveDataAccess` (firm / branch / team / own), as on the
+  dashboards. Tasks: creation → done by type, by assignee.
 
 ## Meetings — attendees and action items
 
@@ -474,6 +698,12 @@ off, or replace the link).
   firm (483 in ten days, 474 escalated). Do not put `imap-poller` → ticket back.
   `scripts/close-auto-email-tickets.ts` (dry run; `--tenant`, `--apply`) closes
   the ones already in a register, never one a person has touched.
+  **Service Requests → "Close email requests (N)"** (`lib/service-requests/email-intake.ts`,
+  `/api/service-requests/email-intake`, `service_request.manage`) closes every
+  open, untouched email-opened ticket in one click, nothing deleted; it shows
+  only while some exist. `tests/email-never-opens-request.test.ts` pins that the
+  mailbox poller touches no ticket code and that `createServiceRequest` (the
+  WhatsApp intake's) cannot be given the email channel.
 
 ## Creating a family
 
@@ -503,6 +733,29 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   a default, not a lock — a member's RM can be changed on their record. Only
   `rm_id` moves (as the client page and bulk Assign RM do), and each change is
   audited as `investor.rm_from_family_head`.
+  A family has ONE RM (2026-10-22): changing the RM of ANY member — head or not — on
+  the client's record or by bulk Assign RM gives the head and every member the same RM,
+  and the family (`setFamilyRmFromClient`, reason `family_rm_changed`; clearing an RM
+  does not propagate). Editing the **Family RM** in the family's Details tab
+  (`PATCH /api/families/[id]`) does the same through `setFamilyRm`. The head's RM also reaches the family when a client reaches the
+  **Family Mapping** step of the onboarding journey (`blueprints/engine.ts`,
+  reason `family_mapping_stage`: a head's whole family, or a member alone).
+- **Family mapping has its own permissions** (2026-10-19, "Family Mapping" group
+  in Customize Access Permissions): `family.map.view` / `.create` / `.edit` /
+  `.delete` — see families, add a client to a family, change a member's
+  relationship or head, remove a client. Each is accepted ALONGSIDE the older
+  household caps (`family.edit` …, `lib/families/access.ts` `MAP_CAPS`), so a
+  customised user who could map before still can. Deleting a whole household
+  stays `family.delete`.
+  **Assigned only** (2026-10-21): `family.map.view_assigned` ("View assigned families only")
+  and `family.map.edit_assigned` ("Edit assigned families only") limit a person to the
+  households they are the RM of (`families.rm_id`, which follows the head's RM) — the way to
+  give ~10 named people access without opening the whole book. They are opt-in (no role has
+  them): tick them INSTEAD of "View family mapping" / the three mapping permissions. When
+  ticked without their all-families twin they win over the older household and client caps
+  (`viewsAssignedFamiliesOnly`, `mapScope`, `canMapFamily` in `families/access.ts`); the
+  family list and every route go through `familyScopeSql` / `assertFamilyEditable`, so a
+  household that is not theirs is not found. Starting a new household stays `family.map.create`.
 - **Members take the head's address and the family's review frequency** the
   same way (`lib/families/shared-details.ts`, 2026-10-13; see "Client types").
 - Do not put Category, Relationship Manager, Review frequency or First
@@ -574,6 +827,26 @@ the imports and every label; never copy the enum again.
   `investor.details_from_family`. The investor PATCH ignores a member's
   address (head has one) and review frequency (family has one); the forms show
   both as "from the family".
+
+## Financial Health Check — filled from the CRM
+
+Picking an existing client on a NEW health check (`/dashboard/financial-plans/new`,
+not an edit, not "start from a fact-find") fills it from what the firm already
+holds (2026-10-17): `GET /api/financial-plans/prefill?investorId=`
+(`financial_plan.view` + `loadViewableInvestor`) over
+`lib/financial-plans/from-crm.ts`.
+
+- Profiling: age from DOB; spouse's age and children from the family when the
+  client is its head or the head's spouse; the risk profile.
+- Assets: mutual funds summed by class — AMFI category (`withSchemeCategories`)
+  read with `classifyScheme`, gold by name, hybrid as "other" — and live FDs
+  as debt.
+- Protection: in-force life (term, endowment, money-back, ULIP, other life) and
+  health (health, critical illness, group health) sum assured + annual premium.
+- Goals: live goals with the Goals module's current value and existing SIP; a
+  goal kept in future rupees comes at 0% inflation (as the fact-find import).
+- Only blanks are filled; a second pick swaps what the first one filled; what
+  the RM typed stays. Income, expenses and loans are not CRM records.
 
 ## A client who leaves — Exited, not deleted
 
@@ -681,6 +954,107 @@ client).
   one found in the Trash is restored (audit `investor.restore`, reason
   `holds_money_with_registrar`). Nimesh's "Thakor Rushin Jitendrabhai"
   (₹28.33 L) had been bulk-deleted with his PAN-less twin.
+
+## The public website and SEO
+
+The marketing site is `/` (`src/app/page.tsx`), `/solutions` + `/solutions/[slug]`
+(one page per search phrase MFDs use — content in `src/lib/landing/solutions.ts`),
+`/blog` + `/blog/[slug]` (`src/lib/landing/blog.ts`), the homepage FAQ
+(`src/lib/landing/faqs.ts`) and KAIZEN (`/knowledge-base`). Header, footer and
+contact details are shared (`components/landing/SiteChrome.tsx`,
+`lib/landing/links.ts` `CONTACT`); structured data comes from
+`lib/landing/jsonld.ts`, so every page describes the company the same way.
+
+- **A new public page needs a middleware entry** (`PUBLIC_PATHS` /
+  `PUBLIC_PATH_PREFIXES`), or crawlers and visitors are sent to `/login` — the
+  generated `/opengraph-image` was, which broke every link preview.
+- Add new solution pages / articles to their data file; the sitemap
+  (`src/app/sitemap.ts`) picks them up. Keep every claim true of the product.
+- Self-serve sign-up is closed: CTAs book a demo (`DEMO_URL`), never `/signup`.
+- The site palette is fixed (`site-*` colours in `tailwind.config.ts`, the logo's
+  crimson and teal) and must not follow a tenant's `--primary`. Headings are
+  `font-brand` (Plus Jakarta Sans, `lib/landing/font.ts`; weight in globals.css),
+  body text Inter.
+- The Vartify WhatsApp chat button (`components/landing/WhatsAppWidget.tsx`)
+  loads on the website pages only, never inside the CRM.
+
+## Required WhatsApp templates — made and sent to Meta on connect
+
+When a firm saves its Vartify key (Settings → Integrations, owner), the CRM
+creates the **required template set** and sends every one to Meta for approval
+(2026-10-26). Catalogue `lib/templates/whatsapp-catalogue.ts` (pure data:
+UTILITY — SIP registered / rejected / debit reminder, mandate expiry, KYC,
+risk-profile link, meetings, documents, service request, premium; MARKETING —
+birthday, festival, start-a-SIP, review, tax-saving, insurance check, referral,
+check-in, investor session). Provisioning `lib/templates/whatsapp-provision.ts`.
+
+- **Creation is idempotent per firm**: key `wa_*`, (tenant, key, whatsapp,
+  en-IN); a submission is *claimed* with one UPDATE (`external_status`
+  SUBMITTING) so the connect call, the button and the worker can never send the
+  same template twice; a name Vartify already has counts as sent.
+- **Where it runs**: the connect POST fires it after the response
+  (`POST /api/settings/integrations/vartify`); `…/vartify/templates` GET lists
+  each template's state, POST (owner) creates what is missing and re-sends
+  what failed. The 15-minute `vartify-template-sync` worker only RE-SENDS
+  existing drafts that failed (after 6 h) — it never creates, so an archived
+  template is not brought back.
+- **Status is the existing one**: `templates.status` draft → pending_approval →
+  approved | rejected; the version's `external_status` PENDING / FAILED and
+  `rejection_reason` (Meta's, or the send error). The worker now also writes
+  Meta's verdict onto the version (`approved_external` / `rejected`).
+- **Rules every body follows** (pinned by `tests/whatsapp-catalogue.test.ts`,
+  which also runs the compliance gate): no variable first, last or touching
+  another; variables declared in order of first use (a send fills Meta's
+  positional {{1}}… from that list); a real `example` for each; marketing
+  carries the AMFI market-risk line and "Reply STOP to opt out"; no returns.
+- **Variables are the CRM's own merge fields** (`investor.first_name`,
+  `investor.rm_name`, `transaction.*`, `link.risk_profile`) plus
+  `firm_sign_off` — "Legal name (ARN-123456)" from `lib/comms/firm-sign-off.ts`,
+  which the pipeline now also fills as `arn_no` / `arn_name` (the recipes
+  referenced them but nothing set them). Anything else (`meeting_date`,
+  `document_name`…) is passed by the workflow or the compose form.
+- **"Fetch from WhatsApp" keeps our variables**: a version whose body has
+  `autoProvisioned` takes Meta's status from an import but keeps its named
+  variables (`whatsapp-template-import.ts`).
+- To add a template: append to `WHATSAPP_TEMPLATES`; firms get it from the
+  panel's "Send the rest to Meta" button (existing firms are not auto-backfilled).
+
+## Knowledge Base — the public help centre
+
+`/knowledge-base` (2026-10-29, migration 0247) is a help centre in the shape of
+a Freshdesk solutions site: **Category → Folder → Article**, all public, no
+login. The super admin runs it at `/super-admin/kb-articles` (articles) and
+`/super-admin/kb-articles/structure` (categories and folders); APIs under
+`/api/super-admin/kb-articles` and `/api/super-admin/kb-structure`.
+
+- **Tables** (platform-level, no tenant_id, no RLS): `kb_categories`,
+  `kb_folders`, and `kb_articles.folder_id`. The old KAIZEN stories were moved
+  into a "KAIZEN › KAIZEN stories" folder by the migration. Deleting a
+  category or folder never deletes articles — they become unfiled.
+- **Public routes**: `/knowledge-base` (home, search box, category cards),
+  `/category/[slug]`, `/folder/[slug]`, `/search?q=`, and the article at
+  `/knowledge-base/[slug]`. `category`, `folder` and `search` are static
+  segments, so an article slug may not be one of them (`KB_RESERVED_SLUGS`).
+  An empty folder or category, and anything unpublished, is not listed; an
+  unfiled article is reachable by search or its own link.
+- **Screenshots sit where the author puts them.** The article body is the
+  Markdown subset in `components/kb/KbMarkdown.tsx`; `![caption](shot:N)` draws
+  the article's Nth uploaded screenshot (1-based) via `/api/kb/image/<id>?i=N-1`.
+  Uploading in the editor inserts that line at the cursor. A screenshot not
+  placed in the text is shown after it. Removing one in the editor renumbers
+  the later `shot:` references.
+- **New content = rows, not code.** Pages are `revalidate = 60`; saves also call
+  `revalidatePath("/knowledge-base", "layout")`.
+- **Starter guides** (`lib/kb/starter-guides.ts`, installed by `lib/kb/install-starter.ts`
+  from "Add starter guides" on `/super-admin/kb-articles`): one DRAFT process guide
+  per module area, written from how the product behaves, not from screenshots.
+  The admin adds screenshots and publishes. Installing again only adds what is
+  missing; an edited guide is never overwritten. Add a guide by appending to
+  `GUIDES` and keep every claim true of the product. The in-app Help menu (the
+  top bar "?") links to `/knowledge-base`.
+- The sidebar ("Articles in this folder", "You may like to read") comes from
+  `loadArticleContext` in `lib/kb/help.ts`; the landing header and footer link
+  to `/knowledge-base`.
 
 ## Webhook handlers
 
@@ -1594,26 +1968,29 @@ are both responsive, or 503 if the DB is unreachable. Used by
 - **Investor mobile app** (React Native)
 - **Video session suite**
 - **AI assistant Tier 2 RAG** (per-tenant vector index)
-- **Per-tenant SMS (MSG91/DLT) self-serve config** — the comms pipeline reads a
-  per-tenant `msg91` integration but there's no settings UI/API to set it, so
-  every tenant falls back to the shared env DLT key. DLT registration is
-  per-entity in India, so this needs a settings page before SMS scales per-firm.
-- **RTA bulk-import client-count quota** — `assertInvestorQuota` is enforced on
-  the interactive create paths (manual / CSV commit / lead-convert), but the RTA
-  master importer (`src/lib/rta/import.ts`) creates investors mid-pipeline with
-  folio/family linking and is NOT yet capped; enforce there carefully so the
-  linkage isn't broken.
-- **Workflow send durability (outbox)** — `dispatch()` still performs the
-  external adapter call inside the workflow step's DB transaction. A rollback
-  after a successful send can't be recorded, so a re-run may double-send. The
-  `startRun` active-subject unique index (migration 0124) removes the most
-  common duplicate-run source; the full fix is to commit the `queued` row, send
-  OUTSIDE any open tx, then commit status (the campaign dispatcher already does
-  this — mirror it in the runner).
 
 These have clear hooks in the schema and architecture; pick them up in roadmap order (see README "What's left").
 
 ### Already built (commercial readiness)
+
+- **Send durability** — every outbound goes through the delivery ledger
+  (`lib/comms/durable-delivery.ts`, `communication_deliveries`), which commits
+  on its OWN transaction, keyed by a key stable across retries
+  (`wf:<run>:<node>:<step>` for a workflow send). A step that rolls back after
+  the provider accepted the message finds "sent" on retry and never sends
+  again; a send interrupted mid-call is marked "unknown" for reconciliation,
+  never re-sent. Pinned by `tests/durable-delivery.test.ts`. (This was listed
+  as deferred long after it shipped.)
+- **Client limit vs the registrar** (the firm's decision of 2026-10-26):
+  clients added by hand, CSV or lead conversion stop at `packages.maxInvestors`
+  (`assertInvestorQuota`); an RTA import is NEVER cut short — the registrar's
+  book is the firm's real data. After every RTA import a firm over its limit is
+  told (`lib/billing/client-limit.ts`, each owner once a day,
+  `plan.client_limit`) and Billing shows how far over it is.
+- **Per-firm SMS sender** — Settings → Integrations → MSG91 SMS (owner only):
+  the firm's own MSG91 auth key and 6-character DLT header, stored encrypted
+  in `tenant_integrations` (provider `msg91`); without it SMS falls back to
+  the platform's shared key and sender.
 
 - **Authentication** — fully wired: JWT (HS256) sessions verified in Edge
   middleware with a DB revocation check, separate MFD vs platform-admin cookies,

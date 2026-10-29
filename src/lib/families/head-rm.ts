@@ -43,7 +43,7 @@ export async function applyHeadRmToMembers(
     familyId: string;
     onlyInvestorIds?: string[];
     actorUserId: string | null;
-    reason: "mapped_to_family" | "head_changed" | "families_merged";
+    reason: "mapped_to_family" | "head_changed" | "families_merged" | "head_rm_changed" | "family_mapping_stage";
     clientMeta?: Record<string, unknown>;
   }
 ): Promise<HeadRmResult> {
@@ -91,4 +91,123 @@ export async function applyHeadRmToMembers(
        AND rm_id IS DISTINCT FROM ${headRmId}::uuid`);
 
   return { headRmId, reassigned: rows.length };
+}
+
+/**
+ * Bring one client's family in line with its head's RM:
+ *   - the client heads a family  → every member takes the head's RM (the head's
+ *     RM was just changed, or the head reached the Family Mapping step);
+ *   - the client is a member     → only this client takes the head's RM (they
+ *     reached the Family Mapping step);
+ *   - no family                  → nothing to do.
+ * A plain edit of a MEMBER's RM never comes through here — a member's RM stays
+ * a default, not a lock (see the header).
+ */
+export async function syncFamilyRmForInvestor(
+  tx: any,
+  args: {
+    tenantId: string;
+    investorId: string;
+    actorUserId: string | null;
+    reason: "head_rm_changed" | "family_mapping_stage";
+    /** `head` limits it to a client who heads their family (an RM change on a member must not pull them back). */
+    only?: "head";
+    clientMeta?: Record<string, unknown>;
+  }
+): Promise<HeadRmResult | null> {
+  const r = await tx.execute(sql`
+    SELECT i.family_id, (f.primary_investor_id = i.id) AS is_head
+      FROM investors i
+      JOIN families f ON f.id = i.family_id AND f.tenant_id = i.tenant_id
+     WHERE i.id = ${args.investorId}::uuid AND i.tenant_id = ${args.tenantId}::uuid
+     LIMIT 1`);
+  const row = ((r.rows ?? [])[0] ?? null) as { family_id: string; is_head: boolean } | null;
+  if (!row) return null;
+  if (row.is_head) {
+    return applyHeadRmToMembers(tx, { ...args, familyId: row.family_id });
+  }
+  if (args.only === "head") return null;
+  return applyHeadRmToMembers(tx, { ...args, familyId: row.family_id, onlyInvestorIds: [args.investorId] });
+}
+
+/**
+ * A family has ONE RM (the firm's rule, 2026-10-22): when the RM of any member —
+ * the head or anyone else — is changed on a client's record or by bulk Assign RM,
+ * the head and every other member take the same RM, and so does the family itself.
+ * (Before this a member's own change stayed theirs; the member-follows-head rule
+ * of mapping, head change and merge is unchanged.)
+ *
+ * Call after the changed client's own rm_id is written. No family → nothing to do.
+ */
+export async function setFamilyRmFromClient(
+  tx: any,
+  args: {
+    tenantId: string;
+    investorId: string;
+    rmId: string;
+    actorUserId: string | null;
+    clientMeta?: Record<string, unknown>;
+  }
+): Promise<{ familyId: string | null; reassigned: number }> {
+  const f = await tx.execute(sql`
+    SELECT family_id FROM investors
+     WHERE id = ${args.investorId}::uuid AND tenant_id = ${args.tenantId}::uuid`);
+  const familyId = ((f.rows ?? [])[0] as { family_id: string | null } | undefined)?.family_id ?? null;
+  if (!familyId) return { familyId: null, reassigned: 0 };
+  const r = await setFamilyRm(tx, { ...args, familyId, changedOn: args.investorId });
+  return { familyId, reassigned: r.reassigned };
+}
+
+/**
+ * The same rule when the RM is changed on the family itself (Family page →
+ * Details → Edit): the head and every live member take the new RM, and so does
+ * the family row.
+ */
+export async function setFamilyRm(
+  tx: any,
+  args: {
+    tenantId: string;
+    familyId: string;
+    rmId: string;
+    actorUserId: string | null;
+    /** The client whose record was edited, when the change started on one. */
+    changedOn?: string;
+    clientMeta?: Record<string, unknown>;
+  }
+): Promise<{ reassigned: number }> {
+  const { familyId } = args;
+  const before = await tx.execute(sql`
+    SELECT id, rm_id FROM investors
+     WHERE family_id = ${familyId}::uuid AND tenant_id = ${args.tenantId}::uuid
+       AND deleted_at IS NULL AND merged_into_id IS NULL
+       AND rm_id IS DISTINCT FROM ${args.rmId}::uuid`);
+  const rows = (before.rows ?? []) as Array<{ id: string; rm_id: string | null }>;
+  if (rows.length) {
+    await tx.execute(sql`
+      UPDATE investors SET rm_id = ${args.rmId}::uuid, updated_at = now()
+       WHERE tenant_id = ${args.tenantId}::uuid
+         AND id = ANY(ARRAY[${sql.join(rows.map((r) => sql`${r.id}`), sql`, `)}]::uuid[])`);
+    for (const r of rows) {
+      await recordAudit(tx, {
+        tenantId: args.tenantId,
+        actorUserId: args.actorUserId,
+        action: "investor.rm_from_family_head",
+        entityType: "investor",
+        entityId: r.id,
+        before: { rmId: r.rm_id },
+        after: {
+          rmId: args.rmId,
+          familyId,
+          reason: "family_rm_changed",
+          ...(args.changedOn ? { changedOn: args.changedOn } : { changedOn: "family" }),
+        },
+        ...(args.clientMeta ?? {}),
+      });
+    }
+  }
+  await tx.execute(sql`
+    UPDATE families SET rm_id = ${args.rmId}::uuid, updated_at = now()
+     WHERE id = ${familyId}::uuid AND tenant_id = ${args.tenantId}::uuid
+       AND rm_id IS DISTINCT FROM ${args.rmId}::uuid`);
+  return { reassigned: rows.length };
 }

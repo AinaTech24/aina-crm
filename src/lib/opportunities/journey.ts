@@ -28,8 +28,9 @@
  *     "Client accepted" until then the journey waits at "Client accepted", and
  *                     moves on by itself the moment the approval arrives.
  *   txn_review        MF only: operations approves or rejects the transaction
- *                     (decideTransaction). Approved → a task is created and the
- *                     client is won; rejected → back to "Transaction placed".
+ *                     (decideTransaction). Approved → "RTA data check" with a task
+ *                     to check the RTA status; rejected → back to "Transaction placed".
+ *   → won (MF)        the RTA data check task is completed.
  *
  * ── Skips (automatic, each with a history row saying why) ─────────────────
  *   suitability       the gate above is already met
@@ -62,6 +63,7 @@ import { clientOpportunities, eventsOutbox, tasks, type ClientOpportunity, type 
 import { blueprintStageHistory } from "@/db/schema";
 import { ensureInstanceFor, transitionPoly } from "@/lib/blueprints/poly-engine";
 import { recordAudit } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications/create";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
   isCrossSellProduct, productLabel, productPipeline, proposalTypesFor, type OpportunityPipeline, type OpportunitySource,
@@ -81,6 +83,9 @@ export type Prerequisite = {
   satisfied: boolean;
   hint?: string;
   cta?: { href: string; label: string };
+  /** An open task that, once completed, satisfies this prerequisite — the card
+   *  offers a "Complete" button for it (the RTA data check). */
+  completeTaskId?: string;
 };
 
 // "changes_requested" (proposal redesign, migration 0225) is still a shared
@@ -106,6 +111,8 @@ export type Facts = {
   transaction: { id: string; orderDate: string | null; amount: number | null } | null;
   /** FD / Bonds / NCD only: a fixed deposit recorded since the opportunity opened. */
   fixedDeposit: { id: string; status: string; issuer: string } | null;
+  /** MF only: the "RTA data check" task created when the transaction was approved. */
+  rtaCheck?: { id: string; status: string } | null;
 };
 
 /** Everything the gates and skips read, in one round of queries. */
@@ -183,6 +190,17 @@ export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> 
     if (r) fixedDeposit = r;
   }
 
+  let rtaCheck: Facts["rtaCheck"] = null;
+  if (opp.pipeline === "mf") {
+    const r = (await tx.execute(sql`
+      SELECT id, status FROM tasks
+       WHERE tenant_id = ${opp.tenantId}::uuid AND meta ->> 'opportunityId' = ${opp.id}
+         AND meta ->> 'rtaCheck' = 'true'
+       ORDER BY created_at DESC LIMIT 1
+    `)).rows[0] as { id: string; status: string } | undefined;
+    if (r) rtaCheck = r;
+  }
+
   const signed = inv?.risk_profile_signed_at ? new Date(inv.risk_profile_signed_at) : null;
   const yearAgo = new Date(Date.now() - 365 * 864e5);
   const riskState: Facts["riskState"] = inv?.risk_profile_provisional
@@ -194,6 +212,7 @@ export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> 
     kycStatus: inv?.kyc_status ?? null,
     kycVerified: inv?.kyc_status === "verified",
     hasUcc: !!(inv?.bse_ucc_code || inv?.nse_can_code || uccCodes.some((c) => c && c.trim())),
+    rtaCheck,
     mandateStatus: inv?.mandate_status ?? null,
     mandateAmount: inv?.mandate_amount == null ? null : Number(inv.mandate_amount),
     riskState,
@@ -240,6 +259,18 @@ export function gateFor(target: string, opp: ClientOpportunity, f: Facts): Prere
       hint: !f.proposal ? "No proposal has been shared yet."
         : "Waiting for the client — the journey moves on as soon as they approve it.",
       cta: f.proposal ? { href: `/dashboard/proposals/${f.proposal.id}`, label: "Open proposal" } : undefined,
+    });
+  }
+  if (target === "won" && opp.pipeline === "mf") {
+    out.push({
+      label: "The RTA data check task is completed",
+      satisfied: f.rtaCheck?.status === "completed",
+      hint: f.rtaCheck ? "Check the transaction against the RTA data, then complete the task." : "The RTA data check task has not been created yet.",
+      // The task itself, not the whole task list.
+      cta: f.rtaCheck
+        ? { href: `/dashboard/tasks/${f.rtaCheck.id}`, label: "Open task" }
+        : { href: "/dashboard/tasks?status=open", label: "Open tasks" },
+      completeTaskId: f.rtaCheck && f.rtaCheck.status !== "completed" && f.rtaCheck.status !== "cancelled" ? f.rtaCheck.id : undefined,
     });
   }
   // KYC, UCC and mandate are client onboarding, not steps here — but no
@@ -467,7 +498,7 @@ export async function advanceOpportunity(tx: Tx, actor: Actor, id: string, input
   }
 
   if (current === "txn_review") {
-    return { ok: false, error: "Approve or reject the transaction — approving wins the client.", status: 409 };
+    return { ok: false, error: "Approve or reject the transaction — approving sends it to the RTA data check.", status: 409 };
   }
   const target = input.to ?? nextStage(opp.pipeline as OpportunityPipeline, current);
   if (!target) return { ok: false, error: "This journey has no next step.", status: 409 };
@@ -490,6 +521,7 @@ export async function advanceOpportunity(tx: Tx, actor: Actor, id: string, input
   if (opp.parkedAt && target !== "won") await resumeOpportunity(tx, actor, opp, { quiet: true });
   if (target === "won") {
     await closeOpportunity(tx, actor, opp, "won");
+    if (opp.pipeline === "mf") await createWonTask(tx, actor, opp, "");
     return { ok: true, stage: "won", skipped: [] };
   }
   const { stage, skipped } = await autoSkip(tx, actor, opp, facts, target);
@@ -499,16 +531,17 @@ export async function advanceOpportunity(tx: Tx, actor: Actor, id: string, input
 /**
  * Operations' decision on the transaction an MF opportunity placed.
  *
- *   approve  The client is won. A task is created for the owner — "client won,
- *            confirm and welcome" — and, unlike the opportunity's own
- *            follow-ups, it stays open when the opportunity closes (it carries
- *            meta.wonOpportunityId, not opportunityId).
+ *   approve  The journey moves to "RTA data check" and a task is created to
+ *            check the transaction against the RTA data. The client is won only
+ *            once that task is completed (advanceOpportunity → won), which then
+ *            creates the "client won, confirm and welcome" task.
  *   reject   A reason is required. The journey goes back to "Transaction
  *            placed" and the owner gets a high-priority task to fix and place
  *            it again; the rejected transaction no longer counts (loadFacts).
  */
 export async function decideTransaction(
-  tx: Tx, actor: Actor, id: string, input: { decision: "approve" | "reject"; remarks?: string },
+  tx: Tx, actor: Actor, id: string,
+  input: { decision: "approve" | "reject"; remarks?: string; assigneeId?: string; dueOn?: string },
 ): Promise<{ ok: true; stage: string } | { ok: false; error: string; status: number }> {
   const opp = await loadOpp(tx, actor.tenantId, id);
   if (!opp) return { ok: false, error: "Opportunity not found", status: 404 };
@@ -543,23 +576,49 @@ export async function decideTransaction(
     return { ok: true, stage: "mf_transaction" };
   }
 
-  const r = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, "won", {
+  const r = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, "rta_check", {
     actorUserId: actor.userId, remarks: remarks ? `Transaction approved — ${remarks}` : "Transaction approved",
-    finalStatus: "completed",
+    finalStatus: "in_progress",
   });
   if (!r.ok) return { ok: false, error: (r as any).reason ?? "Could not approve", status: 409 };
-  await closeOpportunity(tx, actor, opp, "won");
-  // After the close, so closing the opportunity does not complete it.
+  // The task that gates "won": it carries opportunityId so it shows as the next follow-up.
+  // Assigned to whoever the approver picked (default: the opportunity's owner), due the day they chose.
+  const assignee = input.assigneeId || base.assigneeId;
+  const dueAt = input.dueOn ? followUpDue(input.dueOn) : new Date(Date.now() + 864e5);
   await tx.insert(tasks).values({
-    ...base, title: `${clientName} won — ${product}: confirm the allotment and welcome the client`,
-    description: remarks || null, priority: "normal", dueAt: new Date(Date.now() + 864e5),
-    meta: { wonOpportunityId: opp.id },
+    ...base, assigneeId: assignee, title: `RTA data check — ${clientName}, ${product}: confirm the transaction in the RTA data`,
+    description: "Check the transaction / RTA status (CAMS or KFintech). Complete this task to mark the opportunity won.",
+    priority: "high", dueAt, meta: { opportunityId: opp.id, rtaCheck: true },
   } as any);
+  if (assignee && assignee !== actor.userId) {
+    await createNotification(tx, {
+      tenantId: opp.tenantId, userId: assignee, kind: "task.assigned",
+      title: `RTA data check — ${clientName}, ${product}`,
+      body: `Check the transaction against the RTA data · due ${formatDate(dueAt.toISOString(), "dayMonth")}`,
+      linkUrl: `/dashboard/opportunities/${opp.id}`, severity: "info",
+      meta: { opportunity_id: opp.id, assigned_by: actor.userId },
+    });
+  }
   await recordAudit(tx, {
     tenantId: opp.tenantId, actorUserId: actor.userId, action: "opportunity.transaction_approved",
     entityType: "opportunity", entityId: opp.id, after: { remarks: remarks || null },
   } as any);
-  return { ok: true, stage: "won" };
+  return { ok: true, stage: "rta_check" };
+}
+
+/**
+ * The "client won" task: created once the opportunity is won, so it carries
+ * meta.wonOpportunityId (not opportunityId) and stays open after the close.
+ */
+async function createWonTask(tx: Tx, actor: Actor, opp: ClientOpportunity, remarks: string) {
+  const inv = (await tx.execute(sql`SELECT name FROM investors WHERE id = ${opp.investorId}::uuid`)).rows[0] as { name: string } | undefined;
+  await tx.insert(tasks).values({
+    tenantId: opp.tenantId, subjectType: "investor", subjectId: opp.investorId, relatedInvestorId: opp.investorId,
+    type: "follow_up", status: "open", assigneeId: opp.ownerId ?? actor.userId, createdById: actor.userId,
+    title: `${inv?.name ?? "Client"} won — ${productLabel(opp.product)}: confirm the allotment and welcome the client`,
+    description: remarks || null, priority: "normal", dueAt: new Date(Date.now() + 864e5),
+    meta: { wonOpportunityId: opp.id },
+  } as any);
 }
 
 /** Walk forward over every stage the client already satisfies. */

@@ -12,9 +12,10 @@ import { insuranceComplianceWidgets } from "./widgets/insurance-compliance";
 import { practiceWidgets } from "./widgets/practice";
 import { sheetWidgets } from "./widgets/sheet";
 import { opportunityWidgets } from "./widgets/opportunities";
+import { ownerDependencyWidgets } from "./widgets/owner-dependency";
 
 /** `dashboardHref` is where a Team row's link reopens this dashboard for one RM or branch. */
 export function widgetRegistry(dashboardHref: string): Record<string, WidgetImpl> {
-  const all = [...businessWidgets(dashboardHref), ...workWidgets, ...leadWidgets, ...insuranceComplianceWidgets, ...practiceWidgets, ...sheetWidgets, ...opportunityWidgets];
+  const all = [...businessWidgets(dashboardHref), ...workWidgets, ...leadWidgets, ...insuranceComplianceWidgets, ...practiceWidgets, ...sheetWidgets, ...opportunityWidgets, ...ownerDependencyWidgets];
   return Object.fromEntries(all.map((w) => [w.key, w]));
 }

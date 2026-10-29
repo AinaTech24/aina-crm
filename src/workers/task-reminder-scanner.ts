@@ -14,6 +14,16 @@
  *               >24h, nudge the approver (creator) once; `approval_escalated_at`
  *               dedups.
  *
+ *   LADDER     → once the firm switches it on (Settings → Escalation), an
+ *               overdue task climbs to the assignee's manager, the branch
+ *               head, then the owner at the firm's hours
+ *               (lib/tasks/escalation-run.ts). While it is on, the instant
+ *               "team follow-up overdue" ping to the branch head is not sent.
+ *
+ *   QA         → once the firm switches it on (Settings → QA sampling), a
+ *               share of each person's work completed last week becomes a
+ *               check for their manager (lib/qa/sampling.ts).
+ *
  *   LATER      → the reminder of a parked opportunity ("after Diwali") left
  *               overdue for days goes to the client's branch head once
  *               (lib/opportunities/later.ts, meta.escalatedAt dedups).
@@ -29,6 +39,9 @@ import { createNotification } from "@/lib/notifications/create";
 import { sendStaffEmails, type StaffEmailJob } from "@/lib/tasks/staff-email";
 import { createMeetingReminders, deliverMobileAlerts } from "@/lib/notifications/mobile";
 import { escalateOverdueRevisits } from "@/lib/opportunities/later";
+import { loadLadder } from "@/lib/tasks/escalation-ladder";
+import { runEscalationLadder } from "@/lib/tasks/escalation-run";
+import { runQaSampling } from "@/lib/qa/sampling";
 
 function fmtDue(due: string | Date | null): string {
   if (!due) return "";
@@ -50,6 +63,8 @@ type ScanOut = { count: number; emails: StaffEmailJob[] };
 async function scanTenantOverdue(tenantId: string): Promise<ScanOut> {
   const emails: StaffEmailJob[] = [];
   const count = await withTenant(tenantId, async (tx) => {
+    // The ladder, when on, does the manager side at the firm's hours.
+    const ladderOn = (await loadLadder(tx, tenantId)).enabled;
     const rows = (
       await tx.execute(sql`
         SELECT t.id, t.title, t.due_at, t.priority, t.assignee_id,
@@ -90,7 +105,7 @@ async function scanTenantOverdue(tenantId: string): Promise<ScanOut> {
         text: `Your task "${r.title}" was due ${fmtDue(r.due_at)} and is still open.\n\nAction it or reschedule: /dashboard/tasks?due=overdue`,
         key: `task-overdue:${r.id}`,
       });
-      if (r.assignee_id) {
+      if (r.assignee_id && !ladderOn) {
         const heads = await tx.execute(sql`SELECT id FROM users WHERE tenant_id = ${tenantId}::uuid AND status = 'active'
           AND roles @> ARRAY['branch_head']::text[] AND id <> ${r.assignee_id}::uuid
           AND branch_id = (SELECT branch_id FROM users WHERE id = ${r.assignee_id}::uuid AND tenant_id = ${tenantId}::uuid)`);
@@ -225,6 +240,17 @@ export async function runTaskReminderScan(): Promise<{ overdue: number; reminder
       escalations += await scanTenantApprovalEscalations(t);
     } catch (err) {
       console.error(`[task-scan] approval-escalation scan failed for tenant ${t}:`, (err as Error).message);
+    }
+    try {
+      escalations += await withTenant(t, (tx) => runEscalationLadder(tx, t));
+    } catch (err) {
+      console.error(`[task-scan] escalation ladder failed for tenant ${t}:`, (err as Error).message);
+    }
+    try {
+      // Last week's QA sample (lib/qa/sampling.ts); once per person per week.
+      await withTenant(t, (tx) => runQaSampling(tx, t));
+    } catch (err) {
+      console.error(`[task-scan] QA sampling failed for tenant ${t}:`, (err as Error).message);
     }
     try {
       escalations += await withTenant(t, (tx) => escalateOverdueRevisits(tx, t));

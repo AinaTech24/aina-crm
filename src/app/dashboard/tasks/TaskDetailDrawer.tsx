@@ -16,6 +16,7 @@ import { TaskAttachments } from "./TaskAttachments";
 import { TaskWatchersDeps } from "./TaskWatchersDeps";
 import { TaskRequestSummary } from "@/components/tasks/TaskRequestSummary";
 import { TaskRelatedEntities } from "./TaskRelatedEntities";
+import { HowWeDoThis } from "@/components/practice/HowWeDoThis";
 import { formatDate } from "@/lib/format";
 import { DateTimeField } from "@/components/ui/DateTimeField";
 
@@ -669,6 +670,10 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
           <TaskRelatedEntities taskId={task.id} onChanged={onUpdate} />
 
           <hr className="border-slate-100" />
+
+          {/* "How we do this" — the firm's SOPs for this task (renders nothing,
+              not even its divider, when none is linked). */}
+          <HowWeDoThis taskId={task.id} />
 
           {/* Action points (checklist) — the sub-steps to complete this task. */}
           <div className="space-y-3">

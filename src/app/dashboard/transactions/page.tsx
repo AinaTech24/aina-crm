@@ -16,6 +16,7 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { buildTransactionConditions, transactionClientCondition, transactionFiltersNeedInvestors } from "@/lib/transactions/list-filters";
 import { EmptyState, InlineEmpty } from "@/components/common/EmptyState";
+import { EmailRecordButton } from "@/components/comms/EmailRecordButton";
 
 
 const TRANSACTIONS_COLUMNS = [
@@ -368,9 +369,20 @@ export default async function TransactionsPage({
                         {t.schemeCategory ?? "—"}
                       </td>
                       <td data-col="type" className="py-3">
+                        <div className="flex items-center gap-1.5">
                         <span className={`chip ${TYPE_TONE[t.type] ?? ""} font-medium`}>
                           {TYPE_LABEL[t.type] ?? t.type}
                         </span>
+                        {(t.type === "switch" || t.type === "stp" || t.type === "swp") && (t.status === "processed" || t.status === "successful") && t.investorId && (
+                          <EmailRecordButton
+                            investorId={t.investorId}
+                            kind="transaction"
+                            recordId={t.id}
+                            clientName={investorName}
+                            summary={`${TYPE_LABEL[t.type] ?? t.type} · ${t.schemeName ?? "scheme"}${t.amount ? ` · ${formatINR(Number(t.amount))}` : ""}`}
+                          />
+                        )}
+                        </div>
                       </td>
                       <td data-col="amount" className="py-3 text-right tabular-nums">
                         {t.amount != null ? formatINR(Number(t.amount)) : "—"}

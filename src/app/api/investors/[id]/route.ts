@@ -33,6 +33,8 @@ import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
 import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { getClientHealth } from "@/lib/metrics/health";
+import { setFamilyRmFromClient } from "@/lib/families/head-rm";
+import { applyDemise, applyInactive, clearDemise, demiseDateError, type DemiseEffects } from "@/lib/investors/demise";
 import { clientsHoldingMoney, holdersMessage } from "@/lib/investors/holds-money";
 import {
   investors,
@@ -192,6 +194,9 @@ const Patch = z.object({
   // handler); anniversaryDate is a plain date column (accepts YYYY-MM-DD).
   onboardedAt: z.string().nullable().optional(),
   anniversaryDate: z.string().nullable().optional(),
+  // Date of demise (any client type). Recording one stops the client's SIPs and
+  // pending orders — lib/investors/demise.ts.
+  dateOfDemise: z.string().nullable().optional(),
   // ── Fields the client-details card shows but the edit modal couldn't reach.
   //    Free-text (not enums) where RTA imports supply arbitrary values, so an
   //    imported record round-trips through the editor without being mangled.
@@ -500,6 +505,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // onboardedAt is a timestamp column — coerce the YYYY-MM-DD string to a
       // Date (Drizzle's date column takes anniversaryDate as a string directly).
       const datePatch: Record<string, unknown> = {};
+      const demiseDay = parse.data.dateOfDemise === undefined ? undefined : (parse.data.dateOfDemise || "").slice(0, 10) || null;
+      if (demiseDay) {
+        const bad = demiseDateError(demiseDay, (parse.data.dob as string | undefined) ?? before.dob);
+        if (bad) return { badDemise: bad } as const;
+      }
+      if (demiseDay !== undefined) datePatch.dateOfDemise = demiseDay;
       if (parse.data.onboardedAt !== undefined) {
         datePatch.onboardedAt = parse.data.onboardedAt ? new Date(parse.data.onboardedAt) : null;
       }
@@ -610,9 +621,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // re-score the family this investor belongs to (no-op if unlinked).
       await recomputeFamilyHealthForInvestor(tx, id);
 
-      return after[0];
+      // A family has one RM: a new RM on any member is the whole family's new RM.
+      if (parse.data.rmId && parse.data.rmId !== before.rmId) {
+        await setFamilyRmFromClient(tx, {
+          tenantId: session.tenantId, investorId: id, rmId: parse.data.rmId, actorUserId: session.userId,
+        });
+      }
+
+      // A newly recorded date of demise stops the client's SIPs and pending
+      // orders; clearing it (a mistake) makes an Inactive client Active again.
+      let demise: DemiseEffects | undefined;
+      const hadDemise = before.dateOfDemise ?? null;
+      if (demiseDay && demiseDay !== hadDemise) {
+        demise = await applyDemise(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId, day: demiseDay });
+      } else if (parse.data.status === "inactive" && before.status !== "inactive" && !before.mergedIntoId) {
+        // Marked Inactive by hand: the client stops transacting.
+        demise = await applyInactive(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId });
+      } else if (demiseDay === null && hadDemise) {
+        await clearDemise(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId });
+      }
+
+      return demise ? { ...after[0], demise } : after[0];
     });
 
+    if (result && typeof result === "object" && "badDemise" in result) {
+      return NextResponse.json({ error: (result as { badDemise: string }).badDemise, field: "dateOfDemise" }, { status: 400 });
+    }
     if (result === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
     if (result === "bad_pan") return NextResponse.json({ error: "PAN should look like ABCDE1234F.", field: "pan" }, { status: 400 });
     if (result === "pan_locked")

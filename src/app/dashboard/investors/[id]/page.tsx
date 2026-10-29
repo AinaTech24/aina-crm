@@ -63,6 +63,7 @@ import { FamilySnapshot } from "@/components/investors/FamilySnapshot";
 import { StatementActions } from "@/components/investors/StatementActions";
 import { WealthStoryButton } from "@/components/investors/WealthStoryButton";
 import { valueInvestor } from "@/lib/finance/valuation";
+import { loadExposureBook } from "@/lib/investors/exposure-book";
 import { ChurnRiskCard } from "@/components/investors/ChurnRiskCard";
 import { churnForInvestor } from "@/lib/churn/scan";
 import { TransactionLedger } from "@/components/investors/TransactionLedger";
@@ -87,6 +88,7 @@ import { BlueprintStatusKV } from "@/components/investors/BlueprintStatusKV";
 import { ReviewCadenceEditor } from "@/components/investors/ReviewCadenceEditor";
 import { PortalAccessButton } from "@/components/investors/PortalAccessButton";
 import { RecordBusinessImpact } from "@/components/investors/RecordBusinessImpact";
+import { ClientActiveToggle } from "@/components/investors/ClientActiveToggle";
 import { ClientSummaryStrip } from "@/components/investors/ClientSummaryStrip";
 import { ClientReadinessStrip } from "@/components/investors/ClientReadinessStrip";
 import { PanReveal } from "@/components/investors/PanReveal";
@@ -99,7 +101,6 @@ import { buttonClass } from "@/components/ui/button-class";
 import { MENU_ICON, MENU_ITEM } from "@/components/ui/menu-item-class";
 import { clientCompleteness } from "@/lib/investors/completeness";
 import { assetClassExposure } from "@/lib/investors/asset-class";
-import { withSchemeCategories } from "@/lib/investors/scheme-categories";
 import { assessSuitability } from "@/lib/investors/suitability";
 import { getClientHealth } from "@/lib/metrics/health";
 import {
@@ -112,6 +113,7 @@ import {
   RelatedListSection,
   type RelatedListDef,
 } from "@/components/common/RelatedLists";
+import { contactLogAttrs } from "@/lib/activities/contact-log";
 
 /**
  * The page's sections, in default order, grouped by the tab that shows them.
@@ -427,7 +429,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   // Holdings stored without a category take it from the AMFI master, so this
   // equity share matches the suitability email and the proposal builder.
   const exposure = assetClassExposure(
-    (await withTenant(session.tenantId, (tx) => withSchemeCategories(tx, data.folios as any))) as any
+    (await withTenant(session.tenantId, (tx) => loadExposureBook(tx, session.tenantId, id, data.valuation))) as any
   );
   const suitability = assessSuitability((inv as any).riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
   const isRiskProfileMissing = !inv.riskProfile;
@@ -460,10 +462,12 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const hasPortfolio = holdingsCount > 0 || data.txCount > 0 || data.folios.length > 0;
   const v = data.valuation;
 
+  // A tap on Call / Email / WhatsApp asks "how did it go?" (ActivityLauncher).
+  const logAttrs = contactLogAttrs({ type: "investor", id: inv.id, name: inv.name });
   const contactRow = (
     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
       {showPhone && inv.phone && (
-        <a href={`tel:${inv.phone}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
+        <a {...logAttrs} href={`tel:${inv.phone}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
           <Phone className="size-4" /> {formatPhone(inv.phone)}
           {!isValidIndianMobile(inv.phone) && (
             <span
@@ -476,12 +480,13 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         </a>
       )}
       {showEmail && inv.email && (
-        <a href={`mailto:${inv.email}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
+        <a {...logAttrs} href={`mailto:${inv.email}`} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
           <Mail className="size-4" /> {inv.email}
         </a>
       )}
       {showPhone && (inv.whatsappPhone || inv.phone) && (
         <a
+          {...logAttrs}
           href={`https://wa.me/${(inv.whatsappPhone ?? inv.phone ?? "").replace(/[^\d]/g, "")}`}
           target="_blank"
           rel="noreferrer"
@@ -521,6 +526,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           <>
             <LogActivityButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} label="Log call / visit" variant="primary" />
             <SendTemplateButtons type="investor" id={inv.id} name={inv.name} email={inv.email} phone={inv.whatsappPhone || inv.phone} />
+            {(can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions)) && (
+              <ClientActiveToggle investorId={inv.id} name={inv.name} status={inv.status ?? null} />
+            )}
             <RecordMenu>
               <Link href={`/dashboard/review-meetings/new?investorId=${inv.id}`} className={MENU_ITEM}>
                 <CalendarPlus className={MENU_ICON} /> Schedule review meeting
@@ -562,6 +570,15 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           last meeting, next review, risk, open work, insurance — above the
           deeper sections. Streams in on its own. */}
       <Suspense fallback={<div className="card-surface h-24 animate-pulse" aria-hidden />}>
+        {inv.dateOfDemise && (
+          <div role="status" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+            <span className="font-semibold text-destructive">Deceased — {formatDate(inv.dateOfDemise)}.</span>{" "}
+            <span className="text-muted-foreground">
+              The client is Inactive; their SIPs were stopped and pending orders cancelled when the date was recorded.
+              Processed transactions stay as the registrar's history.
+            </span>
+          </div>
+        )}
         <ClientSummaryStrip
           session={session}
           investorId={inv.id}
@@ -723,7 +740,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           {/* Portfolio allocation — derives from already-loaded folios */}
           <RelatedListSection moduleKey="investors-detail" sectionKey="allocation">
             <div className="space-y-4">
-              <PortfolioAllocation folios={data.folios as any} />
+              <PortfolioAllocation folios={data.folios as any} holdings={v.holdings} />
               {showRisk && <SuitabilityCard suitability={suitability} />}
             </div>
           </RelatedListSection>
@@ -831,7 +848,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
           {/* Transaction ledger — recent purchases / redemptions / SIPs / switches */}
           <RelatedListSection moduleKey="investors-detail" sectionKey="transactions">
-            <TransactionLedger transactions={data.recentTransactions as any} total={data.txCount} />
+            <TransactionLedger transactions={data.recentTransactions as any} total={data.txCount} investorId={id} clientName={inv.name} />
           </RelatedListSection>
 
           {/* Churn-risk scorecard + AI retention play */}
@@ -897,6 +914,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             <KV label={typeKind === "huf" ? "Date formed" : clientTypeDef(inv.investorCategory).formedLabel ?? "Date formed"} value={typeDetails.entity?.formedOn ? formatDate(typeDetails.entity.formedOn) : "—"} />
           )}
           <KV label="Client since" value={inv.onboardedAt ? formatDate(inv.onboardedAt) : "—"} edit={{ id: inv.id, field: "onboardedAt", type: "date", value: inv.onboardedAt ? String(inv.onboardedAt).slice(0, 10) : "", nullable: true }} />
+          <KV label="Date of death (demise)" value={inv.dateOfDemise ? formatDate(inv.dateOfDemise) : "—"} edit={{ id: inv.id, field: "dateOfDemise", type: "date", value: inv.dateOfDemise ? String(inv.dateOfDemise).slice(0, 10) : "", nullable: true }} />
           {adult && <KV label="Anniversary" value={inv.anniversaryDate ? formatDate(inv.anniversaryDate) : "—"} edit={{ id: inv.id, field: "anniversaryDate", type: "date", value: inv.anniversaryDate ? String(inv.anniversaryDate).slice(0, 10) : "", nullable: true }} />}
         </Group>
 

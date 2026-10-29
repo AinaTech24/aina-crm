@@ -15,6 +15,8 @@ import { RecoveryStatusUpdater } from "@/components/sip-rejections/RecoveryStatu
 import { RemarkEditor } from "@/components/sip-rejections/RemarkEditor";
 import { formatINR, formatDate, formatRelative } from "@/lib/utils";
 import { DateField } from "@/components/ui/DateField";
+import { EmailRecordButton } from "@/components/comms/EmailRecordButton";
+import { OPEN_SIP_STATUSES } from "@/lib/comms/record-email";
 
 export type SipRejectionRow = {
   id: string;
@@ -274,6 +276,16 @@ export function SipRejectionsTable({ rows }: { rows: SipRejectionRow[] }) {
                       <RecoveryStatusUpdater rejectionId={r.id} currentStatus={r.recovery_status} />
                     </td>
                     <td data-col="auto_recover" className="py-3 whitespace-nowrap text-center">
+                      <div className="inline-flex items-center gap-1.5">
+                      {OPEN_SIP_STATUSES.includes(r.recovery_status as (typeof OPEN_SIP_STATUSES)[number]) && (
+                        <EmailRecordButton
+                          investorId={r.investor_id}
+                          kind="sip_rejection"
+                          recordId={r.id}
+                          clientName={r.investor_name}
+                          summary={`${r.scheme_name ?? "SIP"} · ${formatINR(Number(r.rejection_amount))}`}
+                        />
+                      )}
                       <button
                         type="button"
                         onClick={() => handleAutoRecover(r.id)}
@@ -285,7 +297,7 @@ export function SipRejectionsTable({ rows }: { rows: SipRejectionRow[] }) {
                             ? "bg-muted text-muted-foreground cursor-not-allowed"
                             : "bg-brand-navy hover:bg-brand-navy-deep text-white"
                         }`}
-                        title="Trigger automated WhatsApp alert to client & create RM retry task"
+                        title="Run the SIP rejection follow-up automation & create an RM retry task"
                       >
                         {isRecovering ? (
                           <Loader2 className="size-3 animate-spin" />
@@ -296,6 +308,7 @@ export function SipRejectionsTable({ rows }: { rows: SipRejectionRow[] }) {
                         )}
                         <span>{isSuccess ? "Triggered" : "Auto-Recover"}</span>
                       </button>
+                      </div>
                     </td>
                     <td data-col="remarks" className="py-3 pr-4">
                       <RemarkEditor rejectionId={r.id} initial={r.remarks ?? null} />

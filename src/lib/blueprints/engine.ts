@@ -26,6 +26,7 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { recomputeLeadScore } from "@/lib/leads/recompute";
 import { recordAudit } from "@/lib/audit";
+import { syncFamilyRmForInvestor } from "@/lib/families/head-rm";
 import {
   blueprintDefinitions,
   blueprintStages,
@@ -46,7 +47,7 @@ import {
   stageFlavour,
 } from "./lead_to_client";
 import { checkPrerequisites } from "./prerequisites";
-import { closeJourneyTask, createJourneyTask, isOnboardingStage, type JourneyTaskInput, type JourneyTaskResult } from "./journey-task";
+import { createJourneyTask, isOnboardingStage, type JourneyTaskInput, type JourneyTaskResult } from "./journey-task";
 
 const MODULE = "leads";
 
@@ -437,13 +438,12 @@ export async function transitionTo(
     }
   }
 
-  // Client onboarding → Tasks module. Leaving a client-phase step closes its
-  // task; entering one (not a pass-through hop, not a terminal) opens one for
-  // the step's owner. Retry stages with their own task (mandate_reject) skip.
+  // Client onboarding → Tasks module. Entering a client-phase step (not a
+  // pass-through hop, not a terminal) opens a task for the step's owner. Leaving
+  // a step does NOT close its task: it stays open until the assignee completes
+  // it in the Tasks module (the firm's rule of 2026-10-17). Retry stages with
+  // their own task (mandate_reject) skip.
   let journeyTask: JourneyTaskResult | undefined;
-  if (fromStage && isOnboardingStage(currentStageKey, fromStage.stageOrder)) {
-    await closeJourneyTask(tx, tenantId, leadId, currentStageKey, opts.actorUserId);
-  }
   if (
     !opts.suppressAutomations &&
     isOnboardingStage(toStageKey, toStage.stageOrder) &&
@@ -462,6 +462,20 @@ export async function transitionTo(
       actorUserId: opts.actorUserId ?? null,
       input: opts.task,
     });
+  }
+
+  // Family Mapping: the family is served by its head's RM (lib/families/head-rm.ts).
+  // When the client reaches this step, the head's RM goes to every member — or, for a
+  // member, to this client. Not on a pass-through hop.
+  if (!opts.suppressAutomations && toStageKey === "family_mapping") {
+    const inv = (await tx.execute(
+      sql`SELECT converted_investor_id AS id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid`,
+    )).rows[0] as { id: string | null } | undefined;
+    if (inv?.id) {
+      await syncFamilyRmForInvestor(tx, {
+        tenantId, investorId: inv.id, actorUserId: opts.actorUserId ?? null, reason: "family_mapping_stage",
+      });
+    }
   }
 
   // Entering a route's own step records the route (exchange / physical), so the

@@ -9,6 +9,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { handleApiError } from "@/lib/api/error-handler";
 import { templates, templateVersions, investors } from "@/db/schema";
 import { dispatch } from "@/lib/comms/pipeline";
+import { dispatchFailureMessage } from "@/lib/comms/dispatch-messages";
 
 export const dynamic = "force-dynamic";
 
@@ -139,6 +140,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     const result = outcome.sent;
 
+    // dispatch() reports a skipped or failed send as a normal RESULT (the audit row
+    // is written either way), so it used to come back as HTTP 200 and the popup
+    // showed "dispatched successfully" for an email that never left. Say what
+    // happened, with the reason, so the RM can act on it.
+    if (result.status === "skipped" || result.status === "failed") {
+      return NextResponse.json({ ...result, error: dispatchFailureMessage(result, channel) }, { status: 422 });
+    }
     return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);

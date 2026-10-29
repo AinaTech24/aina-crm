@@ -23,9 +23,43 @@ import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { shareTokens } from "@/db/schema";
 import { createShareToken, type ShareTokenKind } from "@/lib/share-tokens";
+import { assetClassOf } from "@/lib/investors/asset-class";
 
 /** Merge-token namespaces this module can fill. */
 export const CLIENT_LINK_NAMESPACES = ["risk.", "suitability.", "link."] as const;
+
+/**
+ * The schemes that carry value but are neither equity, hybrid nor debt as far as
+ * the CRM can tell — named, with the category each has (or none), so the RM
+ * knows which fund to look at. A folio whose schemes have no value of their own
+ * shares its AUM between them, exactly as `assetClassExposure` does, so those
+ * count too. Null when there is nothing to name.
+ */
+export function unclassifiedSchemes(
+  folios: Array<{
+    aum?: string | number | null;
+    schemes?: Array<{ schemeName?: string | null; category?: string | null; value?: number | null }> | null;
+  }>
+): string | null {
+  const found = new Map<string, string>();
+  for (const f of folios) {
+    const schemes = f.schemes ?? [];
+    const haveValues = schemes.some((sc) => Number(sc.value ?? 0) > 0);
+    const share = schemes.length ? Number(f.aum ?? 0) / schemes.length : 0;
+    for (const sc of schemes) {
+      if (assetClassOf(sc.category ?? undefined) !== "other") continue;
+      const worth = haveValues ? Number(sc.value ?? 0) : share;
+      if (!(worth > 0)) continue;
+      const name = String(sc.schemeName ?? "").trim() || "an unnamed scheme";
+      const cat = String(sc.category ?? "").trim();
+      found.set(name, cat ? `${name} (category: ${cat})` : `${name} (no category)`);
+    }
+  }
+  if (!found.size) return null;
+  const list = [...found.values()];
+  const shown = list.slice(0, 4).join("; ");
+  return `Could not tell equity from debt for: ${shown}${list.length > 4 ? ` and ${list.length - 4} more` : ""}. Set a category on a scheme that has none, or send a different note - a gold or fund-of-funds category cannot be counted as equity or debt.`;
+}
 
 /** Does this template body reference anything we can fill? */
 export function wantsClientLinkTokens(bodyStr: string): {
@@ -238,28 +272,33 @@ export async function loadClientLinkTokens(
   // ── Portfolio vs profile: the mismatch template's subject matter ────────
   if (want.suitability && subjectType === "investor") {
     try {
-      const [{ assessSuitability }, { assetClassExposure }, { folios: foliosTable }] = await Promise.all([
+      const [{ assessSuitability }, { assetClassExposure }] = await Promise.all([
         import("@/lib/investors/suitability"),
         import("@/lib/investors/asset-class"),
-        import("@/db/schema"),
       ]);
-      const { withSchemeCategories } = await import("@/lib/investors/scheme-categories");
-      // Holdings stored without a category take it from the AMFI master —
-      // without that, most of a book can be "unclassified" and the email
-      // printed an equity share from a sliver of it beside an empty list.
-      const folioRows = await withSchemeCategories(
-        tx,
-        await tx
-          .select({ aum: foliosTable.aum, schemes: foliosTable.schemes })
-          .from(foliosTable)
-          .where(and(eq(foliosTable.tenantId, tenantId), eq(foliosTable.investorId, subjectId)))
-      );
+      // The same holdings the client page shows: the live valuation (which
+      // covers a client whose holdings come only from transactions), else the
+      // stored folios — each with AMFI categories filled in.
+      const { loadExposureBook } = await import("@/lib/investors/exposure-book");
+      const folioRows = await loadExposureBook(tx, tenantId, subjectId);
 
       const exposure = assetClassExposure(folioRows as any);
       // assessSuitability keys off the canonical `investors.risk_profile` enum,
       // not the (firm-customisable) band label shown to the client.
       const { category: riskProfile } = await resolveCanonicalProfile(tx, tenantId, subjectId);
-      const s = assessSuitability(riskProfile, exposure.equityPct, exposure.classifiedPct);
+      let s = assessSuitability(riskProfile, exposure.equityPct, exposure.classifiedPct);
+      // Name the actual gap — the RM's popup shows this when the send is refused.
+      if (s.severity === "unknown" && s.profile) {
+        const legs = folioRows.reduce((n, f) => n + (f.schemes?.length ?? 0), 0);
+        const detail = folioRows.length === 0
+          ? "No folio found for this client - no mutual fund holdings are on file."
+          : legs === 0
+            ? "This client's folios have no schemes (no mutual fund holdings or values) on file."
+            : exposure.total === 0
+              ? "This client's folios have no value on record - no balance or valuation has been imported for them - so there is no equity share to state."
+              : unclassifiedSchemes(folioRows);
+        if (detail) s = { ...s, message: detail };
+      }
 
       out["suitability.status"] = s.severity;
       out["suitability.summary"] = s.message;

@@ -104,6 +104,7 @@ export const SYSTEM_DASHBOARDS: SystemDashboard[] = [
       item("insurance_book", "M"),
       item("compliance_gaps", "M"),
       item("expiry_pipeline", "M"),
+      item("owner_dependency", "M"),
       item("automation", "L"),
     ],
     filters: { fields: EXTRA_FILTERS, defaults: { period: "fy" } },

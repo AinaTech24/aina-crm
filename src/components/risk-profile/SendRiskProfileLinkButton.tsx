@@ -95,6 +95,9 @@ export function SendRiskProfileLinkButton({
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<LinkInfo | null>(null);
   const [copied, setCopied] = useState(false);
+  const [mailing, setMailing] = useState(false);
+  const [mailed, setMailed] = useState(false);
+  const [mailErr, setMailErr] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -163,6 +166,26 @@ export function SendRiskProfileLinkButton({
       setErr(e?.message ?? "Could not create the link");
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Sends from the CRM (its mailbox, consent and compliance checks) — not a mailto: link. */
+  async function sendEmail() {
+    setMailing(true);
+    setMailErr(null);
+    try {
+      const res = await fetch(`/api/investors/${investorId}/send-link-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? `Could not send the email (${res.status})`);
+      setMailed(true);
+    } catch (e: any) {
+      setMailErr(e?.message ?? "Could not send the email");
+    } finally {
+      setMailing(false);
     }
   }
 
@@ -239,23 +262,19 @@ export function SendRiskProfileLinkButton({
                 >
                   <MessageCircle className="size-3.5 text-emerald-600" /> WhatsApp
                 </a>
-                <a
-                  href={
-                    info.email
-                      ? `mailto:${info.email}?subject=${encodeURIComponent(cfg.emailSubject)}&body=${encodeURIComponent(cfg.message(info.url, info.investorName))}`
-                      : undefined
-                  }
-                  aria-disabled={!info.email}
-                  onClick={(e) => {
-                    if (!info.email) e.preventDefault();
-                  }}
-                  className={`inline-flex items-center gap-2 text-xs rounded-md border px-2.5 py-1.5 transition ${
+                <button
+                  type="button"
+                  disabled={!info.email || mailing || mailed}
+                  onClick={sendEmail}
+                  className={`inline-flex items-center gap-2 text-xs rounded-md border px-2.5 py-1.5 transition text-left ${
                     info.email ? "hover:bg-accent border-border" : "opacity-40 cursor-not-allowed border-border"
                   }`}
-                  title={info.email ? undefined : "No email on file"}
+                  title={info.email ? `Send from the CRM to ${info.email}` : "No email on file"}
                 >
-                  <Mail className="size-3.5 text-blue-600" /> Email
-                </a>
+                  {mailing ? <Loader2 className="size-3.5 animate-spin" /> : mailed ? <Check className="size-3.5 text-emerald-600" /> : <Mail className="size-3.5 text-blue-600" />}
+                  {mailing ? "Sending…" : mailed ? `Sent to ${info.email}` : "Email"}
+                </button>
+                {mailErr && <div className="text-xs text-rose-600">{mailErr}</div>}
                 <button
                   type="button"
                   onClick={copyLink}

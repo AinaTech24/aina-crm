@@ -10,8 +10,13 @@
  *   - `family.*`       — investor's family (if any)
  *   - `transaction.*`  — the triggering transaction (if any)
  *   - `tenant.*`       — the MFD firm (always available)
+ *   - `firm.*`         — the firm's introduction + its own fields (always available)
  *   - `system.*`       — date, link, etc.
  */
+
+import { FIRM_INTRO_FIELDS } from "@/lib/firm/email-intro";
+
+export const FIRM_INTRO_CATEGORY = "Firm introduction";
 
 export interface MergeField {
   token: string; // "investor.name"
@@ -44,6 +49,9 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "lead.email", label: "Lead email", example: "anita@example.com", category: "Lead" },
   { token: "lead.stage", label: "Lead stage", example: "Proposal Shared", category: "Lead" },
   { token: "lead.source", label: "Lead source", example: "Referral", category: "Lead" },
+  // Flat keys the lead automations fill from the lead record (lib/workflow-rules/actions.ts scalarVars).
+  { token: "name", label: "Name (in an automation email)", example: "Anita Desai", category: "Lead" },
+  { token: "referred_by_name", label: "Referred by", example: "Rajesh Sharma", category: "Lead" },
 
   // ── Family ────────────────────────────────────────────────────────────────
   { token: "family.family_name", label: "Family name", example: "Sharma Family", category: "Family" },
@@ -57,6 +65,16 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "transaction.folio_number", label: "Folio number", example: "12345678/00", category: "Transaction" },
   { token: "transaction.rejection_reason", label: "Rejection reason", example: "Insufficient balance", category: "Transaction" },
 
+  // ── Meeting (emails sent from a meeting: scheduled, reminder, minutes) ────
+  // Flat keys — filled from the meeting record by the workflow-rule email
+  // action (lib/workflow-rules/actions.ts enrichmentVars).
+  { token: "meeting_held_on", label: "Meeting date", example: "15 Oct 2026", category: "Meeting" },
+  { token: "meeting_when", label: "Meeting date & time", example: "15 Oct 2026, 11:30 am", category: "Meeting" },
+  { token: "meeting_agenda", label: "Meeting agenda", example: "Portfolio review and SIP top-up", category: "Meeting" },
+  { token: "minutes", label: "Minutes of meeting", example: "We reviewed your portfolio and agreed to raise the monthly SIP.", category: "Meeting" },
+  { token: "rm_name", label: "Met with (RM)", example: "Priya Mehta", category: "Meeting" },
+  { token: "meeting_join", label: "Online joining line", example: "Join online: https://meet.example.com/abc", category: "Meeting" },
+
   // ── Tenant (MFD firm) ─────────────────────────────────────────────────────
   { token: "tenant.legalName", label: "Legal name", example: "Demo Wealth Advisors LLP", category: "Firm" },
   { token: "tenant.displayName", label: "Brand name", example: "Demo Wealth", category: "Firm" },
@@ -64,6 +82,11 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "tenant.principalEuin", label: "Principal EUIN", example: "E123456", category: "Firm" },
   { token: "tenant.address", label: "Office address", example: "B-205, Andheri East, Mumbai 400069", category: "Firm" },
   { token: "tenant.websiteUrl", label: "Website URL", example: "https://demowealth.in", category: "Firm" },
+
+  // ── Firm introduction (Settings → Email introduction; lib/firm/email-intro.ts) ──
+  // The firm types these once; every email fills them. The firm's own extra
+  // fields join this group in the designer (firm.<their key>).
+  ...FIRM_INTRO_FIELDS.map((f) => ({ token: `firm.${f.key}`, label: f.label, example: f.example, category: FIRM_INTRO_CATEGORY })),
 
   // ── Risk profile (latest signed questionnaire) ────────────────────────────
   { token: "risk.category", label: "Risk category", example: "Aggressive", category: "Risk profile" },
@@ -93,9 +116,10 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "system.unsubscribe_url", label: "Unsubscribe link", example: "https://...", category: "System" },
 ];
 
-export function mergeFieldsByCategory(): Record<string, MergeField[]> {
+/** `extra` adds the firm's own fields (Settings → Email introduction). */
+export function mergeFieldsByCategory(extra: MergeField[] = []): Record<string, MergeField[]> {
   const out: Record<string, MergeField[]> = {};
-  for (const f of MERGE_FIELDS) {
+  for (const f of [...MERGE_FIELDS, ...extra]) {
     (out[f.category] ??= []).push(f);
   }
   return out;
