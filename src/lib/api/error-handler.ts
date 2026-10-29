@@ -4,6 +4,22 @@ import { v4 as uuid } from "uuid";
 import { captureError } from "@/lib/observability/capture";
 
 /**
+ * True when `err` is a Postgres unique violation (23505) — optionally on one
+ * named constraint. Drizzle wraps the driver error: its own message is only
+ * "Failed query: <sql>", and the code and constraint name sit on `.cause`. A
+ * check on `err.message` alone therefore never matches, and the duplicate
+ * surfaces as a masked 500 instead of the route's friendly 409.
+ */
+export function isUniqueViolation(err: unknown, constraint?: string): boolean {
+  const e = err as { code?: string; constraint?: string; message?: string; cause?: { code?: string; constraint?: string; message?: string; detail?: string } } | null;
+  if (!e || typeof e !== "object") return false;
+  const code = e.cause?.code ?? e.code;
+  const surfaces = `${e.cause?.constraint ?? ""} ${e.constraint ?? ""} ${e.cause?.message ?? ""} ${e.cause?.detail ?? ""} ${e.message ?? ""}`;
+  if (!constraint) return code === "23505";
+  return surfaces.includes(constraint) && (code === "23505" || /duplicate key|unique constraint/i.test(surfaces));
+}
+
+/**
  * Global API error handling helper.
  *
  * Masks internal database and execution errors, while safely passing
@@ -61,6 +77,12 @@ export async function handleApiError(err: unknown): Promise<NextResponse> {
 
     const safeMsg = isPgLeak ? "invalid request" : originalMessage;
     return NextResponse.json({ error: safeMsg }, { status });
+  }
+
+  // A duplicate the route did not anticipate is still the caller's input, not
+  // a server fault: answer 409 rather than an alarming "internal".
+  if (status === 500 && isUniqueViolation(err)) {
+    return NextResponse.json({ error: "A record with these details already exists." }, { status: 409 });
   }
 
   // Internal/DB errors (500): alert (webhook when ERROR_WEBHOOK_URL is set)

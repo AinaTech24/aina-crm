@@ -119,6 +119,7 @@ export async function POST(req: NextRequest) {
         assigneeId: assignedRm,
         subjectType: "investor",
         subjectId: body.investorId,
+        relatedInvestorId: body.investorId,
         type: "sip_rejection_followup",
         title: `SIP rejection — call ${inv.name}`,
         description: `Recover ₹${body.rejectionAmount.toLocaleString("en-IN")} SIP rejected on ${body.rejectionDate}. Reason: ${body.rejectionReason ?? "unknown"}.`,
@@ -126,6 +127,8 @@ export async function POST(req: NextRequest) {
         status: "open",
         dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // due tomorrow
         slaDueAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // 2-day SLA
+        // auto-recover.ts finds a rejection's open task by this key — without it, it opens a second one.
+        meta: { sipRejectionId: id },
       } as any);
 
       // ─── Automation 1b — in-app notification for the RM ───────────────

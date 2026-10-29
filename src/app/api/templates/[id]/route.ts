@@ -186,11 +186,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     requireCap(session.roles, "template.edit", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
-      await tx
+    const found = await withTenant(session.tenantId, async (tx) => {
+      const hit = await tx
         .update(templates)
         .set({ status: "archived", updatedAt: new Date() } as any)
-        .where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
+        .where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)))
+        .returning({ id: templates.id });
+      if (!hit.length) return false;
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -199,7 +201,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         entityId: id,
         ...clientMeta,
       });
+      return true;
     });
+    if (!found) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);

@@ -76,13 +76,19 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status: toStatus }),
       });
+      const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
         setRows(prev);
         toast.error(j.error ?? "Could not move task", "Update failed");
         return;
       }
-      toast.success(`Moved to ${toStatus.replace(/_/g, " ")}`);
+      // A task that needs approval is submitted, not completed (the API's rule).
+      if (toStatus === "completed" && j?.status !== "completed") {
+        setRows(prev);
+        toast.success("Sent for approval — it completes once signed off");
+      } else {
+        toast.success(`Moved to ${toStatus.replace(/_/g, " ")}`);
+      }
       router.refresh();
     } catch {
       setRows(prev);

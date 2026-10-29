@@ -1,4 +1,4 @@
-import { handleApiError } from "@/lib/api/error-handler";
+import { handleApiError, isUniqueViolation } from "@/lib/api/error-handler";
 /**
  * Investors collection.
  *
@@ -400,7 +400,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {
-    if (String(err?.message ?? "").includes("investors_tenant_pan_unique")) {
+    if (isUniqueViolation(err, "investors_tenant_pan_unique")) {
       return NextResponse.json({ error: "investor with this PAN already exists" }, { status: 409 });
     }
     return handleApiError(err);

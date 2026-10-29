@@ -39,7 +39,7 @@ export function BusinessEntryActions({ id, status, hasEmail }: { id: string; sta
     setBusy("delete");
     try {
       const res = await fetch(`/api/business-entries/${id}`, { method: "DELETE" });
-      if (res.ok) { toast.success("Entry deleted"); router.push("/dashboard/business-entries"); router.refresh(); }
+      if (res.ok) { toast.success("Entry cancelled — it stays on record"); router.push("/dashboard/business-entries"); router.refresh(); }
       else { const j = await res.json().catch(() => ({})); toast.error(j.error ?? "Could not delete", "Delete failed"); }
     } finally { setBusy(null); setConfirmDel(false); }
   }
@@ -54,16 +54,19 @@ export function BusinessEntryActions({ id, status, hasEmail }: { id: string; sta
           {busy === "confirm" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />} Mark confirmed
         </button>
       )}
-      <button onClick={sendEmail} disabled={busy === "email"} className="btn-primary text-sm inline-flex items-center gap-1.5 disabled:opacity-50" title={hasEmail ? "Email the client a summary" : "Client has no email on file"}>
-        {busy === "email" ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />} Email client
-      </button>
+      {/* A cancelled entry is not business: emailing it would mark it "emailed" and count it again. */}
+      {status !== "cancelled" && (
+        <button onClick={sendEmail} disabled={busy === "email"} className="btn-primary text-sm inline-flex items-center gap-1.5 disabled:opacity-50" title={hasEmail ? "Email the client a summary" : "Client has no email on file"}>
+          {busy === "email" ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />} Email client
+        </button>
+      )}
       <button onClick={() => setConfirmDel(true)} disabled={busy === "delete"} className="size-9 grid place-items-center rounded-lg border border-border text-muted-foreground hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors disabled:opacity-50" title="Delete">
         <Trash2 className="size-4" />
       </button>
       <ConfirmDialog
         open={confirmDel}
         title="Delete business entry?"
-        message="This permanently removes the entry and all its scheme lines."
+        message="The entry is cancelled: it stops counting as business but stays on record with its scheme lines."
         confirmLabel="Delete"
         tone="danger"
         busy={busy === "delete"}

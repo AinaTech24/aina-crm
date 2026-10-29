@@ -76,6 +76,11 @@ function ClaimForm() {
   async function save() {
     setErr(null);
     if (!form.proposerName.trim()) return setErr("Proposer name is required.");
+    // Same rule as the claim drawer's Record settlement.
+    if ((form.claimStatus === "settled_fully" || form.claimStatus === "settled_partially")
+      && (!(Number(form.settledAmount) > 0) || !form.settlementDate)) {
+      return setErr("A settled claim needs the settled amount and the settlement date.");
+    }
     setBusy(true);
     try {
       const payload: any = {

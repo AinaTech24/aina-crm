@@ -1,4 +1,4 @@
-import { handleApiError } from "@/lib/api/error-handler";
+import { handleApiError, isUniqueViolation } from "@/lib/api/error-handler";
 /**
  * GET  /api/sub-distributors  — list (optionally filtered by status / q)
  * POST /api/sub-distributors  — create one
@@ -184,8 +184,7 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({ subDistributor: row });
     } catch (err: any) {
-      const msg = String(err?.message ?? "");
-      if (msg.includes("sub_distributors_tenant_code_unique")) {
+      if (isUniqueViolation(err, "sub_distributors_tenant_code_unique")) {
         return NextResponse.json(
           { error: "That code is already in use. Pick another." },
           { status: 409 }

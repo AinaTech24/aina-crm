@@ -1,4 +1,4 @@
-import { handleApiError } from "@/lib/api/error-handler";
+import { handleApiError, isUniqueViolation } from "@/lib/api/error-handler";
 /**
  * GET  /api/lead-forms       — list the tenant's forms
  * POST /api/lead-forms       — create a form
@@ -102,8 +102,7 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({ form: row });
     } catch (err: any) {
-      const msg = String(err?.message ?? "");
-      if (msg.includes("lead_capture_forms_slug_unique")) {
+      if (isUniqueViolation(err, "lead_capture_forms_slug_unique")) {
         return NextResponse.json(
           { error: "That slug is already in use. Pick another." },
           { status: 409 }

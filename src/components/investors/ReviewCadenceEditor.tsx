@@ -37,6 +37,7 @@ export function ReviewCadenceEditor({
   lastReviewAt,
   nextReviewAt,
   canEdit = true,
+  fromFamily = false,
 }: {
   investorId: string;
   reviewFrequency: ReviewFrequency | null;
@@ -44,6 +45,9 @@ export function ReviewCadenceEditor({
   lastReviewAt: string | Date | null;
   nextReviewAt: string | Date | null;
   canEdit?: boolean;
+  /** The client's family sets the cadence (lib/families/shared-details.ts) —
+   *  changed on the family, not here. */
+  fromFamily?: boolean;
 }) {
   const uid = useId();
   const router = useRouter();
@@ -103,10 +107,10 @@ export function ReviewCadenceEditor({
           <CalendarClock className="size-4 text-muted-foreground" />
           <div>
             <h3 className="text-sm font-semibold leading-tight">Review cadence</h3>
-            <p className="text-2xs text-muted-foreground">How often to review this client</p>
+            <p className="text-2xs text-muted-foreground">{fromFamily ? "From the family" : "How often to review this client"}</p>
           </div>
         </div>
-        {canEdit && !editing && (
+        {canEdit && !fromFamily && !editing && (
           <button onClick={() => setEditing(true)} className="btn-ghost text-xs inline-flex items-center gap-1">
             <Pencil className="size-3" /> Edit
           </button>

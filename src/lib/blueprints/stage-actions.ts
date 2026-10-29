@@ -76,7 +76,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       label: "Call Back Later",
       tone: "secondary",
       targetStage: "call_back_later",
-      hint: "Lead asked to reach out at a specific time — added to tomorrow's queue.",
+      hint: "Lead asked to reach out at a specific time — pick when, and you'll be reminded then.",
       behaviour: { kind: "advance_only" },
     },
     {
@@ -357,7 +357,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "primary",
       targetStage: "request_documents",
       hint: "Mint a doc-collection link and send it to the client.",
-      behaviour: { kind: "open_dialog", dialog: "send_doc_checklist" },
+      behaviour: { kind: "call_api", endpoint: "/api/leads/{id}/send-doc-checklist", afterStage: "documents_pending" },
       pipelines: ["mf", "general"],
     },
     {

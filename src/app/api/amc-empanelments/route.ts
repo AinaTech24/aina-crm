@@ -1,4 +1,4 @@
-import { handleApiError } from "@/lib/api/error-handler";
+import { handleApiError, isUniqueViolation } from "@/lib/api/error-handler";
 /**
  * GET  /api/amc-empanelments    — list (?status, ?q)
  * POST /api/amc-empanelments    — create (one row per AMC per tenant)
@@ -166,8 +166,7 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({ empanelment: row });
     } catch (err: any) {
-      const msg = String(err?.message ?? "");
-      if (msg.includes("amc_empanelments_tenant_amc_unique")) {
+      if (isUniqueViolation(err, "amc_empanelments_tenant_amc_unique")) {
         return NextResponse.json(
           {
             error:

@@ -5,7 +5,8 @@
  * status; cards show the client, time and agenda. Drag a card to another column
  * to change its status (PATCH /api/review-meetings/[id] { status }) — the same
  * endpoint the detail page uses, so the completion/no-show automations still
- * fire. Clicking a card opens the meeting.
+ * fire. Clicking a card opens the meeting. "Rescheduled" is not a drop target:
+ * a reschedule needs the new date, so it is done from the meeting itself.
  */
 
 import { useRouter } from "next/navigation";
@@ -30,12 +31,12 @@ type Row = {
   rm_name: string | null;
 };
 
-const COLUMNS: { key: string; label: string; tone: string }[] = [
+const COLUMNS: { key: string; label: string; tone: string; noDrop?: boolean }[] = [
   { key: "scheduled", label: "Scheduled", tone: "border-t-blue-400" },
   { key: "confirmed", label: "Confirmed", tone: "border-t-cyan-400" },
   { key: "in_progress", label: "In progress", tone: "border-t-amber-400" },
   { key: "completed", label: "Completed", tone: "border-t-emerald-400" },
-  { key: "rescheduled", label: "Rescheduled", tone: "border-t-slate-400" },
+  { key: "rescheduled", label: "Rescheduled", tone: "border-t-slate-400", noDrop: true },
   { key: "cancelled", label: "Cancelled", tone: "border-t-gray-400" },
   { key: "no_show", label: "No show", tone: "border-t-rose-400" },
 ];
@@ -108,6 +109,7 @@ export function MeetingsKanban({ meetings }: { meetings: Row[] }) {
           <div
             key={col.key}
             onDragOver={(e) => {
+              if (col.noDrop) return;
               e.preventDefault();
               setOverCol(col.key);
             }}
@@ -115,7 +117,7 @@ export function MeetingsKanban({ meetings }: { meetings: Row[] }) {
             onDrop={(e) => {
               e.preventDefault();
               setOverCol(null);
-              if (dragId) void move(dragId, col.key);
+              if (dragId && !col.noDrop) void move(dragId, col.key);
               setDragId(null);
             }}
             className={`w-72 shrink-0 rounded-xl border-t-2 ${col.tone} bg-secondary/30 p-2 transition-colors ${
@@ -178,7 +180,7 @@ export function MeetingsKanban({ meetings }: { meetings: Row[] }) {
                   </Link>
                 </div>
               ))}
-              {items.length === 0 && (
+              {items.length === 0 && !col.noDrop && (
                 <div className="rounded-lg border border-dashed border-border/60 py-6 text-center text-2xs text-muted-foreground">
                   Drop here
                 </div>

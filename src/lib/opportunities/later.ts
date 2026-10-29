@@ -58,6 +58,7 @@ async function cancelOpenTasks(tx: Tx, opp: ClientOpportunity, onlyRevisit = fal
     UPDATE tasks SET status = 'cancelled', updated_at = now()
      WHERE tenant_id = ${opp.tenantId}::uuid AND meta ->> 'opportunityId' = ${opp.id} AND ${OPEN_TASK}
        ${onlyRevisit ? sql`AND meta ->> 'revisit' = 'true'` : sql``}
+       AND COALESCE(meta ->> 'rtaCheck', '') <> 'true'
   `);
 }
 

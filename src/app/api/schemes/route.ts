@@ -1,4 +1,4 @@
-import { handleApiError } from "@/lib/api/error-handler";
+import { handleApiError, isUniqueViolation } from "@/lib/api/error-handler";
 /**
  * Scheme master — collection.
  *
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
         });
       });
     } catch (e: any) {
-      if (String(e?.message).includes("scheme_master_unique")) {
+      if (isUniqueViolation(e, "scheme_master_unique")) {
         return NextResponse.json({ error: "a scheme with this AMC + code already exists" }, { status: 409 });
       }
       throw e;

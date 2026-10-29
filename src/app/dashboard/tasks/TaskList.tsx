@@ -212,7 +212,12 @@ export function TaskList({ initialRows, currentUserId, initialOpenTaskId, total 
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? "Bulk action failed");
       const n = j.updated ?? j.deleted ?? 0;
-      toast.success(action === "delete" ? `Deleted ${n} task${n === 1 ? "" : "s"}` : `Updated ${n} task${n === 1 ? "" : "s"}`);
+      // Tasks that need approval are submitted for it instead of completing.
+      const sent = Number(j.sentForApproval ?? 0);
+      toast.success(
+        (action === "delete" ? `Deleted ${n} task${n === 1 ? "" : "s"}` : `Updated ${n} task${n === 1 ? "" : "s"}`) +
+          (sent > 0 ? ` · ${sent} sent for approval` : ""),
+      );
       setSelected(new Set());
       setConfirmBulkDelete(false);
       router.refresh();
@@ -244,11 +249,15 @@ export function TaskList({ initialRows, currentUserId, initialOpenTaskId, total 
         body: JSON.stringify({ status: isCompleted ? "completed" : "open" }),
       });
 
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d?.error ?? "Failed to update status");
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d?.error ?? "Failed to update status");
+      // A task that needs approval is submitted, not completed (the API's rule).
+      if (isCompleted && d?.status !== "completed") {
+        setRows(previousRows);
+        toast.success("Sent for approval — it completes once signed off");
+      } else {
+        toast.success(isCompleted ? "Task marked complete" : "Task reopened");
       }
-      toast.success(isCompleted ? "Task marked complete" : "Task reopened");
       // Allow some animation feedback, then reload to filter out
       setTimeout(() => {
         router.refresh();
@@ -277,11 +286,14 @@ export function TaskList({ initialRows, currentUserId, initialOpenTaskId, total 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d?.error ?? "Failed to update status");
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d?.error ?? "Failed to update status");
+      if (newStatus === "completed" && d?.status !== "completed") {
+        setRows(previousRows);
+        toast.success("Sent for approval — it completes once signed off");
+      } else {
+        toast.success(`Status set to ${newStatus.replace(/_/g, " ")}`);
       }
-      toast.success(`Status set to ${newStatus.replace(/_/g, " ")}`);
       router.refresh();
     } catch (err: any) {
       setRows(previousRows);

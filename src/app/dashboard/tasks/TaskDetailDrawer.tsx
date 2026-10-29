@@ -182,7 +182,15 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
         body: JSON.stringify({ status: "completed" }),
       });
       if (!res.ok) throw new Error("Failed");
-      toast.success("Task marked complete");
+      // A task that needs approval is submitted, not completed (the API's rule).
+      const j = await res.json().catch(() => ({}));
+      if (j?.status === "completed") {
+        toast.success("Task marked complete");
+      } else {
+        setStatus(task.status);
+        if (j?.approvalStatus) setApprovalStatus(j.approvalStatus);
+        toast.success("Sent for approval — it completes once signed off");
+      }
       onUpdate();
     } catch {
       toast.error("Couldn't complete the task", "Update failed");
@@ -275,9 +283,10 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
   function computeRemindAt(): string | null {
     if (reminderMode === "none") return null;
     if (reminderMode === "custom") return reminderCustom ? new Date(reminderCustom).toISOString() : null;
-    if (!task.dueAt) return null;
+    // Relative to the due date being saved, not the one the task had.
+    if (!dueDate) return null;
     const off = REMINDER_OFFSETS_MIN[reminderMode] ?? 0;
-    return new Date(new Date(task.dueAt).getTime() - off * 60000).toISOString();
+    return new Date(new Date(dueDate).getTime() - off * 60000).toISOString();
   }
 
   async function runApproval(action: "submit" | "approve" | "reject") {
@@ -521,12 +530,12 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                 className="w-full"
               >
                 <option value="none">No reminder</option>
-                <option value="at_due" disabled={!task.dueAt}>At due time</option>
-                <option value="1h" disabled={!task.dueAt}>1 hour before due</option>
-                <option value="3h" disabled={!task.dueAt}>3 hours before due</option>
-                <option value="1d" disabled={!task.dueAt}>1 day before due</option>
-                <option value="2d" disabled={!task.dueAt}>2 days before due</option>
-                <option value="1w" disabled={!task.dueAt}>1 week before due</option>
+                <option value="at_due" disabled={!dueDate}>At due time</option>
+                <option value="1h" disabled={!dueDate}>1 hour before due</option>
+                <option value="3h" disabled={!dueDate}>3 hours before due</option>
+                <option value="1d" disabled={!dueDate}>1 day before due</option>
+                <option value="2d" disabled={!dueDate}>2 days before due</option>
+                <option value="1w" disabled={!dueDate}>1 week before due</option>
                 <option value="custom">Custom date &amp; time…</option>
               </SelectField>
               {reminderMode === "custom" && (

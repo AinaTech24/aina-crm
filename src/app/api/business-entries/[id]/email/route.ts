@@ -45,6 +45,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (!seesAllEntries(session) && entry.rmId !== session.userId) return { error: "forbidden" as const };
         // Viewer scope: their own booking, or one on a client they may see.
         if (entry.rmId !== session.userId && !(await isClientVisible(tx, session, entry.investorId))) return { error: "not_found" as const };
+        // A cancelled entry stays cancelled — stamping it "emailed" would count it as business again.
+        if (entry.status === "cancelled") return { error: "cancelled" as const };
         const lines = await tx
           .select()
           .from(businessEntryLines)
@@ -96,6 +98,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if ("error" in ctx) {
       if (ctx.error === "forbidden") return NextResponse.json({ error: "you can only email entries you booked" }, { status: 403 });
+      if (ctx.error === "cancelled") return NextResponse.json({ error: "This entry is cancelled, so it cannot be emailed." }, { status: 409 });
       if (ctx.error === "opted_out") return NextResponse.json({ error: "This client has opted out of emails." }, { status: 409 });
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }

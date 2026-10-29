@@ -1,4 +1,4 @@
-import { handleApiError } from "@/lib/api/error-handler";
+import { handleApiError, isUniqueViolation } from "@/lib/api/error-handler";
 /**
  * Master values CRUD.
  *
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ typ
     });
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {
-    if (String(err?.message ?? "").includes("master_values_unique")) {
+    if (isUniqueViolation(err, "master_values_unique")) {
       return NextResponse.json({ error: "key already exists for this master type" }, { status: 409 });
     }
     return handleApiError(err);

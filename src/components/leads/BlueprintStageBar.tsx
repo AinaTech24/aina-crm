@@ -517,6 +517,12 @@ export function BlueprintStageBar({
   );
 }
 
+const NEEDS_GUIDED_POPUP = new Set([
+  "call_back_later", "call_not_connected", "contact_in_future", "not_qualified",
+  "kyc_registered", "modify_kyc", "physical_kyc", "ucc_create", "mandate_create",
+  "ucc_activated", "mandate_activated",
+]);
+
 function ForwardPicker({
   allStages,
   currentKey,
@@ -541,7 +547,10 @@ function ForwardPicker({
   // “No transition defined from …” (e.g. Mandate Activated → Mandate
   // Rejected). allowedActions mirrors the transition graph for every stage, so
   // filtering by it means the picker can only offer moves that will succeed.
-  const candidates = allStages.filter((s) => allowedActions.includes(s.key));
+  // Steps whose guided pop-up asks for something (follow-up date, lost
+  // reason, task assignee, UCC / mandate details) are left to the journey
+  // buttons above: moving there from here would skip the question.
+  const candidates = allStages.filter((s) => allowedActions.includes(s.key) && !NEEDS_GUIDED_POPUP.has(s.key));
   if (!candidates.length) return null;
 
   return (

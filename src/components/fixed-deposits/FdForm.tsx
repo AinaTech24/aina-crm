@@ -20,7 +20,7 @@ import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { formatMoney } from "@/lib/format";
 import {
   COMPOUNDING_LABELS, HOLDING_LABELS, ISSUER_TYPE_LABELS, PAYOUT_LABELS, STATUS_LABELS, TAX_FORM_LABELS,
-  computeMaturity, maturityDateFor, tenureBetween,
+  computeMaturity, indiaToday, isLive, maturityDateFor, tenureBetween,
 } from "@/lib/fixed-deposits/terms";
 import type { FdFormValue } from "@/lib/fixed-deposits/form";
 
@@ -137,7 +137,9 @@ export function FdForm({
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { notify.error(j.error ?? "Could not save the fixed deposit"); return; }
-      notify.success(v.id ? "Fixed deposit updated" : "Fixed deposit recorded — a maturity follow-up is on the RM's list");
+      // The maturity reminder exists only for a live FD that has not matured (hooks.ts).
+      const followUp = isLive(v.status) && v.maturityDate >= indiaToday();
+      notify.success(v.id ? "Fixed deposit updated" : followUp ? "Fixed deposit recorded — a maturity follow-up is on the RM's list" : "Fixed deposit recorded");
       router.push(`/dashboard/fixed-deposits/${j.fixedDeposit.id}`);
       router.refresh();
     } finally {

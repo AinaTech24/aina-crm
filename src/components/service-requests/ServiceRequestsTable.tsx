@@ -109,6 +109,8 @@ export function ServiceRequestsTable({ rows, canDelete = false }: { rows: any[];
       if (bulk === "delete") {
         const kept = Number(j.complaintsSkipped ?? 0);
         toast.success(`Deleted ${j.deleted ?? 0} ticket(s).${kept ? ` ${kept} complaint(s) kept: complaints can only be closed.` : ""}`);
+      } else if (Number(j.complaintsSkipped ?? 0) > 0) {
+        toast.warning(`${j.complaintsSkipped} complaint(s) left as they were: add resolution notes on the ticket first.`, `Updated ${j.updated ?? 0} ticket(s)`);
       }
       setBulk(null); setSelected(new Set()); router.refresh();
     } finally { setBusy(false); }

@@ -1,4 +1,4 @@
-import { handleApiError } from "@/lib/api/error-handler";
+import { handleApiError, isUniqueViolation } from "@/lib/api/error-handler";
 /**
  * POST /api/leads/[id]/convert
  * Body: { pan, segmentTag?, investorCategory?, rmId?, notes? }
@@ -308,7 +308,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     return NextResponse.json(result, { status: 201 });
   } catch (err: any) {
-    if (String(err?.message ?? "").includes("investors_tenant_pan_unique")) {
+    if (isUniqueViolation(err, "investors_tenant_pan_unique")) {
       return NextResponse.json(
         { error: "An investor with this PAN already exists — use the existing record." },
         { status: 409 }
