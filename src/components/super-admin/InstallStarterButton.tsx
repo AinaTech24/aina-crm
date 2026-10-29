@@ -31,8 +31,8 @@ export function InstallStarterButton() {
   }
 
   return (
-    <div className="flex items-center gap-3">
-      <button type="button" onClick={run} disabled={busy} className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 hover:bg-accent disabled:opacity-50">
+    <div className="flex flex-wrap items-center gap-3">
+      <button type="button" onClick={run} disabled={busy} className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 whitespace-nowrap [&>svg]:shrink-0 hover:bg-accent disabled:opacity-50">
         {busy ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />} Add module guides
       </button>
       {msg && <span className="text-xs text-muted-foreground max-w-xs">{msg}</span>}

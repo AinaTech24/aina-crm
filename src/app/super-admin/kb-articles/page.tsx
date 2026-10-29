@@ -22,21 +22,21 @@ export default async function KbArticlesPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 basis-80">
           <h1 className="page-title">Knowledge Base</h1>
           <p className="text-muted-foreground text-sm">
             Help-centre guides with screenshots, shown publicly on the website. Organise them into categories and folders; changes go live immediately.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/super-admin/kb-articles/structure" className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 hover:bg-accent">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/super-admin/kb-articles/structure" className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 whitespace-nowrap [&>svg]:shrink-0 hover:bg-accent">
             <FolderTree className="size-4" /> Categories &amp; folders
           </Link>
-          <Link href="/knowledge-base" target="_blank" className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 hover:bg-accent">
+          <Link href="/knowledge-base" target="_blank" className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 whitespace-nowrap [&>svg]:shrink-0 hover:bg-accent">
             <Eye className="size-4" /> View hub
           </Link>
-          <Link href="/super-admin/kb-articles/new" className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium inline-flex items-center gap-1.5">
+          <Link href="/super-admin/kb-articles/new" className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium inline-flex items-center gap-1.5 whitespace-nowrap [&>svg]:shrink-0">
             <Plus className="size-4" /> New article
           </Link>
         </div>
