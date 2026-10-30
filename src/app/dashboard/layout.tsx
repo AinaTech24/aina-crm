@@ -62,6 +62,7 @@ import { QuickAdd, type QuickAddItem } from "@/components/layout/QuickAdd";
 import { BackButton } from "@/components/layout/BackButton";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { BirthdayBell } from "@/components/layout/BirthdayBell";
+import { CalendarShortcut } from "@/components/layout/CalendarShortcut";
 import { HelpMenu } from "@/components/layout/HelpMenu";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { DesktopSidebar } from "@/components/layout/DesktopSidebar";
@@ -715,6 +716,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 avatar menu). */}
             <div className="hidden sm:flex items-center gap-3">
             {/* "What's new" is inside this menu now: four icons, not five. */}
+            <CalendarShortcut />
             <HelpMenu whatsNewUnread={whatsNewUnread} />
             <BirthdayBell />
             </div>

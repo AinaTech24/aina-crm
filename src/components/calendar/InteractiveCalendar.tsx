@@ -75,6 +75,8 @@ interface InteractiveCalendarProps {
   yyyy: number;
   mm: number;
   monthLabel: string;
+  /** Which view opens first (?view=week from the top bar's calendar icon). */
+  initialView?: "month" | "week";
   /** null when the server can't sign a feed token (NEXTAUTH_SECRET unset) —
    *  the "Sync to Calendar" button is hidden rather than handing out a
    *  forgeable/broken link. */
@@ -86,9 +88,10 @@ export function InteractiveCalendar({
   yyyy,
   mm,
   monthLabel,
+  initialView = "month",
   icalSubscriptionUrl,
 }: InteractiveCalendarProps) {
-  const [viewMode, setViewMode] = useState<"month" | "week">("month");
+  const [viewMode, setViewMode] = useState<"month" | "week">(initialView);
   const [activeFilters, setActiveFilters] = useState<Set<Item["kind"]>>(() => new Set(Object.keys(KIND_META) as Item["kind"][]));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
