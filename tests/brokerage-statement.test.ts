@@ -58,19 +58,23 @@ const TEST_DB = process.env.TEST_DATABASE_URL;
 describe.skipIf(!TEST_DB)("importing a brokerage statement", () => {
   const tenant = randomUUID();
   let withSystem: typeof import("@/db/client").withSystem;
+  let withTenant: typeof import("@/db/client").withTenant;
   let sql: typeof import("drizzle-orm").sql;
   let processRtaFile: typeof import("@/lib/rta/process").processRtaFile;
   let getBrokerage: typeof import("@/lib/metrics/practice").getBrokerage;
   const q = (t: ReturnType<typeof import("drizzle-orm").sql>) => withSystem((tx) => tx.execute(t));
+  // commission_rows' RLS policy has no platform-admin branch: like production (the
+  // import worker and the dashboard), read and write it as the tenant.
+  const qt = (t: ReturnType<typeof import("drizzle-orm").sql>) => withTenant(tenant, (tx) => tx.execute(t));
   const load = (text: string) =>
-    withSystem((tx) => (processRtaFile as any)(tx, { tenantId: tenant, source: "cams", kind: "monthly_brokerage", text }));
-  const total = async () => Number(((await q(sql`SELECT COALESCE(SUM(brokerage_amount), 0) AS t FROM commission_rows WHERE tenant_id = ${tenant}::uuid`)).rows[0] as any).t);
+    withTenant(tenant, (tx) => processRtaFile(tx, { tenantId: tenant, source: "cams", kind: "monthly_brokerage", text }));
+  const total = async () => Number(((await qt(sql`SELECT COALESCE(SUM(brokerage_amount), 0) AS t FROM commission_rows WHERE tenant_id = ${tenant}::uuid`)).rows[0] as any).t);
 
   beforeAll(async () => {
     process.env.DATABASE_URL = TEST_DB!;
     process.env.APP_DATABASE_URL = "";
     process.env.ALLOW_SYSTEM_TX = "1";
-    ({ withSystem } = await import("@/db/client"));
+    ({ withSystem, withTenant } = await import("@/db/client"));
     ({ sql } = await import("drizzle-orm"));
     ({ processRtaFile } = await import("@/lib/rta/process"));
     ({ getBrokerage } = await import("@/lib/metrics/practice"));
@@ -79,7 +83,7 @@ describe.skipIf(!TEST_DB)("importing a brokerage statement", () => {
 
   afterAll(async () => {
     if (!withSystem) return;
-    await q(sql`DELETE FROM commission_rows WHERE tenant_id = ${tenant}::uuid`).catch(() => {});
+    await qt(sql`DELETE FROM commission_rows WHERE tenant_id = ${tenant}::uuid`).catch(() => {});
     await q(sql`DELETE FROM tenants WHERE id = ${tenant}::uuid`).catch(() => {});
   });
 
@@ -104,9 +108,9 @@ describe.skipIf(!TEST_DB)("importing a brokerage statement", () => {
   });
 
   it("the card ignores a Total line already stored, and counts the rest", async () => {
-    await q(sql`INSERT INTO commission_rows (tenant_id, amc_code, scheme_code, folio_number, brokerage_type, period_start, period_end, brokerage_amount)
+    await qt(sql`INSERT INTO commission_rows (tenant_id, amc_code, scheme_code, folio_number, brokerage_type, period_start, period_end, brokerage_amount)
                 VALUES (${tenant}::uuid, 'Total', '', '', 'other', '2026-04-01', '2026-04-30', 3200)`);
-    const b = await withSystem((tx) => getBrokerage(tx, tenant, { from: "2026-04-01", to: "2026-04-30" } as any));
+    const b = await withTenant(tenant, (tx) => getBrokerage(tx, tenant, { from: "2026-04-01", to: "2026-04-30" } as any));
     expect(b.byMonth.find((m) => m.month === "2026-04")?.amount).toBe(3200);
     expect(b.byAmc.map((a) => a.amc)).not.toContain("TOTAL");
   });
