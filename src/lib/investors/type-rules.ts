@@ -77,6 +77,16 @@ export function needsNominee(inv: {
   return !(Array.isArray(inv.nominees) && inv.nominees.length > 0);
 }
 
+/**
+ * A minor needs no risk profile of their own (the firm's rule of 2026-10-30):
+ * a mutual fund proposal and an MF opportunity go ahead without one. Only a
+ * minor — every other client type still needs a confirmed profile. The client
+ * type is the source of truth; `is_minor` is set with it, so either says so.
+ */
+export function isMinorClient(inv: { investorCategory?: string | null; isMinor?: boolean | null }): boolean {
+  return inv.investorCategory === "minor" || inv.isMinor === true;
+}
+
 /** Whether a loaded record of this type has a date of birth / PAN–Aadhaar link / occupation at all. */
 export const typeHas = {
   dob: (type: string | null | undefined) => DOB_TYPES.includes(clientTypeDef(type).key),

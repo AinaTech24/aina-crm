@@ -51,6 +51,8 @@ const Body = z.object({
   status: z.enum(["open", "in_progress", "blocked", "completed", "cancelled"]).default("open"),
   assigneeId: z.string().uuid().optional(),
   dueAt: z.string().optional(),
+  /** The day the task was entered, YYYY-MM-DD — blank means today. */
+  entryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   /** Recurrence — null/omitted = one-off. */
   recurrence: z.enum(["daily", "weekly", "monthly", "quarterly", "yearly"]).optional(),
   recurrenceUntil: z.string().optional(), // YYYY-MM-DD
@@ -351,6 +353,7 @@ export async function POST(req: NextRequest) {
         status: body.status,
         assigneeId,
         createdById: session.userId,
+        entryDate: body.entryDate ?? null, // null → the database sets today (India)
         dueAt: body.dueAt ? new Date(body.dueAt) : null,
         slaDueAt,
         recurrence: body.recurrence ?? null,

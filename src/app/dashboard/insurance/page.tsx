@@ -34,6 +34,7 @@ import {
 } from "@/lib/insurance/book";
 import { seesWholeInsuranceBook } from "@/lib/dashboard/insurance/access";
 import { insuranceClientScopeSql } from "@/lib/insurance/register-access";
+import { eachPeriod, installmentOf } from "@/lib/insurance/premium";
 import { uuidList } from "@/lib/metrics";
 
 // The policy form's labels, commercial lines included (lib/insurance/book.ts).
@@ -543,6 +544,11 @@ export default async function InsurancePage({
                       </td>
                       <td className="py-3 text-right tabular-nums">
                         {p.annual_premium ? formatINR(Number(p.annual_premium)) : "—"}
+                        {p.annual_premium && eachPeriod(p.premium_frequency) && (
+                          <div className="text-2xs text-muted-foreground">
+                            {formatINR(installmentOf(Number(p.annual_premium), p.premium_frequency))} {eachPeriod(p.premium_frequency)}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 text-xs capitalize">
                         {String(p.premium_frequency).replace(/_/g, " ")}

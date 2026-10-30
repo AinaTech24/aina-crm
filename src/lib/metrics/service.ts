@@ -16,7 +16,7 @@
 
 import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { clientRecordWhere, cleanIds, hasClientFilter, type MetricScope } from "./scope";
+import { clientRecordWhere, cleanIds, hasClientFilter, type MetricPeriod, type MetricScope } from "./scope";
 
 export const SR_OPEN = ["open", "in_progress"] as const;
 export const SR_ESCALATED = ["escalated"] as const;
@@ -66,5 +66,44 @@ export async function getOpenServiceRequests(tx: Tx, scope: MetricScope): Promis
     waiting: Number(r?.waiting ?? 0),
     onUs: open + escalated,
     pastSla: Number(r?.past_sla ?? 0),
+  };
+}
+
+/* ───────────────────────── the service requests card ───────────────────────── */
+
+export type ServiceRequestBreakdown = ServiceRequestCounts & {
+  /** Raised / closed in the period (India dates). */
+  raised: number;
+  closed: number;
+  /** Still open on us by request type, biggest first. */
+  byType: Array<{ type: string; n: number }>;
+};
+
+/**
+ * The Service requests card: the backlog (the page's tabs) plus what was raised
+ * and closed in the period and which request types the open ones are.
+ */
+export async function getServiceRequestBreakdown(tx: Tx, scope: MetricScope, period: MetricPeriod): Promise<ServiceRequestBreakdown> {
+  const counts = await getOpenServiceRequests(tx, scope);
+  const day = (column: string) =>
+    sql`(${sql.raw(column)} AT TIME ZONE 'Asia/Kolkata')::date BETWEEN ${period.from}::date AND ${period.to}::date`;
+  const r = (await tx.execute(sql`
+    SELECT
+      COUNT(*) FILTER (WHERE ${day("sr.created_at")})::int AS raised,
+      COUNT(*) FILTER (WHERE sr.status IN ('resolved', 'closed') AND ${day("COALESCE(sr.resolved_at, sr.updated_at)")})::int AS closed
+      FROM service_requests sr LEFT JOIN investors i ON i.id = sr.investor_id
+     WHERE ${srWhere(scope)}
+  `)).rows[0] as Record<string, number> | undefined;
+  const types = (await tx.execute(sql`
+    SELECT sr.type, COUNT(*)::int AS n
+      FROM service_requests sr LEFT JOIN investors i ON i.id = sr.investor_id
+     WHERE ${srWhere(scope)} AND sr.status IN ('open', 'in_progress', 'escalated', 'waiting_customer')
+     GROUP BY sr.type ORDER BY COUNT(*) DESC, sr.type LIMIT 6
+  `)).rows as Array<{ type: string; n: number }>;
+  return {
+    ...counts,
+    raised: Number(r?.raised ?? 0),
+    closed: Number(r?.closed ?? 0),
+    byType: types.map((t) => ({ type: String(t.type), n: Number(t.n) })),
   };
 }

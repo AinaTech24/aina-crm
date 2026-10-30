@@ -22,6 +22,7 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { clientWhere, type MetricPeriod, type MetricScope } from "./scope";
 import { CROSS_SELL_PRODUCT_KEYS } from "@/lib/investors/cross-sell";
+import { columnOf } from "@/lib/opportunities/board-columns";
 
 export type OpportunityMetrics = {
   open: number;
@@ -109,4 +110,81 @@ export async function getOpportunityMetrics(tx: Tx, scope: MetricScope, period: 
     singleProduct: Number(held?.single ?? 0),
     byProduct: byProduct.map((b) => ({ product: b.product, open: Number(b.open), value: Number(b.value) })),
   };
+}
+
+/* ───────────────────────── the pipeline card ───────────────────────── */
+
+export type OpportunityPipelineCounts = {
+  /** Open opportunities by the Opportunities board's column (parked ones are "later"). */
+  byColumn: Record<string, { n: number; value: number }>;
+  open: number;
+  openValue: number;
+  /** Won / lost in the period (India dates), as the module's own tiles count them. */
+  won: number;
+  wonValue: number;
+  lost: number;
+  /** Won ÷ (won + lost) in the period — null when none closed. */
+  conversion: number | null;
+  /** Open ones whose next follow-up task is before today / who have none at all. */
+  followUpOverdue: number;
+  noFollowUp: number;
+};
+
+/**
+ * The Opportunity pipeline card: where each open opportunity stands on the
+ * module's board, and what closed in the period. Same columns as
+ * /dashboard/opportunities (lib/opportunities/board-columns.ts), same
+ * follow-up rule (the earliest open task with meta.opportunityId).
+ */
+export async function getOpportunityPipeline(tx: Tx, scope: MetricScope, period: MetricPeriod): Promise<OpportunityPipelineCounts> {
+  const where = clientWhere(scope, "i");
+  const inPeriod = (column: string) =>
+    sql`(${sql.raw(column)} AT TIME ZONE 'Asia/Kolkata')::date BETWEEN ${period.from}::date AND ${period.to}::date`;
+  const today = sql`(now() AT TIME ZONE 'Asia/Kolkata')::date`;
+
+  const rows = (await tx.execute(sql`
+    WITH fu AS (
+      SELECT meta ->> 'opportunityId' AS oid, min(due_at) AS due
+        FROM tasks
+       WHERE tenant_id = ${scope.tenantId}::uuid AND meta ? 'opportunityId'
+         AND status IN ('open', 'in_progress', 'blocked') AND due_at IS NOT NULL
+       GROUP BY 1
+    )
+    SELECT o.status, (o.parked_at IS NOT NULL) AS parked,
+           COALESCE(bi.current_stage_key, 'identified') AS stage_key,
+           count(*)::int AS n,
+           COALESCE(sum(o.expected_value), 0) AS value,
+           count(*) FILTER (WHERE fu.due IS NOT NULL AND (fu.due AT TIME ZONE 'Asia/Kolkata')::date < ${today})::int AS overdue,
+           count(*) FILTER (WHERE fu.due IS NULL)::int AS no_fu
+      FROM client_opportunities o
+      JOIN investors i ON i.id = o.investor_id AND i.tenant_id = o.tenant_id
+      LEFT JOIN blueprint_instances bi
+        ON bi.tenant_id = o.tenant_id AND bi.subject_type = 'opportunity' AND bi.subject_id = o.id
+      LEFT JOIN fu ON fu.oid = o.id::text
+     WHERE o.tenant_id = ${scope.tenantId}::uuid AND ${where}
+       AND (o.status = 'open'
+            OR (o.status = 'won' AND ${inPeriod("o.won_at")})
+            OR (o.status = 'lost' AND ${inPeriod("o.lost_at")}))
+     GROUP BY 1, 2, 3
+  `)).rows as Array<{ status: string; parked: boolean; stage_key: string; n: number; value: string; overdue: number; no_fu: number }>;
+
+  const out: OpportunityPipelineCounts = {
+    byColumn: {}, open: 0, openValue: 0, won: 0, wonValue: 0, lost: 0, conversion: null, followUpOverdue: 0, noFollowUp: 0,
+  };
+  for (const r of rows) {
+    const n = Number(r.n);
+    const value = Number(r.value);
+    if (r.status === "won") { out.won += n; out.wonValue += value; continue; }
+    if (r.status === "lost") { out.lost += n; continue; }
+    const key = r.parked ? "later" : columnOf(r.stage_key);
+    const c = (out.byColumn[key] ??= { n: 0, value: 0 });
+    c.n += n;
+    c.value += value;
+    out.open += n;
+    out.openValue += value;
+    out.followUpOverdue += Number(r.overdue);
+    out.noFollowUp += Number(r.no_fu);
+  }
+  out.conversion = out.won + out.lost > 0 ? out.won / (out.won + out.lost) : null;
+  return out;
 }

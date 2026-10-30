@@ -101,6 +101,11 @@ export function serviceRequestsHref(ctx: WidgetCtx, extra: Record<string, Val> =
   return `/dashboard/service-requests${qs({ rm: ctx.scope.rmIds, branch: ctx.scope.branchIds, ...extra })}`;
 }
 
+/** The Opportunities module on clients in scope (rm / branch are the CLIENT's). */
+export function opportunitiesHref(ctx: WidgetCtx, extra: Record<string, Val> = {}): string {
+  return `/dashboard/opportunities${qs({ rm: ctx.scope.rmIds, branch: ctx.scope.branchIds, ...extra })}`;
+}
+
 /** The Risk Profiles page on clients in scope. */
 export function riskProfilesHref(ctx: WidgetCtx, filter: string): string {
   return `/dashboard/risk-profiles${qs({ filter, rm: ctx.scope.rmIds, branch: ctx.scope.branchIds })}`;

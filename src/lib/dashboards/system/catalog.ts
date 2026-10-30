@@ -216,6 +216,16 @@ export const SYSTEM_WIDGETS: SystemWidgetMeta[] = [
     supports: ["period", "rm", "branch", "segment", "category", "family", "tags", "leadSource"],
   },
   {
+    key: "opportunity_pipeline", title: "Opportunity pipeline", category: "Clients", defaultSize: "M", sizes: ["M", "L"],
+    description: "Existing clients taking another product, by the step each has reached: open by step, won and lost in the period, conversion and follow-ups overdue.",
+    supports: ["period", "rm", "branch"],
+  },
+  {
+    key: "service_requests", title: "Service requests", category: "Work", defaultSize: "M", sizes: ["M", "L"],
+    description: "Open, escalated and waiting on the client, past SLA, raised and closed in the period, and the not-yet-closed requests by type.",
+    supports: ["period", "rm", "branch"],
+  },
+  {
     key: "owner_dependency", title: "Owner dependency", category: "Practice", defaultSize: "M", sizes: ["M", "L"],
     description: "Could the firm run a month without you? Clients, open tasks, positions and processes that rest on the owner alone. Firm-wide only.",
     supports: [],
@@ -229,8 +239,8 @@ export const SYSTEM_WIDGETS_BY_KEY: Record<string, SystemWidgetMeta> = Object.fr
 /** A placed widget in a dashboard layout. */
 export type LayoutItem = { id: string; widgetKey: string; size: WidgetSize; title?: string };
 
-/** At most this many widgets on one dashboard (the Owner Dashboard, cloned, has 28). */
-export const MAX_WIDGETS = 32;
+/** At most this many widgets on one dashboard (the Owner Dashboard, cloned, has 33). */
+export const MAX_WIDGETS = 40;
 
 /** Validate a layout from the client or the database: known widgets, valid sizes, capped. */
 export function sanitizeLayoutItems(input: unknown): LayoutItem[] {

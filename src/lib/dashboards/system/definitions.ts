@@ -87,6 +87,8 @@ export const SYSTEM_DASHBOARDS: SystemDashboard[] = [
       item("meetings", "L"),
       item("task_summary", "M"),
       item("lead_pipeline", "M"),
+      item("opportunity_pipeline", "M"),
+      item("service_requests", "M"),
       item("lead_sources", "L"),
       // Insurance
       item("insurance_business", "M"),

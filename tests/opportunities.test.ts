@@ -15,7 +15,7 @@ const opp = (over: Partial<ClientOpportunity> = {}): ClientOpportunity => ({
 
 const facts = (over: Partial<Facts> = {}): Facts => ({
   kycStatus: "verified", kycVerified: true, hasUcc: true, mandateStatus: "active", mandateAmount: 25000,
-  riskState: "current", riskSignedAt: new Date().toISOString(), proposal: null, policy: null, transaction: null, fixedDeposit: null,
+  riskState: "current", riskSignedAt: new Date().toISOString(), riskExempt: false, proposal: null, policy: null, transaction: null, fixedDeposit: null,
   ...over,
 });
 
@@ -60,6 +60,17 @@ describe("gates", () => {
     expect(gateFor("proposal", opp(), facts()).every((p) => p.satisfied)).toBe(true);
     expect(gateFor("proposal", opp(), facts({ riskState: "awaiting" })).some((p) => !p.satisfied)).toBe(true);
     expect(gateFor("proposal", opp(), facts({ riskState: "expired" })).some((p) => !p.satisfied)).toBe(true);
+  });
+
+  it("a minor needs no risk profile — and only a minor", () => {
+    const never = { riskState: "not_profiled" as const, riskSignedAt: null };
+    expect(gateFor("proposal", opp(), facts(never)).some((p) => !p.satisfied)).toBe(true);
+    expect(gateFor("proposal", opp(), facts({ ...never, riskExempt: true }))).toEqual([]);
+    expect(skipReason("suitability", opp(), facts({ ...never, riskExempt: true }))?.reason).toMatch(/minor/);
+    expect(skipReason("suitability", opp(), facts(never))).toBeNull();
+    // An insurance opportunity keeps its own gate, minor or not.
+    const ins = opp({ product: "health_insurance", pipeline: "insurance", investmentMode: null });
+    expect(gateFor("proposal", ins, facts({ riskExempt: true })).some((p) => !p.satisfied)).toBe(true);
   });
 
   it("an insurance quote needs a needs analysis", () => {

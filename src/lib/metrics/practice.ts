@@ -265,6 +265,15 @@ export async function getClientMix(tx: Tx, scope: MetricScope, period: MetricPer
 
 /* ─────────────────────────────── brokerage ─────────────────────────────── */
 
+/**
+ * A stored row that is a line of brokerage earned — not the statement's own
+ * "Total" line, which earlier imports stored as if it were a fund house and so
+ * counted the month twice (lib/rta/parsers.ts isStatementTotalRow now keeps it
+ * out; this keeps the rows already stored out of the figures too).
+ */
+const BROKERAGE_LINE = sql`NOT (btrim(amc_code) ~* '^(grand[[:space:]]*|sub[[:space:]]*|net[[:space:]]*)?totals?([^a-z]|$)' OR btrim(scheme_code) ~* '^(grand[[:space:]]*|sub[[:space:]]*|net[[:space:]]*)?totals?([^a-z]|$)' OR (btrim(amc_code) = '' AND btrim(scheme_code) = '' AND btrim(folio_number) = ''))`;
+const BROKERAGE_LINE_C = sql`NOT (btrim(c.amc_code) ~* '^(grand[[:space:]]*|sub[[:space:]]*|net[[:space:]]*)?totals?([^a-z]|$)' OR btrim(c.scheme_code) ~* '^(grand[[:space:]]*|sub[[:space:]]*|net[[:space:]]*)?totals?([^a-z]|$)' OR (btrim(c.amc_code) = '' AND btrim(c.scheme_code) = '' AND btrim(c.folio_number) = ''))`;
+
 export type Brokerage = {
   /** Brokerage by statement month (the month its period ends), oldest first. */
   byMonth: Array<{ month: string; amount: number }>;
@@ -287,15 +296,16 @@ export async function getBrokerage(tx: Tx, tenantId: string, period: MetricPerio
     () => tx.execute(sql`
       SELECT to_char(date_trunc('month', period_end), 'YYYY-MM') AS month, COALESCE(SUM(brokerage_amount), 0)::numeric AS amount
         FROM commission_rows
-       WHERE tenant_id = ${tenantId}::uuid
+       WHERE tenant_id = ${tenantId}::uuid AND ${BROKERAGE_LINE}
          AND period_end >= (date_trunc('month', current_date) - make_interval(months => ${months - 1}::int))::date
        GROUP BY 1 ORDER BY 1
     `),
     () => tx.execute(sql`
-      WITH latest AS (SELECT MAX(date_trunc('month', period_end)) AS m FROM commission_rows WHERE tenant_id = ${tenantId}::uuid)
+      WITH latest AS (SELECT MAX(date_trunc('month', period_end)) AS m FROM commission_rows WHERE tenant_id = ${tenantId}::uuid AND ${BROKERAGE_LINE})
       SELECT upper(btrim(c.amc_code)) AS amc, COALESCE(SUM(c.brokerage_amount), 0)::numeric AS amount
         FROM commission_rows c, latest
        WHERE c.tenant_id = ${tenantId}::uuid AND date_trunc('month', c.period_end) = latest.m
+         AND ${BROKERAGE_LINE_C}
        GROUP BY 1 ORDER BY amount DESC
     `),
   );

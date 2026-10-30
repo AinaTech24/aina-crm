@@ -69,6 +69,7 @@ export default function NewTaskPage() {
     type: "follow_up",
     customType: "", // name entered when type === "custom"
     priority: "normal",
+    entryDate: todayLocal(), // today; the person may change it
     dueDate: defaultDueDate(3),
     assigneeId: "",
     remarks: "",
@@ -317,6 +318,7 @@ export default function NewTaskPage() {
         description: form.description || undefined,
         type: form.type === "custom" ? form.customType.trim() : form.type,
         priority: form.priority,
+        entryDate: form.entryDate || undefined,
         dueAt: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
         assigneeId: form.assigneeId || undefined,
         remarks: form.remarks || undefined,
@@ -544,6 +546,16 @@ export default function NewTaskPage() {
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="block">
+            <div className="text-xs font-medium mb-1">Entry date</div>
+            <DateField
+              value={form.entryDate}
+              onChange={(e) => set("entryDate", e.target.value)}
+              className="w-full"
+            />
+            <div className="mt-1.5 text-2xs text-muted-foreground">The day this task was entered. Today unless you change it.</div>
+          </div>
+
           <div className="block">
             <div className="text-xs font-medium mb-1">Due</div>
             <DateField
@@ -871,6 +883,13 @@ export default function NewTaskPage() {
       </div>
     </div>
   );
+}
+
+/** Today on the person's own clock (toISOString is UTC, which is yesterday before 5:30 am in India). */
+function todayLocal() {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 function defaultDueDate(daysOut: number) {

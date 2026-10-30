@@ -242,7 +242,7 @@ export function ProposalBuilder({ proposalId: initialId }: { proposalId?: string
   /** What stops a SEND (a draft saves without these). Mirrors the send route. */
   const sendBlockers = useMemo(() => {
     const out = [...missing];
-    if (items.some((it) => it.kind === "mf") && snapshot && snapshot.risk.status !== "Completed") {
+    if (items.some((it) => it.kind === "mf") && snapshot && !snapshot.riskExempt && snapshot.risk.status !== "Completed") {
       out.push(
         snapshot.risk.status === "Provisional"
           ? "The client's risk profile is only provisional — they must confirm it before a mutual fund proposal goes out."
@@ -697,7 +697,7 @@ function SnapshotCard({ snapshot: s, loading }: { snapshot: ProposalSnapshot | n
   if (!s) return null;
 
   const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
-  const riskTone = s.risk.status === "Completed" ? "success" : s.risk.status === "Not completed" ? "neutral" : "warning";
+  const riskTone = s.risk.status === "Completed" || s.riskExempt ? "success" : s.risk.status === "Not completed" ? "neutral" : "warning";
 
   // Only what the CRM actually holds — a prospect's five empty dashes said nothing.
   const tiles = [
@@ -725,9 +725,11 @@ function SnapshotCard({ snapshot: s, loading }: { snapshot: ProposalSnapshot | n
             <Badge tone={riskTone as any} raw dot>
               {s.risk.status === "Completed" && s.risk.signedAt
                 ? `Risk profile confirmed ${formatDate(s.risk.signedAt)}`
-                : `Risk profile: ${s.risk.status.toLowerCase()}`}
+                : s.riskExempt
+                  ? "Minor — no risk profile needed"
+                  : `Risk profile: ${s.risk.status.toLowerCase()}`}
             </Badge>
-            {s.risk.status !== "Completed" && <RiskProfileAction snapshot={s} />}
+            {s.risk.status !== "Completed" && !s.riskExempt && <RiskProfileAction snapshot={s} />}
           </div>
         }
       />

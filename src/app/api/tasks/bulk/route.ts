@@ -64,8 +64,7 @@ export async function POST(req: NextRequest) {
     } else if (action === "status") {
       const ok = ["open", "in_progress", "blocked", "completed", "cancelled"];
       if (!value || !ok.includes(value)) return NextResponse.json({ error: "invalid status" }, { status: 400 });
-      patch.status = value;
-      if (value === "completed") patch.completedAt = new Date();
+      patch.status = value; // the database stamps the closed date (migration 0254)
     } else if (action === "priority") {
       const ok = ["low", "normal", "high", "urgent"];
       if (!value || !ok.includes(value)) return NextResponse.json({ error: "invalid priority" }, { status: 400 });

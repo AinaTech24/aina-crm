@@ -48,6 +48,7 @@ const Patch = z.object({
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
   assigneeId: z.string().uuid().optional(),
   dueAt: z.string().optional(),
+  entryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   slaDueAt: z.string().nullable().optional(),
   // Module 18 — explicit related entity + department + remarks
   // null unlinks (the task page's Related section).
@@ -155,7 +156,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // lifecycle branch below.
     const { checklist, approvalAction, approvalNote, ...rest } = parse.data;
     const patch: any = { ...rest, updatedAt: new Date() };
-    if (parse.data.status === "completed" && !patch.completedAt) patch.completedAt = new Date();
+    // The closed date is written by the database when the status BECOMES completed
+    // (migration 0254), so re-saving a task that is already completed keeps it.
     // Drizzle timestamp columns require Date objects — coerce the ISO strings
     // the client sends (passing a raw string makes Drizzle call .toISOString()
     // on it and throw a 500). An invalid/null string clears the value.

@@ -279,6 +279,11 @@ fills it from the newest record, which would print another record's folio.
 - Recipe `defaultTemplates` are NOT installed anywhere: the recipe's WhatsApp
   templates still have to exist in the firm for its WhatsApp steps to send.
 
+**`{{client.name}}`** (and any `{{client.<field>}}`) is the person the message goes
+to — the same record as `investor.*` / `lead.*` (`resolveOne`, `lib/comms/tokens.ts`),
+so the CRM's own WhatsApp templates (document collection) and a firm's hand-made
+ones greet the client by name.
+
 ### Adding a new compliance rule
 
 Append a function to `ALL_RULES` in `src/lib/comms/compliance.ts`. Each rule is `(ctx) => ComplianceFinding[]`. Severity `block` stops sends; `warn` shows in UI but allows; `info` is logged.
@@ -314,7 +319,10 @@ the client page's Overview tab.
   proposal has been shared, which proves they happened.
 - **Gates, never bypassed**: an MF proposal needs a client-CONFIRMED risk
   profile signed in the last 12 months (a provisional, age-suggested one does
-  not count); an insurance quote needs a recorded needs analysis; an MF
+  not count) — **except for a MINOR** (2026-10-30, `isMinorClient` in
+  `lib/investors/type-rules.ts`; `Facts.riskExempt`, `ProposalSnapshot.riskExempt`):
+  a minor goes to the proposal without a profile of their own, in the journey
+  and in the proposal send route, and no other client type is let off; an insurance quote needs a recorded needs analysis; an MF
   transaction needs KYC, a UCC and, for a SIP, a mandate covering it.
 - **Entry points**: "New opportunity" on the client page, the Cross-sell
   card's opportunity chips, and the new-lead form — `check-duplicate` also
@@ -452,6 +460,17 @@ dashboard-thresholds save and reset keep that key.
 - **Escalated to me counts as my own task**: `own()` in `lib/tasks/scope.ts`,
   the task page and its comments let that person open and discuss it; the
   Tasks list has the "Escalated to me" flag (`?flag=escalated_to_me`).
+
+## Tasks — entry date and closed date
+
+2026-10-30. `tasks.entry_date` (migration 0254) is the day the task was ENTERED:
+today (India) unless the New task form's **Entry date** says another day; editable
+on the task page. `tasks.completed_at` is the **closed date**, written by the
+database (`task_entry_and_closed_dates` trigger): set when the status BECOMES
+completed, kept when a completed task is re-saved, cleared when it is reopened —
+so the opportunity journey, bulk actions and workflows all get it. The task page
+shows Entry Date, and Closed Date once completed. Do not set `completed_at` from
+application code.
 
 ## Daily habits — the cues that bring people back (2026-10-08)
 
@@ -612,6 +631,16 @@ Bank / corporate / NBFC / post-office FDs a client placed through the firm —
   the old one becomes `renewed`.
 - **Access follows the client** (`investorScopeSql` / `loadViewableInvestor`);
   writes need `investor.edit.*`. Soft delete (`deleted_at`).
+
+## Insurance premium — typed per payment, stored annual
+
+2026-10-30. `insurance_policies.annual_premium` stays ANNUALISED (every dashboard
+reads it so). The Add policy form asks for the premium of ONE payment at the
+chosen frequency ("Premium each quarter (₹)", the figure on the policy document)
+and stores `annualFrom(amount, frequency)`; editing shows it back per payment
+(`lib/insurance/premium.ts`). A "quarterly 10,000" used to be typed into
+"Annual premium" and read back as 2,500 an installment. The policy page and the
+register show the per-payment figure under the annual one.
 
 ## KYC status from the KRA (NSE MF Invest)
 
@@ -1103,6 +1132,30 @@ the public site's links. The static `/kb/*.jpg` files stay unauthenticated. The 
   `loadArticleContext` in `lib/kb/help.ts`; the landing header and footer link
   to `/knowledge-base`.
 
+## The Brokerage card — where its figure comes from
+
+The Owner Dashboard's Brokerage card (`getBrokerage`, `lib/metrics/practice.ts`)
+adds `commission_rows.brokerage_amount` by statement month (the month a
+statement's period ends) — the Monthly Brokerage Statements uploaded as RTA
+files (`processBrokerageStatement`, `lib/rta/process.ts`). It is the registrar's
+GROSS brokerage, before TDS / GST, firm-wide. Three things made it wrong
+(2026-10-30, Nimesh C Shah):
+
+- **Money was read with `parseFloat`**: "12,345.67" became 12 and a clawback
+  "(500.00)" / "500.00-" became +500. Use `parseAmount` (`lib/rta/parsers.ts`).
+- **The statement's own "Total" line was stored as a fund house** and counted the
+  month twice; the parser now skips it and `getBrokerage` ignores such rows
+  already stored.
+- **Lines sharing a key (AMC, scheme, folio, period, type) kept only the first**
+  (`ON CONFLICT DO NOTHING`) while counting the rest imported. They are now added
+  together, and a re-import REPLACES the stored amounts (same file twice = same
+  total; a corrected statement wins).
+- A header whose brokerage column is not recognised now FAILS the import instead
+  of storing ₹0 for every line.
+
+Rows stored before this are fixed by re-importing the statement
+(RTA Imports → the file → Re-import).
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |
@@ -1174,8 +1227,12 @@ dashboard filters, each only narrowing). Client facts follow
   and `ensureSystemDashboards` for new firms) so they can be linked,
   favourited and defaulted. Their content lives in code and they are always
   locked. Two kinds:
-  - **widgets** — the Owner Dashboard: 16 cards from the widget library. Clone
-    it to vary it.
+  - **widgets** — the Owner Dashboard: 33 cards from the widget library (at most
+    `MAX_WIDGETS` = 40 on any dashboard), including the Opportunity pipeline
+    and Service requests cards (`widgets/pipelines.tsx`, loaders
+    `getOpportunityPipeline` / `getServiceRequestBreakdown` in lib/metrics; their
+    links open the Opportunities module — which now reads `rm`, `branch`,
+    `closed_from` / `closed_to` — and the Service Requests tabs). Clone it to vary it.
   - **centre** — the other five: a full role dashboard built from its own
     brief, rendered under the same header by
     `components/dashboards/system/centres.tsx`, which also applies that

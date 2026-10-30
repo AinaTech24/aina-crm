@@ -21,27 +21,8 @@ import { textList } from "@/lib/metrics";
 import { OPPORTUNITY_PRODUCTS, productLabel, type OpportunityPipeline } from "./products";
 import { stageName } from "./stages";
 
-export const BOARD_COLUMNS = [
-  { key: "identified", label: "Need identified", stages: ["identified"] },
-  { key: "discussion", label: "Discussion", stages: ["discussion"] },
-  { key: "suitability", label: "Suitability", stages: ["suitability"] },
-  { key: "proposal", label: "Proposal shared", stages: ["proposal"] },
-  { key: "accepted", label: "Client accepted", stages: ["accepted"] },
-  {
-    key: "processing", label: "Processing",
-    stages: ["mf_transaction", "txn_review", "rta_check", "ins_proposal_form", "ins_underwriting", "ins_issued", "gen_executed"],
-  },
-  // Not a journey step: an open opportunity the client asked to revisit later.
-  { key: "later", label: "Later", stages: [] },
-  { key: "won", label: "Won", stages: ["won"] },
-  { key: "lost", label: "Lost", stages: ["lost"] },
-] as const;
-export type BoardColumnKey = (typeof BOARD_COLUMNS)[number]["key"];
-const OPEN_COLUMNS = BOARD_COLUMNS.filter((c) => c.key !== "won" && c.key !== "lost");
-
-export function columnOf(stageKey: string | null): BoardColumnKey {
-  return BOARD_COLUMNS.find((c) => (c.stages as readonly string[]).includes(stageKey ?? ""))?.key ?? "identified";
-}
+import { BOARD_COLUMNS, OPEN_COLUMNS, columnOf, type BoardColumnKey } from "./board-columns";
+export { BOARD_COLUMNS, columnOf, type BoardColumnKey };
 
 export type BoardRow = {
   id: string;
@@ -80,6 +61,12 @@ export type BoardFilters = {
   mine?: boolean;
   createdFrom?: string;
   createdTo?: string;
+  /** Won / lost between these India dates — what a dashboard card's count opens onto. */
+  closedFrom?: string;
+  closedTo?: string;
+  /** The CLIENT's relationship manager / branch (a dashboard card's RM and branch filters). Only ever narrows. */
+  rm?: string[];
+  branch?: string[];
 };
 
 export type BoardKpis = {
@@ -158,6 +145,13 @@ function filterSql(f: BoardFilters, userId: string): SQL[] {
   const day = sql`(o.created_at AT TIME ZONE 'Asia/Kolkata')::date`;
   if (f.createdFrom && ISO.test(f.createdFrom)) w.push(sql`${day} >= ${f.createdFrom}::date`);
   if (f.createdTo && ISO.test(f.createdTo)) w.push(sql`${day} <= ${f.createdTo}::date`);
+  const closed = sql`(COALESCE(o.won_at, o.lost_at) AT TIME ZONE 'Asia/Kolkata')::date`;
+  if (f.closedFrom && ISO.test(f.closedFrom)) w.push(sql`${closed} >= ${f.closedFrom}::date`);
+  if (f.closedTo && ISO.test(f.closedTo)) w.push(sql`${closed} <= ${f.closedTo}::date`);
+  const rms = (f.rm ?? []).filter((x) => UUID.test(x));
+  if (rms.length) w.push(sql`i.rm_id::text IN (${textList(rms)})`);
+  const branches = (f.branch ?? []).filter((x) => UUID.test(x));
+  if (branches.length) w.push(sql`i.branch_id::text IN (${textList(branches)})`);
   return w;
 }
 

@@ -27,7 +27,8 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  * A mutual fund line needs the client's CONFIRMED risk profile, signed in the
  * last 12 months (lib/proposals/snapshot — a provisional, stale or missing one
- * stops it), like an opportunity's proposal step. No override.
+ * stops it), like an opportunity's proposal step. No override — except that a
+ * MINOR client needs none (the firm's rule of 2026-10-30).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -318,11 +319,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .map((it) => ({ name: it.schemeName ?? "Scheme", riskRating: it.riskRating ?? null }));
       // ── Risk profile gate: no mutual fund recommendation without the
       //    client's confirmed profile (signed, not provisional, < 12 months).
+      // A MINOR needs none (2026-10-30): the guardian's profile is theirs and a
+      // minor often has no questionnaire of their own. Only a minor — never
+      // another client type.
       if (mfLines.length) {
         const snap = await loadProposalSnapshot(tx, session.tenantId, {
           investorId: p.investorId, familyId: (p as any).familyId ?? null, leadId: p.leadId,
         });
-        if (snap?.risk.status !== "Completed") {
+        if (!snap?.riskExempt && snap?.risk.status !== "Completed") {
           const why = snap?.risk.status === "Provisional" ? "is only provisional (not confirmed by the client)"
             : snap?.risk.status === "Due for review" ? "is more than a year old"
             : "is not on record";

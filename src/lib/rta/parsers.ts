@@ -157,7 +157,7 @@ const BROKERAGE_ALIASES: Record<string, string[]> = {
   periodEnd: ["PERIOD_END", "END_DATE", "TO_DATE", "TO DATE", "PERIOD END", "END DATE", "PROC_DATE", "PROCESS DATE"],
   aumAmount: ["AUM", "AVG_AUM", "AVERAGE_AUM", "AUM_AMOUNT", "AVG AUM", "AVERAGE AUM", "AVERAGE ASSETS", "DAILY PRODUCT", "PLOT_AMOUNT", "AMOUNT (IN RS.)"],
   brokerageRate: ["RATE", "BROKERAGE_RATE", "COMMISSION_RATE", "BROK_RATE", "COMM_RATE", "BRKAGE_RATE", "PERCENTAGE (%)", "PERCENTAGE", "BRKAGE RATE"],
-  brokerageAmount: ["BROKERAGE_AMOUNT", "COMMISSION_AMOUNT", "BROK_AMOUNT", "COMM_AMOUNT", "BRKAGE_AMT", "BROKERAGE (IN RS.)", "BROKERAGE IN RS", "BRKAGE AMT", "BRKAGE_AMOUNT"],
+  brokerageAmount: ["BROKERAGE_AMOUNT", "BROKERAGE", "BROK_AMT", "COMMISSION", "COMMISSION_AMOUNT", "BROK_AMOUNT", "COMM_AMOUNT", "BRKAGE_AMT", "BROKERAGE (IN RS.)", "BROKERAGE IN RS", "BRKAGE AMT", "BRKAGE_AMOUNT"],
 };
 
 const DEFAULT_FOLIO_MST_MAP = {
@@ -348,6 +348,30 @@ export function parseSipRejectionReport(
   return out;
 }
 
+// ── Money as a statement prints it ──────────────────────────────────────
+
+/**
+ * A figure as the registrars print it: "12,345.67", "Rs. 1,200", "(500.00)" and
+ * "500.00-" (a clawback / reversal), "500.00 Dr". `parseFloat` reads the first
+ * of those as 12 and the last three as POSITIVE 500 — a brokerage statement's
+ * total came out wrong in both directions (lost thousands, reversals added).
+ * Blank or unreadable is 0.
+ */
+export function parseAmount(raw: string | null | undefined): number {
+  const t = String(raw ?? "").trim();
+  if (!t) return 0;
+  const negative = /^\(.*\)$/.test(t) || /^-/.test(t) || /-$/.test(t) || /\bdr\b\.?$/i.test(t);
+  // "Rs." / "INR" / "₹" in front would leave a stray dot behind.
+  const n = parseFloat(t.replace(/^\s*\(?\s*(rs\.?|inr|₹)/i, "").replace(/[^0-9.]/g, ""));
+  if (!Number.isFinite(n)) return 0;
+  return negative ? -n : n;
+}
+
+/** A statement's own "Total" / "Grand total" / "Sub total" line — not a row of brokerage. */
+export function isStatementTotalRow(cells: Array<string | null | undefined>): boolean {
+  return cells.some((c) => /^\s*(grand\s*|sub\s*|net\s*)?totals?\b/i.test(String(c ?? "")));
+}
+
 // ── Monthly brokerage statement ─────────────────────────────────────────
 
 export function parseBrokerageStatement(
@@ -359,6 +383,13 @@ export function parseBrokerageStatement(
   if (!lines.length) return out;
   const delim = getDelimiter(source, lines[0] ?? "");
   const { start, indexMap } = resolveHeader(lines[0] ?? "", delim, BROKERAGE_ALIASES, DEFAULT_BROKERAGE_MAP);
+  // A header we read but whose brokerage column we cannot find would import
+  // every line at ₹0 and call it done. Say so instead.
+  if (start === 1 && indexMap.brokerageAmount === undefined) {
+    throw new Error(
+      `The brokerage statement's amount column was not recognised (columns seen: ${splitLine(lines[0] ?? "", delim).map((c) => c.trim()).filter(Boolean).slice(0, 25).join(", ")}). Nothing was imported.`
+    );
+  }
 
   for (let i = start; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -368,6 +399,11 @@ export function parseBrokerageStatement(
     if (cols.length <= maxIdx) continue;
 
     const val = (field: string) => cols[indexMap[field as keyof typeof indexMap]]?.trim() ?? "";
+
+    // The statement's own total line (and a line with no fund house, scheme or
+    // folio at all) is not brokerage earned: counted, it doubled the month.
+    if (isStatementTotalRow([val("amcCode"), val("schemeName"), val("schemeCode"), val("folioNumber")])) continue;
+    if (!val("amcCode") && !val("schemeName") && !val("schemeCode") && !val("folioNumber")) continue;
 
     const typeRaw = val("brokerageType").toUpperCase();
     let brokerageType: CanonicalBrokerageRow["brokerageType"] = "other";
@@ -384,9 +420,9 @@ export function parseBrokerageStatement(
       brokerageType,
       periodStart: normaliseDate(val("periodStart")) ?? today(),
       periodEnd: normaliseDate(val("periodEnd")) ?? today(),
-      aumAmount: parseFloat(val("aumAmount") ?? "0") || 0,
-      brokerageRate: parseFloat(val("brokerageRate") ?? "0") || 0,
-      brokerageAmount: parseFloat(val("brokerageAmount") ?? "0") || 0,
+      aumAmount: parseAmount(val("aumAmount")),
+      brokerageRate: parseAmount(val("brokerageRate")),
+      brokerageAmount: parseAmount(val("brokerageAmount")),
     });
   }
   return out;

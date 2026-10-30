@@ -19,6 +19,7 @@
  */
 
 import { loadExposureBook } from "@/lib/investors/exposure-book";
+import { isMinorClient } from "@/lib/investors/type-rules";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { folios, goals, investors, leads, families } from "@/db/schema";
 import { loadClientSummary } from "@/lib/investors/summary";
@@ -37,6 +38,11 @@ export type ProposalSnapshot = {
   /** Can the proposal actually reach them? */
   hasEmail: boolean;
   hasPhone: boolean;
+  /**
+   * A minor needs no risk profile to be sent a proposal (the firm's rule of
+   * 2026-10-30). Only ever true for a minor client.
+   */
+  riskExempt: boolean;
   risk: {
     /** conservative / moderate / aggressive / very_aggressive, or null. */
     category: string | null;
@@ -92,6 +98,8 @@ async function investorSnapshot(tx: Tx, tenantId: string, investorId: string): P
       riskProfile: investors.riskProfile,
       riskScore: investors.riskProfileScore,
       riskSignedAt: investors.riskProfileSignedAt,
+      investorCategory: investors.investorCategory,
+      isMinor: investors.isMinor,
     })
     .from(investors)
     .where(and(eq(investors.id, investorId), eq(investors.tenantId, tenantId), isNull(investors.deletedAt)))
@@ -121,6 +129,7 @@ async function investorSnapshot(tx: Tx, tenantId: string, investorId: string): P
     rm: summary?.rm ?? null,
     hasEmail: !!inv.email,
     hasPhone: !!inv.phone,
+    riskExempt: isMinorClient(inv),
     risk: {
       category: inv.riskProfile ?? null,
       score: inv.riskScore != null ? Number(inv.riskScore) : null,
@@ -187,6 +196,7 @@ async function leadSnapshot(tx: Tx, tenantId: string, leadId: string): Promise<P
     rm: owner?.name ?? null,
     hasEmail: !!l.email,
     hasPhone: !!l.phone,
+    riskExempt: false,
     risk,
     holdings: null,
     band: null,

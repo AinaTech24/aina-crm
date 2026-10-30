@@ -47,6 +47,10 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
     mine: sp.mine === "1",
     createdFrom: sp.created_from,
     createdTo: sp.created_to,
+    closedFrom: sp.closed_from,
+    closedTo: sp.closed_to,
+    rm: csv(sp.rm),
+    branch: csv(sp.branch),
   };
   const canWork = canWorkOpportunities(session);
 

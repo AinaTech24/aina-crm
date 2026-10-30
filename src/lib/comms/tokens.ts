@@ -107,12 +107,16 @@ function resolveOne(def: VariableDef, ctx: ResolveContext): unknown {
   const [root, ...rest] = source.split(".");
   const subject: any = ctx.subject ?? {};
   const context: any = ctx.context ?? {};
-  // Map the merge-field namespaces to the loaded records. investor/lead both map
+  // Map the merge-field namespaces to the loaded records. investor/lead/client all map
   // to the subject; transaction/family/system come from the run context.
   const roots: Record<string, any> = {
     subject,
     investor: subject,
     lead: subject,
+    // {{client.name}} — what the CRM's own WhatsApp templates (document
+    // collection, …) and a firm's hand-made ones are written with. It is the
+    // person the message goes to, i.e. the subject, like investor.* and lead.*.
+    client: subject,
     family: subject.family ?? context.family ?? {},
     transaction: context.transaction ?? {},
     system: context.system ?? {},

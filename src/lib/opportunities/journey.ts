@@ -63,6 +63,7 @@ import { clientOpportunities, eventsOutbox, tasks, type ClientOpportunity, type 
 import { blueprintStageHistory } from "@/db/schema";
 import { ensureInstanceFor, transitionPoly } from "@/lib/blueprints/poly-engine";
 import { recordAudit } from "@/lib/audit";
+import { isMinorClient } from "@/lib/investors/type-rules";
 import { createNotification } from "@/lib/notifications/create";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
@@ -106,6 +107,8 @@ export type Facts = {
   mandateAmount: number | null;
   riskState: "awaiting" | "not_profiled" | "current" | "expired";
   riskSignedAt: string | null;
+  /** A minor needs no risk profile (the firm's rule of 2026-10-30) — never true for another client type. */
+  riskExempt: boolean;
   proposal: { id: string; status: string; type: string } | null;
   policy: { id: string; status: string; policyType: string | null } | null;
   transaction: { id: string; orderDate: string | null; amount: number | null } | null;
@@ -119,7 +122,7 @@ export type Facts = {
 export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> {
   const inv = (await tx.execute(sql`
     SELECT kyc_status, bse_ucc_code, nse_can_code, ucc_codes, mandate_status, mandate_amount,
-           risk_profile_signed_at, risk_profile_provisional
+           risk_profile_signed_at, risk_profile_provisional, investor_category, is_minor
       FROM investors WHERE id = ${opp.investorId}::uuid AND tenant_id = ${opp.tenantId}::uuid
   `)).rows[0] as Record<string, any> | undefined;
 
@@ -217,6 +220,7 @@ export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> 
     mandateAmount: inv?.mandate_amount == null ? null : Number(inv.mandate_amount),
     riskState,
     riskSignedAt: signed ? signed.toISOString() : null,
+    riskExempt: isMinorClient({ investorCategory: inv?.investor_category, isMinor: inv?.is_minor }),
     proposal: proposal ?? null,
     policy,
     transaction,
@@ -233,6 +237,8 @@ const hasNeedsAnalysis = (n: NeedsAnalysis | null | undefined) =>
 export function gateFor(target: string, opp: ClientOpportunity, f: Facts): Prerequisite[] {
   const client = `/dashboard/investors/${opp.investorId}`;
   if (target === "proposal" && opp.pipeline === "mf") {
+    // A minor goes to the proposal without a risk profile of their own.
+    if (f.riskExempt) return [];
     return [{
       label: "A client-confirmed risk profile signed in the last 12 months",
       satisfied: f.riskState === "current",
@@ -310,6 +316,7 @@ type Skip = { reason: string; kind: "on_file" | "evidence" };
 export function skipReason(stage: string, opp: ClientOpportunity, f: Facts): Skip | null {
   switch (stage) {
     case "suitability": {
+      if (opp.pipeline === "mf" && f.riskExempt) return { kind: "on_file", reason: "a minor needs no risk profile" };
       const g = gateFor("proposal", opp, f);
       if (g.length && g.every((p) => p.satisfied)) {
         return { kind: "on_file", reason: opp.pipeline === "mf" ? "risk profile is current" : "needs analysis recorded" };

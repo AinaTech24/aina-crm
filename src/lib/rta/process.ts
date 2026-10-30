@@ -822,13 +822,36 @@ async function processBrokerageStatement(
   let minDate = "9999-12-31";
   let maxDate = "0000-01-01";
 
-  // Brokerage flows into commission_rows (already exists). If commission
-  // schema isn't available we degrade gracefully.
+  // Brokerage flows into commission_rows. The table's natural key is (AMC,
+  // scheme, folio, period, type): a statement that prints several lines for
+  // one key — an upfront line per transaction, a split trail line — used to
+  // keep the FIRST (ON CONFLICT DO NOTHING) and drop the rest while counting
+  // them imported, so the firm's brokerage came out short. Lines with one key
+  // are now added together before they are stored, and a re-import (or a
+  // corrected statement) REPLACES the stored amounts instead of being ignored,
+  // so uploading the same file twice still gives the same total.
+  type Line = { r: CanonicalBrokerageRow; aum: number; amount: number; rateTimesAum: number; first: number };
+  const lines = new Map<string, Line>();
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (r.periodStart < minDate) minDate = r.periodStart;
     if (r.periodEnd > maxDate) maxDate = r.periodEnd;
+    const key = [r.amcCode, r.schemeCode, r.folioNumber, r.periodStart, r.periodEnd, r.brokerageType].join("\u0001");
+    const l = lines.get(key);
+    if (l) {
+      l.aum += r.aumAmount;
+      l.amount += r.brokerageAmount;
+      l.rateTimesAum += r.brokerageRate * r.aumAmount;
+    } else {
+      lines.set(key, { r, aum: r.aumAmount, amount: r.brokerageAmount, rateTimesAum: r.brokerageRate * r.aumAmount, first: i + 1 });
+    }
+  }
+  skipped += rows.length - lines.size; // folded into another line of the same key, not lost
 
+  for (const l of lines.values()) {
+    const r = l.r;
+    // The rate over the added lines: the AUM-weighted average of their rates.
+    const rate = l.aum ? l.rateTimesAum / l.aum : r.brokerageRate;
     await tx.execute(sql`SAVEPOINT rta_item`);
     try {
       await tx.execute(sql`
@@ -839,9 +862,15 @@ async function processBrokerageStatement(
         ) VALUES (
           ${args.tenantId}::uuid, ${r.amcCode}, ${r.schemeCode}, ${r.schemeName}, ${r.folioNumber},
           ${r.pan.toUpperCase()}, ${r.brokerageType}, ${r.periodStart}::date, ${r.periodEnd}::date,
-          ${r.aumAmount}, ${r.brokerageRate}, ${r.brokerageAmount}, ${args.source}
+          ${l.aum}, ${rate}, ${l.amount}, ${args.source}
         )
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (tenant_id, amc_code, scheme_code, folio_number, period_start, period_end, brokerage_type)
+        DO UPDATE SET aum_amount = EXCLUDED.aum_amount,
+                      brokerage_rate = EXCLUDED.brokerage_rate,
+                      brokerage_amount = EXCLUDED.brokerage_amount,
+                      scheme_name = COALESCE(EXCLUDED.scheme_name, commission_rows.scheme_name),
+                      pan = COALESCE(NULLIF(EXCLUDED.pan, ''), commission_rows.pan),
+                      source = EXCLUDED.source
       `);
       imported++;
       await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
@@ -853,7 +882,7 @@ async function processBrokerageStatement(
         skipped++;
       } else {
         failed++;
-        errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
+        errors.push({ row: l.first, reason: e.message ?? "insert failed" });
       }
     }
   }

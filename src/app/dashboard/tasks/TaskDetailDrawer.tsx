@@ -81,6 +81,11 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
   const [status, setStatus] = useState(task.status);
   const [priority, setPriority] = useState(task.priority);
   const [assigneeId, setAssigneeId] = useState(task.assigneeId ?? "");
+  const [entryDate, setEntryDate] = useState<string>(() => {
+    const e = (task as { entryDate?: string | null }).entryDate;
+    if (e) return String(e).slice(0, 10);
+    return task.createdAt ? new Date(task.createdAt).toISOString().split("T")[0] : "";
+  });
   const [dueDate, setDueDate] = useState(() => {
     if (!task.dueAt) return "";
     return new Date(task.dueAt).toISOString().split("T")[0];
@@ -246,6 +251,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
         // not sent: a save keeps the task's department, which the Operations
         // Dashboard reads to decide what is operations work.
         assigneeId: assigneeId || undefined,
+        entryDate: entryDate || undefined,
         dueAt: dueDate ? new Date(dueDate).toISOString() : undefined,
         slaDueAt: slaDate ? new Date(slaDate).toISOString() : null,
         remarks: finalRemarks || undefined,
@@ -485,6 +491,25 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                 <option value="urgent">Urgent</option>
               </SelectField>
             </div>
+
+            <div>
+              <label htmlFor={`${uid}-entry-date`} className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Entry Date</label>
+              <DateField id={`${uid}-entry-date`}
+                value={entryDate}
+                onChange={(e) => setEntryDate(e.target.value)}
+                size="sm"
+                className="w-full"
+              />
+            </div>
+
+            {task.completedAt && task.status === "completed" && (
+              <div>
+                <div className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Closed Date</div>
+                <div className="rounded-md border border-border bg-secondary/40 px-2.5 py-1.5 text-sm" data-testid="task-closed-date">
+                  {formatDate(task.completedAt)}
+                </div>
+              </div>
+            )}
 
             <div>
               <label htmlFor={`${uid}-due-date`} className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Due Date</label>

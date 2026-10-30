@@ -57,9 +57,12 @@ export const tasks = pgTable(
     assigneeId: uuid("assignee_id").references(() => users.id),
     createdById: uuid("created_by_id").references(() => users.id),
 
+    /** The day the task was entered (migration 0254). Defaults to today; the form may set another day. */
+    entryDate: date("entry_date"),
     dueAt: timestamp("due_at", { withTimezone: true }),
     slaDueAt: timestamp("sla_due_at", { withTimezone: true }),
     startedAt: timestamp("started_at", { withTimezone: true }),
+    /** The closed date — set by the database when status becomes completed, cleared when it leaves it (migration 0254). */
     completedAt: timestamp("completed_at", { withTimezone: true }),
 
     /**

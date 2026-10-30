@@ -38,6 +38,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { ExtractionTimeline } from "@/components/insurance/ExtractionTimeline";
 import { OptionalCoversMatrix } from "@/components/insurance/OptionalCoversMatrix";
 import { formatINR } from "@/lib/utils";
+import { annualFrom, eachPeriod, installmentOf, premiumFieldLabel } from "@/lib/insurance/premium";
 import type { InsuranceExtraction, InsuranceCategory } from "@/lib/ai/assistant";
 
 const POLICY_TYPES: [string, string][] = [
@@ -113,13 +114,9 @@ const MOTOR_ADD_ONS: [string, string][] = [
   ["tyre_protect", "Tyre protection"],
 ];
 
-const FREQ_FACTORS: Record<string, number> = {
-  single: 0,
-  annual: 1,
-  semi_annual: 2,
-  quarterly: 4,
-  monthly: 12,
-};
+
+/** What is paid each time, from the stored annual premium, as the form's text value. */
+const perInstallment = (annual: number, freq: string) => String(installmentOf(annual, freq));
 
 /** Friendly labels for the low-confidence + filled-field summaries. */
 const FIELD_LABELS: Record<string, string> = {
@@ -163,7 +160,7 @@ function NewInsuranceForm() {
     policyType: "term",
     livesCovered: 1,
     sumAssured: "",
-    annualPremium: "",
+    premiumAmount: "", // what is paid each time, at the chosen frequency (the annual figure is worked out)
     commission: "",
     premiumFrequency: "annual",
     premiumPayingTermYears: "",
@@ -227,7 +224,7 @@ function NewInsuranceForm() {
           policyType: data.policyType || "term",
           livesCovered: data.livesCovered || 1,
           sumAssured: data.sumAssured != null ? String(data.sumAssured) : "",
-          annualPremium: data.annualPremium != null ? String(data.annualPremium) : "",
+          premiumAmount: data.annualPremium != null ? perInstallment(Number(data.annualPremium), data.premiumFrequency || "annual") : "",
           commission: data.commissionPaisa != null ? String(data.commissionPaisa) : "",
           premiumFrequency: data.premiumFrequency || "annual",
           premiumPayingTermYears:
@@ -367,7 +364,11 @@ function NewInsuranceForm() {
       policyType: x.policyType ?? s.policyType,
       livesCovered: x.livesCovered ?? s.livesCovered,
       sumAssured: x.sumAssured != null ? String(x.sumAssured) : s.sumAssured,
-      annualPremium: x.annualPremium != null ? String(x.annualPremium) : s.annualPremium,
+      // The reader finds the ANNUAL premium; the form holds what is paid each time.
+      premiumAmount:
+        x.annualPremium != null
+          ? perInstallment(Number(x.annualPremium), x.premiumFrequency ?? s.premiumFrequency)
+          : s.premiumAmount,
       premiumFrequency: x.premiumFrequency ?? s.premiumFrequency,
       premiumPayingTermYears:
         x.premiumPayingTermYears != null ? String(x.premiumPayingTermYears) : s.premiumPayingTermYears,
@@ -452,12 +453,14 @@ function NewInsuranceForm() {
     }
   }
 
-  const installment = useMemo(() => {
-    const ann = parseFloat(form.annualPremium) || 0;
-    const factor = FREQ_FACTORS[form.premiumFrequency] ?? 1;
-    if (!ann || !factor) return null;
-    return ann / factor;
-  }, [form.annualPremium, form.premiumFrequency]);
+  // What the person typed is the premium for ONE payment at the chosen
+  // frequency (the policy document's figure); the annual premium every
+  // dashboard uses is that times the payments a year. They read the annual
+  // figure back below, so a quarterly 10,000 is never mistaken for 2,500.
+  const annualPremium = useMemo(() => {
+    const amt = parseFloat(form.premiumAmount) || 0;
+    return amt ? annualFrom(amt, form.premiumFrequency) : null;
+  }, [form.premiumAmount, form.premiumFrequency]);
 
   function autoMaturity() {
     if (!form.policyStartDate || !form.policyTermYears) return;
@@ -493,7 +496,7 @@ function NewInsuranceForm() {
         policyType: form.policyType,
         livesCovered: Number(form.livesCovered) || 1,
         sumAssured: form.sumAssured ? Number(form.sumAssured) : undefined,
-        annualPremium: form.annualPremium ? Number(form.annualPremium) : undefined,
+        annualPremium: annualPremium ?? undefined,
         commissionPaisa: form.commission ? Number(form.commission) : undefined,
         premiumFrequency: form.premiumFrequency,
         premiumPayingTermYears: form.premiumPayingTermYears
@@ -663,13 +666,6 @@ function NewInsuranceForm() {
             value={form.sumAssured}
             setValue={(v) => set("sumAssured", v)}
           />
-          <Field
-            label="Annual premium (₹)"
-            type="number"
-            placeholder="18000"
-            value={form.annualPremium}
-            setValue={(v) => set("annualPremium", v)}
-          />
           <Select
             label="Premium frequency"
             value={form.premiumFrequency}
@@ -682,6 +678,13 @@ function NewInsuranceForm() {
             <option value="monthly">Monthly</option>
           </Select>
           <Field
+            label={premiumFieldLabel(form.premiumFrequency)}
+            type="number"
+            placeholder="10000"
+            value={form.premiumAmount}
+            setValue={(v) => set("premiumAmount", v)}
+          />
+          <Field
             label="Commission (₹)"
             type="number"
             placeholder="e.g. 5400"
@@ -689,12 +692,21 @@ function NewInsuranceForm() {
             setValue={(v) => set("commission", v)}
           />
         </div>
-        {installment != null && (
+        {annualPremium != null && (
           <div className="rounded-lg bg-brand-cyan-light/30 border border-brand-cyan/20 px-3 py-2 text-xs flex items-center gap-2">
             <IndianRupee className="size-3.5 text-brand-cyan-deep" />
             <span>
-              Each installment ≈ <strong className="tabular-nums">{formatINR(Math.round(installment))}</strong> ·{" "}
-              {form.premiumFrequency.replace(/_/g, " ")}
+              {eachPeriod(form.premiumFrequency) ? (
+                <>
+                  You pay <strong className="tabular-nums">{formatINR(parseFloat(form.premiumAmount))}</strong>{" "}
+                  {eachPeriod(form.premiumFrequency)} — <strong className="tabular-nums">{formatINR(Math.round(annualPremium))}</strong> a year
+                </>
+              ) : (
+                <>
+                  Premium <strong className="tabular-nums">{formatINR(annualPremium)}</strong>
+                  {form.premiumFrequency === "single" ? ", paid once" : " a year"}
+                </>
+              )}
             </span>
           </div>
         )}

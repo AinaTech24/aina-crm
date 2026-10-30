@@ -70,3 +70,37 @@ describe("resolveTokens — system-owned namespaces", () => {
     expect(resolveTokens(null as unknown as VariableDef[], ctx())).toEqual({});
   });
 });
+
+describe("{{client.name}} — the person the message goes to", () => {
+  // The CRM's own WhatsApp templates (document collection) and many a firm's
+  // hand-made ones greet "{{client.name}}". Only investor.* and lead.* were
+  // known, so a send went out with a blank name.
+  it("fills a declared client.name from the subject, like investor.name", () => {
+    const vars: VariableDef[] = [
+      { key: "client.name", type: "string" },
+      { key: "investor.name", type: "string" },
+    ];
+    const out = resolveTokens(vars, ctx());
+    expect(out["client.name"]).toBe("Bhavesh Bhoi");
+    expect(out["client.name"]).toBe(out["investor.name"]);
+  });
+
+  it("reaches the other fields of the subject too, snake_case or camelCase", () => {
+    const out = resolveTokens(
+      [{ key: "client.risk_profile", type: "string" }],
+      ctx(),
+    );
+    expect(out["client.risk_profile"]).toBe("moderate");
+  });
+
+  it("a value the caller passed still wins", () => {
+    const out = resolveTokens([{ key: "client.name", type: "string" }], ctx({ "client.name": "Asha" }));
+    expect(out["client.name"]).toBe("Asha");
+  });
+
+  it("renders into the message body", async () => {
+    const { renderTemplateText, resolveTokenPath } = await import("@/lib/comms/tokens");
+    const tokens = { "client.name": resolveTokenPath("client.name", ctx()) };
+    expect(renderTemplateText("Hello {{client.name}}, please upload your KYC.", tokens)).toBe("Hello Bhavesh Bhoi, please upload your KYC.");
+  });
+});

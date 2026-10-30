@@ -19,6 +19,7 @@ import { dataWallAppliesFor } from "@/lib/investors/access";
 import { seesWholeInsuranceBook } from "@/lib/dashboard/insurance/access";
 import { loadViewablePolicy } from "@/lib/insurance/register-access";
 import { formatDate, formatINR } from "@/lib/utils";
+import { eachPeriod, installmentOf } from "@/lib/insurance/premium";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -147,6 +148,9 @@ export default async function InsuranceDetailPage({
           icon={IndianRupee}
           label="Annual premium"
           value={p.annualPremium ? formatINR(Number(p.annualPremium)) : "—"}
+          sub={p.annualPremium && eachPeriod(p.premiumFrequency)
+            ? `${formatINR(installmentOf(Number(p.annualPremium), p.premiumFrequency))} ${eachPeriod(p.premiumFrequency)}`
+            : undefined}
           accent="emerald"
         />
         <Tile
@@ -270,11 +274,14 @@ function Tile({
   icon: Icon,
   label,
   value,
+  sub,
   accent,
 }: {
   icon: any;
   label: string;
   value: string;
+  /** A second line under the value (what is paid each time). */
+  sub?: string;
   accent?: "cyan" | "emerald" | "amber" | "rose" | "muted";
 }) {
   const bg: Record<string, string> = {
@@ -295,6 +302,7 @@ function Tile({
         </div>
       </div>
       <div className="text-xl font-bold mt-2 tabular-nums tracking-tight">{value}</div>
+      {sub && <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">{sub}</div>}
     </div>
   );
 }
