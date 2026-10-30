@@ -28,10 +28,11 @@ import { createNotification } from "@/lib/notifications/create";
 import { resolveEmailSender, type EmailSender } from "@/lib/comms/sender";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { captureError } from "@/lib/observability/capture";
+import { renderBriefingEmail, type BriefingFirm } from "@/lib/briefing/email";
 
 const FIRM_WIDE_ROLES = new Set(["owner", "branch_head"]);
 const MAX_USERS_PER_TENANT = 50;
-const MAX_GROUPS_IN_DIGEST = 4;
+const MAX_GROUPS_IN_DIGEST = 4; // the in-app notification's one-line summary
 
 /** Absolute origin for email links (worker context — no request headers). */
 function appBaseUrl(): string {
@@ -42,46 +43,12 @@ function appBaseUrl(): string {
   ).replace(/\/+$/, "");
 }
 
-const esc = (s: string) =>
-  (s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-
 /** "12 Overdue tasks · 2 Meetings today · 1 SIP bounce" from the top groups. */
 function oneLineSummary(groups: ActionGroup[]): string {
   return groups
     .slice(0, MAX_GROUPS_IN_DIGEST)
     .map((g) => `${g.count} ${g.label}`)
     .join(" · ");
-}
-
-/** Minimal, clean 600px HTML digest — greeting, group headings + top items, CTA. */
-function briefingHtml(userName: string, groups: ActionGroup[], totalCount: number): string {
-  const url = `${appBaseUrl()}/dashboard`;
-  const sections = groups
-    .slice(0, MAX_GROUPS_IN_DIGEST)
-    .map((g) => {
-      const lines = g.items
-        .slice(0, 3)
-        .map(
-          (it) =>
-            `<li style="margin:4px 0;color:#334155;font-size:13px;line-height:1.5;">${esc(it.title)}${
-              it.detail ? ` <span style="color:#94a3b8;">— ${esc(it.detail)}</span>` : ""
-            }</li>`
-        )
-        .join("");
-      const more = g.count > 3 ? `<li style="margin:4px 0;color:#94a3b8;font-size:12px;">…and ${g.count - 3} more</li>` : "";
-      return `<h3 style="margin:18px 0 6px;font-size:14px;color:#0f172a;">${esc(g.label)} <span style="color:#64748b;font-weight:normal;">(${g.count})</span></h3>
-        <ul style="margin:0;padding-left:18px;">${lines}${more}</ul>`;
-    })
-    .join("");
-  return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;padding:8px 4px;">
-    <h2 style="margin:0 0 4px;font-size:18px;">☀️ Good morning, ${esc(userName)}</h2>
-    <p style="margin:0 0 8px;color:#475569;font-size:13px;">${totalCount} thing${totalCount === 1 ? "" : "s"} need${totalCount === 1 ? "s" : ""} you today. Here's your day at a glance:</p>
-    ${sections}
-    <p style="margin:24px 0 0;">
-      <a href="${url}" style="display:inline-block;background:#B71A20;color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:10px 18px;border-radius:8px;">Open your dashboard</a>
-    </p>
-    <p style="font-size:11px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;">You're receiving this daily briefing because you're an active user of your firm's Growth OS.</p>
-  </div>`;
 }
 
 async function listActiveTenants(): Promise<string[]> {
@@ -127,6 +94,13 @@ async function briefTenant(tenantId: string, istDate: string): Promise<{ sent: n
       const users = usersRes.rows as Array<{ id: string; name: string; email: string; roles: string[] }>;
       if (!users.length) return;
 
+      // The firm heads the email: its name, logo and colour.
+      const firmRes = await tx.execute(sql`
+        SELECT display_name, logo_url, primary_color FROM tenants WHERE id = ${tenantId}::uuid
+      `);
+      const f = firmRes.rows[0] as { display_name: string; logo_url: string | null; primary_color: string | null } | undefined;
+      const firm: BriefingFirm = { name: f?.display_name ?? "Your firm", logoUrl: f?.logo_url, color: f?.primary_color };
+
       // Dedupe — users already briefed today (IST). One query for the tenant.
       const doneRes = await tx.execute(sql`
         SELECT user_id FROM notifications
@@ -169,13 +143,14 @@ async function briefTenant(tenantId: string, istDate: string): Promise<{ sent: n
         if (user.email) {
           try {
             const sender = await resolveEmailSender(tx as any, tenantId, String(user.id));
+            const mail = renderBriefingEmail({ userName: user.name ?? "", firm, groups, baseUrl: appBaseUrl() });
             emails.push({
               tenantId,
               userId: String(user.id),
               recipient: user.email,
-              subject: `Your morning briefing — ${totalCount} thing${totalCount === 1 ? "" : "s"} need you today`,
-              text: summary,
-              html: briefingHtml(user.name ?? "there", groups, totalCount),
+              subject: mail.subject,
+              text: mail.text,
+              html: mail.html,
               sender,
               idempotencyKey: `briefing:${user.id}:${istDate}`,
             });
