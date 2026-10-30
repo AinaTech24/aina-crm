@@ -3,11 +3,15 @@
  * floating pill navbar and footer. (kb.css is scoped to .kb-site — see the note there.)
  */
 
+import { notFound } from "next/navigation";
 import "./kb.css";
+import { canReadKnowledgeBase } from "@/lib/kb/access";
 import { KbNav } from "@/components/kb/KbNav";
 import { KbFooter } from "@/components/kb/KbFooter";
 
-export default function KnowledgeBaseLayout({ children }: { children: React.ReactNode }) {
+// Gated per request (session cookie), so no page under here is statically cached.
+export default async function KnowledgeBaseLayout({ children }: { children: React.ReactNode }) {
+  if (!(await canReadKnowledgeBase())) notFound();
   return (
     <div className="kb-site">
       <link rel="preconnect" href="https://fonts.googleapis.com" />

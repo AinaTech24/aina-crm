@@ -15,7 +15,6 @@ export const SITE_NAV: [string, string][] = [
   ["Why AINA", "/#why"],
   ["Solutions", "/solutions"],
   ["Blog", "/blog"],
-  ["Knowledge Base", "/knowledge-base"],
   ["FAQ", "/#faq"],
   ["Contact", "/#contact"],
 ];
@@ -51,7 +50,6 @@ const FOOTER_LINKS: [string, string][] = [
   ["Book a Demo", DEMO_URL],
   ["Community", COMMUNITY_URL],
   ["Blog", "/blog"],
-  ["Knowledge Base", "/knowledge-base"],
   ["Log in", "/login"],
   ["Privacy", "/privacy"],
   ["Terms", "/terms"],

@@ -1057,8 +1057,12 @@ check-in, investor session). Provisioning `lib/templates/whatsapp-provision.ts`.
 ## Knowledge Base — the public help centre
 
 `/knowledge-base` (2026-10-29, migration 0247) is a help centre in the shape of
-a Freshdesk solutions site: **Category → Folder → Article**, all public, no
-login. The super admin runs it at `/super-admin/kb-articles` (articles) and
+a Freshdesk solutions site: **Category → Folder → Article**, for signed-in users
+of a firm with an active / trial subscription only (2026-10-30, `lib/kb/access.ts`,
+checked in `knowledge-base/layout.tsx` and the image route): anyone else — anonymous,
+lapsed, expired — gets a 404, not a login redirect. Platform staff pass. Middleware
+keeps the paths public only so the 404 can render; the KB is out of the sitemap and
+the public site's links. The static `/kb/*.jpg` files stay unauthenticated. The super admin runs it at `/super-admin/kb-articles` (articles) and
 `/super-admin/kb-articles/structure` (categories and folders); APIs under
 `/api/super-admin/kb-articles` and `/api/super-admin/kb-structure`.
 
@@ -1066,7 +1070,7 @@ login. The super admin runs it at `/super-admin/kb-articles` (articles) and
   `kb_folders`, and `kb_articles.folder_id`. The old KAIZEN stories were moved
   into a "KAIZEN › KAIZEN stories" folder by the migration. Deleting a
   category or folder never deletes articles — they become unfiled.
-- **Public routes**: `/knowledge-base` (home, search box, category cards),
+- **Routes**: `/knowledge-base` (home, search box, category cards),
   `/category/[slug]`, `/folder/[slug]`, `/search?q=`, and the article at
   `/knowledge-base/[slug]`. `category`, `folder` and `search` are static
   segments, so an article slug may not be one of them (`KB_RESERVED_SLUGS`).

@@ -2,7 +2,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  * GET /api/kb/image/[id]?i=<index> — a Knowledge Base screenshot.
  *
- * PUBLIC: the Knowledge Base is open, so screenshots need no session. The
+ * Same gate as the pages (signed in, live subscription): 404 otherwise. The
  * storage key is still looked up server-side from the article's own
  * `screenshots` array (never trusted from the query string) and only for a
  * PUBLISHED article, then 302'd to a short-lived presigned URL — so the S3
@@ -13,12 +13,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { kbArticles, type KbScreenshot } from "@/db/schema";
+import { canReadKnowledgeBase } from "@/lib/kb/access";
 import { presignedGetUrl } from "@/lib/storage/s3";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    if (!(await canReadKnowledgeBase())) return NextResponse.json({ error: "not found" }, { status: 404 });
     const { id } = await params;
     const idx = Number(req.nextUrl.searchParams.get("i") ?? "0");
     if (!Number.isInteger(idx) || idx < 0 || idx > 50) {
