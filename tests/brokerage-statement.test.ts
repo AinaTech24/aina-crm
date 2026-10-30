@@ -63,7 +63,7 @@ describe.skipIf(!TEST_DB)("importing a brokerage statement", () => {
   let getBrokerage: typeof import("@/lib/metrics/practice").getBrokerage;
   const q = (t: ReturnType<typeof import("drizzle-orm").sql>) => withSystem((tx) => tx.execute(t));
   const load = (text: string) =>
-    withSystem((tx) => (processRtaFile as any)(tx, { tenantId: tenant, source: "cams", kind: "monthly_brokerage", text }));
+    withSystem((tx) => processRtaFile(tx, { tenantId: tenant, source: "cams", kind: "monthly_brokerage", text }));
   const total = async () => Number(((await q(sql`SELECT COALESCE(SUM(brokerage_amount), 0) AS t FROM commission_rows WHERE tenant_id = ${tenant}::uuid`)).rows[0] as any).t);
 
   beforeAll(async () => {

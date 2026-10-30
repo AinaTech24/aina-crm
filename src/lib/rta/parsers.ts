@@ -122,14 +122,14 @@ const DEFAULT_SIP_REJECT_MAP: Record<string, number> = {
 };
 
 const SIP_REJECT_ALIASES: Record<string, string[]> = {
-  amcName: ["AMC", "AMC_NAME", "AMC NAME", "FMIM_CODE", "MUTUAL_FUND", "AMC_CD", "AMC_DESC"],
-  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO"],
-  pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER", "PAN NUMBER"],
-  schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME"],
-  rejectionDate: ["REJECT_DATE", "REJECTION_DATE", "REJ_DATE", "REJECT DATE", "REJECTION DATE", "DATE", "REJ_DT", "ORDER DATE", "ORDER_DATE"],
-  amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "SIP_AMOUNT", "INSTALLMENT AMT", "INSTALLMENT_AMT", "INSTALLMENT AMOUNT", "INSTALLMENT_AMOUNT"],
-  reasonCode: ["REASON_CODE", "REJ_CODE", "REJECT_CODE", "REASON CODE", "REJ CODE", "REJ_REASON", "REJ REASON", "FAIL_CODE"],
-  reason: ["REASON", "REASON_DESC", "REASON DESCRIPTION", "REMARK", "REMARKS", "REJ_DESC", "REJECT_DESC", "REJECTION_REASON", "ORDER REMARK", "ORDER_REMARK", "ORDER STATUS", "ORDER_STATUS"],
+  amcName: ["AMC", "AMC_NAME", "AMC NAME", "AMC_CODE", "AMC CODE", "FMIM_CODE", "FUND", "FUND_NAME", "MUTUAL_FUND", "AMC_CD", "AMC_DESC"],
+  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIO_NUMBER", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIO NUMBER", "FOLIONUM", "FOL_NO", "FOLIOCHK", "ACCOUNT NUMBER", "ACCOUNT NO"],
+  pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER", "PAN NUMBER", "PAN1", "PAN_PEKRN"],
+  schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "SCHEME", "SCHEME_DESC", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME", "FUND DESCRIPTION", "FUND_DESCRIPTION", "FUNDDESC"],
+  rejectionDate: ["REJECT_DATE", "REJECTION_DATE", "REJ_DATE", "REJECT DATE", "REJECTION DATE", "REJECTED_ON", "REJECTED ON", "BOUNCE_DATE", "RETURN_DATE", "DATE", "REJ_DT", "REJECTION_DT", "TRXN_DATE", "TRADE_DATE", "TRADDATE", "ORDER DATE", "ORDER_DATE", "INSTALLMENT_DATE", "INSTALLMENT DATE", "SIP_DATE", "DUE_DATE", "DUE DATE"],
+  amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "SIP_AMOUNT", "SIP_AMT", "SIP AMOUNT", "INSTALLMENT AMT", "INSTALLMENT_AMT", "INSTALLMENT AMOUNT", "INSTALLMENT_AMOUNT", "INSTAL_AMT", "INSTL_AMT", "AMOUNT (IN RS.)", "AMOUNT IN RS", "REJECTED_AMOUNT"],
+  reasonCode: ["REASON_CODE", "REJ_CODE", "REJECT_CODE", "REASON CODE", "REJ CODE", "REJ_REASON", "REJ REASON", "FAIL_CODE", "RETURN_CODE"],
+  reason: ["REASON", "REASON_DESC", "REASON DESCRIPTION", "REMARK", "REMARKS", "REJ_DESC", "REJECT_DESC", "REJECTION_REASON", "REJECTION_REMARKS", "REJECTION REMARKS", "REJ_REMARK", "BOUNCE_REASON", "RETURN_REASON", "FAILURE_REASON", "ORDER REMARK", "ORDER_REMARK", "ORDER STATUS", "ORDER_STATUS"],
 };
 
 const DEFAULT_BROKERAGE_MAP: Record<string, number> = {
@@ -332,8 +332,11 @@ export function parseSipRejectionReport(
       folioNumber: val("folioNumber"),
       pan: val("pan"),
       schemeName: val("schemeName"),
-      rejectionDate: normaliseDate(val("rejectionDate")) ?? today(),
-      amount: parseFloat(val("amount") ?? "0") || 0,
+      // A date the file does not give (or we cannot read) is "" — NOT today. Today
+      // misdated the rejection, and because the date is part of its identity the
+      // same file re-run on another day inserted every row again.
+      rejectionDate: normaliseDate(val("rejectionDate")) ?? "",
+      amount: parseAmount(val("amount")),
       reasonCode,
       // `||`, not `??`: a file with no reason-code column gives "" here, and
       // `"" ?? val("reason")` is "" — every such rejection lost its reason and

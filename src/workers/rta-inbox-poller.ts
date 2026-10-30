@@ -32,7 +32,7 @@ import {
 } from "@/lib/comms/imap";
 import { describeMailError } from "@/lib/comms/connection-error";
 import { putObject } from "@/lib/storage/s3";
-import { Q } from "./queues";
+import { Q, RTA_BACKGROUND_PRIORITY } from "./queues";
 import {
   classifyMailback,
   classifyMailbackFromText,
@@ -250,7 +250,8 @@ async function ingestAttachment(
     return (r.rows[0] as any).id as string;
   });
 
-  const jobOpts = { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 } } as const;
+  // Behind anything a person queued (see RTA_BACKGROUND_PRIORITY).
+  const jobOpts = { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 }, priority: RTA_BACKGROUND_PRIORITY } as const;
   if (cls.isRich) {
     // Master / holdings → the rich engine that builds the client book.
     await Q.rtaImport().add(

@@ -21,7 +21,10 @@ import { Select } from "@/components/ui/Select";
 
 type Outcome = {
   importId?: string;
-  status: "completed" | "partial" | "failed";
+  /** "waiting" = uploaded fine, still in the importer's line — not a failure. */
+  status: "completed" | "partial" | "failed" | "waiting";
+  /** What the import row says while it waits: uploaded (in line) or parsing (being read). */
+  waitingOn?: "uploaded" | "queued" | "parsing";
   duplicate?: boolean;
   rowsTotal?: number;
   rowsImported?: number;
@@ -140,6 +143,7 @@ export function UploadDialog({
       //    it reaches a terminal status, then show the outcome.
       const importId = data.importId as string;
       const startedAt = Date.now();
+      let lastSeen: string | undefined;
       const TIMEOUT_MS = 8 * 60 * 1000; // give big masters time on a small box
       while (!cancelPollRef.current) {
         await new Promise((r) => setTimeout(r, 2000));
@@ -152,13 +156,15 @@ export function UploadDialog({
           // transient network blip — keep polling
         }
         const st = row?.status as string | undefined;
+        if (st) lastSeen = st;
         if (st === "completed" || st === "partial" || st === "failed" || st === "rejected") {
           setOutcome({
             importId,
-            // 'rejected' = duplicate; OutcomePanel renders the duplicate panel
-            // off the `duplicate` flag, so status here just needs to be non-success.
+            // 'rejected' is NOT a duplicate (the importer re-reads a re-uploaded file
+            // happily): it is a ZIP that none of the firm's saved passwords opens. It
+            // used to be shown as "This file is already imported", which sent people
+            // away believing the upload had worked.
             status: st === "rejected" ? "failed" : (st as Outcome["status"]),
-            duplicate: st === "rejected",
             rowsTotal: row.rows_total ?? undefined,
             rowsImported: row.rows_imported ?? undefined,
             rowsSkipped: row.rows_skipped ?? undefined,
@@ -170,10 +176,13 @@ export function UploadDialog({
           return;
         }
         if (Date.now() - startedAt > TIMEOUT_MS) {
+          // The file IS uploaded. The importer reads one file at a time for every
+          // firm, so after eight minutes it may simply not have reached this one
+          // yet. That is waiting, not failing — it used to be a red "Upload failed".
           setOutcome({
-            status: "failed",
-            error:
-              "Still processing in the background. Large files can take a few minutes — close this and check the imports list shortly.",
+            importId,
+            status: "waiting",
+            waitingOn: lastSeen === "parsing" ? "parsing" : "uploaded",
           });
           return;
         }
@@ -407,6 +416,31 @@ function OutcomePanel({
           </button>
           <button onClick={onClose} className="btn-primary text-sm">
             Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (outcome.status === "waiting") {
+    return (
+      <div className="text-center py-6">
+        <div className="size-14 rounded-2xl bg-sky-100 grid place-items-center mx-auto">
+          <Loader2 className="size-7 text-sky-700" />
+        </div>
+        <h3 className="font-bold mt-4">
+          {outcome.waitingOn === "parsing" ? "Your file is being read" : "Your file is uploaded and waiting its turn"}
+        </h3>
+        <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+          {outcome.waitingOn === "parsing"
+            ? "A large report takes several minutes to read. "
+            : "The importer reads one file at a time for every firm, so yours may be behind others. "}
+          Nothing is lost and you do not need to upload it again — you can close this. The file shows in Recent uploads
+          as soon as it is read, with the result.
+        </p>
+        <div className="mt-5 flex justify-center gap-2">
+          <button onClick={onClose} className="btn-primary text-sm">
+            Close
           </button>
         </div>
       </div>

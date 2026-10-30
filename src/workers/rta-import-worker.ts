@@ -33,7 +33,7 @@ import { getObjectBytes, deleteObject, putObject } from "@/lib/storage/s3";
 import type { RtaSource, RtaFileKind } from "@/db/schema/rta_imports";
 import { captureError } from "@/lib/observability/capture";
 import { parseRtaCsv, parseRtaRows } from "@/lib/rta";
-import { Q } from "./queues";
+import { Q, RTA_BACKGROUND_PRIORITY } from "./queues";
 import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { RICH_KINDS, classifyMailback } from "@/lib/rta/classify-mailback";
@@ -488,7 +488,7 @@ async function queueImport(
   tenantId: string,
   passwords: string[],
 ): Promise<void> {
-  const jobOpts = { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 } } as const;
+  const jobOpts = { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 }, priority: RTA_BACKGROUND_PRIORITY } as const;
   if (RICH_KINDS.has(r.kind)) {
     await Q.rtaImport().add(
       "rich-import",
@@ -987,7 +987,7 @@ export async function enqueueRejectedRescan(tenantId: string, source: RtaSource)
   await Q.rtaImport().add(
     "rescan",
     { mode: "rescan", tenantId, source } satisfies RtaRescanJob,
-    { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 } }
+    { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 }, priority: RTA_BACKGROUND_PRIORITY }
   );
 }
 
@@ -1071,7 +1071,7 @@ export async function enqueueRerun(tenantId: string, delayMs = 15 * 60_000): Pro
   await Q.rtaImport().add(
     "rerun",
     { mode: "rerun", tenantId } satisfies RtaRerunJob,
-    { jobId: `rta-rerun-${tenantId}`, delay: delayMs, attempts: 1, removeOnComplete: true, removeOnFail: true },
+    { jobId: `rta-rerun-${tenantId}`, delay: delayMs, attempts: 1, removeOnComplete: true, removeOnFail: true, priority: RTA_BACKGROUND_PRIORITY },
   );
 }
 
@@ -1224,7 +1224,16 @@ export function startRtaImportWorker() {
         }
       }
     }),
-    { connection, concurrency: 1 } // one heavy parse at a time — bounds peak memory
+    {
+      connection,
+      concurrency: 1, // one heavy parse at a time — bounds peak memory
+      // Parsing a 300 MB report blocks the event loop for longer than BullMQ's
+      // default 30 s lock, so the lock could not be renewed, the job was judged
+      // stalled and re-run while the first run was still going (or failed as
+      // "stalled more than allowable limit"). Five minutes covers a long
+      // synchronous step; a worker that really died is still noticed.
+      lockDuration: 5 * 60_000,
+    }
   );
 
   worker.on("failed", (job, err) => {

@@ -55,6 +55,16 @@ export function queue(name: string): Queue {
   return queues.get(name)!;
 }
 
+/**
+ * BullMQ priority for RTA jobs nobody is waiting on (a mailbox auto-import, a
+ * re-run of partial files, a rescan, a file unpacked from a ZIP). A job added
+ * WITHOUT a priority runs before every prioritized one, so a firm's own upload
+ * or re-import goes ahead of them. The queue is one worker, one file at a time,
+ * for every firm: before this, a person's upload waited in the same line behind
+ * hundreds of automatic imports and read as "not uploaded".
+ */
+export const RTA_BACKGROUND_PRIORITY = 100;
+
 export const Q = {
   workflowRunner: () => queue("workflow.runner"),
   outboxPoller: () => queue("outbox.poller"),

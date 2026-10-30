@@ -25,6 +25,7 @@ import {
 } from "@/lib/rta/file-types";
 import { RtaUploadButton, RtaMailboxSyncButton, RtaUploadStep } from "./client";
 import { RtaImportsTable } from "@/components/rta/RtaImportsTable";
+import { rtaQueueDepth } from "@/lib/rta/queue-status";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,12 @@ export default async function RtaImportsPage() {
       trashed: trashed.rows as any[],
     };
   });
+
+  // Files of this firm still in the line. One worker reads one file at a time for
+  // every firm, so a file can sit "uploaded" for a while: say so rather than let it
+  // look lost.
+  const inLine = data.recent.filter((r) => ["uploaded", "queued", "parsing"].includes(String(r.status)));
+  const queue = inLine.length ? await rtaQueueDepth() : null;
 
   const now = new Date();
   const tiles = RTA_FILE_TYPES.map((t) => {
@@ -135,6 +142,20 @@ export default async function RtaImportsPage() {
           <RtaMailboxSyncButton />
           <RtaUploadButton />
         </div></>} />
+
+      {inLine.length > 0 && (
+        <section aria-live="polite" className="rounded-lg border border-border bg-secondary/40 px-4 py-3 text-sm">
+          <span className="font-medium">
+            {inLine.length} file{inLine.length === 1 ? "" : "s"} of yours {inLine.length === 1 ? "is" : "are"} waiting to be read
+          </span>
+          {queue
+            ? ` — the importer reads one file at a time for every firm${queue.active ? " and is busy with one now" : ""}; ${queue.waiting} ${queue.waiting === 1 ? "job is" : "jobs are"} in line. `
+            : " — the importer reads one file at a time for every firm. "}
+          <span className="text-muted-foreground">
+            Nothing is lost: the file shows here as Uploaded, then Parsing, then its result. Files you upload yourself go ahead of the automatic mailbox imports.
+          </span>
+        </section>
+      )}
 
       {/* What to do next — numbered, in order of consequence. */}
       <section aria-labelledby="rta-next-steps" className="card-surface p-4">

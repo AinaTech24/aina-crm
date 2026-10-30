@@ -1019,6 +1019,33 @@ client).
   retried, never deleted. The whole-firm passes after an import run only when
   it landed rows.
 
+### Why an upload "did not go through", and the SIP rejection report (2026-10-30)
+
+Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
+
+- **One worker, one file at a time, for every firm** (`rta.import`, concurrency 1,
+  FIFO). A firm's upload waited in the same line as every other firm's and as the
+  automatic mailbox imports, re-runs and rescans — and the upload dialog turned an
+  8-minute wait into a red **"Upload failed"**. Now: background jobs carry
+  `RTA_BACKGROUND_PRIORITY` (`workers/queues.ts`), so a person's upload or
+  re-import goes ahead of them (BullMQ runs a job WITHOUT a priority before any
+  prioritized one); the dialog says "uploaded and waiting its turn", never failed;
+  the RTA File Imports page says how many jobs are in line (`lib/rta/queue-status.ts`).
+- A ZIP none of the saved passwords opens is `rejected`, and the dialog used to
+  call that "This file is already imported". It now shows the real reason.
+- The worker's lock was BullMQ's default 30 s, which a long synchronous parse
+  cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
+  stalled and run twice.
+- **SIP rejection report** (`processSipRejectionReport`): clients are found with
+  the transaction feed's own index (`buildInvestorIndex`: folio with case / spaces
+  / slashes ignored, the row's AMC picks between clients holding the same number),
+  not by exact folio text — a report with no PAN matched nothing and every row was
+  skipped "not in client master". A re-upload of rows already in the CRM is not a
+  skip (it read "failed"); a row whose date cannot be read is skipped with the
+  reason, never dated today (the date is part of its identity, so a rerun the next
+  day inserted it again). Rows waiting for a client are placed by the re-run that
+  follows every master import.
+
 ## The public website and SEO
 
 The marketing site is `/` (`src/app/page.tsx`), `/solutions` + `/solutions/[slug]`

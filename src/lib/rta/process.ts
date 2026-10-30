@@ -710,18 +710,45 @@ async function processSipRejectionReport(
   let imported = 0;
   let skipped = 0;
   let failed = 0;
+  let unchanged = 0;
   let minDate = "9999-12-31";
   let maxDate = "0000-01-01";
 
+  // Resolve every client the file names in two bulk queries — the same index
+  // and rules the transaction feed uses. The rejection report used to look a
+  // folio up by exact text (`folio_number = '1234567/89'`) and take whichever
+  // row came first, so "1234567 / 89", "1234567/89" and "123456789" never met,
+  // a number held at two AMCs went to the wrong client, and a report carrying
+  // no PAN (the common CAMS layout) matched almost nothing: every row was
+  // skipped "not in client master" and the SIP Rejections page stayed empty.
+  const { panMap, folioOwners } = await buildInvestorIndex(
+    tx,
+    args.tenantId,
+    rows.map((r) => ({ pan: r.pan, folioNumber: r.folioNumber })),
+  );
+
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
+
+    if (!r.rejectionDate) {
+      skipped++;
+      errors.push({ row: i + 1, reason: "the rejection date is missing or not in a form this importer reads — row not imported" });
+      continue;
+    }
     if (r.rejectionDate < minDate) minDate = r.rejectionDate;
     if (r.rejectionDate > maxDate) maxDate = r.rejectionDate;
 
-    const investorId = await resolveInvestorId(tx, args.tenantId, { pan: r.pan, folioNumber: r.folioNumber });
+    const owners = folioOwners.get(folioKey(r.folioNumber));
+    const investorId = chooseClient((r.pan && panMap.get(r.pan.toUpperCase())) || null, pickFolioOwner(owners, r.amcName));
     if (!investorId) {
       skipped++;
-      errors.push({ row: i + 1, reason: `${r.pan ? `PAN ${r.pan}` : `Folio ${r.folioNumber}`} not in client master` });
+      const several = !!owners && new Set(owners.map((o) => o.investorId)).size > 1;
+      errors.push({
+        row: i + 1,
+        reason: several
+          ? `Folio ${r.folioNumber} is held by more than one client across AMCs and the row's AMC (${r.amcName || "blank"}) does not pick one — held back, not guessed`
+          : `${r.pan ? `PAN ${r.pan}` : `Folio ${r.folioNumber}`} not in client master — it is placed automatically once the client is imported`,
+      });
       continue;
     }
     const rmRes = await tx.execute(sql`SELECT rm_id FROM investors WHERE id = ${investorId}::uuid LIMIT 1`);
@@ -758,7 +785,7 @@ async function processSipRejectionReport(
         WHERE NOT EXISTS (
           SELECT 1 FROM sip_rejections x
            WHERE x.tenant_id = ${args.tenantId}::uuid
-             AND x.folio_number = ${r.folioNumber}
+             AND regexp_replace(upper(x.folio_number), '[^A-Z0-9]', '', 'g') = ${folioKey(r.folioNumber)}
              AND x.rejection_date = ${r.rejectionDate}::date
              AND x.rejection_amount = ${r.amount}::numeric
              AND COALESCE(x.scheme_name, '') = ${r.schemeName ?? ""}
@@ -786,7 +813,10 @@ async function processSipRejectionReport(
           )
         `);
       } else {
-        skipped++; // already imported — idempotent
+        // Already in the CRM (the same rejection, uploaded before): not a skip. Counted
+        // as one, a clean re-upload read "failed · every row skipped" and sent people
+        // looking for a fault that was not there.
+        unchanged++;
       }
       await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
     } catch (e: any) {
@@ -795,6 +825,10 @@ async function processSipRejectionReport(
       failed++;
       errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
     }
+  }
+
+  if (unchanged > 0) {
+    errors.push({ row: 0, reason: `${unchanged} rejection(s) in this file were already in the CRM — left as they are` });
   }
 
   return {
