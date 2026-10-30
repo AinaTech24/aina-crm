@@ -1118,7 +1118,7 @@ of a firm with an active / trial subscription only (2026-10-30, `lib/kb/access.t
 checked in `knowledge-base/layout.tsx` and the image route): anyone else — anonymous,
 lapsed, expired — gets a 404, not a login redirect. Platform staff pass. Middleware
 keeps the paths public only so the 404 can render; the KB is out of the sitemap and
-the public site's links. The static `/kb/*.jpg` files stay unauthenticated. The super admin runs it at `/super-admin/kb-articles` (articles) and
+the public site's links. The static `/kb/*.jpg` files stay unauthenticated. Its ONLY door is the dashboard's "?" menu (`HelpMenu`: Knowledge Base + Take a tour, 2026-10-30) — no public-site link, sitemap entry or footer link; Help & glossary and What's new were taken off that menu (their pages remain). The super admin runs it at `/super-admin/kb-articles` (articles) and
 `/super-admin/kb-articles/structure` (categories and folders); APIs under
 `/api/super-admin/kb-articles` and `/api/super-admin/kb-structure`.
 

@@ -31,7 +31,6 @@ export function KbFooter() {
               <li><a href={DEMO} target="_blank" rel="noopener noreferrer">Book a Demo</a></li>
               <li><a href="https://chat.whatsapp.com/C6ttmFYUtxHA7GYna5YGcN" target="_blank" rel="noopener noreferrer">Community</a></li>
               <li><a href="/blog">Blog</a></li>
-              <li><a href="/knowledge-base">Knowledge Base</a></li>
               <li><a href="/login">Log in</a></li>
               <li><a href="/privacy">Privacy</a></li>
               <li><a href="/terms">Terms</a></li>
