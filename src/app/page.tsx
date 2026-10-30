@@ -254,8 +254,7 @@ export default function Home() {
             <Heading left kicker="FAQ" title="Questions MFDs ask us." />
             <p className="mt-4 text-sm text-site-muted">
               More in the{" "}
-              <Link href="/blog" className="font-bold text-site-crimson hover:underline">blog</Link> and the{" "}
-              <Link href="/knowledge-base" className="font-bold text-site-crimson hover:underline">knowledge base</Link>.
+              <Link href="/blog" className="font-bold text-site-crimson hover:underline">blog</Link>.
             </p>
           </div>
           <div className="lg:col-span-8">

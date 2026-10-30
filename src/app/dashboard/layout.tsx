@@ -386,22 +386,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const pathAllowed = isPathAllowedWhenRestricted(pathname);
 
   const tenantP = getShellTenant(session.tenantId);
-  const { userModules, avatarUrl, twoFaEnabled, whatsNewUnread, navBadges, branchList, firmLayoutRows } = await withTenant(session.tenantId, async (tx) => {
+  const { userModules, avatarUrl, twoFaEnabled, navBadges, branchList, firmLayoutRows } = await withTenant(session.tenantId, async (tx) => {
     // Per-user sidebar module grant (Module-19). null = inherit all tenant modules.
     const [u] = await tx
       .select({ enabledModules: users.enabledModules, avatarUrl: users.avatarUrl, twoFaEnabled: users.twoFaEnabled })
       .from(users)
       .where(eq(users.id, session.userId))
       .limit(1);
-    const whatsNewRes = await tx.execute(sql`
-      SELECT count(*)::int AS n FROM release_notes rn
-       WHERE rn.published_at IS NOT NULL AND rn.published_at <= now()
-         AND NOT EXISTS (
-           SELECT 1 FROM release_note_reads r
-            WHERE r.release_note_id = rn.id
-              AND r.user_id = ${session.userId}::uuid
-              AND r.tenant_id = ${session.tenantId}::uuid)
-    `);
     // Sidebar count badges -- ONLY where the reader has something to act on:
     // their overdue tasks, the service requests waiting on them, and leave
     // they can approve. Everything else is noise that trains people to ignore
@@ -472,7 +463,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
       } as Record<string, number>,
       // Published release notes this user hasn't opened yet — drives the
       // "what's new" sparkle badge so shipped features get discovered.
-      whatsNewUnread: Number((whatsNewRes.rows[0] as any)?.n ?? 0),
     };
   });
 
@@ -717,7 +707,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <div className="hidden sm:flex items-center gap-3">
             {/* "What's new" is inside this menu now: four icons, not five. */}
             <CalendarShortcut />
-            <HelpMenu whatsNewUnread={whatsNewUnread} />
+            <HelpMenu />
             <BirthdayBell />
             </div>
             <span data-tour="notifications" className="inline-flex">
