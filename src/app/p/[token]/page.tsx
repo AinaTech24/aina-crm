@@ -24,6 +24,7 @@ import { resolveShareToken } from "@/lib/share-tokens";
 import { formatDate } from "@/lib/format";
 import { PROPOSAL_ACCEPTANCE_TEXT } from "@/lib/proposals/public-link";
 import { itemAmountText, itemKindLabel, itemName, itemRiskLabel } from "@/lib/proposals/items";
+import { PrivacyNoticeLink } from "@/components/privacy/PrivacyNoticeLink";
 import { PublicProposalApproval } from "@/components/public/PublicProposalApproval";
 import { loadProposalAppetite } from "@/lib/proposals/appetite";
 
@@ -119,6 +120,7 @@ export default async function PublicProposalApprovalPage({
       <footer className="max-w-3xl mx-auto px-4 py-6 text-2xs text-muted-foreground text-center">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
         {tenant?.arn ? <> · {firm} · {formatArn(tenant.arn)}</> : null}
+        <PrivacyNoticeLink tenantId={info.tenantId} firmName={firm} className="mt-2" />
       </footer>
     </div>
   );

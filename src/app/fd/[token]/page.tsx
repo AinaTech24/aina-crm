@@ -10,6 +10,7 @@ import { withSystem } from "@/db/client";
 import { tenants, financialDiscoveries } from "@/db/schema";
 import { resolveShareToken } from "@/lib/share-tokens";
 import { PublicDiscoveryForm } from "@/components/public/PublicDiscoveryForm";
+import { PrivacyNoticeLink } from "@/components/privacy/PrivacyNoticeLink";
 import type { DiscoveryData } from "@/lib/discovery/calc";
 import { forClientLink } from "@/lib/discovery/mask";
 
@@ -66,9 +67,10 @@ export default async function PublicDiscoveryPage({ params }: { params: Promise<
               This helps {data.tenant?.name ?? "your advisor"} understand your finances before you meet. It takes about
               10 minutes, and your progress is saved as you go, so you can come back to this link. Nothing is shared with anyone else.
             </p>
-            <PublicDiscoveryForm token={token} initialData={initial as DiscoveryData} firmName={data.tenant?.name ?? "your advisor"} />
+            <PublicDiscoveryForm token={token} initialData={initial as DiscoveryData} firmName={data.tenant?.name ?? "your advisor"} tenantId={info.tenantId} />
           </>
         )}
+        <PrivacyNoticeLink tenantId={info.tenantId} firmName={data.tenant?.name} className="mt-6" />
       </div>
     </div>
   );

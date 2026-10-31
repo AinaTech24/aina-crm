@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import { MessageSquareHeart } from "lucide-react";
 import { formatArn } from "@/lib/branding/arn";
 import { resolveFeedbackForm } from "@/lib/feedback/web-form";
+import { PrivacyNoticeLink } from "@/components/privacy/PrivacyNoticeLink";
 import { PublicFeedbackForm } from "@/components/public/PublicFeedbackForm";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +60,7 @@ export default async function PublicFirmFeedbackPage({ params }: { params: Promi
       <footer className="max-w-2xl mx-auto px-4 py-6 text-2xs text-muted-foreground text-center">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
         {form.arn ? <> · {form.firmName} · {formatArn(form.arn)}</> : null}
+        <PrivacyNoticeLink tenantId={form.tenantId} firmName={form.firmName} className="mt-2" />
       </footer>
     </div>
   );

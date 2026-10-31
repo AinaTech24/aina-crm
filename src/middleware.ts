@@ -92,6 +92,9 @@ const PUBLIC_PATHS = new Set([
  *   /api/health, /api/auth/*, /api/employees/accept-invite — auth flows
  */
 const PUBLIC_PATH_PREFIXES = [
+  // A firm's DPDP privacy notice (app/privacy/[firm]) — linked from every
+  // public form and email footer, so it must open without signing in.
+  "/privacy/",
   "/preview/",
   "/r/",
   "/lc/",

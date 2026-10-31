@@ -27,6 +27,10 @@ export interface RenderContext {
     websiteUrl?: string | null;
     brandColor?: string | null;
     logoUrl?: string | null;
+    /** The firm's DPDP privacy notice (absolute URL), linked in the footer. */
+    privacyUrl?: string | null;
+    /** Who answers privacy questions (an email address). */
+    privacyContact?: string | null;
   };
   /** Optional unsubscribe URL — when set, replaces `{{unsubscribe_url}}`. */
   unsubscribeUrl?: string;
@@ -440,7 +444,14 @@ export function footerToText(footer: EmailFooter | undefined, ctx: RenderContext
   }
   if (footer.includeAddress && t.address) lines.push(String(t.address));
   lines.push("Mutual fund investments are subject to market risks. Please read the scheme information document carefully before investing.");
+  lines.push(privacyLineText(t));
   return lines.filter(Boolean).join("\n");
+}
+
+/** DPDP: the footer's privacy line, as text. Empty without a notice URL (the designer preview). */
+function privacyLineText(t: NonNullable<RenderContext["tenant"]>): string {
+  if (!t.privacyUrl) return "";
+  return `How we use your personal data: ${t.privacyUrl}${t.privacyContact ? ` · Privacy questions: ${t.privacyContact}` : ""}`;
 }
 
 function renderFooter(footer: EmailFooter, theme: EmailTheme, ctx: RenderContext): string {
@@ -457,7 +468,10 @@ function renderFooter(footer: EmailFooter, theme: EmailTheme, ctx: RenderContext
   const unsubscribe = footer.includeUnsubscribe
     ? `<div style="margin-top:8px;"><a href="${escape(ctx.unsubscribeUrl ?? "{{unsubscribe_url}}")}" style="color:${theme.mutedColor};text-decoration:underline;">Unsubscribe</a></div>`
     : "";
-  return `<tr><td style="padding:18px 28px 28px;background:#fafbfd;border-top:1px solid #eef0f4;font-size:11px;color:${theme.mutedColor};text-align:center;line-height:1.6;">${lines.map((l) => `<div>${l}</div>`).join("")}<div style="margin-top:6px;">Mutual fund investments are subject to market risks. Please read the scheme information document carefully before investing.</div>${unsubscribe}</td></tr>`;
+  const privacy = t.privacyUrl
+    ? `<div style="margin-top:6px;">How we use your personal data: <a href="${escape(t.privacyUrl)}" style="color:${theme.mutedColor};text-decoration:underline;">privacy notice</a>${t.privacyContact ? ` · Privacy questions: ${escape(t.privacyContact)}` : ""}</div>`
+    : "";
+  return `<tr><td style="padding:18px 28px 28px;background:#fafbfd;border-top:1px solid #eef0f4;font-size:11px;color:${theme.mutedColor};text-align:center;line-height:1.6;">${lines.map((l) => `<div>${l}</div>`).join("")}<div style="margin-top:6px;">Mutual fund investments are subject to market risks. Please read the scheme information document carefully before investing.</div>${privacy}${unsubscribe}</td></tr>`;
 }
 
 // ---------------------------------------------------------------------------

@@ -129,6 +129,8 @@ export const tenants = pgTable(
      *  fields, filled into client emails as {{firm.*}} (migration 0246,
      *  lib/firm/email-intro.ts). Edited at Settings → Email introduction. */
     emailIntro: jsonb("email_intro").$type<Record<string, unknown>>().notNull().default({}),
+    /** The firm's DPDP privacy notice settings (migration 0255, lib/privacy/notice.ts). */
+    privacyNotice: jsonb("privacy_notice").$type<Record<string, unknown>>().notNull().default({}),
 
     /** Age → risk-category bands for bulk provisional profiling. NULL = use the
      *  product defaults in src/lib/risk-profile/age-bands.ts. */

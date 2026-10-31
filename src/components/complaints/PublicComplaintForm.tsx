@@ -12,7 +12,8 @@ import { useState, type ReactNode } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/format";
 
-type Firm = { name: string; logoUrl: string | null; primaryColor: string | null; arn: string | null };
+import { PrivacyNoticeLink } from "@/components/privacy/PrivacyNoticeLink";
+type Firm = { name: string; logoUrl: string | null; primaryColor: string | null; arn: string | null; tenantId?: string };
 
 const INPUT =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring";
@@ -203,6 +204,7 @@ function Shell({ firm, brand, children }: { firm: Firm; brand: string; children:
           {firm.arn && <> · AMFI-registered Mutual Fund Distributor · ARN-{firm.arn.replace(/^ARN-?/i, "")}</>}
         </div>
       </div>
+      {firm.tenantId && <PrivacyNoticeLink tenantId={firm.tenantId} firmName={firm.name} className="mt-4" />}
     </main>
   );
 }

@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { eq } from "drizzle-orm";
+import { CONSENT_REQUIRED_ERROR, recordFormConsent } from "@/lib/privacy/consent";
 import { withSystem, withTenant } from "@/db/client";
 import { shareTokens, complianceDocuments, leads, investors, eventsOutbox } from "@/db/schema";
 import { claimShareToken, releaseShareToken, finalizeShareToken } from "@/lib/share-tokens";
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
     let tokenId = "";
     let signatureName = "";
     let extraNotes = "";
+    let privacyConsent = false;
     const kycValues: Record<string, string> = {};
     const incoming: Incoming[] = [];
 
@@ -65,12 +67,14 @@ export async function POST(req: NextRequest) {
         tokenId?: string;
         signatureName?: string;
         extraNotes?: string;
+        privacyConsent?: boolean;
         fields?: Record<string, string>;
         files?: Array<{ docKey?: string; label?: string; name?: string; mimeType?: string; storageKey?: string; sizeBytes?: number }>;
       };
       tokenId = String(body.tokenId ?? "");
       signatureName = String(body.signatureName ?? "").trim();
       extraNotes = String(body.extraNotes ?? "");
+      privacyConsent = body.privacyConsent === true;
       for (const [k, v] of Object.entries(body.fields ?? {})) {
         if (typeof v === "string" && v.trim()) kycValues[k] = v.trim();
       }
@@ -106,6 +110,7 @@ export async function POST(req: NextRequest) {
       tokenId = String(formData.get("tokenId") ?? "");
       signatureName = String(formData.get("signatureName") ?? "").trim();
       extraNotes = String(formData.get("extraNotes") ?? "");
+      privacyConsent = formData.get("privacyConsent") === "true";
       for (const [name, value] of formData.entries()) {
         if (name.startsWith("field_") && typeof value === "string") {
           const v = value.trim();
@@ -131,6 +136,8 @@ export async function POST(req: NextRequest) {
     const perToken = enforceLinkToken("public.docs", tokenId, 40);
     if (perToken) return perToken;
     if (!signatureName) return NextResponse.json({ error: "Signature required" }, { status: 400 });
+    // DPDP: KYC documents are taken with consent to the firm's privacy notice.
+    if (!privacyConsent) return NextResponse.json({ error: CONSENT_REQUIRED_ERROR }, { status: 400 });
 
     // DPDP / UIDAI: never persist a full Aadhaar number. Mask any captured value
     // that is (or is labelled) an Aadhaar to keep only the last 4 digits.
@@ -172,6 +179,14 @@ export async function POST(req: NextRequest) {
         } else if (tk.subjectType === "lead") {
           const [r] = await tx.select({ n: leads.name }).from(leads).where(eq(leads.id, tk.subjectId)).limit(1);
           clientName = r?.n ?? null;
+        }
+        if (tk.subjectType === "investor" || tk.subjectType === "lead") {
+          await recordFormConsent(tx, {
+            tenantId: tk.tenantId!,
+            subject: { type: tk.subjectType, id: tk.subjectId },
+            source: "docs_form",
+            headers: req.headers,
+          });
         }
 
         const uploaded: Array<{ docId: string; key: string; label: string; size: number; mime: string }> = [];

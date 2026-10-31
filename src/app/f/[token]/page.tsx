@@ -17,6 +17,7 @@ import { withSystem } from "@/db/client";
 import { tenants, leads, investors } from "@/db/schema";
 import { resolveShareToken } from "@/lib/share-tokens";
 import { isSampleShareToken } from "@/lib/share-tokens/sample";
+import { PrivacyNoticeLink } from "@/components/privacy/PrivacyNoticeLink";
 import { PublicFeedbackForm } from "@/components/public/PublicFeedbackForm";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +72,7 @@ export default async function PublicFeedbackPage({ params }: { params: Promise<{
       <footer className="max-w-2xl mx-auto px-4 py-6 text-2xs text-muted-foreground text-center">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
         {data.tenant?.arn ? <> · {firmName} · {formatArn(data.tenant.arn)}</> : null}
+        <PrivacyNoticeLink tenantId={info.tenantId} firmName={firmName} className="mt-2" />
       </footer>
     </div>
   );

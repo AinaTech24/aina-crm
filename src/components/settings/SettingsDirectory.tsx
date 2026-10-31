@@ -44,6 +44,7 @@ const SECTIONS: Section[] = [
   { icon: KeyRound, title: "Two-factor authentication", desc: "Add an authenticator code on top of your password.", href: "/dashboard/settings/security", group: "Your account", keywords: "2fa otp totp security login sessions devices" },
 
   { icon: Building2, title: "Organisation profile", desc: "Firm details, ARN, contact and business profile.", href: "/dashboard/settings/organisation", group: "Firm", keywords: "firm company arn address logo gst" },
+  { icon: ShieldCheck, title: "Privacy notice", desc: "Your DPDP privacy notice and privacy contact for clients and leads.", href: "/dashboard/settings/privacy-notice", group: "Firm", keywords: "dpdp data protection privacy policy notice consent dpo grievance officer personal data" },
   { icon: Palette, title: "Appearance & theme", desc: "Colours, font, density and your white-label address.", href: "/dashboard/settings/appearance", group: "Firm", keywords: "logo colour color brand theme white-label domain font" },
   { icon: CreditCard, title: "Billing & subscription", desc: "Current plan, payment history, renewal.", href: "/dashboard/billing", group: "Firm", keywords: "plan invoice payment razorpay renew upgrade" },
 

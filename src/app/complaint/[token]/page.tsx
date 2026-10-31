@@ -41,7 +41,7 @@ export default async function PublicComplaintPage({ params }: { params: Promise<
   return (
     <PublicComplaintForm
       token={token}
-      firm={{ name: form.firmName, logoUrl: form.logoUrl, primaryColor: form.primaryColor, arn: form.arn }}
+      firm={{ name: form.firmName, logoUrl: form.logoUrl, primaryColor: form.primaryColor, arn: form.arn, tenantId: form.tenantId }}
       categories={SEBI_COMPLAINT_CATEGORIES.map((c) => ({ value: c.value, label: c.label }))}
     />
   );

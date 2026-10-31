@@ -14,6 +14,7 @@ import { FileText } from "lucide-react";
 import { withSystem } from "@/db/client";
 import { tenants, leads, investors } from "@/db/schema";
 import { resolveShareToken } from "@/lib/share-tokens";
+import { PrivacyNoticeLink } from "@/components/privacy/PrivacyNoticeLink";
 import { PublicDocsForm } from "@/components/public/PublicDocsForm";
 import { getFieldChecklist, type KycField } from "@/lib/onboarding/kyc-fields";
 import type { ClientType } from "@/lib/onboarding/doc-checklists";
@@ -86,12 +87,15 @@ export default async function PublicDocsFormPage({ params }: { params: Promise<{
           recipientName={recipientName}
           requiredDocs={requiredDocs}
           requiredFields={requiredFields}
+          tenantId={info.tenantId}
+          firmName={tenant?.displayName ?? tenant?.legalName ?? "your advisor"}
         />
       </main>
 
       <footer className="max-w-2xl mx-auto px-4 py-6 text-2xs text-muted-foreground text-center">
         Your documents are uploaded securely and only visible to your relationship manager and back-office team.
         {tenant?.arn ? <> · {tenant.displayName ?? tenant.legalName} · {formatArn(tenant.arn)}</> : null}
+        <PrivacyNoticeLink tenantId={info.tenantId} firmName={tenant?.displayName ?? tenant?.legalName} className="mt-2" />
       </footer>
     </div>
   );

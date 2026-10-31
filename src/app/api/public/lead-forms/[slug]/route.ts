@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
+import { CONSENT_REQUIRED_ERROR, recordFormConsent } from "@/lib/privacy/consent";
 import { withSystem, withTenant } from "@/db/client";
 import { leadCaptureForms, leads, tenants } from "@/db/schema";
 import { pickRmForNewLead } from "@/lib/leads/assign";
@@ -87,6 +88,7 @@ export async function GET(
     },
     tenant: form.t
       ? {
+          id: form.f.tenantId,
           displayName: form.t.displayName,
           primaryColor: form.t.primaryColor,
           logoUrl: form.t.logoUrl,
@@ -145,6 +147,11 @@ export async function POST(
   // scrapers don't learn we trapped them.
   if (body._gotcha || body.website || body.url) {
     return NextResponse.json({ ok: true, leadId: null });
+  }
+  // DPDP: a new person's details are taken only with their consent to the
+  // firm's privacy notice (the tick on the form), and that consent is recorded.
+  if (body.privacyConsent !== true) {
+    return NextResponse.json({ error: CONSENT_REQUIRED_ERROR }, { status: 400 });
   }
 
   // Required custom fields per the form definition.
@@ -238,6 +245,8 @@ export async function POST(
         now()
       )
     `);
+
+    await recordFormConsent(tx, { tenantId: form.tenantId, subject: { type: "lead", id: leadId }, source: "lead_form", headers: req.headers });
   });
 
   // Suppress unused-import warning (leads is needed for type-resolution

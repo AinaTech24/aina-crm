@@ -19,6 +19,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
+import { CONSENT_REQUIRED_ERROR, recordFormConsent } from "@/lib/privacy/consent";
 import { financialDiscoveries, tasks, tenants } from "@/db/schema";
 import { resolveShareToken, claimShareToken, finalizeShareToken, releaseShareToken } from "@/lib/share-tokens";
 import { computeDiscovery, type DiscoveryData } from "@/lib/discovery/calc";
@@ -111,6 +112,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }
 
     // ── Submit: claim the single-use link before writing ──────────────────
+    // DPDP: the fact-find is submitted with consent to the firm's privacy notice.
+    if (body?.privacyConsent !== true) {
+      return NextResponse.json({ error: CONSENT_REQUIRED_ERROR }, { status: 400 });
+    }
     if (!(await claimShareToken(tk.id))) {
       return NextResponse.json({ error: "This link has already been submitted." }, { status: 409 });
     }
@@ -136,6 +141,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
             updatedAt: new Date(),
           } as any)
           .where(eq(financialDiscoveries.id, discoveryId));
+        if (disc && (disc.subjectType === "investor" || disc.subjectType === "lead") && disc.subjectId) {
+          await recordFormConsent(tx, {
+            tenantId: tk.tenantId,
+            subject: { type: disc.subjectType, id: disc.subjectId },
+            source: "discovery_form",
+            headers: req.headers,
+          });
+        }
         return disc
           ? {
               tenantId: tk.tenantId,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PrivacyConsentCheckbox } from "@/components/privacy/PrivacyConsentCheckbox";
 import { CheckCircle2, FileText, Loader2, Upload, X, PenLine, ImageUp, Save, Check } from "lucide-react";
 import { isFieldVisible, validateNomineeAllocations, type KycField } from "@/lib/onboarding/kyc-fields";
 import { DateField } from "@/components/ui/DateField";
@@ -12,9 +13,14 @@ export function PublicDocsForm({
   recipientName,
   requiredDocs,
   requiredFields = [],
+  tenantId,
+  firmName,
 }: {
   tokenId: string;
   recipientName: string;
+  /** The firm whose privacy notice the consent tick refers to. */
+  tenantId: string;
+  firmName: string;
   requiredDocs: RequiredDoc[];
   requiredFields?: KycField[];
 }) {
@@ -26,6 +32,7 @@ export function PublicDocsForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [consent, setConsent] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
 
@@ -114,6 +121,7 @@ export function PublicDocsForm({
 
   function canSubmit() {
     if (!signature.trim()) return false;
+    if (!consent) return false;
     if (firstMissingField()) return false;
     return requiredDocs.every((d) => !d.required || !!files[d.key]);
   }
@@ -186,7 +194,7 @@ export function PublicDocsForm({
             const r = await fetch("/api/public/docs/submit", {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ tokenId, signatureName: signature.trim(), extraNotes, fields, files: filePayload }),
+              body: JSON.stringify({ tokenId, signatureName: signature.trim(), extraNotes, fields, files: filePayload, privacyConsent: consent }),
             });
             const data = await r.json().catch(() => ({}));
             if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
@@ -206,6 +214,7 @@ export function PublicDocsForm({
         fd.append("tokenId", tokenId);
         fd.append("signatureName", signature.trim());
         fd.append("extraNotes", extraNotes);
+        fd.append("privacyConsent", consent ? "true" : "false");
         for (const [k, v] of Object.entries(fields)) fd.append(`field_${k}`, v);
         for (const c of chosen) {
           fd.append(`file_${c.docKey}`, c.file);
@@ -321,6 +330,8 @@ export function PublicDocsForm({
             <span>{draftNotice}</span>
           </div>
         )}
+
+        <PrivacyConsentCheckbox tenantId={tenantId} firmName={firmName} source="docs_form" checked={consent} onChange={setConsent} />
 
         {error && <div className="text-xs text-rose-700 bg-rose-50 rounded-md p-2">{error}</div>}
 

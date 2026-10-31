@@ -72,6 +72,8 @@ export function DiscoveryForm({
   onSaveRisk,
   submitLabel = "Submit",
   subject,
+  beforeActions,
+  submitDisabled = false,
 }: {
   initialData: DiscoveryData;
   /** The lead / client this fact-find is for — links to their record (RM view only). */
@@ -85,6 +87,10 @@ export function DiscoveryForm({
   /** Save the completed questionnaire as a provisional risk profile (RM, client subject, none on record). */
   onSaveRisk?: () => Promise<void>;
   submitLabel?: string;
+  /** Shown just above the buttons — the public link's privacy-consent tick. */
+  beforeActions?: React.ReactNode;
+  /** Keeps Submit off until the page allows it (the consent tick). */
+  submitDisabled?: boolean;
 }) {
   const [data, setData] = useState<DiscoveryData>(() => ({ ...initialData, income: upgradeIncome(initialData.income) }));
   const c = useMemo(() => computeDiscovery(data), [data]);
@@ -444,6 +450,8 @@ export function DiscoveryForm({
           )}
         </Section>
 
+        {beforeActions}
+
         {/* Actions */}
         <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
           {blocked && errorCount > 0 && (
@@ -457,7 +465,7 @@ export function DiscoveryForm({
             </button>
           )}
           {onSubmit && (
-            <button onClick={guarded(onSubmit)} disabled={saving} className="btn-primary text-sm">
+            <button onClick={guarded(onSubmit)} disabled={saving || submitDisabled} className="btn-primary text-sm">
               {saving ? <Loader2 className="size-4 animate-spin" /> : null} {submitLabel}
             </button>
           )}

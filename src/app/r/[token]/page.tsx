@@ -18,6 +18,7 @@ import { tenants, leads, investors, riskProfileTemplates } from "@/db/schema";
 import { resolveShareToken } from "@/lib/share-tokens";
 import { isSampleShareToken } from "@/lib/share-tokens/sample";
 import { defaultTemplate, RiskTemplateSchema } from "@/lib/risk-profile/template";
+import { PrivacyNoticeLink } from "@/components/privacy/PrivacyNoticeLink";
 import { PublicRiskForm } from "@/components/public/PublicRiskForm";
 
 export const dynamic = "force-dynamic";
@@ -118,6 +119,7 @@ export default async function PublicRiskFormPage({ params }: { params: Promise<{
       <footer className="max-w-3xl mx-auto px-4 py-6 text-2xs text-muted-foreground text-center">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
         {data.tenant?.arn ? <> · {data.tenant.displayName ?? data.tenant.legalName} · {formatArn(data.tenant.arn)}</> : null}
+        <PrivacyNoticeLink tenantId={info.tenantId} firmName={data.tenant?.displayName ?? data.tenant?.legalName} className="mt-2" />
       </footer>
     </div>
   );

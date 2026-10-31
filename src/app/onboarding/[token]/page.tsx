@@ -13,6 +13,7 @@ import { withSystem } from "@/db/client";
 import { tenants, leads, users } from "@/db/schema";
 import { resolveShareToken } from "@/lib/share-tokens";
 import { getStage } from "@/lib/blueprints/engine";
+import { PrivacyNoticeLink } from "@/components/privacy/PrivacyNoticeLink";
 import { PublicOnboardingVisualizer } from "@/components/public/PublicOnboardingVisualizer";
 
 export const dynamic = "force-dynamic";
@@ -113,6 +114,7 @@ export default async function PublicOnboardingPage({ params }: { params: Promise
             · {data.tenant.displayName ?? data.tenant.legalName} · {arnLabel}
           </>
         ) : null}
+        <PrivacyNoticeLink tenantId={info.tenantId} firmName={data.tenant.displayName ?? data.tenant.legalName} className="mt-2" />
       </footer>
     </div>
   );

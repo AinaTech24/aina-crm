@@ -4,13 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { DiscoveryForm } from "@/components/discovery/DiscoveryForm";
 import type { DiscoveryData } from "@/lib/discovery/calc";
+import { PrivacyConsentCheckbox } from "@/components/privacy/PrivacyConsentCheckbox";
 
 /** Public client wrapper around DiscoveryForm — clientMode (no advisor
  *  assessment). Progress is saved as the client types (`draft: true`, which
  *  does not use up the link), so they can close the page and come back; Submit
  *  sends it to the advisor and shows a thank-you. */
-export function PublicDiscoveryForm({ token, initialData, firmName }: { token: string; initialData: DiscoveryData; firmName: string }) {
+export function PublicDiscoveryForm({ token, initialData, firmName, tenantId }: { token: string; initialData: DiscoveryData; firmName: string; tenantId: string }) {
   const [saving, setSaving] = useState(false);
+  const [consent, setConsent] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [draftState, setDraftState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
@@ -46,7 +48,7 @@ export function PublicDiscoveryForm({ token, initialData, firmName }: { token: s
       const res = await fetch(`/api/public/discovery/${token}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ data }),
+        body: JSON.stringify({ data, privacyConsent: consent }),
       });
       if (res.ok) {
         submitted.current = true;
@@ -79,7 +81,18 @@ export function PublicDiscoveryForm({ token, initialData, firmName }: { token: s
       <div className="text-right text-2xs text-muted-foreground" aria-live="polite">
         {draftState === "saving" ? "Saving…" : draftState === "saved" ? "Progress saved" : draftState === "failed" ? "Could not save progress — check your connection" : ""}
       </div>
-      <DiscoveryForm initialData={initialData} clientMode onChange={onChange} onSubmit={submit} submitLabel="Submit to my advisor" saving={saving} />
+      <DiscoveryForm
+        initialData={initialData}
+        clientMode
+        onChange={onChange}
+        onSubmit={submit}
+        submitLabel="Submit to my advisor"
+        saving={saving}
+        submitDisabled={!consent}
+        beforeActions={
+          <PrivacyConsentCheckbox tenantId={tenantId} firmName={firmName} source="discovery_form" checked={consent} onChange={setConsent} />
+        }
+      />
     </div>
   );
 }

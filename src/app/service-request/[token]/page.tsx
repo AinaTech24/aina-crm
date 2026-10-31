@@ -41,7 +41,7 @@ export default async function PublicServiceRequestPage({ params }: { params: Pro
   return (
     <PublicServiceRequestForm
       token={token}
-      firm={{ name: form.firmName, logoUrl: form.logoUrl, primaryColor: form.primaryColor, arn: form.arn }}
+      firm={{ name: form.firmName, logoUrl: form.logoUrl, primaryColor: form.primaryColor, arn: form.arn, tenantId: form.tenantId }}
       services={WEB_SERVICES.map((s) => ({ value: s.value, label: s.label }))}
     />
   );

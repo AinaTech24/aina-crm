@@ -14,6 +14,7 @@
 
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import { PrivacyConsentCheckbox } from "@/components/privacy/PrivacyConsentCheckbox";
 
 type Field = {
   key: string;
@@ -43,6 +44,7 @@ export function LeadCaptureFormClient({
     } | null;
   };
   tenant: {
+    id?: string;
     displayName?: string;
     primaryColor?: string;
     logoUrl?: string;
@@ -66,6 +68,7 @@ export function LeadCaptureFormClient({
   const [done, setDone] = useState(false);
   // Honeypot — bots fill hidden fields.
   const [hp, setHp] = useState("");
+  const [consent, setConsent] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -82,6 +85,7 @@ export function LeadCaptureFormClient({
           notes,
           _gotcha: hp || undefined,
           ...extras,
+          privacyConsent: consent,
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -243,6 +247,16 @@ export function LeadCaptureFormClient({
               />
             </Field>
 
+            {tenant?.id && (
+              <PrivacyConsentCheckbox
+                tenantId={tenant.id}
+                firmName={tenant.displayName ?? "this firm"}
+                source="lead_form"
+                checked={consent}
+                onChange={setConsent}
+              />
+            )}
+
             {err && (
               <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
                 {err}
@@ -260,8 +274,6 @@ export function LeadCaptureFormClient({
             </button>
 
             <p className="text-2xs text-muted-foreground pt-2">
-              By submitting, you agree to be contacted by{" "}
-              {tenant?.displayName ?? "this firm"} regarding your enquiry.
               Mutual fund investments are subject to market risks.
             </p>
           </form>
@@ -269,7 +281,7 @@ export function LeadCaptureFormClient({
           {tenant && (
             <div className="border-t border-slate-100 bg-secondary px-8 py-3 text-2xs text-muted-foreground">
               {tenant.displayName}
-              {tenant.arn && ` · ARN-${tenant.arn}`}
+              {tenant.arn && ` · ARN-${tenant.arn.replace(/^arn[\s-]*/i, "")}`}
             </div>
           )}
         </div>

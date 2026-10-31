@@ -735,6 +735,36 @@ off, or replace the link).
   mailbox poller touches no ticket code and that `createServiceRequest` (the
   WhatsApp intake's) cannot be given the email channel.
 
+## DPDP — the firm's privacy notice and consent record
+
+The Digital Personal Data Protection Act, 2023 and the DPDP Rules, 2025
+(substantive duties from 13 May 2027). The FIRM is the data fiduciary for its
+clients and leads; this CRM is its processor. Step 1 of the plan (2026-10-31):
+
+- **Every firm has a notice** at `/privacy/<tenant id>` (public;
+  `PUBLIC_PATH_PREFIXES`). The standard text in `lib/privacy/notice.ts`
+  fits an MFD; Settings → Privacy notice adds the firm's own purposes and
+  recipients and the AI line (`tenants.privacy_notice`, migration 0255). The
+  privacy contact is `tenants.dpo` (also in Organisation profile), else the
+  firm's email and phone. Any change is a new `version` — version 1 is the
+  standard text.
+- **Consent is ticked where new personal data is collected**: the lead form
+  (`/lf/`), document upload (`/d/`) and the fact-find (`/fd/`) show
+  `PrivacyConsentCheckbox`, and their APIs refuse without
+  `privacyConsent: true` (`CONSENT_REQUIRED_ERROR`). Every other public page
+  shows `PrivacyNoticeLink`. A new public form must do one or the other.
+- **The record is `privacy_consents`** (`lib/privacy/consent.ts`): one row
+  per consent (source, purpose in the words shown, notice version, IP,
+  browser) and per notice first emailed to a client or lead — every email
+  footer links the notice (`privacy_url` / `privacy_contact` tokens from
+  `dispatch()`, drawn by both footers), so `dispatch()` records the first
+  one, in a savepoint. Rows are never edited; a withdrawal stamps
+  `withdrawn_at`.
+- **Still to build** (the plan): a privacy-requests register with a 90-day
+  clock and a per-person data summary; erasure by anonymising what the law
+  lets go while keeping PMLA / SEBI records; a retention policy job; a breach
+  register; no marketing to minors; a per-firm AI switch; enforceable 2FA.
+
 ## Creating a family
 
 The New family form (`/dashboard/families/new`, `NewFamilyForm`) asks for the

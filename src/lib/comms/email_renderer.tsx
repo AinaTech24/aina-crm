@@ -225,6 +225,13 @@ function ComplianceFooter({ tokens }: { tokens: Record<string, string> }) {
         investment advice or a recommendation to buy or sell any security. Past performance is not
         indicative of future results.
       </Text>
+      {tokens.privacy_url ? (
+        <Text style={{ color: "#9ca3af", fontSize: 11, marginTop: 8 }}>
+          How we use your personal data:{" "}
+          <Link href={tokens.privacy_url} style={{ color: "#6b7280" }}>privacy notice</Link>
+          {tokens.privacy_contact ? ` · Privacy questions: ${tokens.privacy_contact}` : ""}
+        </Text>
+      ) : null}
       <Text style={{ color: "#9ca3af", fontSize: 11, marginTop: 8 }}>
         If you no longer wish to receive these emails, you can{" "}
         <Link href="{{unsubscribe_url}}" style={{ color: "#6b7280" }}>unsubscribe here</Link>.
@@ -257,6 +264,8 @@ export function renderEmailTemplate(body: EmailTemplateBody, tokens: Record<stri
         websiteUrl: tokens.firm_website ?? "",
         brandColor: tokens.brand_color ?? null,
         logoUrl: tokens.tenant_logo_url ?? tokens.logo_url ?? null,
+        privacyUrl: tokens.privacy_url || null,
+        privacyContact: tokens.privacy_contact || null,
       },
       unsubscribeUrl: tokens.unsubscribe_url ?? "",
     });

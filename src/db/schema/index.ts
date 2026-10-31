@@ -119,3 +119,4 @@ export * from "./api_mutation_receipts";
 export * from "./delivery-recovery";
 export * from "./kyc_checks";
 export * from "./practice";
+export * from "./privacy";

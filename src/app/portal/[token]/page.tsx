@@ -4,6 +4,7 @@ import { withTenant } from "@/db/client";
 import { folios, goals, investors, serviceRequests, tenants } from "@/db/schema";
 import { resolvePortalAccess } from "@/lib/portal/access";
 import { formatDate, formatINR } from "@/lib/utils";
+import { PrivacyNoticeLink } from "@/components/privacy/PrivacyNoticeLink";
 import { PortalServiceRequestForm } from "@/components/portal/PortalServiceRequestForm";
 
 export const dynamic = "force-dynamic";
@@ -105,6 +106,7 @@ export default async function InvestorPortalPage({ params }: { params: Promise<{
         )}
 
         <p className="border-t pt-5 text-xs leading-relaxed text-muted-foreground">Portfolio values are based on the latest registrar data available to your distributor and may differ from real-time market values. Mutual fund investments are subject to market risks. Read all scheme-related documents carefully.</p>
+        <PrivacyNoticeLink tenantId={access.tenantId} firmName={data.firm?.name} />
       </div>
     </main>
   );

@@ -46,6 +46,8 @@ import { checkMonthlyQuota } from "./usage";
 import { durableDelivery } from "./durable-delivery";
 import { firmIntroTokens, readFirmEmailIntro } from "@/lib/firm/email-intro";
 import { leadSubject } from "@/lib/comms/lead-subject";
+import { privacyContact, privacyNoticePath } from "@/lib/privacy/notice";
+import { recordNoticeSentOnce } from "@/lib/privacy/consent";
 
 
 export type DispatchChannel = "whatsapp" | "email" | "sms";
@@ -302,6 +304,10 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         firm_address: addr
           ? [addr.line1, addr.line2, addr.city, addr.state, addr.pincode].filter(Boolean).join(", ")
           : "",
+        // DPDP: the firm's privacy notice and who answers privacy questions,
+        // printed in every email footer (lib/privacy/notice.ts).
+        privacy_url: absoluteAppUrl(privacyNoticePath(input.tenantId)),
+        privacy_contact: privacyContact(t?.dataProtectionOfficer, { email: t?.email, phone: t?.phone }).email ?? "",
       });
       // The firm's own introduction ({{firm.company_intro}}, {{firm.services}},
       // {{firm.founder_photo_url}}, the firm's custom fields …) from Settings →
@@ -740,6 +746,23 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         sentAt: new Date(),
       })
       .where(eq(communications.id, communicationId));
+
+    // DPDP: every email footer links the firm's privacy notice, so the first
+    // email a client or lead receives is the notice reaching them — recorded
+    // once per person (lib/privacy/consent.ts). In a savepoint: the record must
+    // never undo a message that has already gone.
+    if (input.channel === "email" && (input.investorId || input.leadId)) {
+      try {
+        await tx.transaction((sp) =>
+          recordNoticeSentOnce(sp as unknown as Tx, {
+            tenantId: input.tenantId,
+            subject: input.investorId ? { type: "investor", id: input.investorId } : { type: "lead", id: input.leadId! },
+          })
+        );
+      } catch (e) {
+        console.warn("[dispatch] privacy notice record skipped:", (e as Error)?.message);
+      }
+    }
 
     return {
       communicationId,
