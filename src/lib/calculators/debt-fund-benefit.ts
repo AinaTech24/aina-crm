@@ -21,9 +21,19 @@
  *     hold to 21/07/2023: redeem ₹12,48,661 · LTCG ₹91,036 · tax ₹18,207 ·
  *     net ₹12,30,454 · yield 7.15% · effective remaining yield 11.84%.
  *
- * NOTE: indexation on debt funds was withdrawn for units bought on/after 1 Apr
- * 2023 — this models the indexation regime and is an illustration only.
+ * CURRENT RULES, applied from the dates (the inputs' LT rate / indexation /
+ * qualification years apply only to a sale BEFORE 23 Jul 2024):
+ *   • units bought on/after 1 Apr 2023 — every gain at slab, however long held
+ *     (s.50AA), so holding saves no tax (`regime: "slab"`);
+ *   • older units sold on/after 23 Jul 2024 — long-term after 24 months, at
+ *     12.5% WITHOUT indexation (`regime: "flat"`);
+ *   • a sale already past the qualify date is long-term today.
  */
+
+const SLAB_FROM = new Date("2023-04-01T00:00:00");
+const FLAT_FROM = new Date("2024-07-23T00:00:00");
+const FLAT_LTCG_PCT = 12.5;
+const FLAT_LTCG_YEARS = 2;
 
 export type DebtFundBenefitInput = {
   purchaseDate: string; // ISO yyyy-mm-dd
@@ -39,15 +49,20 @@ export type DebtFundBenefitInput = {
 
 export type DebtFundBenefitResult = {
   valid: boolean;
-  qualifyDate: string; // ISO
+  error: string; // why `valid` is false ("" when valid)
+  regime: "slab" | "indexation" | "flat"; // rules for the hold-to-LTCG sale
+  sellIsLongTerm: boolean; // already past the qualify date today
+  sellTaxPct: number;
+  holdTaxPct: number;
+  qualifyDate: string; // ISO ("" for slab units)
   sellHoldingDays: number;
   remainingDays: number;
   totalHoldingDays: number;
   indexYears: number;
 
   // Sell today
-  shortTermGain: number;
-  shortTermTax: number;
+  sellGain: number;
+  sellTax: number;
   netIfSold: number;
   postTaxYieldSold: number; // % p.a.
 
@@ -90,52 +105,87 @@ export function computeDebtFundBenefit(input: DebtFundBenefitInput): DebtFundBen
   const purchase = parseDate(input.purchaseDate);
   const redemption = parseDate(input.redemptionDate);
   const ltcgYears = Math.max(1, Math.round(input.ltcgYears || 3));
+  const inv = input.investmentAmount;
 
   const empty: DebtFundBenefitResult = {
-    valid: false, qualifyDate: "", sellHoldingDays: 0, remainingDays: 0, totalHoldingDays: 0, indexYears: 0,
-    shortTermGain: 0, shortTermTax: 0, netIfSold: 0, postTaxYieldSold: 0,
+    valid: false, error: "Enter valid purchase and redemption dates.", regime: "indexation", sellIsLongTerm: false,
+    sellTaxPct: 0, holdTaxPct: 0, qualifyDate: "", sellHoldingDays: 0, remainingDays: 0, totalHoldingDays: 0, indexYears: 0,
+    sellGain: 0, sellTax: 0, netIfSold: 0, postTaxYieldSold: 0,
     expectedRedemptionAmount: 0, indexedCost: 0, longTermGain: 0, longTermTax: 0, netIfHeld: 0, postTaxYieldHeld: 0,
     effectiveRemainingYield: 0, taxSaved: 0, extraInHand: 0,
   };
   if (!purchase || !redemption) return empty;
+  if (redemption < purchase) return { ...empty, error: "Redemption date is before the purchase date." };
 
-  // LTCG qualification date = purchase + ltcgYears years + 1 day (strictly past 3y).
-  const qualify = new Date(purchase);
-  qualify.setFullYear(qualify.getFullYear() + ltcgYears);
-  qualify.setDate(qualify.getDate() + 1);
+  const plusYearsAndDay = (d: Date, years: number) => {
+    const q = new Date(d);
+    q.setFullYear(q.getFullYear() + years);
+    q.setDate(q.getDate() + 1); // strictly past the period
+    return q;
+  };
+  const slab = purchase >= SLAB_FROM;
+  // First date a sale is long-term: the old rule if it is reached before 23 Jul
+  // 2024, else the 24-month rule (which only exists from 23 Jul 2024).
+  const oldQualify = plusYearsAndDay(purchase, ltcgYears);
+  const newQualify = plusYearsAndDay(purchase, FLAT_LTCG_YEARS);
+  const qualify = slab
+    ? null
+    : oldQualify < FLAT_FROM
+      ? oldQualify
+      : newQualify > FLAT_FROM ? newQualify : FLAT_FROM;
+
+  /** Long-term tax on a sale of `value` on `sale`, under the rules of that date. */
+  const ltTax = (sale: Date, value: number) => {
+    const flat = sale >= FLAT_FROM;
+    const years = flat ? 0 : Math.floor(Math.max(1, daysBetween(purchase, sale)) / 365);
+    const cost = inv * Math.pow(1 + input.indexationRatePct / 100, years);
+    const gain = Math.max(0, value - cost);
+    const pct = flat ? FLAT_LTCG_PCT : input.longTermTaxPct;
+    return { cost, gain, tax: (gain * pct) / 100, pct, years };
+  };
 
   const sellHoldingDays = Math.max(1, daysBetween(purchase, redemption));
-  const remainingDays = Math.max(0, daysBetween(redemption, qualify));
-  const totalHoldingDays = Math.max(1, daysBetween(purchase, qualify));
-  const indexYears = Math.floor(totalHoldingDays / 365);
+  const sellIsLongTerm = qualify != null && redemption >= qualify;
 
-  // ── Sell today (short-term) ──
-  const shortTermGain = Math.max(0, input.currentMarketValue - input.investmentAmount);
-  const shortTermTax = (shortTermGain * input.shortTermTaxPct) / 100;
-  const netIfSold = input.currentMarketValue - shortTermTax;
-  const postTaxYieldSold = annualise(input.investmentAmount, netIfSold, sellHoldingDays);
+  // ── Sell today ── (slab unless already long-term)
+  const sellLt = sellIsLongTerm ? ltTax(redemption, input.currentMarketValue) : null;
+  const sellGain = sellLt ? sellLt.gain : Math.max(0, input.currentMarketValue - inv);
+  const sellTaxPct = sellLt ? sellLt.pct : input.shortTermTaxPct;
+  const sellTax = (sellGain * sellTaxPct) / 100;
+  const netIfSold = input.currentMarketValue - sellTax;
+  const postTaxYieldSold = annualise(inv, netIfSold, sellHoldingDays);
 
-  // ── Hold to LTCG (long-term, with indexation) ──
-  const expectedRedemptionAmount =
-    input.currentMarketValue * Math.pow(1 + input.expectedReturnPct / 100, remainingDays / 365);
-  const indexedCost = input.investmentAmount * Math.pow(1 + input.indexationRatePct / 100, indexYears);
-  const longTermGain = Math.max(0, expectedRedemptionAmount - indexedCost);
-  const longTermTax = (longTermGain * input.longTermTaxPct) / 100;
+  // ── Hold to LTCG ── nothing to wait for on slab units or once long-term.
+  const holdDate = qualify != null && !sellIsLongTerm ? qualify : null;
+  const remainingDays = holdDate ? Math.max(0, daysBetween(redemption, holdDate)) : 0;
+  const totalHoldingDays = holdDate ? Math.max(1, daysBetween(purchase, holdDate)) : sellHoldingDays;
+  const expectedRedemptionAmount = holdDate
+    ? input.currentMarketValue * Math.pow(1 + input.expectedReturnPct / 100, remainingDays / 365)
+    : input.currentMarketValue;
+  const holdLt = holdDate ? ltTax(holdDate, expectedRedemptionAmount) : sellLt;
+  const indexedCost = holdLt ? holdLt.cost : inv;
+  const longTermGain = holdLt ? holdLt.gain : sellGain;
+  const longTermTax = holdLt ? holdLt.tax : sellTax;
   const netIfHeld = expectedRedemptionAmount - longTermTax;
-  const postTaxYieldHeld = annualise(input.investmentAmount, netIfHeld, totalHoldingDays);
+  const postTaxYieldHeld = annualise(inv, netIfHeld, totalHoldingDays);
 
   // ── Headline: the return on the EXTRA holding period ──
   const effectiveRemainingYield = remainingDays > 0 ? annualise(netIfSold, netIfHeld, remainingDays) : 0;
 
   return {
     valid: true,
-    qualifyDate: toIso(qualify),
+    error: "",
+    regime: slab ? "slab" : (holdDate ?? redemption) >= FLAT_FROM ? "flat" : "indexation",
+    sellIsLongTerm,
+    sellTaxPct,
+    holdTaxPct: holdLt ? holdLt.pct : sellTaxPct,
+    qualifyDate: qualify ? toIso(qualify) : "",
     sellHoldingDays,
     remainingDays,
     totalHoldingDays,
-    indexYears,
-    shortTermGain,
-    shortTermTax,
+    indexYears: holdLt ? holdLt.years : 0,
+    sellGain,
+    sellTax,
     netIfSold,
     postTaxYieldSold,
     expectedRedemptionAmount,
@@ -145,7 +195,7 @@ export function computeDebtFundBenefit(input: DebtFundBenefitInput): DebtFundBen
     netIfHeld,
     postTaxYieldHeld,
     effectiveRemainingYield,
-    taxSaved: shortTermTax - longTermTax,
+    taxSaved: sellTax - longTermTax,
     extraInHand: netIfHeld - netIfSold,
   };
 }

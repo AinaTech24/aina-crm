@@ -254,7 +254,7 @@ export function IncomeBridgePlanner() {
 
       <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. Figures assume constant returns and inflation; actual results vary with market performance.
-        SWP grows with inflation each month. Not investment advice.
+        SWP grows with inflation each month; withdrawal at month end · effective monthly rate. Not investment advice.
       </p>
     </div>
   );

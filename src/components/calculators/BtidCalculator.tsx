@@ -32,6 +32,8 @@ export function BtidCalculator() {
       }),
     [annualBudget, termPremium, termCover, years, mfReturn, tradReturn],
   );
+  const mfAhead = res.wealthGap >= 0;
+  const coverAhead = res.coverGap >= 0;
 
   return (
     <div className="card-surface p-5 space-y-5">
@@ -50,27 +52,34 @@ export function BtidCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Stat label="Term + MF — corpus" value={inr(Math.round(res.btidCorpus))} tone="emerald" />
-        <Stat label="Traditional — corpus" value={inr(Math.round(res.tradCorpus))} tone="amber" />
-        <Stat label="Term + MF — cover" value={inrShort(res.btidCover)} tone="emerald" />
-        <Stat label="Traditional — cover" value={inrShort(res.tradCover)} tone="rose" />
+        <Stat label="Term + MF — corpus (post-tax)" value={inr(Math.round(res.btidPostTax))} tone={mfAhead ? "emerald" : "amber"} />
+        <Stat label="Traditional — corpus" value={inr(Math.round(res.tradPostTax))} tone={mfAhead ? "amber" : "emerald"} />
+        <Stat label="Term + MF — cover" value={inrShort(res.btidCover)} tone={coverAhead ? "emerald" : "rose"} />
+        <Stat label="Traditional — cover" value={inrShort(res.tradCover)} tone={coverAhead ? "rose" : "emerald"} />
       </div>
 
       <BarsChart
         fmtV={(v) => inrShort(v)}
         bars={[
-          { label: "Term + MF", value: res.btidCorpus, color: "#10b981" },
-          { label: "ULIP/Endowment", value: res.tradCorpus, color: "#f59e0b" },
+          { label: "Term + MF (post-tax)", value: res.btidPostTax, color: "#10b981" },
+          { label: "ULIP/Endowment", value: res.tradPostTax, color: "#f59e0b" },
         ]}
       />
 
-      <Insight tone="emerald">
+      <Insight tone={mfAhead && coverAhead ? "emerald" : "amber"}>
         For the same {inr(annualBudget)}/year, <strong>Term + MF</strong> builds{" "}
-        <strong>{inrShort(res.btidCorpus)}</strong> with a full {inrShort(res.btidCover)} cover — versus{" "}
-        <strong>{inrShort(res.tradCorpus)}</strong> and only {inrShort(res.tradCover)} cover from a bundled policy. That&rsquo;s{" "}
-        <strong>{inrShort(res.wealthGap)}</strong> more wealth <em>and</em> {inrShort(res.coverGap)} more protection — insurance and
-        investment do their jobs best when kept separate.
+        <strong>{inrShort(res.btidPostTax)}</strong> after LTCG with {inrShort(res.btidCover)} cover — versus{" "}
+        <strong>{inrShort(res.tradPostTax)}</strong> and {inrShort(res.tradCover)} cover from a bundled policy. That&rsquo;s{" "}
+        <strong>{inrShort(Math.abs(res.wealthGap))}</strong> {mfAhead ? "more" : "less"} wealth and{" "}
+        {inrShort(Math.abs(res.coverGap))} {coverAhead ? "more" : "less"} protection.
+        {mfAhead && coverAhead && " Insurance and investment do their jobs best when kept separate."}
       </Insight>
+
+      <p className="text-2xs text-muted-foreground">
+        {res.ulipTaxFree
+          ? "ULIP maturity tax-free only while the annual premium is ≤ ₹2.5 L."
+          : "Premium above ₹2.5 L/yr: ULIP gains taxed as LTCG too."}
+      </p>
     </div>
   );
 }

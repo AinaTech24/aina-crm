@@ -64,7 +64,11 @@ export function XirrCalculator() {
           fairly accounts for <em>when</em> each rupee went in or came out.
         </Insight>
       ) : (
-        <Insight tone="amber">Add at least one investment (negative) and one inflow/value (positive) with valid dates to compute XIRR.</Insight>
+        <Insight tone="amber">
+          {result.hasBothSigns
+            ? "Couldn't solve an XIRR for these cash flows — check the amounts and dates."
+            : "Add at least one investment (negative) and one inflow/value (positive) with valid dates to compute XIRR."}
+        </Insight>
       )}
     </div>
   );

@@ -8,6 +8,10 @@
  * FY2010-11, sell ₹70L less ₹1L expenses FY2022-23 → indexed acquisition
  * ₹43,93,805, indexed improvement ₹9,91,018, LTCG ₹15,15,177, tax @20%
  * ₹3,03,035, +4% cess ₹3,15,157).
+ *
+ * Budget 2024 — sales on/after 23-Jul-2024: LTCG 12.5% WITHOUT indexation; land
+ * / building bought before that date (resident individual) pays the lower of
+ * 20% indexed and 12.5% unindexed. Earlier sales keep 20% indexed.
  */
 
 /** Official Cost Inflation Index, keyed by FY start year (FY2001-02 → 2001). */
@@ -15,11 +19,13 @@ export const CII: Record<number, number> = {
   2001: 100, 2002: 105, 2003: 109, 2004: 113, 2005: 117, 2006: 122, 2007: 129,
   2008: 137, 2009: 148, 2010: 167, 2011: 184, 2012: 200, 2013: 220, 2014: 240,
   2015: 254, 2016: 264, 2017: 272, 2018: 280, 2019: 289, 2020: 301, 2021: 317,
-  2022: 331, 2023: 348, 2024: 363,
+  2022: 331, 2023: 348, 2024: 363, 2025: 376,
 };
 
 export const CII_BASE_YEAR = 2001;
-export const LTCG_RATE_PCT = 20; // with indexation
+export const LTCG_RATE_PCT = 20; // with indexation (sales before 23-Jul-2024)
+export const LTCG_RATE_NEW_PCT = 12.5; // without indexation (sales on/after 23-Jul-2024)
+export const LTCG_CHANGE_DATE = "2024-07-23";
 export const CESS_PCT = 4; // health & education cess
 
 export type AssetType = "immovable" | "movable" | "gold" | "unlisted_shares" | "other";
@@ -37,6 +43,21 @@ export const LT_THRESHOLD_MONTHS: Record<AssetType, number> = {
   gold: 24,
   other: 24,
 };
+
+/** Before 23-Jul-2024: gold, movable and other assets needed 36 months. */
+export const LT_THRESHOLD_MONTHS_OLD: Record<AssetType, number> = {
+  immovable: 24,
+  unlisted_shares: 24,
+  movable: 36,
+  gold: 36,
+  other: 36,
+};
+
+/** True when the ISO date falls on/after 23-Jul-2024 (Budget 2024 rules). */
+function onOrAfterChange(iso: string): boolean {
+  const d = new Date(iso);
+  return !Number.isNaN(d.getTime()) && d.getTime() >= new Date(LTCG_CHANGE_DATE).getTime();
+}
 
 /** FY start year for an ISO date (India FY = 1 Apr–31 Mar). */
 export function fyStartYear(iso: string): number | null {
@@ -97,6 +118,8 @@ export type CapitalGainsResult = {
   indexedImprovements: number;
   totalImprovementsRaw: number;
   gain: number;
+  ltcgRatePct: number; // rate applied to a long-term gain
+  indexed: boolean; // whether the long-term gain used indexation
   baseTax: number;
   cess: number;
   totalTax: number;
@@ -107,7 +130,8 @@ export function computeCapitalGains(input: CapitalGainsInput): CapitalGainsResul
   const purchaseFY = fyStartYear(input.purchaseDate);
   const saleFY = fyStartYear(input.saleDate);
   const holdingMonths = monthsBetween(input.purchaseDate, input.saleDate);
-  const threshold = LT_THRESHOLD_MONTHS[input.assetType];
+  const newRules = onOrAfterChange(input.saleDate);
+  const threshold = (newRules ? LT_THRESHOLD_MONTHS : LT_THRESHOLD_MONTHS_OLD)[input.assetType];
   const isLongTerm = holdingMonths >= threshold;
 
   const ciiSale = input.expectedSaleCII && input.expectedSaleCII > 0
@@ -129,15 +153,34 @@ export function computeCapitalGains(input: CapitalGainsInput): CapitalGainsResul
   let indexedImprovements: number;
   let gain: number;
   let baseTax: number;
+  let ltcgRatePct = LTCG_RATE_PCT;
+  let indexed = false;
 
   if (isLongTerm) {
-    indexedAcquisition = (costBase * ciiSale) / ciiFor(costFY);
-    indexedImprovements = input.improvements.reduce(
+    const idxAcq = (costBase * ciiSale) / ciiFor(costFY);
+    const idxImp = input.improvements.reduce(
       (s, im) => s + (im.cost * ciiSale) / ciiFor(im.fyStartYear),
       0
     );
-    gain = netConsideration - indexedAcquisition - indexedImprovements;
-    baseTax = Math.max(0, gain) * (LTCG_RATE_PCT / 100);
+    const idxGain = netConsideration - idxAcq - idxImp;
+    const idxTax = Math.max(0, idxGain) * (LTCG_RATE_PCT / 100);
+    const plainGain = netConsideration - costBase - totalImprovementsRaw;
+    const plainTax = Math.max(0, plainGain) * (LTCG_RATE_NEW_PCT / 100);
+    // Land / building bought before 23-Jul-2024: lower of the two (resident individual).
+    const boughtBeforeChange = input.acquisitionBasis === "before_2001" || !onOrAfterChange(input.purchaseDate);
+    indexed = !newRules || (input.assetType === "immovable" && boughtBeforeChange && idxTax <= plainTax);
+    if (indexed) {
+      indexedAcquisition = idxAcq;
+      indexedImprovements = idxImp;
+      gain = idxGain;
+      baseTax = idxTax;
+    } else {
+      indexedAcquisition = costBase;
+      indexedImprovements = totalImprovementsRaw;
+      gain = plainGain;
+      baseTax = plainTax;
+      ltcgRatePct = LTCG_RATE_NEW_PCT;
+    }
   } else {
     indexedAcquisition = costBase; // no indexation
     indexedImprovements = totalImprovementsRaw;
@@ -160,6 +203,8 @@ export function computeCapitalGains(input: CapitalGainsInput): CapitalGainsResul
     indexedImprovements,
     totalImprovementsRaw,
     gain,
+    ltcgRatePct,
+    indexed,
     baseTax,
     cess,
     totalTax,

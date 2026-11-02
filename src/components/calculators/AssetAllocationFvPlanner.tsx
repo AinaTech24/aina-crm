@@ -30,6 +30,9 @@ const S2_DEFAULT: AssetRow[] = [
   { assetClass: "debt", ratePct: 7, allocationPct: 5 },
 ];
 
+/** Allocation adds up to 100% (within rounding of typed decimals). */
+const is100 = (pct: number) => Math.abs(pct - 100) < 0.01;
+
 export function AssetAllocationFvPlanner() {
   const [clientName, setClientName] = useState("");
   const [initialInvestment, setInitialInvestment] = useState(1000000);
@@ -67,7 +70,12 @@ export function AssetAllocationFvPlanner() {
       )}
 
       {/* Comparison */}
-      {s2enabled && result.scenario2 && (
+      {s2enabled && result.scenario2 && !(is100(result.scenario1.totalAllocationPct) && is100(result.scenario2.totalAllocationPct)) && (
+        <div className="rounded-lg px-4 py-3 text-sm border border-amber-200 bg-amber-50/60 text-amber-900">
+          Set both allocations to 100% to compare them on the same investment.
+        </div>
+      )}
+      {s2enabled && result.scenario2 && is100(result.scenario1.totalAllocationPct) && is100(result.scenario2.totalAllocationPct) && (
         <div
           className={`rounded-lg px-4 py-3 text-sm border ${
             result.scenario2.futureValue >= result.scenario1.futureValue

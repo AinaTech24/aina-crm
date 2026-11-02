@@ -88,7 +88,7 @@ export function FamilyWealthPlan() {
         <div className="flex items-center justify-between mb-1.5">
           <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">Asset allocation</div>
           <div className={`text-2xs font-medium ${allocOff ? "text-amber-600" : "text-muted-foreground"}`}>
-            Total {res.allocationSumPct.toFixed(0)}%{allocOff ? " — normalised to 100%" : ""}
+            Total {res.allocationSumPct.toFixed(0)}%{allocOff ? (res.allocationSumPct > 0 ? " — normalised to 100%" : " — split equally") : ""}
           </div>
         </div>
         <div className="space-y-1.5">

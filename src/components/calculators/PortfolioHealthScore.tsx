@@ -64,7 +64,7 @@ export function PortfolioHealthScore() {
             : fundCount <= 24 ? 8
               : 4;
     const goalMapping = clamp(goalMappedPct, 0, 100) * 0.2;
-    const sipCoverage = requiredSip <= 0 ? 15 : clamp(activeSip / requiredSip, 0, 1.4) * 15;
+    const sipCoverage = requiredSip <= 0 ? 15 : clamp(activeSip / requiredSip, 0, 1) * 15; // max 15 — keeps the score ≤ 100
     const review = monthsSinceReview <= 3 ? 10 : monthsSinceReview <= 6 ? 8 : monthsSinceReview <= 12 ? 5 : 2;
     const quality = 15 * clamp(1 - underperformers / Math.max(1, fundCount), 0, 1);
 

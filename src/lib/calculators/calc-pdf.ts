@@ -203,6 +203,11 @@ async function renderReport(
     const gap = 10;
     const cw = (contentW - gap * (cols - 1)) / cols;
     const ch = 50;
+    // A long label or figure shrinks (to a floor) before it is clipped.
+    const fitSize = (s: string, max: number, min: number, w: number, keep = false) => {
+      const tw = bold.widthOfTextAtSize(sanitize(s, keep), max);
+      return tw <= w ? max : Math.max(min, max * (w / tw));
+    };
     for (let g = 0; g < group.length; g += cols) {
       need(ch + 10);
       const row = group.slice(g, g + cols);
@@ -210,24 +215,48 @@ async function renderReport(
         const x = MARGIN + col * (cw + gap);
         page.drawRectangle({ x, y: y - ch, width: cw, height: ch, color: primarySoft, borderColor: primaryEdge, borderWidth: 0.8 });
         page.drawRectangle({ x, y: y - 3, width: cw, height: 3, color: primary }); // top accent
-        page.drawText(clip(s.label.toUpperCase(), bold, 7, cw - 22), { x: x + 12, y: y - 19, size: 7, font: bold, color: slate });
-        page.drawText(clip(s.value, bold, 16, cw - 22, rupeeOk), { x: x + 12, y: y - 39, size: 16, font: bold, color: primary });
+        const label = s.label.toUpperCase();
+        const ls = fitSize(label, 7, 5.5, cw - 22);
+        const vs = fitSize(s.value, 16, 10, cw - 22, rupeeOk);
+        page.drawText(clip(label, bold, ls, cw - 22), { x: x + 12, y: y - 19, size: ls, font: bold, color: slate });
+        page.drawText(clip(s.value, bold, vs, cw - 22, rupeeOk), { x: x + 12, y: y - 39, size: vs, font: bold, color: primary });
       });
       y -= ch + 10;
     }
   };
-  const drawTable = (head: string[], rows: string[][]) => {
+  const drawTable = (rawHead: string[], rawRows: string[][]) => {
+    // A column empty in the header and every row (a remove-row button) is dropped.
+    const width0 = Math.max(rawHead.length, ...rawRows.map((r) => r.length), 1);
+    const keep = Array.from({ length: width0 }, (_, c) => !!(rawHead[c] ?? "").trim() || rawRows.some((r) => !!(r[c] ?? "").trim()));
+    const head = rawHead.length ? rawHead.filter((_, c) => keep[c]) : rawHead;
+    const rows = rawRows.map((r) => Array.from({ length: width0 }, (_, c) => r[c] ?? "").filter((_, c) => keep[c]));
     const ncol = Math.max(head.length, ...rows.map((r) => r.length), 1);
-    const weights = Array.from({ length: ncol }, (_, i) => (i === 0 ? (ncol <= 3 ? 1.6 : 1.15) : 1));
-    const wsum = weights.reduce((a, b) => a + b, 0);
+    const cellPad = ncol > 6 ? 5 : 8;
+    const rowH = 16;
+    // Size each column to its content (longest cell, longest header word), so
+    // amounts are not cut to "₹13,20,…"; when the table is wider than the page
+    // the type shrinks (to 6.5pt) before anything is clipped.
+    const natural = (size: number) => Array.from({ length: ncol }, (_, c) => {
+      const cellFont = c === 0 ? font : bold;
+      const cells = Math.max(0, ...rows.map((r) => cellFont.widthOfTextAtSize(sanitize(r[c] ?? "", rupeeOk), size)));
+      const words = Math.max(0, ...(head[c] ?? "").split(/\s+/).map((w) => bold.widthOfTextAtSize(sanitize(w, rupeeOk), size - 1)));
+      const w = Math.max(cells, words, 24) + cellPad * 2;
+      return ncol > 2 ? Math.min(w, contentW * 0.45) : w; // one long text column can't squeeze the figures
+    });
+    let bSize = 8.5;
+    let nat = natural(bSize);
+    let total = nat.reduce((a, b) => a + b, 0);
+    if (total > contentW) {
+      bSize = Math.max(6.5, bSize * (contentW / total));
+      nat = natural(bSize);
+      total = nat.reduce((a, b) => a + b, 0);
+    }
+    const hSize = bSize - 1;
+    // Spare width goes to every column in proportion; a shortfall is shared the same way.
+    const colW2 = nat.map((w) => (w / total) * contentW);
     const colX: number[] = [];
     let acc = MARGIN;
-    const colW2 = weights.map((w) => (w / wsum) * contentW);
     colW2.forEach((w) => { colX.push(acc); acc += w; });
-    const cellPad = 8;
-    const rowH = 16;
-    const bSize = 8.5;
-    const hSize = 7.5;
     const headLines = head.map((h, col) => wrap(h, bold, hSize, colW2[col] - cellPad * 2, rupeeOk).slice(0, 2));
     const headH = head.length ? Math.max(23, Math.max(1, ...headLines.map((l) => l.length)) * 9 + 7) : 0;
     keepTogether(headH + rows.length * rowH + 10);

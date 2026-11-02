@@ -3,7 +3,7 @@
 /**
  * Monthly Budget Planner — group a household's inflows and outflows (Essential /
  * Lifestyle / EMIs / Investments), surface the leftover surplus, and run a
- * 50/30/20-style health diagnostic with benchmark verdicts (EFP workbook).
+ * benchmark health diagnostic (40/20/30/20) with benchmark verdicts (EFP workbook).
  *
  * Added beyond the sheet: a where-the-money-goes bar, a savings-rate + budget
  * health score, and a "grow your surplus" SIP projection (budget → wealth).
@@ -104,11 +104,12 @@ export function MonthlyBudgetPlanner() {
   const [projectYears, setProjectYears] = useState(20);
 
   const m = useMemo(() => {
-    const totalIn = sum(inflows) || 1;
+    const totalIn = sum(inflows);
     const e = sum(essential), l = sum(lifestyle), em = sum(emis), iv = sum(invest);
     const out = e + l + em + iv;
-    const leftout = sum(inflows) - out;
-    const pct = (x: number) => x / totalIn;
+    const leftout = totalIn - out;
+    // No income → no meaningful share (was ÷1, printing e.g. "8300000%").
+    const pct = (x: number) => (totalIn > 0 ? x / totalIn : 0);
     return {
       totalIn: sum(inflows), e, l, em, iv, out, leftout,
       ePct: pct(e), lPct: pct(l), emPct: pct(em), ivPct: pct(iv), leftoutPct: pct(leftout),
@@ -121,7 +122,7 @@ export function MonthlyBudgetPlanner() {
     { name: "Lifestyle expenses", val: m.l, pct: m.lPct, ok: m.lPct < 0.2, good: "Healthy lifestyle spend", bad: "Cut discretionary spends", color: COLORS.lifestyle },
     { name: "EMIs (leverage)", val: m.em, pct: m.emPct, ok: m.emPct < 0.3, good: "Leverage is comfortable", bad: "Close high-rate loans ASAP", color: COLORS.emi },
     { name: "Investments", val: m.iv, pct: m.ivPct, ok: m.ivPct >= 0.2, good: "Strong savings discipline", bad: "Increase your investments", color: COLORS.invest },
-    { name: "Leftover / month", val: m.leftout, pct: m.leftoutPct, ok: m.leftoutPct <= 0.1, good: "Well-allocated budget", bad: "Move idle surplus to investments", color: COLORS.leftout },
+    { name: "Leftover / month", val: m.leftout, pct: m.leftoutPct, ok: m.leftout >= 0 && m.leftoutPct <= 0.1, good: "Well-allocated budget", bad: m.leftout < 0 ? "Spending exceeds income" : "Move idle surplus to investments", color: COLORS.leftout },
   ];
   const score = rows.filter((r) => r.ok).length;
 
@@ -219,7 +220,7 @@ export function MonthlyBudgetPlanner() {
                 <tr key={r.name}>
                   <td className="py-1.5 px-2 border-b border-border/50 font-medium">{r.name}</td>
                   <td className="py-1.5 px-2 border-b border-border/50 text-right tabular-nums">{inr(r.val)}</td>
-                  <td className="py-1.5 px-2 border-b border-border/50 text-right tabular-nums">{(r.pct * 100).toFixed(0)}%</td>
+                  <td className="py-1.5 px-2 border-b border-border/50 text-right tabular-nums">{m.totalIn > 0 ? `${(r.pct * 100).toFixed(0)}%` : "—"}</td>
                   <td className={`py-1.5 px-2 border-b border-border/50 ${r.ok ? "text-emerald-700" : "text-rose-700"}`}>
                     {r.ok ? `✓ ${r.good}` : `⚠ ${r.bad}`}
                   </td>

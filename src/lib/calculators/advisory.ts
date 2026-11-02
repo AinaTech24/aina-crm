@@ -37,7 +37,8 @@ export function prepayVsInvest(p: {
     m++;
   }
   const loanClosedMonth = Math.min(m, H);
-  let prepayCorpus = 0;
+  // The closing month overpays (bal < 0): that change is invested, not lost.
+  let prepayCorpus = Math.max(0, -bal);
   for (let k = 0; k < H - loanClosedMonth; k++) prepayCorpus = prepayCorpus * (1 + inv) + (emi + p.surplusMonthly);
 
   // INVEST: pay EMI normally (loan closes at H), invest the surplus every month.
@@ -45,11 +46,14 @@ export function prepayVsInvest(p: {
   for (let k = 0; k < H; k++) investCorpus = investCorpus * (1 + inv) + p.surplusMonthly;
 
   const normalInterest = emi * H - p.outstanding;
+  const diff = prepayCorpus - investCorpus;
+  // Level within ₹1 or 0.05% (e.g. loan rate = return, or no surplus) is a tie, not a win.
+  const tie = Math.abs(diff) < Math.max(1, 0.0005 * Math.max(prepayCorpus, investCorpus));
   return {
     emi,
     prepayCorpus,
     investCorpus,
-    winner: prepayCorpus >= investCorpus ? ("prepay" as const) : ("invest" as const),
+    winner: tie ? ("tie" as const) : diff > 0 ? ("prepay" as const) : ("invest" as const),
     interestSaved: Math.max(0, normalInterest - prepayInterest),
     monthsSaved: Math.max(0, H - loanClosedMonth),
     gap: Math.abs(prepayCorpus - investCorpus),
@@ -70,13 +74,27 @@ export function btid(p: {
   const btidCorpus = fvAnnualDue(investable, p.mfReturnPct, p.years);
   const tradCorpus = fvAnnualDue(p.annualBudget, p.tradReturnPct, p.years);
   const tradCover = p.annualBudget * (p.tradCoverMultiple ?? 10);
+  // Equity LTCG on redemption: 12.5% above the ₹1.25 L exemption (from 23 Jul 2024).
+  const ltcg = (corpus: number, paidIn: number) => 0.125 * Math.max(0, corpus - paidIn - 125000);
+  const btidTax = ltcg(btidCorpus, investable * p.years);
+  // ULIP maturity is tax-free only while the annual premium is ≤ ₹2.5 L; above
+  // that its gains are taxed as equity LTCG too.
+  const ulipTaxFree = p.annualBudget <= 250000;
+  const tradTax = ulipTaxFree ? 0 : ltcg(tradCorpus, p.annualBudget * p.years);
+  const btidPostTax = btidCorpus - btidTax;
+  const tradPostTax = tradCorpus - tradTax;
   return {
     investable,
     btidCorpus,
     tradCorpus,
+    btidTax,
+    tradTax,
+    btidPostTax,
+    tradPostTax,
+    ulipTaxFree,
     btidCover: p.termCover,
     tradCover,
-    wealthGap: btidCorpus - tradCorpus,
+    wealthGap: btidPostTax - tradPostTax,
     coverGap: p.termCover - tradCover,
   };
 }
@@ -96,9 +114,12 @@ export function npsVsMf(p: {
   const npsLumpsum = npsCorpus * 0.6; // 60% tax-free at 60
   const npsAnnuityCorpus = npsCorpus * 0.4; // 40% mandatory annuity
   const npsMonthlyPension = (npsAnnuityCorpus * (p.annuityRatePct / 100)) / 12;
-  // Extra 80CCD(1B) benefit, capped at ₹50k/yr.
-  const annualNpsTaxSaved = Math.min(p.monthly * 12, 50000) * (p.taxSlabPct / 100);
-  return { npsCorpus, mfCorpus, npsLumpsum, npsAnnuityCorpus, npsMonthlyPension, annualNpsTaxSaved };
+  // Slab + 4% cess. The annuity pension is taxed as income.
+  const effSlab = (p.taxSlabPct / 100) * 1.04;
+  const npsMonthlyPensionPostTax = npsMonthlyPension * Math.max(0, 1 - effSlab);
+  // Extra 80CCD(1B) benefit, capped at ₹50k/yr — OLD regime only.
+  const annualNpsTaxSaved = Math.min(p.monthly * 12, 50000) * effSlab;
+  return { npsCorpus, mfCorpus, npsLumpsum, npsAnnuityCorpus, npsMonthlyPension, npsMonthlyPensionPostTax, annualNpsTaxSaved };
 }
 
 /* ── B4. Passive Income / Financial-Freedom Builder ── */

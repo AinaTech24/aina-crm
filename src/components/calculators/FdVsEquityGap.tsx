@@ -59,8 +59,9 @@ export function FdVsEquityGap() {
 
       <Insight tone="emerald">
         On {inr(res.invested)} invested, equity grows to <strong>{inrShort(res.eq)}</strong> versus{" "}
-        <strong>{inrShort(res.fd)}</strong> in an FD over {years} years — about <strong>{multiple.toFixed(1)}×</strong> more, a{" "}
-        <strong>{inrShort(res.gap)}</strong> difference. FD interest is also fully taxable at slab rate, widening the real gap.
+        <strong>{inrShort(res.fd)}</strong> in an FD over {years} years — about <strong>{multiple.toFixed(1)}×</strong>, a{" "}
+        <strong>{inrShort(Math.abs(res.gap))}</strong> {res.gap >= 0 ? "gap in equity's favour" : "gap in the FD's favour"}. FD
+        interest is also fully taxable at slab rate.
       </Insight>
     </div>
   );

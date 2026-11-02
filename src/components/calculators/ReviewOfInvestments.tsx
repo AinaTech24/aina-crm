@@ -91,13 +91,16 @@ export function ReviewOfInvestments() {
       if (!res.ok) return;
       const j = await res.json();
       const ret = j?.returns ?? {};
-      const r1 = (v: unknown) => (typeof v === "number" ? Math.round(v * 10) / 10 : "");
+      const r1 = (v: unknown) => (typeof v === "number" ? Math.round(v * 10) / 10 : undefined);
       const ac2 = deriveAssetClass(j?.category ?? pick.category);
       setRows((prev) => prev.map((row) => row.id === id ? {
         ...row,
         ...(j?.category ? { category: j.category } : {}),
         ...(ac2 ? { assetClass: ac2 } : {}),
-        perf: { m1: r1(ret.m1), m3: r1(ret.m3), m6: r1(ret.m6), y1: r1(ret.y1), y3: r1(ret.y3), y5: r1(ret.y5), si: r1(ret.si) },
+        // Fill only the periods the feed returned — keep anything typed for the rest.
+        perf: Object.fromEntries(
+          PERIODS.map((p) => [p.key, r1(ret[p.key]) ?? row.perf[p.key] ?? ""]),
+        ) as Perf,
       } : row));
     } catch { /* upstream unreachable — keep manual entry */ }
   }

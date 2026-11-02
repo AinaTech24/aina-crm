@@ -36,10 +36,12 @@ export function familyWealthPlan(input: {
   classes: AssetClassInput[];
 }): FamilyWealthResult {
   const years = Math.max(0, Math.round(input.targetAge - input.currentAge));
-  const allocationSumPct = input.classes.reduce((s, c) => s + (c.allocationPct || 0), 0);
-  const denom = allocationSumPct || 1;
+  const alloc = (c: AssetClassInput) => Math.max(0, c.allocationPct || 0); // no negative weights
+  const allocationSumPct = input.classes.reduce((s, c) => s + alloc(c), 0);
+  const n = input.classes.length || 1;
   const cls = input.classes.map((c) => ({
-    w: (c.allocationPct || 0) / denom, // normalised weight
+    // normalised weight; all-zero allocations split equally (was ÷1 → every weight 0 → ₹0 corpus)
+    w: allocationSumPct > 0 ? alloc(c) / allocationSumPct : 1 / n,
     r: c.returnPct / 100,
   }));
 

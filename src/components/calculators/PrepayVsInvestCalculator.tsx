@@ -61,10 +61,23 @@ export function PrepayVsInvestCalculator() {
       />
 
       <Insight tone="emerald">
-        <strong>{res.winner === "invest" ? "Investing the surplus" : "Prepaying the loan"}</strong> wins by{" "}
-        <strong>{inrShort(res.gap)}</strong> at the loan&rsquo;s original end-date. Prepaying still saves{" "}
-        <strong>{inrShort(res.interestSaved)}</strong> in interest and closes the loan {Math.round(res.monthsSaved / 12)} yr
-        {Math.round(res.monthsSaved / 12) === 1 ? "" : "s"} early.
+        {res.winner === "tie" ? (
+          <>Prepaying and investing end <strong>level</strong> at the loan&rsquo;s original end-date.</>
+        ) : (
+          <>
+            <strong>{res.winner === "invest" ? "Investing the surplus" : "Prepaying the loan"}</strong> wins by{" "}
+            <strong>{inrShort(res.gap)}</strong> at the loan&rsquo;s original end-date.
+          </>
+        )}
+        {res.interestSaved > 0 && (
+          <>
+            {" "}Prepaying still saves <strong>{inrShort(res.interestSaved)}</strong> in interest and closes the loan{" "}
+            {res.monthsSaved < 12
+              ? `${res.monthsSaved} month${res.monthsSaved === 1 ? "" : "s"}`
+              : `${Math.round(res.monthsSaved / 12)} yr${Math.round(res.monthsSaved / 12) === 1 ? "" : "s"}`}{" "}
+            early.
+          </>
+        )}
       </Insight>
 
       <Insight tone="amber">

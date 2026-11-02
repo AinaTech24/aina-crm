@@ -226,8 +226,38 @@ export async function captureCalcResults(root: HTMLElement): Promise<CalcCapture
   // then rasterised to PNG after the walk (rasterising is async).
   const pendingCharts: { idx: number; svg: SVGSVGElement }[] = [];
 
-  const SEL = 'h3, table, [data-pdf="insight"], .text-lg.font-semibold, .justify-between.text-xs, svg';
+  // Summary sentences already captured — a nested match is not captured twice.
+  const captured: Element[] = [];
+  const SEL = 'h3, table, [data-pdf="insight"], [data-pdf="stat"], .text-lg.font-semibold, .justify-between, svg, .uppercase, p:has(> strong), div:has(> strong)';
   root.querySelectorAll<HTMLElement>(SEL).forEach((el) => {
+    const inControl = !!el.closest("table, label, button");
+    if (el.getAttribute("data-pdf") === "stat") {
+      // A calculator's own card tagged with its label and value. The shared Stat
+      // is read through its .text-lg value below, so only a card without one.
+      if (!el.querySelector(".text-lg.font-semibold")) pushStat(el.getAttribute("data-pdf-label") || "", el.getAttribute("data-pdf-value") || "");
+      return;
+    }
+    if (el.matches(".uppercase") && !el.matches('h3, table, svg, .text-lg.font-semibold, [data-pdf="insight"]')) {
+      // A tile drawn without the shared Stat (a calculator's own card, or a big
+      // headline figure): a small UPPERCASE caption and the figure right after it.
+      if (inControl || el.closest('[data-pdf="stat"]') || el.closest("svg")) return;
+      const next = el.nextElementSibling;
+      if (!next || next.querySelector("input, select, textarea, label")) return;
+      const value = txt(next);
+      if (value.length <= 40 && /\d/.test(value)) pushStat(txt(el), value, true);
+      return;
+    }
+    if (el.matches("p, div") && el.querySelector(":scope > strong") && el.getAttribute("data-pdf") !== "insight"
+      && !el.matches('h3, table, .text-lg.font-semibold, .justify-between')) {
+      // A result stated in a sentence ("Scenario 1 grows ₹10 L to ₹28.1 L …").
+      if (inControl || el.closest('[data-pdf="insight"], [data-pdf="stat"]') || captured.some((c) => c.contains(el))) return;
+      const t = txt(el);
+      if (t.length >= 30 && t.length <= 700 && /\d/.test(t)) {
+        blocks.push({ type: "insight", text: t });
+        captured.push(el);
+      }
+      return;
+    }
     if (el instanceof SVGSVGElement) {
       if (isChartSvg(el)) {
         pendingCharts.push({ idx: blocks.length, svg: el });
@@ -251,9 +281,15 @@ export async function captureCalcResults(root: HTMLElement): Promise<CalcCapture
       if (card) pushStat(card.getAttribute("data-pdf-label") || "", card.getAttribute("data-pdf-value") || txt(el));
       else pushStat(txt(el.previousElementSibling), txt(el));
     } else {
-      // Row (k/v) inside comparison boxes — intermediate values.
+      // Row (k/v) inside comparison boxes — intermediate values. Any label/value
+      // row counts, not only the small-text ones; a three-part row (name · detail ·
+      // figure) keeps its detail in the label.
       const kids = Array.from(el.children);
+      const rowLike = el.classList.contains("text-xs")
+        || (!inControl && !el.querySelector("input, select, textarea, button, table, svg") && kids.every((k) => txt(k).length <= 80));
+      if (!rowLike) return;
       if (kids.length === 2) pushStat(txt(kids[0]), txt(kids[1]), true);
+      else if (kids.length === 3) pushStat(`${txt(kids[0])} (${txt(kids[1])})`, txt(kids[2]), true);
     }
   });
 

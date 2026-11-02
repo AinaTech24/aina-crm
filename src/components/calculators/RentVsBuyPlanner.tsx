@@ -3,7 +3,8 @@
 /**
  * Rent vs Buy + Invest the Difference — the great Indian dilemma. Compares the
  * net worth of buying a home (equity = appreciated value − outstanding loan)
- * against renting and investing the down-payment + the monthly EMI-vs-rent gap.
+ * against renting and investing the down-payment + the monthly EMI-vs-rent gap;
+ * whichever side spends less in a month invests the difference.
  * Math: src/lib/calculators/conversion.ts → rentVsBuy.
  */
 
@@ -83,7 +84,7 @@ export function RentVsBuyPlanner() {
         xLabels={res.buySeries.map((p) => `Yr ${p.year}`)}
         fmtY={(v) => inrShort(v)}
         lines={[
-          { label: "Buy (home equity)", color: "#0891b2", values: res.buySeries.map((p) => p.value) },
+          { label: "Buy (home equity + savings)", color: "#0891b2", values: res.buySeries.map((p) => p.value) },
           { label: "Rent + invest", color: "#10b981", values: res.rentSeries.map((p) => p.value) },
         ]}
       />

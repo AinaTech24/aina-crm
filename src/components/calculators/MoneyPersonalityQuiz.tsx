@@ -7,7 +7,8 @@
  */
 
 import { useMemo, useState } from "react";
-import { Insight, Section, Stat, Table } from "./ui";
+import { Field, Insight, Section, Stat, Table } from "./ui";
+import { ClientNameField } from "./ClientNameField";
 
 type Q = { q: string; options: { label: string; score: number }[] };
 
@@ -129,6 +130,11 @@ export function MoneyPersonalityQuiz() {
         
       </div>
 
+      <div className="max-w-xs">
+        <Field label="Client name">
+          <ClientNameField value={clientName} onChange={setClientName} />
+        </Field>
+      </div>
 
       <div className="space-y-4">
         {QUESTIONS.map((q, qi) => (

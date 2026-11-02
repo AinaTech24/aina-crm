@@ -205,8 +205,10 @@ export function vacationPlan(input: VacationPlanInput): VacationPlanResult {
   // Steps 7–10 — required growing SIP = gap ÷ PV(₹100 growing SIP) × 100.
   const pv100Annual = excelPV((1 + r) / (1 + g) - 1, sipYears, -100, 0, 1);
   const pv100Monthly = excelPV(Math.pow((1 + r) / (1 + g), 1 / 12) - 1, sipYears * 12, -100, 0, 1);
-  const annualSip = pv100Annual > 0 ? (amountStillNeeded / pv100Annual) * 100 : 0;
-  const monthlySip = pv100Monthly > 0 ? (amountStillNeeded / pv100Monthly) * 100 : 0;
+  // 0 SIP years with a gap ⇒ no SIP can fund it: NaN renders "—" (was ₹0).
+  const noSip = amountStillNeeded > 0 ? NaN : 0;
+  const annualSip = pv100Annual > 0 ? (amountStillNeeded / pv100Annual) * 100 : noSip;
+  const monthlySip = pv100Monthly > 0 ? (amountStillNeeded / pv100Monthly) * 100 : noSip;
 
   // Drawdown trajectory — validates the corpus (it depletes to ≈0 after n vacations).
   const drawdown: VacationDrawdownRow[] = [];
@@ -247,7 +249,7 @@ export type OpmYearRow = {
   loanBalance: number;
   mfCorpus: number;
   cumInterest: number;
-  cumWithdrawal: number;
+  cumWithdrawal: number; // EMIs the SWP actually funded so far
 };
 
 export type OpmResult = {
@@ -256,8 +258,10 @@ export type OpmResult = {
   totalPaid: number; // Σ EMI = total SWP withdrawal
   totalInterest: number; // Σ interest
   corpusLeft: number; // MF corpus after the final month
-  minCorpus: number; // lowest post-SWP balance (flags depletion)
-  corpusSurvived: boolean; // corpus never went negative ⇒ strategy holds
+  minCorpus: number; // lowest post-SWP balance (never below 0)
+  corpusSurvived: boolean; // corpus never ran out ⇒ strategy holds
+  depletedYear: number | null; // year the corpus could no longer pay a full EMI
+  swpPaid: number; // EMIs the SWP actually funded (≤ totalPaid)
   loanBalanceEnd: number; // ≈ 0 when fully amortised
   yearly: OpmYearRow[];
 };
@@ -281,6 +285,7 @@ export function opmHouseStrategy(input: {
   let mfO = loan; // corpus "balance amount" carried into the next month
   let minCorpus = loan;
   let corpusSurvived = true;
+  let depletedYear: number | null = null;
 
   const yearly: OpmYearRow[] = [];
   for (let m = 1; m <= months; m++) {
@@ -289,13 +294,18 @@ export function opmHouseStrategy(input: {
     loanBal = loanBal - (emi - interest);
     cumInterest += interest;
 
-    // MF + SWP — withdraw EMI at the start, grow the remainder one month.
+    // MF + SWP — withdraw EMI at the start, grow the remainder one month. The
+    // fund can only pay what it holds: once short, it is exhausted (never < 0).
     const L = m === 1 ? loan : mfO;
-    const afterSwp = L - emi;
+    const paid = Math.min(emi, Math.max(0, L));
+    if (paid < emi - 1e-6 && corpusSurvived) {
+      corpusSurvived = false;
+      depletedYear = Math.ceil(m / 12);
+    }
+    const afterSwp = Math.max(0, L - paid);
     if (afterSwp < minCorpus) minCorpus = afterSwp;
-    if (afterSwp < 0) corpusSurvived = false;
     mfO = afterSwp + afterSwp * mfr;
-    cumWithdrawal += emi;
+    cumWithdrawal += paid;
 
     if (m % 12 === 0 || m === months) {
       yearly.push({
@@ -311,11 +321,13 @@ export function opmHouseStrategy(input: {
   return {
     emi,
     months,
-    totalPaid: cumWithdrawal,
+    totalPaid: emi * months,
     totalInterest: cumInterest,
     corpusLeft: months === 0 ? loan : mfO,
     minCorpus,
     corpusSurvived,
+    depletedYear,
+    swpPaid: cumWithdrawal,
     loanBalanceEnd: months === 0 ? loan : loanBal,
     yearly,
   };
@@ -510,7 +522,10 @@ export function retirementCorpus(params: {
   // at inflation, draw rate = postReturnPct. Closed-form:
   //   PV = P × (1 − ((1+g)/(1+r))^n) / (r − g)
   // where g = monthly inflation, r = monthly return, P = first month's withdrawal.
-  const g = inflationPct / 100 / 12;
+  // g is the EFFECTIVE monthly inflation, so income grows exactly inflationPct a
+  // year after retirement too (6%/12 compounded to 6.17%, overstating the corpus
+  // ~2% against the annual inflation used before retirement).
+  const g = Math.pow(1 + inflationPct / 100, 1 / 12) - 1;
   const r = postReturnPct / 100 / 12;
   let corpusRequired = 0;
   if (distMonths === 0) {
@@ -885,7 +900,7 @@ export function stpCalculate(params: {
     sourceFinalValue: balanceSource,
     targetFinalValue: balanceTarget,
     totalFinalValue,
-    gain: Math.max(0, totalFinalValue - lumpsum),
+    gain: totalFinalValue - lumpsum, // negative = a loss (never shown as ₹0)
   };
 }
 

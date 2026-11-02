@@ -67,12 +67,16 @@ export function DreamCarPlanner() {
         ]}
       />
 
+      {yearsToBuy <= 0 ? (
+        <Insight tone="amber">Set &ldquo;Buy in&rdquo; to at least 1 year to compare investing first with the loan.</Insight>
+      ) : (
       <Insight tone="emerald">
         Buying on loan today costs <strong>{inrShort(res.loanTotal)}</strong> ({inrShort(res.loanInterest)} of it pure interest on a
         depreciating asset). Investing <strong>{inr(Math.round(res.sipToBuyCash))}/month</strong> for {yearsToBuy} years lets{" "}
         {clientName || "your client"} buy the {inrShort(res.futurePrice)} car in cash for just{" "}
         <strong>{inrShort(res.investedCash)}</strong> invested — and arrive debt-free.
       </Insight>
+      )}
     </div>
   );
 }

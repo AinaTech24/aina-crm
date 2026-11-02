@@ -38,6 +38,7 @@ export function EmergencyFundPlanner() {
   );
 
   const funded = res.gap <= 0;
+  const noPeriod = !funded && buildMonths <= 0; // gap but no build period → no SIP to show
 
   return (
     <div className="card-surface p-5 space-y-5">
@@ -59,7 +60,7 @@ export function EmergencyFundPlanner() {
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Target fund" value={inrShort(res.target)} tone="cyan" />
         <Stat label="Still needed" value={funded ? "Fully funded ✓" : inrShort(res.gap)} tone={funded ? "emerald" : "amber"} />
-        <Stat label="Monthly SIP" value={funded ? "—" : `${inr(Math.round(res.requiredSip))}/mo`} tone="emerald" />
+        <Stat label="Monthly SIP" value={funded || noPeriod ? "—" : `${inr(Math.round(res.requiredSip))}/mo`} tone="emerald" />
       </div>
 
       <Insight tone={funded ? "emerald" : "cyan"}>
@@ -68,6 +69,8 @@ export function EmergencyFundPlanner() {
             {clientName || "Your client"} already has the {buffer}-month buffer of {inrShort(res.target)} covered — now goal-investing
             can begin with confidence.
           </>
+        ) : noPeriod ? (
+          <>Set a build period to spread the {inrShort(res.gap)} gap.</>
         ) : (
           <>
             A {buffer}-month safety net is <strong>{inrShort(res.target)}</strong>. {clientName || "Your client"} can build the{" "}

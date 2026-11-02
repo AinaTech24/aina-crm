@@ -49,15 +49,23 @@ export function CrashStressTest() {
         <Stat label="Cost of panic" value={inr(r.costOfPanic)} tone="rose" />
       </div>
 
-      <Insight tone="emerald">
-        A <strong>{fmtPct(crashPct)}</strong> crash in year {crashYear} wipes about{" "}
-        <strong>{inr(r.crashDropAmount)}</strong> off the corpus on paper —{" "}
-        {r.recoveryMonths != null
-          ? <>but staying invested recovers the lost ground in about <strong>{Math.round(r.recoveryMonths / 12 * 10) / 10} years</strong> and still reaches <strong>{inr(r.finalStay)}</strong>.</>
-          : <>and recovery continues through the horizon to <strong>{inr(r.finalStay)}</strong>.</>}
-        {" "}Panic-selling and parking in an FD instead would leave just <strong>{inr(r.finalPanic)}</strong> — a{" "}
-        <strong>{inr(r.costOfPanic)}</strong> mistake.
-      </Insight>
+      {!r.crashInHorizon ? (
+        <Insight tone="amber">
+          Year {crashYear} is outside the {years}-year horizon — no crash is modelled.
+        </Insight>
+      ) : (
+        <Insight tone="emerald">
+          A <strong>{fmtPct(Math.min(100, crashPct))}</strong> crash in year {crashYear} wipes about{" "}
+          <strong>{inr(r.crashDropAmount)}</strong> off the corpus on paper.{" "}
+          {r.recoveryMonths != null
+            ? <>The market regains its pre-crash level in about <strong>{Math.round(r.recoveryMonths / 12 * 10) / 10} years</strong>; </>
+            : <>The market doesn&apos;t regain its pre-crash level within the horizon; </>}
+          staying invested still reaches <strong>{inr(r.finalStay)}</strong>
+          {r.gapToNoCrash > 0.5 ? <> ({inr(r.gapToNoCrash)} below the no-crash path)</> : null}.
+          {" "}Panic-selling and parking in an FD instead would leave just <strong>{inr(r.finalPanic)}</strong> — a{" "}
+          <strong>{inr(r.costOfPanic)}</strong> mistake.
+        </Insight>
+      )}
 
       <Section n={1} title="Corpus path (year-by-year)">
         <CalcChart

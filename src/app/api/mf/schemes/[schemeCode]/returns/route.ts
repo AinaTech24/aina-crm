@@ -7,7 +7,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  * Used to auto-fill the Review of Investments calculator from a picked scheme.
  *
  *   → { schemeCode, schemeName, amc, latestNav, navDate,
- *       returns: { m1, m3, m6, y1, y3, y5, si } }   // % or null
+ *       returns: { m1, m3, m6, y1, y3, y5, y10, si } }   // % or null
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -86,6 +86,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ sch
         y1: trailing(points, latest, 365),
         y3: trailing(points, latest, 1095),
         y5: trailing(points, latest, 1825),
+        y10: trailing(points, latest, 3650),
         si: siReturn,
       },
     });

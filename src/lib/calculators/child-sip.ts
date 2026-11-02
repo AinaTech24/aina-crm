@@ -6,10 +6,12 @@
  * and let that corpus compound annually to milestone ages. Demonstrates how a
  * limited early-years SIP becomes a life-changing sum decades later.
  *
- * Faithful to the worksheet: corpus at the till-age = FV(rate/12, months, -SIP,
- * type=1); each later milestone = previous × (1+rate)^years. Improvements:
- * configurable return + project-to age, a yearly growth series, and the
- * multiple-on-invested.
+ * Corpus at the till-age = FV(i, months, -SIP, type=1) with the EFFECTIVE
+ * monthly rate i = (1+rate)^(1/12) − 1; each later milestone = previous ×
+ * (1+rate)^years. (The worksheet used rate/12 for the SIP phase, so "12%" meant
+ * 12.68% a year while investing and 12% after — one rate throughout now.)
+ * Improvements: configurable return + project-to age, a yearly growth series,
+ * and the multiple-on-invested.
  */
 
 export type ChildSipInput = {
@@ -35,7 +37,7 @@ export type ChildSipResult = {
 
 /** Monthly SIP future value, annuity-due (contribution at start of month). */
 function sipFvAnnuityDue(monthly: number, annualRatePct: number, months: number): number {
-  const i = annualRatePct / 100 / 12;
+  const i = Math.pow(1 + annualRatePct / 100, 1 / 12) - 1; // effective monthly
   if (months <= 0) return 0;
   if (i === 0) return monthly * months;
   return monthly * ((Math.pow(1 + i, months) - 1) / i) * (1 + i);

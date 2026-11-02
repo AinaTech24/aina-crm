@@ -165,6 +165,7 @@ export function SwpEndPeriodCalculator() {
           </div>
         </Section>
       )}
+      <p className="text-2xs text-muted-foreground">Withdrawal at month start · effective monthly rate.</p>
     </div>
   );
 }

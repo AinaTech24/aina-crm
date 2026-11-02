@@ -7,6 +7,7 @@
 
 import { useMemo, useState } from "react";
 import { doublingTimeline } from "@/lib/calculators/advisory";
+import { ClientNameField } from "./ClientNameField";
 import { inr, NumberField, Field, Stat, Table, Insight } from "./ui";
 import { inrShort } from "./charts";
 
@@ -30,6 +31,9 @@ export function WealthDoublingCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Field label="Client name">
+          <ClientNameField value={clientName} onChange={setClientName} />
+        </Field>
         <NumberField label="Amount (₹)" value={amount} setValue={setAmount} step={100000} />
         <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.5} />
         <NumberField label="How many doublings" value={doublings} setValue={setDoublings} step={1} />
@@ -51,13 +55,17 @@ export function WealthDoublingCalculator() {
         highlightCol={1}
       />
 
-      <Insight tone="emerald">
-        At {returnPct}% p.a., {clientName || "your client"}&rsquo;s {inrShort(amount)} doubles in about{" "}
-        <strong>{res.yearsToDouble.toFixed(1)} years</strong> — the &ldquo;Rule of 72&rdquo; (72 ÷ {returnPct}) gives a quick{" "}
-        {res.rule72.toFixed(1)}. Stay invested long enough for a few doublings and compounding does the heavy lifting:{" "}
-        {inrShort(amount)} becomes <strong>{inrShort(res.rows[res.rows.length - 1].value)}</strong> in{" "}
-        {Number.isFinite(res.rows[res.rows.length - 1].years) ? res.rows[res.rows.length - 1].years.toFixed(0) : "—"} years.
-      </Insight>
+      {Number.isFinite(res.yearsToDouble) ? (
+        <Insight tone="emerald">
+          At {returnPct}% p.a., {clientName || "your client"}&rsquo;s {inrShort(amount)} doubles in about{" "}
+          <strong>{res.yearsToDouble.toFixed(1)} years</strong> — the &ldquo;Rule of 72&rdquo; (72 ÷ {returnPct}) gives a quick{" "}
+          {res.rule72.toFixed(1)}. Stay invested long enough for a few doublings and compounding does the heavy lifting:{" "}
+          {inrShort(amount)} becomes <strong>{inrShort(res.rows[res.rows.length - 1].value)}</strong> in{" "}
+          {res.rows[res.rows.length - 1].years.toFixed(0)} years.
+        </Insight>
+      ) : (
+        <Insight tone="amber">At {returnPct}% p.a. money never doubles — enter a positive return.</Insight>
+      )}
     </div>
   );
 }

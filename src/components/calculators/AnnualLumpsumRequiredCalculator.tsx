@@ -74,12 +74,14 @@ export function AnnualLumpsumRequiredCalculator() {
         )}
       </div>
 
-      <Insight tone="cyan">
-        To reach <strong>{inr(targetAmount)}</strong> in {investmentYears} years
-        {deferred ? ` (investing for the first ${paymentYears})` : ""} at {fmtPct(s1.ratePct)}, invest about{" "}
-        <strong>{inr(s1.requiredAnnual)}/year</strong>.
-        {s2 && <> At {fmtPct(s2.ratePct)} the requirement {s2.requiredAnnual < s1.requiredAnnual ? "drops" : "rises"} to <strong>{inr(s2.requiredAnnual)}/year</strong>.</>}
-      </Insight>
+      {Number.isFinite(s1.requiredAnnual) && (
+        <Insight tone="cyan">
+          To reach <strong>{inr(targetAmount)}</strong> in {investmentYears} years
+          {deferred ? ` (investing for the first ${paymentYears})` : ""} at {fmtPct(s1.ratePct)}, invest about{" "}
+          <strong>{inr(s1.requiredAnnual)}/year</strong>.
+          {s2 && <> At {fmtPct(s2.ratePct)} the requirement {s2.requiredAnnual < s1.requiredAnnual ? "drops" : "rises"} to <strong>{inr(s2.requiredAnnual)}/year</strong>.</>}
+        </Insight>
+      )}
 
       {/* Accumulation schedule (scenario 1) */}
       <Section n={1} title={`Accumulation schedule @ ${fmtPct(s1.ratePct)}`}>

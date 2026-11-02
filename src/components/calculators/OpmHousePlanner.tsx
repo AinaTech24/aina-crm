@@ -49,7 +49,11 @@ export function OpmHousePlanner() {
           <Stat label="Monthly EMI" value={inr(res.emi)} tone="cyan" />
           <Stat label="Total paid (all EMIs)" value={inr(res.totalPaid)} />
           <Stat label="Total interest" value={inr(res.totalInterest)} tone="amber" />
-          <Stat label={`Corpus left after ${tenureYears} yrs`} value={inr(res.corpusLeft)} tone="emerald" />
+          {res.corpusSurvived ? (
+            <Stat label={`Corpus left after ${tenureYears} yrs`} value={inr(res.corpusLeft)} tone="emerald" />
+          ) : (
+            <Stat label="Corpus runs out" value={`Year ${res.depletedYear}`} tone="rose" />
+          )}
         </div>
       </Section>
 
@@ -57,7 +61,7 @@ export function OpmHousePlanner() {
 
       <Section n={2} title="Year-by-year">
         <Table
-          head={["Year", "Loan outstanding", "MF corpus", "Cumulative interest", "Cumulative EMIs"]}
+          head={["Year", "Loan outstanding", "MF corpus", "Cumulative interest", "EMIs paid by SWP"]}
           rows={res.yearly.map((y) => [
             y.year,
             inr(y.loanBalance),
@@ -78,9 +82,9 @@ export function OpmHousePlanner() {
         </Insight>
       ) : (
         <Insight tone="rose">
-          At fund {fmtPct(mfReturn)} vs loan {fmtPct(loanRate)} the corpus is drawn down faster than it grows and runs out before the
-          loan is repaid (lowest balance {inr(res.minCorpus)}). The strategy only holds while the expected return comfortably exceeds
-          the loan rate.
+          At fund {fmtPct(mfReturn)} vs loan {fmtPct(loanRate)} the corpus is drawn down faster than it grows and runs out in year{" "}
+          {res.depletedYear}, before the loan is repaid — the SWP funds {inr(res.swpPaid)} of the {inr(res.totalPaid)} in EMIs. The
+          strategy only holds while the expected return comfortably exceeds the loan rate.
         </Insight>
       )}
 

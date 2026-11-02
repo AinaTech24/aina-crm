@@ -63,7 +63,7 @@ export function rentVsBuy(p: {
   const emi = n === 0 ? 0 : r === 0 ? loan / n : (loan * r) / (1 - Math.pow(1 + r, -n));
   const Hm = Math.round(p.horizonYears * 12);
 
-  // BUY — net worth = appreciated home value − outstanding loan.
+  // BUY — appreciated home value and the loan still outstanding at the horizon.
   const homeValue = p.homePrice * Math.pow(1 + p.homeAppreciationPct / 100, p.horizonYears);
   let bal = loan;
   const monthsPaid = Math.min(Hm, n);
@@ -72,14 +72,16 @@ export function rentVsBuy(p: {
     bal = bal - (emi - interest);
   }
   const outstanding = Hm >= n ? 0 : Math.max(0, bal);
-  const buyNetWorth = homeValue - outstanding;
 
-  // RENT + INVEST the difference — invest the down-payment as a lumpsum, then
-  // each month invest whatever the owner spends above the renter (EMI +
-  // maintenance − rent). Rent escalates annually.
+  // Both sides spend the same each month: whichever spends LESS invests the
+  // difference. The renter starts with the down-payment as a lumpsum and
+  // invests (EMI + maintenance − rent) while that is positive; the owner
+  // invests (rent − EMI − maintenance) once rent overtakes it (e.g. after the
+  // loan closes). Rent escalates annually.
   const eqM = p.equityReturnPct / 100 / 12;
   const maintenanceMonthly = (p.homePrice * (p.maintenancePctPerYear / 100)) / 12;
   let invest = down;
+  let ownerInvest = 0;
   let rent = p.monthlyRent;
   const buySeries: { year: number; value: number }[] = [{ year: 0, value: down }];
   const rentSeries: { year: number; value: number }[] = [{ year: 0, value: down }];
@@ -89,6 +91,7 @@ export function rentVsBuy(p: {
     const ownerOutflow = (m < n ? emi : 0) + maintenanceMonthly;
     const surplus = ownerOutflow - rent;
     invest = invest * (1 + eqM) + (surplus > 0 ? surplus : 0);
+    ownerInvest = ownerInvest * (1 + eqM) + (surplus < 0 ? -surplus : 0);
     // track owner equity over time for the chart
     if (m < n) {
       const interest = runBal * r;
@@ -97,10 +100,12 @@ export function rentVsBuy(p: {
     if ((m + 1) % 12 === 0) {
       const yr = (m + 1) / 12;
       const hv = p.homePrice * Math.pow(1 + p.homeAppreciationPct / 100, yr);
-      buySeries.push({ year: yr, value: hv - Math.max(0, runBal) });
+      buySeries.push({ year: yr, value: hv - Math.max(0, runBal) + ownerInvest });
       rentSeries.push({ year: yr, value: invest });
     }
   }
+  // BUY — net worth = appreciated home − outstanding loan + the owner's savings invested.
+  const buyNetWorth = homeValue - outstanding + ownerInvest;
   const rentNetWorth = invest;
   return {
     emi,

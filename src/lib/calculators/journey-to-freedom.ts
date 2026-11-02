@@ -13,6 +13,9 @@
  *   years-of-freedom = Excel NPER(realRate, annualExpense, −corpus, , 1) where
  *               realRate = (1+r)/(1+inflation) − 1; it "errors" (→ ∞ / Freedom)
  *               once the corpus reaches the perpetuity threshold.
+ * Correction: the corpus at year n is in year-n rupees, so the expense it must
+ * fund is inflated to year n too (the sheet used today's expense every year,
+ * which declared freedom ~6 years early on its own example).
  */
 
 export type JourneyYear = {
@@ -20,13 +23,15 @@ export type JourneyYear = {
   corpus: number;
   yearsOfFreedom: number; // Infinity once freedom is reached
   freedom: boolean;
+  threshold: number; // perpetuity corpus needed at this year (year-n rupees)
 };
 
 export type JourneyResult = {
   investmentMonthly: number;
-  annualExpense: number;
+  annualExpense: number; // today's rupees
   realRatePct: number;
-  freedomCorpus: number; // annuity-due perpetuity threshold
+  freedomCorpusToday: number; // perpetuity threshold in today's rupees
+  freedomCorpus: number; // threshold at the freedom year (or the last year modelled)
   freedomYear: number | null; // first year of Financial Freedom (null if not within maxYears)
   corpusAtFreedom: number | null;
   rows: JourneyYear[];
@@ -45,8 +50,9 @@ export function journeyToFreedom(input: {
   const m = Math.pow(1 + input.returnPct / 100, 1 / 12) - 1; // effective → monthly
   const realRate = (1 + input.returnPct / 100) / (1 + input.inflationPct / 100) - 1;
 
-  const freedomCorpus =
-    realRate > 0 ? (annualExpense * (1 + realRate)) / realRate : Number.POSITIVE_INFINITY;
+  const expenseAt = (n: number) => annualExpense * Math.pow(1 + input.inflationPct / 100, n);
+  const thresholdAt = (n: number) =>
+    realRate > 0 ? (expenseAt(n) * (1 + realRate)) / realRate : Number.POSITIVE_INFINITY;
 
   const corpusAt = (n: number) =>
     investment <= 0 || m === 0
@@ -54,12 +60,12 @@ export function journeyToFreedom(input: {
       : investment * ((Math.pow(1 + m, n * 12) - 1) / m) * (1 + m);
 
   /** Annuity-due NPER — how many years `corpus` lasts; Infinity once perpetual. */
-  const yearsLast = (corpus: number): number => {
+  const yearsLast = (corpus: number, expense: number): number => {
     if (corpus <= 0) return 0;
-    if (realRate <= 0) return annualExpense > 0 ? corpus / annualExpense : Number.POSITIVE_INFINITY;
-    const denom = annualExpense * (1 + realRate) - corpus * realRate;
+    if (realRate <= 0) return expense > 0 ? corpus / expense : Number.POSITIVE_INFINITY;
+    const denom = expense * (1 + realRate) - corpus * realRate;
     if (denom <= 0) return Number.POSITIVE_INFINITY;
-    const x = (annualExpense * (1 + realRate)) / denom;
+    const x = (expense * (1 + realRate)) / denom;
     if (x <= 0) return Number.POSITIVE_INFINITY;
     return Math.log(x) / Math.log(1 + realRate);
   };
@@ -69,20 +75,21 @@ export function journeyToFreedom(input: {
   let corpusAtFreedom: number | null = null;
   for (let n = 1; n <= maxYears; n++) {
     const corpus = corpusAt(n);
-    const yof = yearsLast(corpus);
+    const yof = yearsLast(corpus, expenseAt(n));
     const freedom = !Number.isFinite(yof);
     if (freedom && freedomYear === null) {
       freedomYear = n;
       corpusAtFreedom = corpus;
     }
-    rows.push({ year: n, corpus, yearsOfFreedom: yof, freedom });
+    rows.push({ year: n, corpus, yearsOfFreedom: yof, freedom, threshold: thresholdAt(n) });
   }
 
   return {
     investmentMonthly: investment,
     annualExpense,
     realRatePct: realRate * 100,
-    freedomCorpus,
+    freedomCorpusToday: thresholdAt(0),
+    freedomCorpus: thresholdAt(freedomYear ?? maxYears),
     freedomYear,
     corpusAtFreedom,
     rows,

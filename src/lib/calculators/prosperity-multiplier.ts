@@ -80,10 +80,12 @@ export function computeProsperityMultiplier(p: ProsperityInput): ProsperityResul
   let depletedYear: number | null = null;
   for (let y = 1; y <= withdrawalYears; y++) {
     const interest = corpus * drawR;
-    const closing = corpus - annualWithdrawal + interest;
-    draw.push({ year: y, corpus, withdrawal: annualWithdrawal, interest, closingBal: closing });
-    totalWithdrawn += Math.min(annualWithdrawal, corpus + interest); // don't count more than available
-    if (closing <= 0 && depletedYear === null) depletedYear = y;
+    // Pay only what the corpus holds — the ledger shows the actual payout.
+    const paid = Math.min(annualWithdrawal, corpus + interest);
+    const closing = corpus + interest - paid;
+    draw.push({ year: y, corpus, withdrawal: paid, interest, closingBal: closing });
+    totalWithdrawn += paid;
+    if (corpus + interest - annualWithdrawal <= 0 && depletedYear === null) depletedYear = y;
     corpus = Math.max(0, closing);
     annualWithdrawal = annualWithdrawal * (1 + infl);
   }

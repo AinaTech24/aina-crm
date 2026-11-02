@@ -166,7 +166,7 @@ export function InsuranceReturnAnalyzer() {
           <Table
             head={["Metric", "Insurance", "Mutual fund"]}
             rows={[
-              ["Maturity / value", inr(result.totalBenefit), inr(result.mfMaturity)],
+              [result.totalPayouts > 0 ? "Value at maturity (payouts reinvested)" : "Maturity / value", inr(result.benefitAtMaturity), inr(result.mfMaturity)],
               ["You invest", inr(result.totalPremiums), inr(result.totalPremiums)],
             ]}
             highlightCol={2}
@@ -179,7 +179,7 @@ export function InsuranceReturnAnalyzer() {
             )}
           </Insight>
           <Insight tone="cyan">
-            To reach the same {inr(result.totalBenefit)} from a mutual fund, you'd only need to invest about{" "}
+            To reach the same {inr(result.benefitAtMaturity)} from a mutual fund, you'd only need to invest about{" "}
             <strong>{inr(result.mfContributionToMatch)}/year</strong> — far less than the {inr(annualPremium)} premium.
           </Insight>
         </Section>

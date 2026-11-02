@@ -153,9 +153,9 @@ export function GoalPlannerCalculator() {
               head={["Investment option", "Amount needed"]}
               rows={[
                 [`Lumpsum (one-time, today)`, inr(res.lumpsum)],
-                [`Monthly SIP (for ${g.periodYears} yrs)`, `${inr(res.monthlySip)} / mo`],
-                [`Limited-period SIP (${res.limitedYears} yrs, then grows)`, `${inr(res.limitedSip)} / mo`],
-                [`Lumpsum ${inr(res.comboLumpsum)} + Monthly SIP`, `${inr(res.comboSip)} / mo`],
+                [`Monthly SIP (for ${g.periodYears} yrs)`, res.dueNow ? "Due now — lumpsum" : `${inr(res.monthlySip)} / mo`],
+                [`Limited-period SIP (${res.limitedYears} yrs, then grows)`, res.dueNow ? "—" : `${inr(res.limitedSip)} / mo`],
+                [`Lumpsum ${inr(res.comboLumpsum)} + Monthly SIP`, res.dueNow ? "—" : `${inr(res.comboSip)} / mo`],
               ]}
             />
             <div className="text-2xs text-muted-foreground">

@@ -77,11 +77,13 @@ export function computeSwpEndPeriod(input: SwpEndInput): SwpEndResult {
   let withdrawnThisYear = 0;
 
   if (baseMonthly <= 0 || accumulatedValue <= 0) {
+    // No withdrawal from a funded corpus never runs out; an empty corpus lasts 0.
+    const lastsForever = baseMonthly <= 0 && accumulatedValue > 0;
     return {
       accumulatedValue,
       baseMonthlyWithdrawal: baseMonthly,
-      monthsLasted: 0,
-      perpetual: false,
+      monthsLasted: lastsForever ? null : 0,
+      perpetual: lastsForever,
       totalWithdrawn: 0,
       yearRows: [],
       capYears: CAP_YEARS,

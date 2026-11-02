@@ -8,6 +8,7 @@
 
 import { useMemo, useState } from "react";
 import { passiveIncome } from "@/lib/calculators/advisory";
+import { ClientNameField } from "./ClientNameField";
 import { inr, NumberField, Field, Segmented, Stat, Insight } from "./ui";
 import { inrShort } from "./charts";
 
@@ -42,6 +43,8 @@ export function PassiveIncomeBuilder() {
   );
 
   const freedomYear = new Date().getFullYear() + yearsToFreedom;
+  // Income forever needs a return above inflation; otherwise no corpus is enough.
+  const noPerpetuity = Number(payout) === 0 && postReturn <= inflation;
 
   return (
     <div className="card-surface p-5 space-y-5">
@@ -51,6 +54,9 @@ export function PassiveIncomeBuilder() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <Field label="Client name">
+          <ClientNameField value={clientName} onChange={setClientName} />
+        </Field>
         <NumberField label="Income wanted today (₹/mo)" value={targetMonthly} setValue={setTargetMonthly} step={5000} />
         <NumberField label="Years to freedom" value={yearsToFreedom} setValue={setYearsToFreedom} step={1} />
         <NumberField label="Already invested (₹)" value={existing} setValue={setExisting} step={100000} />
@@ -66,7 +72,7 @@ export function PassiveIncomeBuilder() {
         <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
           Invest this much every month
         </div>
-        <div className="text-3xl font-extrabold text-emerald-700 mt-1">{inr(Math.round(res.requiredSip))}/mo</div>
+        <div className="text-3xl font-extrabold text-emerald-700 mt-1">{noPerpetuity ? "—" : `${inr(Math.round(res.requiredSip))}/mo`}</div>
         <div className="text-xs text-muted-foreground mt-1">
           {clientName ? `${clientName} is` : "You're"} financially free in {freedomYear}
         </div>
@@ -74,15 +80,19 @@ export function PassiveIncomeBuilder() {
 
       <div className="grid grid-cols-3 gap-3">
         <Stat label={`Income in ${yearsToFreedom} yrs`} value={`${inr(Math.round(res.futureMonthly))}/mo`} tone="cyan" />
-        <Stat label="Corpus needed" value={inrShort(res.corpusNeeded)} tone="emerald" />
-        <Stat label="Monthly SIP" value={inr(Math.round(res.requiredSip))} tone="emerald" />
+        <Stat label="Corpus needed" value={noPerpetuity ? "—" : inrShort(res.corpusNeeded)} tone="emerald" />
+        <Stat label="Monthly SIP" value={noPerpetuity ? "—" : inr(Math.round(res.requiredSip))} tone="emerald" />
       </div>
 
+      {noPerpetuity ? (
+        <Insight tone="amber">Income forever needs a post-freedom return above inflation — raise it or pick a fixed period.</Insight>
+      ) : (
       <Insight tone="emerald">
         To draw <strong>{inr(targetMonthly)}/month</strong> (≈ {inr(Math.round(res.futureMonthly))}/mo after {inflation}% inflation){" "}
         {Number(payout) === 0 ? "forever, without ever touching the principal" : `for ${payout} years`}, {clientName || "your client"} needs a corpus of{" "}
         <strong>{inrShort(res.corpusNeeded)}</strong> — built with about <strong>{inr(Math.round(res.requiredSip))}/month</strong> for {yearsToFreedom} years.
       </Insight>
+      )}
     </div>
   );
 }

@@ -142,8 +142,8 @@ export function ProsperityMultiplier() {
 
       <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. Accumulation: opening balance compounds annually and each year&apos;s SIP is grown to year-end
-        (monthly compounding), with the chosen annual step-up. Distribution: the corpus earns the chosen return each year and
-        the income rises with inflation. Returns are not guaranteed and vary with markets; taxes and exit loads are not
+        (monthly compounding), with the chosen annual step-up. Distribution: the corpus earns the chosen return each year, the
+        year&apos;s income is withdrawn at year end and rises with inflation. Returns are not guaranteed and vary with markets; taxes and exit loads are not
         modelled. Not investment advice — mutual fund investments are subject to market risks.
       </p>
     </div>

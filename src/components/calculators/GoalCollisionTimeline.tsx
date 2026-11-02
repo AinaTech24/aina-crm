@@ -2,14 +2,14 @@
 
 /**
  * Goal-Collision Timeline — plots all family goals on one timeline and shows the
- * total monthly SIP commitment each year, surfacing the "crunch" years.
+ * total monthly SIP commitment each year — highest now, easing as goals are reached.
  * Math: src/lib/calculators/goal-collision.ts.
  */
 
 import { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { ClientNameField } from "./ClientNameField";
-import { computeGoalCollision, type CollisionGoal } from "@/lib/calculators/goal-collision";
+import { computeGoalCollision, isDueNow, type CollisionGoal } from "@/lib/calculators/goal-collision";
 import { inr, clampNum, NumberField, Field, Section, Stat, Insight } from "./ui";
 
 let nextId = 1;
@@ -64,8 +64,8 @@ export function GoalCollisionTimeline() {
       {clientName && <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span></div>}
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Stat label="Peak monthly commitment" value={inr(result.peakMonthly)} tone="rose" />
-        <Stat label="Crunch starts in year" value={`${result.peakYear}`} tone="amber" />
+        <Stat label="Highest monthly commitment (now)" value={inr(result.peakMonthly)} tone="rose" />
+        <Stat label="Goals running now" value={`${result.timeline[0]?.activeGoals.length ?? 0}`} tone="amber" />
         <Stat label="Goals" value={`${result.goals.length}`} />
       </div>
 
@@ -76,7 +76,7 @@ export function GoalCollisionTimeline() {
             <div key={g.name} className="flex items-center justify-between text-sm border-b border-border/40 py-1">
               <span className="font-medium">{g.name}</span>
               <span className="text-muted-foreground">{g.yearsAway}y · {inr(g.futureCost)}</span>
-              <span className="tabular-nums font-semibold">{inr(g.monthlySip)}/mo</span>
+              <span className="tabular-nums font-semibold">{isDueNow(g.yearsAway) ? "Due now — lumpsum" : `${inr(g.monthlySip)}/mo`}</span>
             </div>
           ))}
         </div>
@@ -102,9 +102,8 @@ export function GoalCollisionTimeline() {
       </Section>
 
       <Insight tone="amber">
-        The household&apos;s monthly investment commitment peaks at <strong>{inr(result.peakMonthly)}/month</strong> around year{" "}
-        {result.peakYear}, when {result.timeline[result.peakYear - 1]?.activeGoals.length ?? 0} goals run together. Planning for this
-        crunch now — staggering goals or front-loading the nearer ones — avoids a cash-flow squeeze later.
+        The household&apos;s monthly investment commitment is highest now — <strong>{inr(result.peakMonthly)}/month</strong> while{" "}
+        {result.timeline[0]?.activeGoals.length ?? 0} goals run together — and eases as each goal is reached.
       </Insight>
     </div>
   );

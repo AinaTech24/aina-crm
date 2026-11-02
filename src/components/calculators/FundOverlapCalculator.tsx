@@ -106,7 +106,13 @@ export function FundOverlapCalculator() {
     const duplicateCompression = duplicateFunds * 0.35;
     const effectiveFundCount = clamp(count - overlapCompression - duplicateCompression, 1, count);
     const overlapRisk = Math.round(clamp(weightedOverlap * 0.55 + duplicateFunds * 8 + count * 1.2, 0, 100));
+    // The largest fund in each duplicate category is the one consolidation keeps,
+    // so it is not counted in the trim total.
+    const keepers = new Set(
+      [...categoryMap.values()].filter((g) => g.length > 1).map((g) => [...g].sort((a, b) => b.value - a.value)[0].id),
+    );
     const candidates = rows
+      .filter((r) => !keepers.has(r.id))
       .filter((r) => r.overlapPct >= reviewThreshold || r.underperformancePct >= 1 || (categoryMap.get(r.category)?.length ?? 0) > 1)
       .sort((a, b) => b.overlapPct + b.underperformancePct * 8 - (a.overlapPct + a.underperformancePct * 8));
     const possibleTrim = candidates.reduce((sum, r) => sum + r.value, 0);

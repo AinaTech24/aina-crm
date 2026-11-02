@@ -58,9 +58,11 @@ export type SwpPeriodicResult = {
   averageReturnPct: number;
   allocationTotalPct: number;
   totalInvested: number;
-  totalPeriodicWithdrawal: number;
+  totalPeriodicWithdrawal: number; // actually paid (≤ planned)
+  plannedPeriodicWithdrawal: number; // installments × amount
   endValue: number;
   corpusDepleted: boolean;
+  depletedYear: number | null; // first year a withdrawal could not be paid in full
   firstWithdrawalYear: number;
   lastWithdrawalYear: number;
   horizonYears: number;
@@ -104,6 +106,8 @@ export function computeSwpPeriodic(input: SwpPeriodicInput): SwpPeriodicResult {
   let totalInvested = usesLump ? input.initialInvestment : 0;
   let withdrawalsTaken = 0;
   let corpusDepleted = false;
+  let depletedYear: number | null = null;
+  let totalWithdrawn = 0;
   const schedule: SwpYearRow[] = [];
 
   for (let y = 1; y <= horizon; y++) {
@@ -122,6 +126,7 @@ export function computeSwpPeriodic(input: SwpPeriodicInput): SwpPeriodicResult {
     totalInvested += annualInvestment;
 
     // Periodic withdrawal at year end.
+    // The fund pays only what it holds — a short year records the actual payout.
     let withdrawalAmount = 0;
     if (
       installments > 0 &&
@@ -129,12 +134,13 @@ export function computeSwpPeriodic(input: SwpPeriodicInput): SwpPeriodicResult {
       (y - deferment) % interval === 0 &&
       withdrawalsTaken < installments
     ) {
-      withdrawalAmount = input.eachWithdrawalAmount;
+      withdrawalAmount = Math.min(input.eachWithdrawalAmount, Math.max(0, corpus));
       corpus -= withdrawalAmount;
       withdrawalsTaken++;
-      if (corpus < 0) {
+      totalWithdrawn += withdrawalAmount;
+      if (withdrawalAmount < input.eachWithdrawalAmount - 1e-6 && !corpusDepleted) {
         corpusDepleted = true;
-        corpus = 0;
+        depletedYear = y;
       }
     }
 
@@ -152,9 +158,11 @@ export function computeSwpPeriodic(input: SwpPeriodicInput): SwpPeriodicResult {
     averageReturnPct,
     allocationTotalPct,
     totalInvested,
-    totalPeriodicWithdrawal: installments * input.eachWithdrawalAmount,
+    totalPeriodicWithdrawal: totalWithdrawn,
+    plannedPeriodicWithdrawal: installments * input.eachWithdrawalAmount,
     endValue: corpus,
     corpusDepleted,
+    depletedYear,
     firstWithdrawalYear,
     lastWithdrawalYear,
     horizonYears: horizon,

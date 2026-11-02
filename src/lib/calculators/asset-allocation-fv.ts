@@ -72,9 +72,10 @@ function runScenario(initial: number, years: number, rows: AssetRow[]): AssetSce
   const blendedReturnPct =
     totalInvested > 0 && n > 0 ? (Math.pow(futureValue / totalInvested, 1 / n) - 1) * 100 : 0;
 
-  // Year-by-year portfolio value.
+  // Year-by-year portfolio value — whole years only, never past the period
+  // (Math.round would add a year 8 beyond a 7.5-year headline).
   const schedule: { year: number; value: number }[] = [];
-  for (let y = 1; y <= Math.round(n); y++) {
+  for (let y = 1; y <= Math.floor(n); y++) {
     const value = assets.reduce((s, a) => s + a.invested * Math.pow(1 + a.ratePct / 100, y), 0);
     schedule.push({ year: y, value });
   }

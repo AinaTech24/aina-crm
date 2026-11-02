@@ -8,6 +8,7 @@
 
 import { useMemo, useState } from "react";
 import { sipPauseCost } from "@/lib/calculators/advisory";
+import { ClientNameField } from "./ClientNameField";
 import { inr, NumberField, Field, Stat, Insight } from "./ui";
 import { inrShort } from "./charts";
 
@@ -33,6 +34,9 @@ export function SipPauseCostCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Field label="Client name">
+          <ClientNameField value={clientName} onChange={setClientName} />
+        </Field>
         <NumberField label="Monthly SIP (₹)" value={sip} setValue={setSip} step={1000} />
         <NumberField label="SIPs skipped (months)" value={monthsSkipped} setValue={setMonthsSkipped} step={1} />
         <NumberField label="Years to goal" value={yearsRemaining} setValue={setYearsRemaining} step={1} />

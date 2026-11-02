@@ -240,8 +240,8 @@ export function RealStatement() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Total income (annual)" value={inr(m.incomeA)} tone="cyan" />
         <Stat label="Surplus for new investments" value={`${inr(m.surplusM)}/mo`} tone={m.surplusM >= 0 ? "emerald" : "rose"} />
-        <Stat label="Notional net worth" value={inr(m.notionalNW)} tone="emerald" />
-        <Stat label="Actual net worth" value={inr(m.actualNW)} tone="emerald" />
+        <Stat label="Notional net worth" value={inr(m.notionalNW)} tone={m.notionalNW >= 0 ? "emerald" : "rose"} />
+        <Stat label="Actual net worth" value={inr(m.actualNW)} tone={m.actualNW >= 0 ? "emerald" : "rose"} />
       </div>
 
       {/* ── Income ── */}
@@ -309,8 +309,8 @@ export function RealStatement() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Stat label="Total assets" value={inr(m.totalAssets)} />
           <Stat label="Total liabilities" value={inr(m.totalLiab)} tone={m.totalLiab > 0 ? "rose" : undefined} />
-          <Stat label="Notional net worth (incl. personal)" value={inr(m.notionalNW)} tone="emerald" />
-          <Stat label="Actual net worth (excl. personal)" value={inr(m.actualNW)} tone="emerald" />
+          <Stat label="Notional net worth (incl. personal)" value={inr(m.notionalNW)} tone={m.notionalNW >= 0 ? "emerald" : "rose"} />
+          <Stat label="Actual net worth (excl. personal)" value={inr(m.actualNW)} tone={m.actualNW >= 0 ? "emerald" : "rose"} />
         </div>
       </div>
 
@@ -370,8 +370,8 @@ export function RealStatement() {
         {m.surplusM > 0
           ? `This household can invest about ${inr(m.surplusM)}/month (${inr(m.surplusM * 12)}/yr) of fresh surplus.`
           : `Expenses + ongoing investments currently absorb all income — there's no fresh surplus to deploy.`}{" "}
-        Actual net worth (excluding personal-use assets like the primary home, vehicles and jewellery) is <strong>{inr(m.actualNW)}</strong>,
-        the figure that reflects truly investable wealth. Notional net worth including those assets is {inr(m.notionalNW)}.
+        Actual net worth (excluding personal-use assets like the primary home, vehicles and jewellery) is <strong>{inr(m.actualNW)}</strong>;
+        investable financial assets are <strong>{inr(m.investable)}</strong>. Notional net worth including those assets is {inr(m.notionalNW)}.
       </Insight>
 
       <p className="text-2xs text-muted-foreground">

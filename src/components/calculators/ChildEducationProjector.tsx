@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { ClientNameField } from "./ClientNameField";
 import { computeChildEducation, type EduMilestone } from "@/lib/calculators/child-education";
+import { isDueNow } from "@/lib/calculators/goal-collision";
 import { inr, fmtPct, clampNum, NumberField, Field, Section, Stat, Table, Insight } from "./ui";
 
 let nextId = 1;
@@ -79,7 +80,7 @@ export function ChildEducationProjector() {
       <Section n="✓" title="Per-milestone plan">
         <Table
           head={["Course", "Years away", "Future cost", "Monthly SIP", "Lumpsum today"]}
-          rows={result.milestones.map((m) => [m.name, `${m.yearsAway}`, inr(m.futureCost), `${inr(m.monthlySip)}/mo`, inr(m.lumpsum)])}
+          rows={result.milestones.map((m) => [m.name, `${m.yearsAway}`, inr(m.futureCost), isDueNow(m.yearsAway) ? "Due now — lumpsum" : `${inr(m.monthlySip)}/mo`, inr(m.lumpsum)])}
         />
       </Section>
 

@@ -72,8 +72,9 @@ export function computeEmiSip(input: EmiSipInput): EmiSipResult {
   if (input.mode === "loan") {
     monthlyEmi = computeEmi(input.loanAmount, input.interestRatePct, n);
     totalRepayment = monthlyEmi * n;
-    principalRepayment = input.loanAmount;
-    interestRepayment = totalRepayment - input.loanAmount;
+    // No tenure ⇒ nothing is repaid (not "−principal" of interest).
+    principalRepayment = n > 0 ? input.loanAmount : 0;
+    interestRepayment = n > 0 ? totalRepayment - input.loanAmount : 0;
   } else {
     monthlyEmi = input.emiAmount;
     totalRepayment = input.emiAmount * n;

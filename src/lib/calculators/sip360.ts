@@ -40,13 +40,16 @@ export function fvLumpsum(pv: number, annualPct: number, months: number): number
 /**
  * Total amount invested under a step-up SIP: the monthly amount is held
  * constant within a year and increased by `stepUpPct` at the start of each
- * subsequent year.
+ * subsequent year. Counted per month over the same round(years × 12) months
+ * fvStepUpSip pays, so a part year (2.5 yrs = 30 months) is not billed as a
+ * whole one.
  */
 export function stepUpInvested(monthly: number, stepUpPct: number, years: number): number {
   if (monthly <= 0 || years <= 0) return 0;
   const s = stepUpPct / 100;
+  const totalMonths = Math.round(years * 12);
   let total = 0;
-  for (let y = 0; y < years; y++) total += monthly * Math.pow(1 + s, y) * 12;
+  for (let mo = 0; mo < totalMonths; mo++) total += monthly * Math.pow(1 + s, Math.floor(mo / 12));
   return total;
 }
 
@@ -64,7 +67,7 @@ export function fvStepUpSip(
   if (monthly <= 0 || years <= 0) return 0;
   const m = monthlyRate(annualPct);
   const s = stepUpPct / 100;
-  const totalMonths = years * 12;
+  const totalMonths = Math.round(years * 12); // whole months, as fvSip's caller uses
   let fv = 0;
   for (let mo = 0; mo < totalMonths; mo++) {
     const y = Math.floor(mo / 12);

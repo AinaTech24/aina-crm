@@ -105,8 +105,10 @@ console.log("[calc] journey to freedom (journeyToFreedom):");
   ok("monthly investable = salary − expenses", j.investmentMonthly === 50_000);
   ok("annual expense = 6,00,000", j.annualExpense === 600_000);
   ok("real rate ≈ 5.66%", approx(j.realRatePct, 5.6604, 0.5));
-  ok("freedom corpus ≈ 1.12 Cr", approx(j.freedomCorpus, 11_200_000, 0.1), String(Math.round(j.freedomCorpus)));
-  ok("reaches freedom within horizon", j.freedomYear !== null && j.freedomYear > 0);
+  ok("freedom corpus (today's ₹) ≈ 1.12 Cr", approx(j.freedomCorpusToday, 11_200_000, 0.1), String(Math.round(j.freedomCorpusToday)));
+  // Threshold now inflates to the freedom year (was today's ₹ every year → freedom ~6 yrs early).
+  ok("freedom year = 17", j.freedomYear === 17, String(j.freedomYear));
+  ok("freedom corpus at year 17 ≈ 3.02 Cr", approx(j.freedomCorpus, 30_159_055, 0.1), String(Math.round(j.freedomCorpus)));
 }
 
 console.log("[calc] EMI→SIP housing (housingEmiSip):");

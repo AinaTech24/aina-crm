@@ -134,7 +134,7 @@ export function CapitalGainsTaxCalculator() {
         <Stat label="Total tax payable" value={inr(result.totalTax)} tone="rose" />
       </div>
 
-      <Section n="✓" title={result.isLongTerm ? "Computation (with indexation)" : "Computation (short-term, at slab)"}>
+      <Section n="✓" title={result.isLongTerm ? `Computation (${result.indexed ? "with" : "without"} indexation)` : "Computation (short-term, at slab)"}>
         <Table
           head={["Component", "Amount"]}
           rows={
@@ -143,10 +143,12 @@ export function CapitalGainsTaxCalculator() {
                   [`Sale price`, inr(salePrice)],
                   [`Less: sales expenses`, `(${inr(salesExpenses)})`],
                   [`Net sale consideration`, inr(result.netConsideration)],
-                  [`Indexed cost of acquisition (CII ${result.ciiSale}/${ciiFor(result.purchaseFY ?? 2001)})`, `(${inr(result.indexedAcquisition)})`],
-                  [`Indexed cost of improvement`, `(${inr(result.indexedImprovements)})`],
+                  result.indexed
+                    ? [`Indexed cost of acquisition (CII ${result.ciiSale}/${ciiFor(result.purchaseFY ?? 2001)})`, `(${inr(result.indexedAcquisition)})`]
+                    : [`Less: cost of acquisition`, `(${inr(result.indexedAcquisition)})`],
+                  [result.indexed ? `Indexed cost of improvement` : `Less: cost of improvement`, `(${inr(result.indexedImprovements)})`],
                   [`Long-term capital gain`, inr(result.gain)],
-                  [`Tax @ 20% (with indexation)`, inr(result.baseTax)],
+                  [`Tax @ ${fmtPct(result.ltcgRatePct)} (${result.indexed ? "with" : "without"} indexation)`, inr(result.baseTax)],
                   [`Health & education cess @ 4%`, inr(result.cess)],
                   [`Total tax payable`, inr(result.totalTax)],
                 ]
@@ -167,7 +169,7 @@ export function CapitalGainsTaxCalculator() {
           <strong>{result.isLongTerm ? "long-term" : "short-term"}</strong>. Tax payable is{" "}
           <strong>{inr(result.totalTax)}</strong>
           {result.gain > 0 && ` (effective ${result.effectiveRatePct.toFixed(1)}% of the gain)`}.
-          {result.isLongTerm && " Indexation raises the cost base to today's value, sharply reducing the taxable gain."}
+          {result.isLongTerm && result.indexed && " Indexation raises the cost base to today's value, sharply reducing the taxable gain."}
         </Insight>
       </Section>
     </div>

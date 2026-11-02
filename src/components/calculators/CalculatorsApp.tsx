@@ -309,7 +309,7 @@ const CATALOG: CalcGroup[] = [
       { key: "emergency", name: "Emergency Fund Planner", icon: ShieldAlert, desc: "Build the financial seatbelt first" },
       { key: "buckets", name: "Retirement Bucket Strategy", icon: Boxes, desc: "Draw income for life across 3 buckets" },
       { key: "sippause", name: "Cost of Pausing a SIP", icon: CirclePause, desc: "What skipping SIPs costs at the goal" },
-      { key: "budget", name: "Monthly Budget Planner", icon: WalletCards, desc: "50/30/20 health check + grow the surplus" },
+      { key: "budget", name: "Monthly Budget Planner", icon: WalletCards, desc: "Budget health check + grow the surplus" },
     ],
   },
   {
@@ -867,7 +867,8 @@ function GoalCalc() {
   const [years, setYears] = useState(15);
   const [returnPct, setReturnPct] = useState(useContext(CalcAssumptionsCtx).returnPct);
 
-  const monthly = requiredSip(goalAmount, 0, returnPct, years * 12);
+  // 0 years ⇒ no SIP can reach the goal: NaN renders "—" (requiredSip returns 0).
+  const monthly = years > 0 ? requiredSip(goalAmount, 0, returnPct, years * 12) : NaN;
 
   return (
     <CalcShell title="Goal Calculator" purpose="Monthly SIP required to reach a target goal amount.">
@@ -1039,7 +1040,8 @@ function RetirementCalc() {
           },
           {
             label: "Monthly savings required",
-            value: inr(res.monthlySavingsRequired),
+            // No years left to save but a shortfall ⇒ "—", not ₹0.
+            value: res.preRetirementYears <= 0 && res.corpusRequired > res.fvOfExistingFund ? "—" : inr(res.monthlySavingsRequired),
             tone: "emerald",
           },
         ]}
@@ -1087,6 +1089,7 @@ function SwpCalc() {
           years {res.monthsBeforeDepletion % 12} months.
         </div>
       )}
+      <p className="text-2xs text-muted-foreground">Withdrawal at month start · monthly rate = annual ÷ 12.</p>
     </CalcShell>
   );
 }
@@ -1607,7 +1610,7 @@ function StpCalc() {
         cells={[
           { label: "Amount invested", value: inr(lumpsum) },
           { label: "Total return corpus", value: inr(res.totalFinalValue), tone: "emerald" },
-          { label: "Net wealth gain", value: inr(res.gain), tone: "emerald" },
+          { label: res.gain < 0 ? "Net loss" : "Net wealth gain", value: inr(Math.abs(res.gain)), tone: res.gain < 0 ? "rose" : "emerald" },
         ]}
       />
     </CalcShell>
@@ -1625,6 +1628,9 @@ function CagrCalc() {
     finalValue,
     years,
   });
+  // cagrCalculate returns 0% when there is no base value or period — show "—".
+  const hasBase = initialValue > 0;
+  const hasCagr = hasBase && years > 0;
 
   return (
     <CalcShell
@@ -1639,8 +1645,8 @@ function CagrCalc() {
 
       <ResultRow
         cells={[
-          { label: "Absolute return", value: `${res.absoluteReturnPct.toFixed(2)}%`, tone: res.absoluteReturnPct >= 0 ? "emerald" : "rose" },
-          { label: "CAGR return", value: `${res.cagrPct.toFixed(2)}% p.a.`, tone: res.cagrPct >= 0 ? "emerald" : "rose" },
+          { label: "Absolute return", value: hasBase ? `${res.absoluteReturnPct.toFixed(2)}%` : "—", tone: !hasBase ? undefined : res.absoluteReturnPct >= 0 ? "emerald" : "rose" },
+          { label: "CAGR return", value: hasCagr ? `${res.cagrPct.toFixed(2)}% p.a.` : "—", tone: !hasCagr ? undefined : res.cagrPct >= 0 ? "emerald" : "rose" },
           { label: "Absolute wealth gain", value: inr(finalValue - initialValue), tone: finalValue >= initialValue ? "emerald" : "rose" },
         ]}
       />

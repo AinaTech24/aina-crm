@@ -36,6 +36,9 @@ export function FireNumberCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <Field label="Client name">
+          <ClientNameField value={clientName} onChange={setClientName} />
+        </Field>
         <NumberField label="Current age" value={currentAge} setValue={setCurrentAge} step={1} />
         <NumberField label="Monthly expenses now (₹)" value={monthlyExpenseNow} setValue={setMonthlyExpenseNow} step={5000} />
         <NumberField label="Current corpus (₹)" value={currentCorpus} setValue={setCurrentCorpus} step={100000} />
@@ -51,7 +54,7 @@ export function FireNumberCalculator() {
       {clientName && <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span></div>}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Stat label="FIRE number (today's terms)" value={inr(r.fireNumberToday)} tone="cyan" />
+        <Stat label="FIRE number (today's terms)" value={swrPct > 0 ? inr(r.fireNumberToday) : "—"} tone="cyan" />
         <Stat label="Financial-independence age" value={r.fireAge != null ? `${r.fireAge}` : "Beyond horizon"} tone={r.fireAge != null ? "emerald" : "rose"} />
         <Stat label="Years to FI" value={r.yearsToFire != null ? `${r.yearsToFire} yrs` : "—"} />
         <Stat label="Corpus needed at FI" value={r.fireCorpus != null ? inr(r.fireCorpus) : "—"} />
@@ -64,7 +67,7 @@ export function FireNumberCalculator() {
           <strong>{inr(r.corpusAtFire ?? 0)}</strong> — enough to draw {fmtPct(swrPct)}/yr for living costs.
           {r.sustainsToLifeExpectancy
             ? <> This corpus sustains inflation-rising expenses all the way to age {lifeExpectancy}.</>
-            : <> ⚠ At {fmtPct(postReturnPct)} post-FI return, expenses outpace the corpus around age {r.shortfallAge} — consider a higher SWR buffer, longer accumulation, or a larger corpus.</>}
+            : <> ⚠ At {fmtPct(postReturnPct)} post-FI return, expenses outpace the corpus around age {r.shortfallAge} — consider a lower SWR, longer accumulation, or a larger corpus.</>}
         </Insight>
       ) : (
         <Insight tone="rose">

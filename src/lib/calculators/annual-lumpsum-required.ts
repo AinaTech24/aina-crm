@@ -49,7 +49,9 @@ function buildScenario(input: AnnualLumpsumRequiredInput, ratePct: number): Requ
   const nInvest = Math.max(0, Math.round(input.investmentYears));
   const nPay = Math.max(0, Math.min(Math.round(input.paymentYears), nInvest));
   const factor = annualLumpsumFactor(nInvest, nPay, ratePct);
-  const requiredAnnual = factor > 0 ? input.targetAmount / factor : 0;
+  // No payment years ⇒ no annual amount can reach the target: NaN renders "—"
+  // (was ₹0 required, with the whole target shown as "wealth gain").
+  const requiredAnnual = factor > 0 ? input.targetAmount / factor : input.targetAmount > 0 ? NaN : 0;
   const r = ratePct / 100;
 
   // Year-by-year accumulation schedule (contribution at year start, then grow).

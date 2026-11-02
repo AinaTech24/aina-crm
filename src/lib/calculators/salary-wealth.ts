@@ -124,7 +124,9 @@ export function computeSalaryWealth(input: SalaryWealthInput): SalaryWealthResul
     targetWealth = input.targetWealth;
     const factor = simulate(1, input.annualIncrementPct, sipYears, holdYears, input.assumedReturnPct, input.currentAge).corpus;
     const need = Math.max(0, input.targetWealth - existingFutureValue);
-    requiredMonthlySip = factor > 0 ? need / factor : 0;
+    // No investing years (invest-till age ≤ current age) ⇒ no SIP can close a
+    // gap: NaN renders "—" (was ₹0). nSip = 0 then, so nothing below sums it.
+    requiredMonthlySip = factor > 0 ? need / factor : need > 0 ? NaN : 0;
     requiredSipPct = input.currentMonthlySalary > 0 ? (requiredMonthlySip / input.currentMonthlySalary) * 100 : 0;
     monthly0 = requiredMonthlySip;
   }

@@ -164,7 +164,7 @@ export function SwpPeriodicPlanner() {
       <ResultRow
         cells={[
           { label: `Each withdrawal (every ${withdrawalIntervalYears}y)`, value: inr(eachWithdrawalAmount), tone: "amber" },
-          { label: "Total periodic withdrawal", value: inr(result.totalPeriodicWithdrawal), tone: "amber" },
+          { label: result.corpusDepleted ? `Total withdrawn (of ${inr(result.plannedPeriodicWithdrawal)})` : "Total periodic withdrawal", value: inr(result.totalPeriodicWithdrawal), tone: result.corpusDepleted ? "rose" : "amber" },
           { label: "Total invested", value: inr(result.totalInvested) },
           { label: "End value", value: inr(result.endValue), tone: result.corpusDepleted ? "rose" : "emerald" },
         ]}
@@ -172,7 +172,7 @@ export function SwpPeriodicPlanner() {
 
       {result.corpusDepleted && (
         <div className="text-2xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">
-          ⚠️ The corpus runs out before all withdrawals are made. Reduce the withdrawal amount, lower the number of installments, or invest more.
+          ⚠️ The corpus runs out in year {result.depletedYear}, before all withdrawals are made. Reduce the withdrawal amount, lower the number of installments, or invest more.
         </div>
       )}
 

@@ -33,7 +33,10 @@ export type CrashStressResult = {
   finalPanic: number;
   costOfPanic: number;
   crashDropAmount: number;
+  crashInHorizon: boolean; // false when the crash year falls after the horizon
+  /** Months for the MARKET (unit NAV) to regain its pre-crash level — new SIP money excluded. */
   recoveryMonths: number | null;
+  gapToNoCrash: number; // no-crash − stayed-invested at the horizon (≥ 0 = never caught up)
   series: CrashPoint[]; // yearly snapshots
 };
 
@@ -42,13 +45,15 @@ export function computeCrashStress(input: CrashStressInput): CrashStressResult {
   const mFd = monthlyRate(input.fdRatePct);
   const n = Math.max(0, Math.round(input.years * 12));
   const crashMonth = Math.max(1, Math.round(input.crashYear * 12));
+  const drop = Math.min(100, Math.max(0, input.crashPct)) / 100; // a fall can't exceed 100%
 
   let stay = input.lumpsum;
   let noCrash = input.lumpsum;
   let panic = input.lumpsum;
   let panicked = false;
   let invested = input.lumpsum;
-  let preCrashPeak = 0;
+  let nav = 1; // unit NAV — recovery is the market's, not the corpus topped up by new SIPs
+  let preCrashNav = 0;
   let recoveryMonths: number | null = null;
   let crashDropAmount = 0;
 
@@ -64,17 +69,19 @@ export function computeCrashStress(input: CrashStressInput): CrashStressResult {
     stay *= 1 + m;
     noCrash *= 1 + m;
     panic *= panicked ? 1 + mFd : 1 + m;
+    nav *= 1 + m;
 
     if (i === crashMonth) {
-      preCrashPeak = stay;
-      crashDropAmount = stay * (input.crashPct / 100);
-      stay *= 1 - input.crashPct / 100;
+      preCrashNav = nav;
+      nav *= 1 - drop;
+      crashDropAmount = stay * drop;
+      stay *= 1 - drop;
       // Panic seller redeems at the bottom and moves to cash/FD.
-      panic *= 1 - input.crashPct / 100;
+      panic *= 1 - drop;
       panicked = true;
     }
 
-    if (panicked && recoveryMonths === null && i > crashMonth && stay >= preCrashPeak) {
+    if (panicked && recoveryMonths === null && i > crashMonth && nav >= preCrashNav - 1e-9) {
       recoveryMonths = i - crashMonth;
     }
 
@@ -88,7 +95,9 @@ export function computeCrashStress(input: CrashStressInput): CrashStressResult {
     finalPanic: panic,
     costOfPanic: Math.max(0, stay - panic),
     crashDropAmount,
+    crashInHorizon: crashMonth <= n,
     recoveryMonths,
+    gapToNoCrash: noCrash - stay,
     series,
   };
 }

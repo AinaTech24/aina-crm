@@ -33,12 +33,12 @@ export function xirr(cashflows: DatedCashflow[]): number | null {
   if (!hasPos || !hasNeg) return null;
 
   let lo = -0.9999;
-  let hi = 10; // 1000%
+  let hi = 10; // 1000% — widened below (short holds can annualise far higher)
   let fLo = xnpv(lo, sorted);
   let fHi = xnpv(hi, sorted);
   let guard = 0;
-  while (fLo * fHi > 0 && hi < 1000 && guard < 200) {
-    hi *= 1.5;
+  while (fLo * fHi > 0 && hi < 1e9 && guard < 200) {
+    hi *= 2;
     fHi = xnpv(hi, sorted);
     guard++;
   }
@@ -60,6 +60,8 @@ export type XirrResult = {
   totalReturned: number;
   netGain: number;
   absoluteReturnPct: number;
+  /** Both an outflow and an inflow exist (so a null XIRR means "no solution", not "missing data"). */
+  hasBothSigns: boolean;
 };
 
 export function computeXirr(cashflows: DatedCashflow[]): XirrResult {
@@ -73,5 +75,6 @@ export function computeXirr(cashflows: DatedCashflow[]): XirrResult {
     totalReturned,
     netGain,
     absoluteReturnPct: totalInvested > 0 ? (netGain / totalInvested) * 100 : 0,
+    hasBothSigns: totalInvested > 0 && totalReturned > 0,
   };
 }

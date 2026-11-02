@@ -102,7 +102,7 @@ export function SalaryWealthBuilder() {
         <ResultRow
           cells={[
             { label: "Monthly SIP you must save", value: inr(result.requiredMonthlySip ?? 0), tone: "emerald" },
-            { label: "That's % of your salary", value: `${(result.requiredSipPct ?? 0).toFixed(1)}%`, tone: "amber" },
+            { label: "That's % of your salary", value: Number.isFinite(result.requiredSipPct ?? 0) ? `${(result.requiredSipPct ?? 0).toFixed(1)}%` : "—", tone: "amber" },
             { label: "Target wealth", value: inr(result.targetWealth ?? 0) },
             { label: "Total you'll invest", value: inr(result.totalInvested) },
           ]}

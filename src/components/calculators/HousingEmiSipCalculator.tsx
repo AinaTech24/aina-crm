@@ -13,6 +13,9 @@ import { BarsChart, inrShort } from "./charts";
 
 const STRAT_COLORS: Record<string, string> = { payoff: "#f59e0b", keep: "#0891b2", rentbuy: "#10b981" };
 
+/** "7% more" / "9% less" — never "-9% more". */
+const vsPayoff = (pct: number) => `${Math.abs(pct * 100).toFixed(0)}% ${pct < 0 ? "less" : "more"}`;
+
 export function HousingEmiSipCalculator() {
   const [clientName, setClientName] = useState("");
   const [loan, setLoan] = useState(25000000);
@@ -64,7 +67,8 @@ export function HousingEmiSipCalculator() {
       </div>
 
       <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-center text-sm">
-        Monthly outgo across all three: <strong>{inr(Math.round(res.emiMonthly))}/mo</strong> (the home-loan EMI)
+        Monthly outgo across all three: <strong>{inr(Math.round(res.emiMonthly * 2))}/mo</strong> in year 1 (EMI{" "}
+        {inr(Math.round(res.emiMonthly))} + SIP of the same, stepping up {sipGrowth}%/yr)
       </div>
 
       {/* Three strategy cards */}
@@ -74,6 +78,9 @@ export function HousingEmiSipCalculator() {
           return (
             <div
               key={s.key}
+              data-pdf="stat"
+              data-pdf-label={isBest ? `${s.label} (best)` : s.label}
+              data-pdf-value={inrShort(s.wealth)}
               className={`border rounded-lg p-4 ${isBest ? "border-emerald-300 bg-emerald-50/50" : "border-border"}`}
             >
               <div className="flex items-center gap-1.5">
@@ -85,7 +92,7 @@ export function HousingEmiSipCalculator() {
                 {inrShort(s.wealth)}
               </div>
               <div className="text-2xs text-muted-foreground mt-0.5">
-                {s.key === "payoff" ? "wealth created" : `${(s.incrementalPct * 100).toFixed(0)}% more than paying off early`}
+                {s.key === "payoff" ? "wealth created" : `${vsPayoff(s.incrementalPct)} than paying off early`}
               </div>
               <div className="text-xs mt-2 pt-2 border-t border-border/60">
                 ≈ <strong>{inrShort(s.monthlyIncome)}/mo</strong> income for life
@@ -108,10 +115,10 @@ export function HousingEmiSipCalculator() {
       </div>
 
       <Insight tone="emerald">
-        On the same {inr(Math.round(res.emiMonthly))}/month, <strong>{best.label.toLowerCase()}</strong> builds the most —{" "}
-        <strong>{inrShort(best.wealth)}</strong> ({(best.incrementalPct * 100).toFixed(0)}% more than paying the loan off early),
-        worth ~{inrShort(best.monthlyIncome)}/month of income for life. Renting and investing the full EMI in equity keeps the cheap
-        9%-ish loan working against a 15% return — and you still buy the house at the end.
+        On the same cashflow, <strong>{best.label.toLowerCase()}</strong> builds the most —{" "}
+        <strong>{inrShort(best.wealth)}</strong>
+        {best.key !== "payoff" ? ` (${vsPayoff(best.incrementalPct)} than paying the loan off early)` : ""}, worth ~
+        {inrShort(best.monthlyIncome)}/month of income for life — equity at {sipReturn}% against a {loanRate}% loan.
       </Insight>
 
       <Insight tone="amber">

@@ -125,11 +125,12 @@ function sipCorpusFactor(sipYears: number, holdYears: number, stepUpPct: number,
   return fv * Math.pow(1 + m, nHold);
 }
 
-/** Total ₹ contributed by a stepped-up SIP over `sipYears`. */
+/** Total ₹ contributed by a stepped-up SIP over `sipYears` — month-counted, like sipCorpusFactor. */
 function sipInvested(monthly: number, stepUpPct: number, sipYears: number): number {
   const s = stepUpPct / 100;
+  const nSip = Math.round(sipYears * 12);
   let total = 0;
-  for (let y = 0; y < Math.round(sipYears); y++) total += monthly * Math.pow(1 + s, y) * 12;
+  for (let mo = 0; mo < nSip; mo++) total += monthly * Math.pow(1 + s, Math.floor(mo / 12));
   return total;
 }
 

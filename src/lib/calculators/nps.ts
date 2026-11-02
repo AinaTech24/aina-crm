@@ -27,12 +27,13 @@ export type NpsInput = {
 
 export type NpsResult = {
   years: number;
+  annuityPortionPct: number; // the % actually used (clamped to 40–100)
   corpus: number;
   totalContributed: number;
   lumpSum: number; // tax-free withdrawal
   annuityCorpus: number;
   monthlyPension: number;
-  annual80CCD1BBenefit: number; // tax saved this year on the extra ₹50k
+  annual80CCD1BBenefit: number; // tax saved this year on the extra ≤ ₹50k (old regime)
 };
 
 export function computeNps(input: NpsInput): NpsResult {
@@ -52,14 +53,19 @@ export function computeNps(input: NpsInput): NpsResult {
     }
   }
 
-  const annuityPortion = Math.min(100, Math.max(40, input.annuityPortionPct)) / 100;
+  const annuityPortionPct = Math.min(100, Math.max(40, input.annuityPortionPct));
+  const annuityPortion = annuityPortionPct / 100;
   const annuityCorpus = corpus * annuityPortion;
   const lumpSum = corpus - annuityCorpus;
   const monthlyPension = (annuityCorpus * (input.annuityRatePct / 100)) / 12;
-  const annual80CCD1BBenefit = 50000 * (input.taxSlabPct / 100);
+  // 80CCD(1B), old regime only: the year's own contribution, capped at ₹50,000;
+  // the saving includes the 4% cess.
+  const annual80CCD1BBenefit =
+    Math.min(50000, Math.max(0, input.monthlyContribution) * 12) * (input.taxSlabPct / 100) * 1.04;
 
   return {
     years,
+    annuityPortionPct,
     corpus,
     totalContributed,
     lumpSum,

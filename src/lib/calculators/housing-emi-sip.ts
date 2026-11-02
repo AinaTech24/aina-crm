@@ -1,14 +1,16 @@
 /**
  * EMI → SIP Housing — wealth created by three ways of acquiring the SAME home,
  * all funded by the same EMI-equivalent cashflow (EFP "Patshala" workbook).
- * Verified to the rupee against the sheet (₹57.61 / 61.42 / 79.69 Cr).
+ * Strategies 1–2 match the sheet to the rupee (₹57.61 / 61.42 Cr). Strategy 3
+ * departs from it on purpose: the sheet netted the rent off at face value and
+ * escalated the house one year short, overstating the rent route (79.69 → 62.79 Cr).
  *
  *   1. Pay off early  — buy on loan; a growing SIP (= EMI, +growth%/yr) compounds
  *      until its corpus clears the loan, then SIP + the freed EMI build wealth.
  *   2. Keep loan       — buy on loan, run it the full tenure (cheap debt), and
  *      invest the EMI-equivalent SIP in equity the whole time.
- *   3. Rent & buy late — rent now, invest SIP + EMI every year, then buy the
- *      (escalated) house at the end and net off the rent paid.
+ *   3. Rent & buy late — rent now, invest SIP + EMI − rent every year, then buy
+ *      the house (escalated for the full tenure) at the end.
  *
  * The model runs in annual steps; FV step = (prior + payment) × (1 + rate)
  * (annuity-due). Monthly income = an inflation-naïve SWP of the wealth for
@@ -118,14 +120,17 @@ export function housingEmiSip(input: {
     for (let y = 1; y <= tenure; y++) {
       if (y > 1) {
         sip *= 1 + g;
-        house *= 1 + input.escalationPct / 100;
         rent *= 1 + input.rentGrowthPct / 100;
       }
-      fv = fvStep(fv, sip + emi, input.sipReturnPct);
+      // The house escalates EVERY year — bought at the END of year `tenure`.
+      house *= 1 + input.escalationPct / 100;
+      // Rent comes out of the same cashflow the owner invests, so it costs its
+      // forgone growth — not just its face value netted off at the end.
+      fv = fvStep(fv, sip + emi - rent, input.sipReturnPct);
       totalRentPaid += rent;
     }
     houseCostAtEnd = house;
-    return fv - totalRentPaid - house;
+    return fv - house;
   })();
 
   const mk = (key: HousingStrategy["key"], label: string, note: string, wealth: number): HousingStrategy => ({
@@ -140,7 +145,7 @@ export function housingEmiSip(input: {
   const strategies = [
     mk("payoff", "Pay off loan early", `SIP clears the loan in ~${s1.overYear} yrs, then SIP + freed EMI compound`, s1.wealth),
     mk("keep", "Keep loan full term", "Run the cheap loan; invest the EMI-equivalent in equity", s2Wealth),
-    mk("rentbuy", "Rent & buy at the end", "Rent, invest SIP + EMI, buy the house in cash later", s3Wealth),
+    mk("rentbuy", "Rent & buy at the end", "Rent, invest SIP + EMI − rent, buy the house in cash later", s3Wealth),
   ];
   const bestKey = strategies.reduce((a, b) => (b.wealth > a.wealth ? b : a)).key;
 

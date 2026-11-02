@@ -163,9 +163,9 @@ export function SurrenderAnalyzer() {
         {result.surrenderIsBetter ? (
           <>
             On these numbers, <strong>surrendering &amp; investing</strong> could grow to <strong>{inr(result.expectedValueAtEnd)}</strong> —
-            about <strong>{result.multipleVsMaturity.toFixed(1)}×</strong> the policy&apos;s {inr(result.expectedPayoutAndMaturity)}, a difference of{" "}
-            <strong>{inr(result.advantageOfSurrender)}</strong>. The policy&apos;s own return is just{" "}
-            <strong>{result.policyIrrPct?.toFixed(2)}%</strong> p.a.
+            {result.expectedPayoutAndMaturity > 0 && <> about <strong>{result.multipleVsMaturity.toFixed(1)}×</strong> the policy&apos;s {inr(result.expectedPayoutAndMaturity)},</>}
+            {" "}a difference of <strong>{inr(result.advantageOfSurrender)}</strong>.
+            {result.policyIrrPct != null && <> The policy&apos;s own return is just <strong>{result.policyIrrPct.toFixed(2)}%</strong> p.a.</>}
           </>
         ) : (
           <>

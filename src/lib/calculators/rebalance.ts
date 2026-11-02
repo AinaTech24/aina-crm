@@ -34,24 +34,25 @@ export function computeRebalance(holdings: Holding[], newMoney: number): Rebalan
   const targetTotal = holdings.reduce((s, h) => s + h.targetPct, 0) || 100;
 
   // Target value uses the post-new-money total.
-  const base = holdings.map((h) => {
+  const base = holdings.map((h, idx) => {
     const targetValue = (totalAfter * h.targetPct) / targetTotal;
-    return { h, targetValue, gap: targetValue - h.currentValue };
+    return { h, idx, targetValue, gap: targetValue - h.currentValue };
   });
 
   // Deploy new money to underweight classes first (largest positive gap).
+  // Keyed by row, not name — two rows can share a name (e.g. "New class").
   let remainingNew = Math.max(0, newMoney);
   const underweight = [...base].filter((b) => b.gap > 0).sort((a, b) => b.gap - a.gap);
-  const newMoneyMap = new Map<string, number>();
+  const newMoneyMap = new Map<number, number>();
   for (const b of underweight) {
     if (remainingNew <= 0) break;
     const take = Math.min(remainingNew, b.gap);
-    newMoneyMap.set(b.h.assetClass, take);
+    newMoneyMap.set(b.idx, take);
     remainingNew -= take;
   }
 
   const rows: RebalanceRow[] = base.map((b) => {
-    const fromNew = newMoneyMap.get(b.h.assetClass) ?? 0;
+    const fromNew = newMoneyMap.get(b.idx) ?? 0;
     const action = b.gap; // net change needed (buy positive / sell negative)
     return {
       assetClass: b.h.assetClass,

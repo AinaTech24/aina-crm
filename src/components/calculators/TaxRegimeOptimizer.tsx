@@ -72,7 +72,7 @@ export function TaxRegimeOptimizer() {
           rows={[
             ["Taxable income", inr(result.old.taxableIncome), inr(result.new.taxableIncome)],
             ["Income tax (pre-rebate)", inr(result.old.baseTax), inr(result.new.baseTax)],
-            ["Less: 87A rebate", `(${inr(result.old.rebate)})`, `(${inr(result.new.rebate)})`],
+            ["Less: 87A rebate / marginal relief",`(${inr(result.old.rebate)})`, `(${inr(result.new.rebate)})`],
             ["Surcharge", inr(result.old.surcharge), inr(result.new.surcharge)],
             ["Health & education cess 4%", inr(result.old.cess), inr(result.new.cess)],
             ["Total tax", inr(result.old.totalTax), inr(result.new.totalTax)],

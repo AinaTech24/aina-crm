@@ -99,7 +99,9 @@ export function GoalFeasibilityScore() {
           ? <>To fully fund every goal, the plan needs about <strong>{inr(result.netRequiredMonthly)}/month</strong> but only{" "}
             <strong>{inr(result.availableMonthly)}</strong> is being invested — a <strong>{inr(result.gapMonthly)}/month</strong> gap.
             Closing it (or extending timelines / trimming goals) lifts the score.</>
-          : <>The current {inr(result.availableMonthly)}/month plan fully covers all goals — the household is comfortably on track.</>}
+          : result.dueNowUncovered > 0
+            ? <>The monthly plan covers the future goals, but <strong>{inr(result.dueNowUncovered)}</strong> due now is not covered by the corpus.</>
+            : <>The current {inr(result.availableMonthly)}/month plan fully covers all goals — the household is comfortably on track.</>}
       </Insight>
     </div>
   );

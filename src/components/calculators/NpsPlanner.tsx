@@ -44,7 +44,7 @@ export function NpsPlanner() {
         <NumberField label="Existing NPS corpus (₹)" value={existingCorpus} setValue={setExistingCorpus} step={50000} />
         <NumberField label="Annuity portion (% ≥ 40)" value={annuityPortionPct} setValue={setAnnuityPortionPct} step={5} />
         <NumberField label="Annuity rate (%)" value={annuityRatePct} setValue={setAnnuityRatePct} step={0.5} />
-        <NumberField label="Tax slab (% for 80CCD-1B)" value={taxSlabPct} setValue={setTaxSlabPct} step={5} />
+        <NumberField label="Tax slab (% for 80CCD-1B, old regime)" value={taxSlabPct} setValue={setTaxSlabPct} step={5} />
       </div>
 
       {clientName && <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span></div>}
@@ -62,8 +62,8 @@ export function NpsPlanner() {
           rows={[
             [`Total contributed (over ${r.years} yrs)`, inr(r.totalContributed)],
             [`Corpus at age ${retirementAge}`, inr(r.corpus)],
-            [`Lump-sum withdrawal (${100 - annuityPortionPct}%, tax-free)`, inr(r.lumpSum)],
-            [`Annuity corpus (${annuityPortionPct}%)`, inr(r.annuityCorpus)],
+            [`Lump-sum withdrawal (${100 - r.annuityPortionPct}%, tax-free)`, inr(r.lumpSum)],
+            [`Annuity corpus (${r.annuityPortionPct}%)`, inr(r.annuityCorpus)],
             [`Monthly pension @ ${fmtPct(annuityRatePct)}`, inr(r.monthlyPension)],
           ]}
         />
@@ -71,7 +71,7 @@ export function NpsPlanner() {
 
       <Insight tone="emerald">
         Contributing {inr(monthlyContribution)}/month builds a {inr(r.corpus)} corpus — a {inr(r.lumpSum)} tax-free
-        lump sum plus {inr(r.monthlyPension)}/month pension for life. The 80CCD(1B) deduction also saves about{" "}
+        lump sum plus {inr(r.monthlyPension)}/month pension for life. The 80CCD(1B) deduction (old regime) also saves about{" "}
         <strong>{inr(r.annual80CCD1BBenefit)}</strong> in tax every year, over and above your 80C limit.
       </Insight>
     </div>

@@ -43,7 +43,8 @@ export type HarvestResult = {
 export function computeTaxHarvesting(input: HarvestInput): HarvestResult {
   const r = input.expectedReturnPct / 100;
   const n = Math.max(0, Math.round(input.years));
-  const exemption = input.exemptionPerYear > 0 ? input.exemptionPerYear : LTCG_EXEMPTION;
+  // A typed 0 means no exemption; only a missing/invalid value falls back.
+  const exemption = Number.isFinite(input.exemptionPerYear) ? Math.max(0, input.exemptionPerYear) : LTCG_EXEMPTION;
   const rate = input.ltcgRatePct / 100;
 
   let value = input.investment;
@@ -60,8 +61,11 @@ export function computeTaxHarvesting(input: HarvestInput): HarvestResult {
     rows.push({ year: y, value, unrealizedGain: unrealized, harvested, costBase });
   }
 
+  // The final redemption falls in year n, whose exemption the loop already
+  // used (that row's "harvested" is the exempt part of the sale) — so the rest
+  // is fully taxable; claiming the exemption again would count it twice.
   const finalUnrealized = value - costBase;
-  const taxWithHarvesting = Math.max(0, finalUnrealized - exemption) * rate;
+  const taxWithHarvesting = Math.max(0, finalUnrealized) * rate;
 
   // Without harvesting: hold throughout, redeem at the end.
   const finalValueNoHarvest = input.investment * Math.pow(1 + r, n);

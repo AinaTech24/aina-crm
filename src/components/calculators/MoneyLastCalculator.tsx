@@ -80,7 +80,7 @@ export function MoneyLastCalculator() {
         <Stat label="First-year withdrawal" value={`${inr(withdrawal)}/mo`} />
         <Stat
           label="Lasts for"
-          value={`${res.yearsLasted.toFixed(0)} yrs`}
+          value={res.runsOutAge == null ? "Lifetime" : `${res.yearsLasted.toFixed(0)} yrs`}
           tone={ok ? "emerald" : "rose"}
         />
       </div>

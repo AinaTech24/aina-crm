@@ -72,10 +72,11 @@ export type InsuranceIrrResult = {
   irrPct: number | null;
   cashflows: number[]; // yearly, for an optional schedule view
   // MF comparison (same premiums invested at expectedReturnPct)
+  benefitAtMaturity: number; // maturity + payouts reinvested at expectedReturnPct to the term
   mfMaturity: number;
-  mfWealthAdvantage: number; // mfMaturity − totalBenefit
-  mfAdvantagePct: number | null; // advantage as % of insurance benefit
-  mfContributionToMatch: number; // annual MF SIP/contribution to reach totalBenefit
+  mfWealthAdvantage: number; // mfMaturity − benefitAtMaturity
+  mfAdvantagePct: number | null; // advantage as % of benefitAtMaturity
+  mfContributionToMatch: number; // annual MF contribution to reach benefitAtMaturity
 };
 
 export function computeInsuranceIrr(input: InsuranceIrrInput): InsuranceIrrResult {
@@ -109,9 +110,14 @@ export function computeInsuranceIrr(input: InsuranceIrrInput): InsuranceIrrResul
     fvFactorPerRupee += growth;
   }
 
-  const mfWealthAdvantage = mfMaturity - totalBenefit;
-  const mfAdvantagePct = totalBenefit > 0 ? (mfWealthAdvantage / totalBenefit) * 100 : null;
-  const mfContributionToMatch = fvFactorPerRupee > 0 ? totalBenefit / fvFactorPerRupee : 0;
+  // Like-for-like: mid-term payouts reinvested at R until maturity, so the
+  // policy's value sits on the same date as the MF's.
+  const benefitAtMaturity =
+    input.maturityAmount + payouts.reduce((s, p) => s + p.amount * Math.pow(1 + R, term - p.year), 0);
+
+  const mfWealthAdvantage = mfMaturity - benefitAtMaturity;
+  const mfAdvantagePct = benefitAtMaturity > 0 ? (mfWealthAdvantage / benefitAtMaturity) * 100 : null;
+  const mfContributionToMatch = fvFactorPerRupee > 0 ? benefitAtMaturity / fvFactorPerRupee : 0;
 
   return {
     totalPremiums,
@@ -121,6 +127,7 @@ export function computeInsuranceIrr(input: InsuranceIrrInput): InsuranceIrrResul
     netGain,
     irrPct: irrPct === null ? null : irrPct * 100,
     cashflows,
+    benefitAtMaturity,
     mfMaturity,
     mfWealthAdvantage,
     mfAdvantagePct,

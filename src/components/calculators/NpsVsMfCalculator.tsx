@@ -53,7 +53,7 @@ export function NpsVsMfCalculator() {
         <Stat label="NPS corpus @ 60" value={inr(Math.round(res.npsCorpus))} tone="cyan" />
         <Stat label="MF corpus @ 60" value={inr(Math.round(res.mfCorpus))} tone="emerald" />
         <Stat label="NPS lump (60%)" value={inr(Math.round(res.npsLumpsum))} />
-        <Stat label="NPS pension / mo" value={inr(Math.round(res.npsMonthlyPension))} tone="amber" />
+        <Stat label="NPS pension / mo (post-tax)" value={inr(Math.round(res.npsMonthlyPensionPostTax))} tone="amber" />
       </div>
 
       <BarsChart
@@ -67,8 +67,8 @@ export function NpsVsMfCalculator() {
       <Insight tone="emerald">
         MF grows to <strong>{inrShort(res.mfCorpus)}</strong> — fully liquid — vs NPS&rsquo;s <strong>{inrShort(res.npsCorpus)}</strong>,
         of which only 60% ({inrShort(res.npsLumpsum)}) is withdrawable and the rest buys a {annuityRate}% annuity ≈{" "}
-        {inr(Math.round(res.npsMonthlyPension))}/mo pension. NPS adds an extra <strong>{inr(Math.round(res.annualNpsTaxSaved))}/yr</strong>{" "}
-        tax saving via 80CCD(1B). Best of both: NPS for the tax break, MFs for the flexible bulk.
+        {inr(Math.round(res.npsMonthlyPensionPostTax))}/mo pension after tax at your slab. NPS adds an extra{" "}
+        <strong>{inr(Math.round(res.annualNpsTaxSaved))}/yr</strong> tax saving via 80CCD(1B) (old regime only). Best of both: NPS for the tax break, MFs for the flexible bulk.
       </Insight>
 
       <Insight tone="amber">

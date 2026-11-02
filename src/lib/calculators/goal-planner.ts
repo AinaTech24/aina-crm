@@ -51,6 +51,7 @@ export type GoalResult = {
   limitedYears: number;
   comboLumpsum: number;
   comboSip: number;
+  dueNow: boolean; // period rounds to 0 years — only the lumpsum applies
 };
 
 export function computeGoal(input: GoalInput): GoalResult {
@@ -64,7 +65,10 @@ export function computeGoal(input: GoalInput): GoalResult {
       : input.cost;
 
   const lumpsum = n <= 0 ? futureCost : futureCost / Math.pow(1 + r, n);
-  const monthlySip = futureCost / (sipFactor(returnPct, n * 12) || 1);
+  // A goal due now (n = 0) has no SIP horizon: the SIP modes are 0 and the
+  // screen shows "Due now — lumpsum" (was the whole cost as a monthly SIP).
+  const dueNow = n <= 0;
+  const monthlySip = dueNow ? 0 : futureCost / sipFactor(returnPct, n * 12);
 
   // Limited-period SIP: invest for L years, the corpus then grows untouched to
   // the goal year.
@@ -74,7 +78,7 @@ export function computeGoal(input: GoalInput): GoalResult {
 
   // Lumpsum + SIP: given lumpsum grows to its FV; SIP fills the remaining gap.
   const comboFV = input.comboLumpsum * Math.pow(1 + r, n);
-  const comboSip = Math.max(0, futureCost - comboFV) / (sipFactor(returnPct, n * 12) || 1);
+  const comboSip = dueNow ? 0 : Math.max(0, futureCost - comboFV) / sipFactor(returnPct, n * 12);
 
   return {
     futureCost,
@@ -85,5 +89,6 @@ export function computeGoal(input: GoalInput): GoalResult {
     limitedYears: L,
     comboLumpsum: input.comboLumpsum,
     comboSip,
+    dueNow,
   };
 }

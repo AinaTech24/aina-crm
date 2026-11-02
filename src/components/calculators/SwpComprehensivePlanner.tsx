@@ -215,6 +215,7 @@ export function SwpComprehensivePlanner() {
           </div>
         </Section>
       )}
+      <p className="text-2xs text-muted-foreground">Withdrawal at period end · effective per-period rate.</p>
     </div>
   );
 }

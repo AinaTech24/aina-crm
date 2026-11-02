@@ -86,7 +86,7 @@ export function RebalanceCalculator() {
 
       <Insight tone="cyan">
         Rebalancing realigns risk to plan. {result.totalSell > 0
-          ? <>Selling {inr(result.totalSell)} of the overweight classes may trigger capital-gains tax — using the {inr(result.newMoneyUsed)} of new money first keeps that to a minimum.</>
+          ? <>Selling {inr(result.totalSell)} of the overweight classes may trigger capital-gains tax{result.newMoneyUsed > 0 ? <> — using the {inr(result.newMoneyUsed)} of new money first keeps that to a minimum</> : null}.</>
           : <>New money alone covers the rebalance — no selling, so no tax event.</>}
       </Insight>
     </div>

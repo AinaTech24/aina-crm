@@ -7,7 +7,8 @@
  * Slabs & rules used (individual < 60):
  *  NEW: 0-4L nil, 4-8L 5%, 8-12L 10%, 12-16L 15%, 16-20L 20%, 20-24L 25%,
  *       >24L 30%; std deduction ₹75,000; 87A full rebate if taxable ≤ ₹12L
- *       (rebate cap ₹60,000); surcharge capped at 25%.
+ *       (rebate cap ₹60,000) with marginal relief just above ₹12L; surcharge
+ *       capped at 25%.
  *  OLD: 0-2.5L nil, 2.5-5L 5%, 5-10L 20%, >10L 30%; std deduction ₹50,000;
  *       87A rebate if taxable ≤ ₹5L (cap ₹12,500); deductions allowed.
  *  Both: 4% health & education cess; surcharge 10/15/25/37% by income band.
@@ -105,6 +106,9 @@ function computeRegime(
   let rebate = 0;
   if (isNew && taxable <= 1200000) rebate = Math.min(baseTax, 60000);
   if (!isNew && taxable <= 500000) rebate = Math.min(baseTax, 12500);
+  // 87A marginal relief (new regime): just above ₹12L, tax may not exceed the
+  // income above ₹12L.
+  if (isNew && taxable > 1200000) rebate = Math.max(0, baseTax - (taxable - 1200000));
 
   const taxAfterRebate = Math.max(0, baseTax - rebate);
   const surcharge = taxAfterRebate * surchargeRate(taxable, isNew);

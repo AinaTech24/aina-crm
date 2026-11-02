@@ -33,12 +33,13 @@ export function JourneyToFreedom() {
   const reached = res.freedomYear !== null;
   const freedomFinite = Number.isFinite(res.freedomCorpus);
 
-  // Chart: corpus over years + the freedom threshold line (if finite).
+  // Chart: corpus over years + the freedom threshold line (if finite). The
+  // threshold rises with inflation — expenses in year n are year-n rupees.
   const xLabels = res.rows.map((r) => `Yr ${r.year}`);
   const lines = [
     { label: "Your corpus", color: "#10b981", values: res.rows.map((r) => r.corpus) },
     ...(freedomFinite
-      ? [{ label: "Freedom line", color: "#0e2557", values: res.rows.map(() => res.freedomCorpus) }]
+      ? [{ label: "Freedom line", color: "#0e2557", values: res.rows.map((r) => r.threshold) }]
       : []),
   ];
 
@@ -91,7 +92,7 @@ export function JourneyToFreedom() {
 
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Investable surplus" value={`${inr(res.investmentMonthly)}/mo`} tone="cyan" />
-        <Stat label="Freedom corpus needed" value={freedomFinite ? inrShort(res.freedomCorpus) : "—"} tone="emerald" />
+        <Stat label="Freedom corpus needed" value={reached && freedomFinite ? inrShort(res.freedomCorpus) : "—"} tone="emerald" />
         <Stat
           label="Corpus at freedom"
           value={res.corpusAtFreedom != null ? inrShort(res.corpusAtFreedom) : "—"}

@@ -44,6 +44,7 @@ export function YouthBucketStrategy() {
   );
 
   const activeBuckets = res.buckets.filter((b) => b.pvAtFreedom > 0);
+  const noRunway = res.yearsToFreedom <= 0; // freedom age not after age now → no SIP period
 
   return (
     <div className="card-surface p-5 space-y-5">
@@ -71,18 +72,18 @@ export function YouthBucketStrategy() {
         <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
           SIP with the 4-bucket strategy
         </div>
-        <div className="text-3xl font-extrabold text-emerald-700 mt-1">{inr(Math.round(res.sipBucket))}/mo</div>
-        <div className="text-xs text-muted-foreground mt-1">
+        <div className="text-3xl font-extrabold text-emerald-700 mt-1">{noRunway ? "—" : `${inr(Math.round(res.sipBucket))}/mo`}</div>
+        <div className="text-xs text-muted-foreground mt-1">{noRunway ? `Freedom age must be after age now — ${inrShort(res.corpusBucket)} is needed today.` : <>
           {(res.savingsPct * 100).toFixed(0)}% lower than the {inr(Math.round(res.sipWithout))}/mo a single debt fund would need —
           freedom at {freedomAge} for {clientName || "your client"}
-        </div>
+        </>}</div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Corpus — bucket strategy" value={inrShort(res.corpusBucket)} tone="emerald" />
         <Stat label="Corpus — single fund" value={inrShort(res.corpusWithout)} tone="amber" />
-        <Stat label="SIP — bucket strategy" value={`${inr(Math.round(res.sipBucket))}/mo`} tone="emerald" />
-        <Stat label="SIP — single fund" value={`${inr(Math.round(res.sipWithout))}/mo`} tone="rose" />
+        <Stat label="SIP — bucket strategy" value={noRunway ? "—" : `${inr(Math.round(res.sipBucket))}/mo`} tone="emerald" />
+        <Stat label="SIP — single fund" value={noRunway ? "—" : `${inr(Math.round(res.sipWithout))}/mo`} tone="rose" />
       </div>
 
       {/* Allocation across buckets */}
@@ -123,8 +124,8 @@ export function YouthBucketStrategy() {
 
       <Insight tone="emerald">
         Funding {res.totalFreedomYears} years of freedom from one debt fund needs <strong>{inrShort(res.corpusWithout)}</strong>; the
-        4-bucket strategy needs only <strong>{inrShort(res.corpusBucket)}</strong> ({(res.corpusSavedPct * 100).toFixed(0)}% less) — so
-        the SIP drops from {inr(Math.round(res.sipWithout))} to <strong>{inr(Math.round(res.sipBucket))}/month</strong>. That gap is
+        4-bucket strategy needs only <strong>{inrShort(res.corpusBucket)}</strong> ({(res.corpusSavedPct * 100).toFixed(0)}% less){noRunway ? "." : <> — so
+        the SIP drops from {inr(Math.round(res.sipWithout))} to <strong>{inr(Math.round(res.sipBucket))}/month</strong>.</>} That gap is
         the advisor&rsquo;s alpha: each bucket sits in a higher-return fund until it&rsquo;s needed.
       </Insight>
 

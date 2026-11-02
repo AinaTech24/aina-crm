@@ -24,11 +24,13 @@ export function PropertyYieldCalculator() {
   const [monthlyRent, setMonthlyRent] = useState(30000);
   const [monthlyMaintenance, setMonthlyMaintenance] = useState(2500);
   const [annualIncrementPct, setAnnualIncrementPct] = useState(3);
-  const [investibleSurplus, setInvestibleSurplus] = useState(27500);
+  // null = follow rent − maintenance; a typed amount holds until rent or maintenance changes.
+  const [surplusOverride, setSurplusOverride] = useState<number | null>(null);
   const [sipReturnPct, setSipReturnPct] = useState(12);
   const [years, setYears] = useState(10);
 
   const netSurplus = Math.max(0, monthlyRent - monthlyMaintenance);
+  const investibleSurplus = surplusOverride ?? netSurplus;
 
   const result = useMemo(
     () =>
@@ -62,8 +64,8 @@ export function PropertyYieldCalculator() {
           <div className="grid grid-cols-2 gap-3">
             <Num label="Current market value (₹)" value={marketValue} setValue={setMarketValue} />
             <Num label="Expected appreciation (% p.a.)" value={appreciationPct} setValue={setAppreciationPct} step={0.5} />
-            <Num label="Current monthly rent (₹)" value={monthlyRent} setValue={setMonthlyRent} />
-            <Num label="Monthly maintenance cost (₹)" value={monthlyMaintenance} setValue={setMonthlyMaintenance} />
+            <Num label="Current monthly rent (₹)" value={monthlyRent} setValue={(v) => { setMonthlyRent(v); setSurplusOverride(null); }} />
+            <Num label="Monthly maintenance cost (₹)" value={monthlyMaintenance} setValue={(v) => { setMonthlyMaintenance(v); setSurplusOverride(null); }} />
             <Num label="Annual increment — rent & expenses (%)" value={annualIncrementPct} setValue={setAnnualIncrementPct} step={0.5} />
             <Num label="Report period (years)" value={years} setValue={setYears} step={1} />
           </div>
@@ -73,13 +75,13 @@ export function PropertyYieldCalculator() {
         <section className="border border-border rounded-lg p-4 space-y-3">
           <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">② Reinvest the surplus</div>
           <div className="grid grid-cols-2 gap-3">
-            <Num label="Starting monthly investible surplus (₹)" value={investibleSurplus} setValue={setInvestibleSurplus} />
+            <Num label="Starting monthly investible surplus (₹)" value={investibleSurplus} setValue={setSurplusOverride} />
             <Num label="Assumed return on SIP (% p.a.)" value={sipReturnPct} setValue={setSipReturnPct} step={0.5} />
           </div>
           <div className="text-2xs text-muted-foreground flex items-center gap-2 flex-wrap">
             <span>Net surplus = rent − maintenance = <strong>{inr(netSurplus)}</strong>/mo.</span>
             {investibleSurplus !== netSurplus && (
-              <button type="button" onClick={() => setInvestibleSurplus(netSurplus)} className="text-primary hover:underline font-medium">
+              <button type="button" onClick={() => setSurplusOverride(null)} className="text-primary hover:underline font-medium">
                 Use net surplus
               </button>
             )}

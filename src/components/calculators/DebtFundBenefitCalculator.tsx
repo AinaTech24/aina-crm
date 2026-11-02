@@ -64,15 +64,15 @@ export function DebtFundBenefitCalculator() {
           <DateField value={redemptionDate} onChange={(e) => setRedemptionDate(e.target.value)} className="input-base text-sm w-full" />
         </Field>
         <Num label="Current market value (₹)" value={currentMarketValue} setValue={setCurrentMarketValue} />
-        <Num label="Assumed indexation rate (%)" value={indexationRatePct} setValue={setIndexationRatePct} step={0.5} />
+        <Num label="Indexation rate (%) · sale before 23 Jul 2024" value={indexationRatePct} setValue={setIndexationRatePct} step={0.5} />
         <Num label="Expected return — remaining period (%)" value={expectedReturnPct} setValue={setExpectedReturnPct} step={0.5} />
         <Num label="Short-term tax rate (%)" value={shortTermTaxPct} setValue={setShortTermTaxPct} step={1} />
-        <Num label="Long-term tax rate (%)" value={longTermTaxPct} setValue={setLongTermTaxPct} step={1} />
-        <Num label="LTCG qualifies after (years)" value={ltcgYears} setValue={setLtcgYears} step={1} />
+        <Num label="Long-term tax rate (%) · sale before 23 Jul 2024" value={longTermTaxPct} setValue={setLongTermTaxPct} step={1} />
+        <Num label="LTCG after (years) · sale before 23 Jul 2024" value={ltcgYears} setValue={setLtcgYears} step={1} />
       </div>
 
       {!r.valid ? (
-        <div className="text-2xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">Enter valid purchase and redemption dates.</div>
+        <div className="text-2xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">{r.error}</div>
       ) : (
         <>
           {/* Two scenarios */}
@@ -82,46 +82,61 @@ export function DebtFundBenefitCalculator() {
               <div className="text-2xs uppercase tracking-wider font-semibold text-amber-700">If redeemed today · {fmtDate(redemptionDate)}</div>
               <Row k="Investment amount" v={inr(investmentAmount)} />
               <Row k="Current market value" v={inr(currentMarketValue)} />
-              <Row k="Taxable short-term gain" v={inr(r.shortTermGain)} />
-              <Row k={`Tax payable @ ${shortTermTaxPct}%`} v={inr(r.shortTermTax)} />
+              <Row k={r.sellIsLongTerm ? "Taxable long-term gain" : "Taxable gain (at slab)"} v={inr(r.sellGain)} />
+              <Row k={`Tax payable @ ${r.sellTaxPct}%`} v={inr(r.sellTax)} />
               <Row k="Net in hand" v={inr(r.netIfSold)} strong />
               <Row k="Post-tax yield" v={`${r.postTaxYieldSold.toFixed(2)}%`} strong />
             </section>
 
-            {/* Hold to LTCG */}
-            <section className="border border-emerald-200 bg-emerald-50/40 rounded-lg p-4 space-y-2">
-              <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
-                If held to LTCG · {fmtDate(r.qualifyDate)} (after {r.remainingDays} days)
-              </div>
-              <Row k="Expected redemption amount" v={inr(r.expectedRedemptionAmount)} />
-              <Row k={`Indexed cost (${r.indexYears}y @ ${indexationRatePct}%)`} v={inr(r.indexedCost)} />
-              <Row k="Taxable long-term gain" v={inr(r.longTermGain)} />
-              <Row k={`Tax payable @ ${longTermTaxPct}%`} v={inr(r.longTermTax)} />
-              <Row k="Net in hand" v={inr(r.netIfHeld)} strong />
-              <Row k="Post-tax yield" v={`${r.postTaxYieldHeld.toFixed(2)}%`} strong />
-            </section>
+            {/* Hold to LTCG — only when there is something to wait for */}
+            {r.remainingDays > 0 && (
+              <section className="border border-emerald-200 bg-emerald-50/40 rounded-lg p-4 space-y-2">
+                <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
+                  If held to LTCG · {fmtDate(r.qualifyDate)} (after {r.remainingDays} days)
+                </div>
+                <Row k="Expected redemption amount" v={inr(r.expectedRedemptionAmount)} />
+                <Row
+                  k={r.regime === "flat" ? "Cost (no indexation)" : `Indexed cost (${r.indexYears}y @ ${indexationRatePct}%)`}
+                  v={inr(r.indexedCost)}
+                />
+                <Row k="Taxable long-term gain" v={inr(r.longTermGain)} />
+                <Row k={`Tax payable @ ${r.holdTaxPct}%`} v={inr(r.longTermTax)} />
+                <Row k="Net in hand" v={inr(r.netIfHeld)} strong />
+                <Row k="Post-tax yield" v={`${r.postTaxYieldHeld.toFixed(2)}%`} strong />
+              </section>
+            )}
           </div>
 
           {/* Headline */}
-          <div className="rounded-lg px-4 py-3 text-sm border border-emerald-200 bg-emerald-50/60 text-emerald-900">
-            By holding just <strong>{r.remainingDays} more days</strong> to qualify for LTCG, the client keeps an extra{" "}
-            <strong>{inr(r.extraInHand)}</strong> (tax saved {inr(r.taxSaved)}) — an effective post-tax yield of{" "}
-            <strong>{r.effectiveRemainingYield.toFixed(2)}%</strong> on the remaining period.
-          </div>
+          {r.remainingDays === 0 ? (
+            <div className="rounded-lg px-4 py-3 text-sm border border-border bg-secondary/60">
+              {r.regime === "slab"
+                ? "Bought on/after 1 Apr 2023: taxed at slab however long it is held — holding saves no tax."
+                : "Already long-term — nothing to gain by waiting."}
+            </div>
+          ) : (
+          <>
+            <div className="rounded-lg px-4 py-3 text-sm border border-emerald-200 bg-emerald-50/60 text-emerald-900">
+              By holding just <strong>{r.remainingDays} more days</strong> to qualify for LTCG, the client keeps an extra{" "}
+              <strong>{inr(r.extraInHand)}</strong> (tax saved {inr(r.taxSaved)}) — an effective post-tax yield of{" "}
+              <strong>{r.effectiveRemainingYield.toFixed(2)}%</strong> on the remaining period.
+            </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="Tax saved by holding" value={inr(r.taxSaved)} />
-            <Stat label="Extra in hand" value={inr(r.extraInHand)} />
-            <Stat label="Holding to qualify" value={`${(r.totalHoldingDays / 365).toFixed(2)} yrs`} />
-            <Stat label="Remaining wait" value={`${r.remainingDays} days`} />
-          </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Stat label="Tax saved by holding" value={inr(r.taxSaved)} />
+              <Stat label="Extra in hand" value={inr(r.extraInHand)} />
+              <Stat label="Holding to qualify" value={`${(r.totalHoldingDays / 365).toFixed(2)} yrs`} />
+              <Stat label="Remaining wait" value={`${r.remainingDays} days`} />
+            </div>
+          </>
+          )}
         </>
       )}
 
       <p className="text-2xs text-muted-foreground border-t pt-3">
-        * Illustration only. Models the indexation regime; indexation on debt funds was withdrawn for units bought on/after
-        1 Apr 2023 (gains taxed at slab regardless of period). Verify the applicable tax rules for the specific units. Not tax
-        or investment advice.
+        * Illustration only. Applies the rules of each sale date: indexation for sales before 23 Jul 2024; from then, 12.5%
+        without indexation after 24 months; units bought on/after 1 Apr 2023 taxed at slab regardless of period. Verify the
+        applicable tax rules for the specific units. Not tax or investment advice.
       </p>
     </div>
   );

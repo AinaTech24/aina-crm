@@ -52,13 +52,16 @@ export function AumOpportunityCalculator() {
     const capture = clamp(capturePct, 0, 100) / 100;
     const urgencyMultiplier = URGENCY.find((u) => u.value === urgency)?.multiplier ?? 1;
 
-    const idleCashOpp = idleCash * Math.min(0.8, capture + 0.15);
-    const fdOpp = fdAmount * capture;
-    const insuranceOpp = lowYieldInsurance * Math.min(0.65, capture + 0.05);
-    const bonusOpp = bonusExpected * Math.min(0.75, capture + 0.1);
-    const familyOpp = familyAssetsOutside * Math.min(0.5, capture * 0.75);
+    // Urgency scales each source (so the rows add up to the headline); 0%
+    // confidence captures nothing, and no source can exceed 100% of itself.
+    const share = (rate: number) => (capture > 0 ? Math.min(1, rate * urgencyMultiplier) : 0);
+    const idleCashOpp = idleCash * share(Math.min(0.8, capture + 0.15));
+    const fdOpp = fdAmount * share(capture);
+    const insuranceOpp = lowYieldInsurance * share(Math.min(0.65, capture + 0.05));
+    const bonusOpp = bonusExpected * share(Math.min(0.75, capture + 0.1));
+    const familyOpp = familyAssetsOutside * share(Math.min(0.5, capture * 0.75));
 
-    const immediateOpportunity = (idleCashOpp + fdOpp + insuranceOpp + bonusOpp + familyOpp) * urgencyMultiplier;
+    const immediateOpportunity = idleCashOpp + fdOpp + insuranceOpp + bonusOpp + familyOpp;
     const annualSipOpportunity = sipUpgrade * 12;
     const oneYearAum = immediateOpportunity + annualSipOpportunity;
     const fiveYearAum = fvLumpsum(immediateOpportunity, returnPct, 60) + fvSip(sipUpgrade, returnPct, 60);

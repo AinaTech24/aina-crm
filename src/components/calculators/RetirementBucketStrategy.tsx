@@ -23,6 +23,9 @@ export function RetirementBucketStrategy() {
     [corpus, expense, b1Years, b2Years],
   );
 
+  // Years Bucket 1 actually funds — less than asked when the corpus is short.
+  const b1Covered = res.annual > 0 ? Math.round(Math.min(b1Years, res.b1 / res.annual) * 10) / 10 : b1Years;
+
   const buckets = [
     { name: "Bucket 1 · Cash", sub: `${b1Years} yrs of spending — liquid/arbitrage`, amt: res.b1, pct: res.b1Pct, color: "#0891b2" },
     { name: "Bucket 2 · Debt", sub: `Years ${b1Years + 1}–${res.yearsCovered} — short-term debt`, amt: res.b2, pct: res.b2Pct, color: "#f59e0b" },
@@ -73,7 +76,7 @@ export function RetirementBucketStrategy() {
       </div>
 
       <Insight tone="emerald">
-        On {inrShort(corpus)} with {inr(expense)}/month spending: keep <strong>{inrShort(res.b1)}</strong> in cash (the next {b1Years}
+        On {inrShort(corpus)} with {inr(expense)}/month spending: keep <strong>{inrShort(res.b1)}</strong> in cash (the next {b1Covered}
         {" "}years are crash-proof), <strong>{inrShort(res.b2)}</strong> in debt, and let <strong>{inrShort(res.b3)}</strong> compound in
         equity. Refill Bucket 1 from Bucket 2, and Bucket 2 from equity in good years — so {clientName || "the retiree"} never sells
         equity in a downturn.
