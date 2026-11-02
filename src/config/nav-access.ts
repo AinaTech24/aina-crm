@@ -117,6 +117,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/reports/nomination-tracker", label: "Nomination Tracker" },
       { key: "/dashboard/sops", label: "Operations Manual" },
       { key: "/dashboard/audit-log", label: "Audit Log", module: "audit_log" },
+      { key: "/dashboard/privacy-requests", label: "Privacy Requests" },
       { key: "/dashboard/legal-registrations", label: "Legal Registrations" },
       { key: "/dashboard/sub-distributors", label: "Sub-Distributors" },
     ],

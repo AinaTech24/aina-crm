@@ -34,3 +34,49 @@ export const privacyConsents = pgTable(
 );
 
 export type PrivacyConsent = typeof privacyConsents.$inferSelect;
+
+/**
+ * Requests from a client, lead or anyone else to use their DPDP rights
+ * (migration 0256, lib/privacy/requests.ts): access, correction, erasure,
+ * withdrawing consent, nomination, a grievance. The firm must answer within
+ * 90 days (DPDP Rules 2025); `due_at` is that deadline. The person is linked
+ * when they are on the CRM; the requester's own details stay on the row as the
+ * record of who asked — even after an erasure removed the client.
+ */
+export const privacyRequests = pgTable(
+  "privacy_requests",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    reference: text("reference").notNull(),
+    subjectType: text("subject_type"),
+    subjectId: uuid("subject_id"),
+    requesterName: text("requester_name").notNull(),
+    requesterEmail: text("requester_email"),
+    requesterPhone: text("requester_phone"),
+    type: text("type").notNull(),
+    channel: text("channel").notNull(),
+    details: text("details"),
+    status: text("status").notNull().default("open"),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    identityVerifiedAt: timestamp("identity_verified_at", { withTimezone: true }),
+    identityVerifiedBy: uuid("identity_verified_by"),
+    assigneeId: uuid("assignee_id"),
+    taskId: uuid("task_id"),
+    outcome: text("outcome"),
+    /** What an erasure did: "erased", or "retained_until:<yyyy-mm-dd>". */
+    erasureResult: text("erasure_result"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedBy: uuid("closed_by"),
+    createdBy: uuid("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    statusIdx: index("privacy_requests_status_idx").on(t.tenantId, t.status, t.dueAt),
+    subjectIdx: index("privacy_requests_subject_idx").on(t.tenantId, t.subjectType, t.subjectId),
+  })
+);
+
+export type PrivacyRequest = typeof privacyRequests.$inferSelect;

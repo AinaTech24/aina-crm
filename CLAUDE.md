@@ -760,10 +760,22 @@ clients and leads; this CRM is its processor. Step 1 of the plan (2026-10-31):
   `dispatch()`, drawn by both footers), so `dispatch()` records the first
   one, in a savepoint. Rows are never edited; a withdrawal stamps
   `withdrawn_at`.
-- **Still to build** (the plan): a privacy-requests register with a 90-day
-  clock and a per-person data summary; erasure by anonymising what the law
-  lets go while keeping PMLA / SEBI records; a retention policy job; a breach
-  register; no marketing to minors; a per-firm AI switch; enforceable 2FA.
+- **Rights requests** (step 2, 2026-11-02): Compliance → Privacy requests
+  (`privacy_requests`, migration 0256; `lib/privacy/requests.ts`, rules in
+  `requests-core.ts`). Each request is a TASK (subject `compliance`, type
+  `privacy_request`) due 15 days before the 90-day deadline; closing the
+  request completes it. Identity is checked before anything is shared or
+  erased. The data summary (`lib/privacy/summary.ts`, s.11) masks PAN and
+  bank numbers and is audited when opened.
+- **Erasure follows the law, never just a delete.** `retentionVerdict`: a
+  client who holds money or is still a client is refused with the reason; a
+  former client's records are kept five years after they left (PMLA) and only
+  marketing stops; a client with no financial records, or past the five
+  years, is purged (`purgeInvestorsChunk`) with their source lead blanked. A
+  lead is blanked in place (`LEAD_ERASE_PATCH` — a test fails if a new
+  personal column on leads is not in it) and its messages, notes and tasks go.
+- **Still to build** (the plan): a retention-policy job; a breach register;
+  no marketing to minors; a per-firm AI switch; enforceable 2FA.
 
 ## Creating a family
 

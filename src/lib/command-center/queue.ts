@@ -402,7 +402,7 @@ export async function buildCommandQueue(
   // (lib/metrics/tasks.ts): blocked work is still work, and still late.
   {
     const r = await tx.execute(sql`
-      SELECT id, title, priority, due_at, subject_type, subject_id,
+      SELECT id, title, priority, due_at, subject_type, subject_id, type,
              related_investor_id, related_lead_id, related_meeting_id, related_service_request_id,
              count(*) OVER() AS total
       FROM tasks
@@ -420,6 +420,8 @@ export async function buildCommandQueue(
       // Prefer the explicit related-entity columns, then the legacy subject, and
       // only fall back to the tasks list for a task with no linked entity.
       const taskHref = (x: any): string => {
+        // A DPDP privacy request's task opens the request (lib/privacy/requests.ts).
+        if (x.subject_type === "compliance" && x.type === "privacy_request" && x.subject_id) return `/dashboard/privacy-requests/${x.subject_id}`;
         if (x.related_investor_id) return `/dashboard/investors/${x.related_investor_id}`;
         if (x.related_lead_id) return `/dashboard/leads/${x.related_lead_id}`;
         if (x.related_meeting_id) return `/dashboard/review-meetings/${x.related_meeting_id}`;
@@ -444,7 +446,7 @@ export async function buildCommandQueue(
       // The 30-day split. Same predicate as above plus the cut-off, so the two
       // halves always add up to `total`.
       const recent = await tx.execute(sql`
-        SELECT id, title, priority, due_at, subject_type, subject_id,
+        SELECT id, title, priority, due_at, subject_type, subject_id, type,
                related_investor_id, related_lead_id, related_meeting_id, related_service_request_id,
                count(*) OVER() AS total
         FROM tasks
@@ -461,7 +463,7 @@ export async function buildCommandQueue(
       const older =
         total > recentCount
           ? await tx.execute(sql`
-              SELECT id, title, priority, due_at, subject_type, subject_id,
+              SELECT id, title, priority, due_at, subject_type, subject_id, type,
                      related_investor_id, related_lead_id, related_meeting_id, related_service_request_id
               FROM tasks
               WHERE status IN ('open','in_progress','blocked')

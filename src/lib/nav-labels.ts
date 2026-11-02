@@ -15,6 +15,7 @@ export const NAV_LABELS: Record<string, string> = {
   "/dashboard/announcements": "Announcements",
   "/dashboard/attendance": "Attendance",
   "/dashboard/audit-log": "Audit Log",
+  "/dashboard/privacy-requests": "Privacy requests",
   "/dashboard/manage": "Manage dashboards",
   "/dashboard/new": "New dashboard",
   "/dashboard/business-entries": "Business Entries",
