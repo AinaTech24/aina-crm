@@ -46,6 +46,9 @@ describe.skipIf(!TEST_DB)("pipeline cards", () => {
     await sr("S-2", "statement_request", "escalated", "'2026-10-03'");
     await sr("S-3", "kyc_update", "waiting_customer", "'2026-10-04'");
     await sr("S-4", "kyc_update", "closed", "'2026-10-05'");
+    // Closed on a fixed day: without resolved_at the metric reads updated_at,
+    // which is "now" and leaves the October period as soon as October ends.
+    await q(sql.raw(`UPDATE service_requests SET resolved_at = '2026-10-06' WHERE tenant_id = '${tenant}' AND ticket_no = 'S-4'`));
     await sr("S-5", "other", "open", "'2026-09-01'");
   }, 60_000);
 
