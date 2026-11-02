@@ -787,8 +787,22 @@ clients and leads; this CRM is its processor. Step 1 of the plan (2026-10-31):
   years, is purged (`purgeInvestorsChunk`) with their source lead blanked. A
   lead is blanked in place (`LEAD_ERASE_PATCH` — a test fails if a new
   personal column on leads is not in it) and its messages, notes and tasks go.
-- **Still to build** (the plan): a retention-policy job; a breach register;
-  no marketing to minors; a per-firm AI switch; enforceable 2FA.
+- **Retention policy** (step 3, 2026-11-02; `tenants.data_retention`,
+  migration 0257; `lib/privacy/retention.ts`, rules in `retention-core.ts`):
+  Settings → Privacy notice → Data retention. OFF until the firm picks a
+  period, and each choice previews what it would erase tonight. Lost leads
+  (lost / not interested / deleted) are blanked N ≥ 6 months after being lost;
+  former clients are purged N ≥ 5 years after they left, never while they hold
+  money. Runs in the nightly ops scan (≤ 500 leads, 200 clients per firm per
+  night), audits the run and notifies the owners.
+- **Breach register** (step 3; `data_breaches`, migration 0257;
+  `lib/privacy/breaches.ts`, texts in `breaches-core.ts`): Compliance → Data
+  breaches. Logging one starts Rule 7's 72-hour clock with an urgent task
+  for the Board's report; the page ticks off Board intimation, the detailed
+  report and telling the people affected, and builds both texts — the
+  person's notice and the Board report — from the recorded facts.
+- **Still to build** (the plan): no marketing to minors; a per-firm AI
+  switch; enforceable 2FA; DPAs with each firm (paperwork).
 
 ## Creating a family
 

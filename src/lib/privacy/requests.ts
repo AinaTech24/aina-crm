@@ -177,7 +177,7 @@ export async function erasureVerdict(tx: Tx, tenantId: string, subject: Subject)
 }
 
 /** Blank a lead and remove what was sent and noted about them. */
-async function eraseLeads(tx: Tx, tenantId: string, ids: string[]): Promise<void> {
+export async function eraseLeads(tx: Tx, tenantId: string, ids: string[]): Promise<void> {
   if (!ids.length) return;
   await tx.update(leads).set({ ...LEAD_ERASE_PATCH, updatedAt: new Date() } as unknown as Partial<typeof leads.$inferInsert>)
     .where(and(eq(leads.tenantId, tenantId), inArray(leads.id, ids)));

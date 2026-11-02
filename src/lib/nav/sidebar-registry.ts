@@ -74,6 +74,7 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Compliance", href: "/dashboard/reports/nomination-tracker", label: "Nomination Tracker" },
   { group: "Compliance", href: "/dashboard/audit-log", label: "Audit Log" },
   { group: "Compliance", href: "/dashboard/privacy-requests", label: "Privacy Requests" },
+  { group: "Compliance", href: "/dashboard/data-breaches", label: "Data Breaches" },
   { group: "Compliance", href: "/dashboard/legal-registrations", label: "Legal Registrations" },
   { group: "Compliance", href: "/dashboard/sub-distributors", label: "Sub-Distributors" },
   // Team

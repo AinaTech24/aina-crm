@@ -8,6 +8,8 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { privacyNoticePath, readPrivacyNotice } from "@/lib/privacy/notice";
 import { PrivacyNoticeForm } from "./PrivacyNoticeForm";
+import { RetentionForm } from "./RetentionForm";
+import { readRetention } from "@/lib/privacy/retention-core";
 
 export const dynamic = "force-dynamic";
 
@@ -32,10 +34,10 @@ export default async function PrivacyNoticeSettingsPage() {
   }
   const data = await withTenant(session.tenantId, async (tx) => {
     const [t] = await tx
-      .select({ privacyNotice: tenants.privacyNotice, dpo: tenants.dataProtectionOfficer })
+      .select({ privacyNotice: tenants.privacyNotice, dpo: tenants.dataProtectionOfficer, retention: tenants.dataRetention })
       .from(tenants)
       .where(eq(tenants.id, session.tenantId));
-    return { notice: readPrivacyNotice(t?.privacyNotice), contact: t?.dpo ?? {} };
+    return { notice: readPrivacyNotice(t?.privacyNotice), contact: t?.dpo ?? {}, retention: readRetention(t?.retention) };
   });
   return (
     <div className="max-w-3xl space-y-6">
@@ -47,6 +49,10 @@ export default async function PrivacyNoticeSettingsPage() {
         initial={data.notice}
         initialContact={{ name: data.contact.name ?? "", email: data.contact.email ?? "", phone: data.contact.phone ?? "" }}
         noticeHref={privacyNoticePath(session.tenantId)}
+      />
+      <RetentionForm
+        initial={{ lostLeadMonths: data.retention.lostLeadMonths, formerClientYears: data.retention.formerClientYears }}
+        lastErased={data.retention.lastErased}
       />
     </div>
   );

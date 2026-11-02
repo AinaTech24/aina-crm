@@ -46,6 +46,7 @@
  * Total daily run: ~25 seconds for 500 tenants.
  */
 
+import { runRetentionPolicy } from "@/lib/privacy/retention";
 import { eq, sql } from "drizzle-orm";
 import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 import { withSystem, withTenant } from "@/db/client";
@@ -117,6 +118,8 @@ interface ScanResult {
   rtaLinesFlagged: number;
   placeholdersRetired: number;
   holdersRestored: number;
+  /** Erased by the firm's DPDP retention policy (lib/privacy/retention.ts). */
+  retentionErased: number;
   durationMs: number;
 }
 
@@ -183,6 +186,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     rtaLinesFlagged: 0,
     placeholdersRetired: 0,
     holdersRestored: 0,
+    retentionErased: 0,
     durationMs: 0,
   };
 
@@ -1270,6 +1274,16 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     console.error("[daily-ops] restoring money-holding clients failed for", tenantId, (e as Error)?.message);
   }
 
+  // ── DPDP retention: erase what the firm's policy says it no longer needs
+  // (lib/privacy/retention.ts). Off until the firm sets it; after the restore
+  // above, so a client holding money is never in reach.
+  try {
+    const r = await withTenant(tenantId, (tx) => runRetentionPolicy(tx, tenantId), { roles: ["system"] });
+    result.retentionErased = r.leads + r.clients;
+  } catch (e) {
+    console.error("[daily-ops] retention policy failed for", tenantId, (e as Error)?.message);
+  }
+
   // ── Physical route: forms with the RTA settle from the feed (lib/blueprints/rta-route.ts).
   try {
     await withTenant(tenantId, (tx) => syncRtaJourneys(tx, tenantId), { roles: ["system"] });
@@ -1403,6 +1417,7 @@ export async function runDailyOpsScan(): Promise<{
     rtaLinesFlagged: 0,
     placeholdersRetired: 0,
     holdersRestored: 0,
+    retentionErased: 0,
   };
   // Each tenant scan is fully independent (its own withTenant tx, RLS-scoped to
   // that tenant's rows), so they can run concurrently without lock contention.
@@ -1444,6 +1459,7 @@ export async function runDailyOpsScan(): Promise<{
       totals.rtaLinesFlagged += r.rtaLinesFlagged;
       totals.placeholdersRetired += r.placeholdersRetired;
       totals.holdersRestored += r.holdersRestored;
+      totals.retentionErased += r.retentionErased;
   };
   const worker = async () => {
     for (;;) {

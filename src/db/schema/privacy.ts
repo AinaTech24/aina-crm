@@ -80,3 +80,43 @@ export const privacyRequests = pgTable(
 );
 
 export type PrivacyRequest = typeof privacyRequests.$inferSelect;
+
+/**
+ * Personal-data breaches (migration 0257, lib/privacy/breaches.ts). Under the
+ * DPDP Rules, 2025 (Rule 7) the firm tells the Data Protection Board and every
+ * affected person without delay, and sends the Board a detailed report within
+ * 72 hours of becoming aware. `report_due_at` is that 72-hour mark.
+ */
+export const dataBreaches = pgTable(
+  "data_breaches",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    reference: text("reference").notNull(),
+    title: text("title").notNull(),
+    detectedAt: timestamp("detected_at", { withTimezone: true }).notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }),
+    description: text("description"),
+    dataAffected: text("data_affected"),
+    affectedCount: integer("affected_count"),
+    cause: text("cause"),
+    consequences: text("consequences"),
+    mitigation: text("mitigation"),
+    personSteps: text("person_steps"),
+    reportDueAt: timestamp("report_due_at", { withTimezone: true }).notNull(),
+    boardIntimatedAt: timestamp("board_intimated_at", { withTimezone: true }),
+    boardReportAt: timestamp("board_report_at", { withTimezone: true }),
+    peopleNotifiedAt: timestamp("people_notified_at", { withTimezone: true }),
+    peopleNotifiedCount: integer("people_notified_count"),
+    status: text("status").notNull().default("open"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    createdBy: uuid("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    statusIdx: index("data_breaches_status_idx").on(t.tenantId, t.status, t.detectedAt),
+  })
+);
+
+export type DataBreach = typeof dataBreaches.$inferSelect;

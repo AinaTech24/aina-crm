@@ -422,6 +422,7 @@ export async function buildCommandQueue(
       const taskHref = (x: any): string => {
         // A DPDP privacy request's task opens the request (lib/privacy/requests.ts).
         if (x.subject_type === "compliance" && x.type === "privacy_request" && x.subject_id) return `/dashboard/privacy-requests/${x.subject_id}`;
+        if (x.subject_type === "compliance" && x.type === "data_breach" && x.subject_id) return `/dashboard/data-breaches/${x.subject_id}`;
         if (x.related_investor_id) return `/dashboard/investors/${x.related_investor_id}`;
         if (x.related_lead_id) return `/dashboard/leads/${x.related_lead_id}`;
         if (x.related_meeting_id) return `/dashboard/review-meetings/${x.related_meeting_id}`;

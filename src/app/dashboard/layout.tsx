@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   LayoutDashboard,
   ShieldCheck,
+  ShieldAlert,
   Users,
   Workflow,
   MessageSquare,
@@ -302,6 +303,7 @@ const PALETTE_ONLY: NavSection[] = [
       { href: "/dashboard/compliance", label: "Compliance & DDQ readiness", icon: FileCheck, module: "ddq", roles: ["owner", "compliance"] },
       { href: "/dashboard/audit-log", label: "Audit log", icon: ClipboardCheck, module: "audit_log", roles: ["owner", "compliance"] },
       { href: "/dashboard/privacy-requests", label: "Privacy requests", icon: ShieldCheck, roles: ["owner", "compliance"] },
+      { href: "/dashboard/data-breaches", label: "Data breaches", icon: ShieldAlert, roles: ["owner", "compliance"] },
       { href: "/dashboard/legal-registrations", label: "Legal registrations", icon: Stamp, roles: ["owner", "compliance"] },
       { href: "/dashboard/sub-distributors", label: "Sub-distributors", icon: Network, roles: ["owner", "compliance"] },
     ],
