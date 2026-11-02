@@ -102,6 +102,7 @@ export function RequestPicker({
   onRequest,
   onKycMode,
   onValues,
+  routeBelow = false,
 }: {
   category: TaskCategory;
   requestKey: string;
@@ -111,6 +112,8 @@ export function RequestPicker({
   /** Called when the KYC mode buttons are used, so the form can retitle the task. */
   onKycMode: (mode: "online" | "physical") => void;
   onValues: (v: RequestValues) => void;
+  /** The form asks Online / Offline itself (a redemption, for a firm with the flag): no Mode box here. */
+  routeBelow?: boolean;
 }) {
   const req = requestKey ? REQUEST_TYPE_BY_KEY[requestKey] : undefined;
   const set = <K extends keyof RequestValues>(k: K, v: RequestValues[K]) => onValues({ ...values, [k]: v });
@@ -209,7 +212,7 @@ export function RequestPicker({
             </div>
           )}
 
-          {req && req.fields.length > 0 && (
+          {req && req.fields.filter((f) => !(routeBelow && req.key === "redemption" && f === "mode")).length > 0 && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {req.fields.includes("amount") && (
                 <label className="block">
@@ -223,7 +226,7 @@ export function RequestPicker({
                   <input value={values.folio} onChange={(e) => set("folio", e.target.value)} maxLength={60} placeholder="Folio number" className="input-base" />
                 </label>
               )}
-              {req.fields.includes("mode") && (
+              {req.fields.includes("mode") && !(routeBelow && req.key === "redemption") && (
                 <label className="block">
                   <div className="mb-1 text-xs font-medium">{FIELD_LABEL.mode}</div>
                   <ThemeSelect
@@ -238,7 +241,9 @@ export function RequestPicker({
 
           {req && (
             <p className="text-2xs text-muted-foreground">
-              {req.checklist.length > 0
+              {routeBelow && req.key === "redemption"
+                ? "Choose Online or Offline below — it adds the sub-tasks for that route."
+                : req.checklist.length > 0
                 ? `Adds ${req.checklist.length} sub-tasks for this request under More options — edit them as you need.`
                 : "Add sub-tasks under More options if you need them."}
               {req.business && " Saving also books it in Business entries (as a draft, confirmed when the task is completed)."}

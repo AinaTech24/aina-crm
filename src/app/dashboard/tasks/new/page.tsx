@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { EMPTY_REQUEST, KYC_MODES, RequestPicker, emptyRow, num, type RequestValues } from "@/components/tasks/RequestPicker";
-import { REQUEST_TYPE_BY_KEY, categoryOfType, type TaskCategory } from "@/lib/tasks/request-types";
+import { REDEMPTION_ROUTE_CHECKLISTS, REQUEST_TYPE_BY_KEY, categoryOfType, type TaskCategory } from "@/lib/tasks/request-types";
 import { notify } from "@/components/ui/Toast";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
@@ -96,6 +96,21 @@ export default function NewTaskPage() {
   /** The checklist a request put in, so switching request replaces it — but
    *  never a checklist the user typed or a template brought. */
   const [autoChecklistKey, setAutoChecklistKey] = useState<string | null>(null);
+  /** The firm's `redemptionOnlineOffline` flag: a redemption asks Online / Offline. */
+  const [redemptionRoute, setRedemptionRoute] = useState(false);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/me");
+        if (!r.ok) return;
+        const j = await r.json();
+        setRedemptionRoute(j?.license?.featureFlags?.redemptionOnlineOffline === true);
+      } catch {
+        /* the flag is optional — the ordinary form still works */
+      }
+    })();
+  }, []);
+  const routeOn = redemptionRoute && requestKey === "redemption";
 
   // ── Task templates ──
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
@@ -213,9 +228,11 @@ export default function NewTaskPage() {
     const prevMode = requestValues.kycMode;
     // A request with scheme rows starts with one row; one without has none. The
     // KYC choice belongs to the KYC request only.
+    const routed = redemptionRoute && key === "redemption";
     setRequestValues((v) => ({
       ...v,
       kycMode: "",
+      mode: routed ? "" : v.mode,
       rows: r?.rowFields.length ? (v.rows.length ? v.rows : [emptyRow()]) : [],
     }));
     setForm((s) => ({
@@ -227,13 +244,22 @@ export default function NewTaskPage() {
     // The request's checklist fills an empty list, or replaces the one the
     // previous request put in — never one the user or a template wrote.
     if (checklist.length === 0 || autoChecklistKey) {
-      if (r?.checklist.length) {
+      if (r?.checklist.length && !routed) {
         setChecklist(r.checklist.map((text) => ({ id: crypto.randomUUID(), text, done: false })));
         setAutoChecklistKey(key);
       } else {
         setChecklist([]);
         setAutoChecklistKey(null);
       }
+    }
+  }
+
+  /** Redemption route (flagged firms): recorded as the mode, and its sub-tasks replace the auto list. */
+  function changeRedemptionRoute(mode: "online" | "offline") {
+    setRequestValues((v) => ({ ...v, mode }));
+    if (checklist.length === 0 || autoChecklistKey) {
+      setChecklist(REDEMPTION_ROUTE_CHECKLISTS[mode].map((text) => ({ id: crypto.randomUUID(), text, done: false })));
+      setAutoChecklistKey("redemption");
     }
   }
 
@@ -275,6 +301,10 @@ export default function NewTaskPage() {
         setErr("Pick the client this request is for.");
         return;
       }
+    }
+    if (routeOn && !requestValues.mode) {
+      setErr("Choose Online or Offline for the redemption.");
+      return;
     }
     if (requestKey === "kyc_renewal" && !requestValues.kycMode) {
       setErr("Choose Online KYC or Physical KYC.");
@@ -543,6 +573,7 @@ export default function NewTaskPage() {
           onRequest={changeRequest}
           onKycMode={changeKycMode}
           onValues={setRequestValues}
+          routeBelow={redemptionRoute}
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -594,6 +625,30 @@ export default function NewTaskPage() {
             />
           </label>
         </div>
+
+        {routeOn && (
+          <div className="block">
+            <div className="text-xs font-medium mb-1">
+              Online or offline <span className="text-destructive">*</span>
+            </div>
+            <div className="inline-flex rounded-lg border border-border bg-card p-0.5 gap-0.5" role="radiogroup" aria-label="Online or offline">
+              {(["online", "offline"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={requestValues.mode === m}
+                  onClick={() => changeRedemptionRoute(m)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                    requestValues.mode === m ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
+                  }`}
+                >
+                  {m === "online" ? "Online" : "Offline"}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="block">
           <div className="text-xs font-medium mb-1">Priority</div>

@@ -461,6 +461,19 @@ dashboard-thresholds save and reset keep that key.
   the task page and its comments let that person open and discuss it; the
   Tasks list has the "Escalated to me" flag (`?flag=escalated_to_me`).
 
+## Redemption task — Online / Offline (one firm only)
+
+2026-11-02, Nimesh C Shah. Tenant feature flag `redemptionOnlineOffline`
+(`config/feature-flags.ts`, off for everyone; a super admin switches it on for
+ONE firm under Super admin → Tenant → Access → Tasks). With it on, the New task
+form's **Redemption** request hides the Mode box and shows **Online / Offline**
+above Priority (required); the choice is the task's `boChannel` and fills the
+sub-tasks from `REDEMPTION_ROUTE_CHECKLISTS` (`lib/tasks/request-types.ts`):
+offline = slip to client · received · sign · send to AMC · RTA data check ·
+payment check; online = entry on platform · client confirms · RTA data check ·
+payment to client. Every other firm, and every other request, keeps the
+ordinary list. Never hard-code a tenant id for this.
+
 ## Tasks — entry date and closed date
 
 2026-10-30. `tasks.entry_date` (migration 0254) is the day the task was ENTERED:

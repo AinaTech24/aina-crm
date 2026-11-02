@@ -19,6 +19,7 @@ export type FeatureFlagDef = {
 export const FEATURE_FLAGS: FeatureFlagDef[] = [
   { key: "customDomain", label: "Custom domain", description: "Serve the CRM on the firm's own domain (crm.theirfirm.in), not just a vanity subdomain.", type: "boolean", group: "White-label" },
   { key: "whiteLabel", label: "White-label branding", description: "Remove Aina branding from client-facing surfaces (emails, PDFs, portal).", type: "boolean", group: "White-label" },
+  { key: "redemptionOnlineOffline", label: "Redemption task: Online / Offline", description: "On the New task form, a Redemption request asks Online or Offline and adds that route's sub-tasks (slip to client … payment check, or platform entry … payment to client).", type: "boolean", group: "Tasks" },
   { key: "maxMessagesPerMonth", label: "Monthly message quota", description: "Cap on WhatsApp/SMS/email sends per month (0 or blank = plan default).", type: "number", group: "Limits" },
 ];
 

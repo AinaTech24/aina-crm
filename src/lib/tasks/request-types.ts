@@ -183,6 +183,23 @@ export const REQUEST_TYPES: RequestType[] = REQUEST_TYPE_LIST.map((r) => ({
   checklist: r.checklist.includes(RTA_DATA_CHECK) ? r.checklist : [...r.checklist, RTA_DATA_CHECK],
 }));
 
+/**
+ * Redemption sub-tasks by route, for a firm with the `redemptionOnlineOffline`
+ * flag (config/feature-flags.ts). Replaces the default redemption checklist:
+ * the New task form shows Online / Offline and fills the list from the choice.
+ */
+export const REDEMPTION_ROUTE_CHECKLISTS: Record<"online" | "offline", string[]> = {
+  offline: [
+    "Redemption slip to client",
+    "Redemption received from client",
+    "Sign redemption slip",
+    "Send to AMC",
+    "RTA data check",
+    "Payment check with client",
+  ],
+  online: ["Entry on platform", "Make client confirm", "RTA data check", "Payment goes to client"],
+};
+
 export const REQUEST_TYPE_BY_KEY: Record<string, RequestType> = Object.fromEntries(REQUEST_TYPES.map((r) => [r.key, r]));
 
 export const requestTypesFor = (c: Exclude<TaskCategory, "general">) => REQUEST_TYPES.filter((r) => r.category === c);
