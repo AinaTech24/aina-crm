@@ -11,6 +11,11 @@
  * review frequency (lib/families/shared-details.ts), so neither is asked. A
  * minor's risk profile is the guardian's (migration 0234), so it is not asked
  * either; the guardian's client record is linked instead.
+ *
+ * A risk category picked here is the RM's view, saved PROVISIONAL until the
+ * client answers the questionnaire. Added into a family, the client is mapped
+ * by the same request (POST /api/investors familyId + familyRole), inside the
+ * create transaction — a refused mapping refuses the create, with its reason.
  */
 
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
@@ -258,6 +263,8 @@ function NewInvestorPageInner() {
           // A minor's risk profile is the guardian's (migration 0234).
           riskProfile: kind === "minor" ? undefined : form.riskProfile || undefined,
           guardianInvestorId: kind === "minor" ? guardianLink.id ?? undefined : undefined,
+          familyId: familyId || undefined,
+          familyRole: familyRole || undefined,
           householdType: u(form.householdType),
           familyOwnerName: u(form.familyOwnerName),
           referralClientName: u(form.referralClientName),
@@ -314,11 +321,7 @@ function NewInvestorPageInner() {
       }
       const j = await res.json();
       if (familyId) {
-        await fetch(`/api/families/${familyId}/members`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ investorId: j.id, familyRole: familyRole || undefined }),
-        });
+        // Mapped into the family by the create itself (same transaction).
         router.push(`/dashboard/families/${familyId}`);
       } else {
         router.push(`/dashboard/investors/${j.id}`);
@@ -440,7 +443,12 @@ function NewInvestorPageInner() {
               </div>
             </div>
           ) : (
-          <SelectField label="Risk profile" value={form.riskProfile} onChange={(v) => set("riskProfile", v)} options={[{ value: "", label: "Select" }, { value: "conservative", label: "Conservative" }, { value: "moderate", label: "Moderate" }, { value: "aggressive", label: "Aggressive" }, { value: "very_aggressive", label: "Very aggressive" }]} />
+          <div className="block">
+            <SelectField label="Risk profile (provisional)" value={form.riskProfile} onChange={(v) => set("riskProfile", v)} options={[{ value: "", label: "Select" }, { value: "conservative", label: "Conservative" }, { value: "moderate", label: "Moderate" }, { value: "aggressive", label: "Aggressive" }, { value: "very_aggressive", label: "Very aggressive" }]} />
+            {form.riskProfile && (
+              <p className="mt-1 text-xs text-muted-foreground">Provisional — send the questionnaire to confirm. It is not the client&rsquo;s signed assessment.</p>
+            )}
+          </div>
           )}
         </Section>
 

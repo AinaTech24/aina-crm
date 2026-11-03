@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  TypeDetailsSchema, canNominate, cleanTypeDetails, clientTypeFromTaxStatus, clientTypeOptions,
+  TypeDetailsSchema, canNominate, cleanTypeDetails, clientTypeIssue, clientTypeFromTaxStatus, clientTypeOptions,
   hasPersonalDetails, majorityDate, singleHoldingOnly,
   ALL_TAX_STATUSES, defaultHouseholdType, defaultTaxStatus, taxStatusOptions, withCurrent,
 } from "@/lib/investors/client-types";
@@ -144,5 +144,26 @@ describe("client types — dropdowns follow the type", () => {
     expect(withCurrent(["A", "B"], "Z")).toEqual(["A", "B", "Z"]);
     expect(withCurrent(["A", "B"], "A")).toEqual(["A", "B"]);
     expect(withCurrent(["A", "B"], "")).toEqual(["A", "B"]);
+  });
+});
+
+describe("clientTypeIssue — what a type requires, for the API as well as the form", () => {
+  const today = "2026-11-03";
+  it("a minor needs a date of birth under 18 and a named guardian", () => {
+    expect(clientTypeIssue({ type: "minor", dob: null, typeDetails: { guardian: { name: "Ma" } } }, today)?.field).toBe("dob");
+    expect(clientTypeIssue({ type: "minor", dob: "2008-11-03", typeDetails: { guardian: { name: "Ma" } } }, today)?.field).toBe("dob");
+    expect(clientTypeIssue({ type: "minor", dob: "2008-11-04", typeDetails: { guardian: { name: "Ma" } } }, today)).toBeNull();
+    expect(clientTypeIssue({ type: "minor", dob: "2015-01-01", typeDetails: { guardian: { name: "  " } } }, today)?.field).toBe("typeDetails.guardian.name");
+  });
+  it("an HUF needs its Karta; an entity and an individual need nothing more", () => {
+    expect(clientTypeIssue({ type: "huf", typeDetails: {} }, today)?.field).toBe("typeDetails.karta.name");
+    expect(clientTypeIssue({ type: "huf", typeDetails: { karta: { name: "Raj" } } }, today)).toBeNull();
+    expect(clientTypeIssue({ type: "company" }, today)).toBeNull();
+    expect(clientTypeIssue({ type: "individual" }, today)).toBeNull();
+  });
+  it("checks only the rules an edit touched when told to", () => {
+    const old = { type: "minor", dob: null, typeDetails: {} };
+    expect(clientTypeIssue(old, today, { dob: false, guardian: false })).toBeNull();
+    expect(clientTypeIssue(old, today, { guardian: true })?.field).toBe("typeDetails.guardian.name");
   });
 });

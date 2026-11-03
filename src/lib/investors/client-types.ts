@@ -126,6 +126,43 @@ export function majorityDate(dob: string | null | undefined): string | null {
   return `${y}-${md === "02-29" && !leap ? "03-01" : md}`;
 }
 
+/** A rule of the client type the record breaks, with the field it is about. */
+export type ClientTypeIssue = { field: string; error: string };
+
+/**
+ * What the client type REQUIRES, checked by the APIs as well as the forms
+ * (a browser-only rule is no rule): a minor has a date of birth that makes
+ * them under 18 today and a named guardian; an HUF has a named Karta. An
+ * entity requires nothing beyond the details schema — its formation date
+ * lives in typeDetails.entity.formedOn, never `dob`.
+ *
+ * `only` limits the check to the rules whose inputs an edit touched, so an
+ * unrelated change to an old imported record is not refused for a gap it
+ * already had. `today` is YYYY-MM-DD (India date).
+ */
+export function clientTypeIssue(
+  input: { type: string | null | undefined; dob?: string | null; typeDetails?: ClientTypeDetails | null },
+  today: string,
+  only?: { dob?: boolean; guardian?: boolean; karta?: boolean },
+): ClientTypeIssue | null {
+  const kind = clientTypeDef(input.type).kind;
+  const all = !only;
+  if (kind === "minor") {
+    if (all || only?.dob) {
+      const turns18 = majorityDate(input.dob ? String(input.dob).slice(0, 10) : null);
+      if (!turns18) return { field: "dob", error: "A minor needs a date of birth." };
+      if (turns18 <= today) return { field: "dob", error: "This client is 18 or older — change the client type to Individual." };
+    }
+    if ((all || only?.guardian) && !input.typeDetails?.guardian?.name?.trim()) {
+      return { field: "typeDetails.guardian.name", error: "Add the guardian's name." };
+    }
+  }
+  if (kind === "huf" && (all || only?.karta) && !input.typeDetails?.karta?.name?.trim()) {
+    return { field: "typeDetails.karta.name", error: "Add the Karta's name." };
+  }
+  return null;
+}
+
 /* ─────────────────────────── the details a type adds ─────────────────────────── */
 
 const PAN = z.string().trim().toUpperCase().regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "PAN should look like ABCDE1234F");

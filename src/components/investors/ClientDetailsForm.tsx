@@ -23,8 +23,14 @@
  *
  * PAN is editable so a typo or a PAN-less import can be corrected. The value
  * shown is the client's OWN PAN: an import key in the column (a minor filed
- * under the guardian's PAN) is never put in the box, and such a client's PAN
- * cannot be changed here — the RTA import finds that client by the key.
+ * under the guardian's PAN) is never put in the box, and while the client is
+ * a minor such a PAN cannot be changed here — the RTA import finds that
+ * client by the key. Changing the type to Individual ("minor to major")
+ * opens the box: the adult's own PAN replaces the key, KYC starts again and
+ * the guardian is unlinked (PATCH /api/investors/[id]).
+ *
+ * A risk category picked here is the RM's view, stored PROVISIONAL until the
+ * client answers the questionnaire (lib/risk-profile/apply STAFF_ENTRY).
  */
 
 import { useState } from "react";
@@ -94,12 +100,14 @@ const MANDATE_STATUSES = ["none", "pending", "active", "expired", "rejected", "c
 const CLIENT_STATUSES = ["active", "dormant", "inactive", "redemption_risk", "closed", "exited"];
 
 export function ClientDetailsForm({
-  investor, flags, family = null, guardian = null,
+  investor, flags, family = null, guardian = null, branches = null,
 }: {
   investor: Investor;
   flags: ClientDetailsFlags;
   family?: ClientFamilyContext | null;
   guardian?: { id: string; name: string; riskProfile: string | null } | null;
+  /** The firm's branches, for someone allowed to move a client between them. */
+  branches?: Array<{ id: string; name: string }> | null;
 }) {
   const router = useRouter();
   const backHref = `/dashboard/investors/${investor.id}`;
@@ -110,7 +118,7 @@ export function ClientDetailsForm({
   const addr = (investor.address as any) ?? {};
   const initialPan = ownPan(investor.pan) ?? "";
   // A minor filed under the guardian's PAN: the column holds the import's key.
-  const panLocked = !initialPan && isMinorKey(investor.pan);
+  const guardianKeyed = !initialPan && isMinorKey(investor.pan);
   const seedNominees: Nominee[] =
     investor.nominees?.length
       ? investor.nominees
@@ -158,6 +166,7 @@ export function ClientDetailsForm({
     // one dropdown covers both presets and "every N days".
     reviewFrequency: investor.reviewFrequencyDays ? `days_${investor.reviewFrequencyDays}` : investor.reviewFrequency ?? "",
     rmId: investor.rmId ?? "",
+    branchId: (investor as any).branchId ?? "",
     kycStatus: investor.kycStatus ?? "pending",
     riskProfile: investor.riskProfile ?? "",
     residencyStatus: investor.residencyStatus ?? "",
@@ -185,6 +194,10 @@ export function ClientDetailsForm({
 
   const [typeDetails, setTypeDetails] = useState<ClientTypeDetails>((investor.typeDetails as ClientTypeDetails) ?? {});
   const kind = clientTypeDef(f.investorCategory).kind;
+  // Still a minor filed under the guardian's PAN: the key stays. Once the type
+  // is changed to an adult one, the adult's own PAN is asked for.
+  const panLocked = guardianKeyed && kind === "minor";
+  const becomingMajor = kind !== "minor" && (investor.investorCategory === "minor" || isMinorKey(investor.pan));
   const personal = hasPersonalDetails(f.investorCategory);
   const adult = hasAdultDetails(f.investorCategory);
   const [guardianLink, setGuardianLink] = useState<GuardianLink>({
@@ -225,6 +238,7 @@ export function ClientDetailsForm({
     const panChanged = flags.showPan && !panLocked && pan !== initialPan;
     if (panChanged && !pan) return setPanErr("PAN can't be removed. Type the correct PAN instead.");
     if (panChanged && !PAN_RE.test(pan)) return setPanErr("PAN should look like ABCDE1234F.");
+    if (becomingMajor && flags.showPan && !pan) return setPanErr("Now that the client is an adult, enter their own PAN.");
     if (!f.name.trim()) return setErr("Name is required.");
     // A minor is under 18 on the day of saving; an adult is an Individual.
     const turns18 = kind === "minor" ? majorityDate(f.dob) : null;
@@ -296,6 +310,8 @@ export function ClientDetailsForm({
           reviewFrequencyDays: /^days_\d+$/.test(f.reviewFrequency) ? Number(f.reviewFrequency.slice(5)) : null,
         }),
         rmId: f.rmId || undefined,
+        // Only a branch actually changed goes out (moving one needs investor.edit.all).
+        ...(branches && f.branchId !== ((investor as any).branchId ?? "") ? { branchId: f.branchId || null } : {}),
         kycStatus: inSet(f.kycStatus, KYC_STATUSES),
         // A minor's risk profile is the guardian's; the minor links the guardian.
         ...(kind === "minor"
@@ -375,7 +391,13 @@ export function ClientDetailsForm({
           <Field
             label="PAN"
             error={panErr}
-            hint={panLocked ? "This minor is filed under the guardian's PAN by the RTA import, so it can't be changed here." : "Ten characters, e.g. ABCDE1234F."}
+            hint={
+              panLocked
+                ? "This minor is filed under the guardian's PAN. When they turn 18, change the client type to Individual and enter their own PAN."
+                : becomingMajor
+                  ? "Minor to major: the client's own PAN. Saving unlinks the guardian and sets KYC back to pending for fresh KYC."
+                  : "Ten characters, e.g. ABCDE1234F."
+            }
           >
             {(id, d, invalid) => panLocked ? (
               <div className="input-base flex w-full items-center bg-secondary/60 text-muted-foreground">Guardian&rsquo;s PAN</div>
@@ -573,7 +595,17 @@ export function ClientDetailsForm({
           )}
         </Field>
         {flags.showRm && (
-          <Field label="Assigned RM">{() => <RmSelector value={f.rmId || null} onChange={(id) => set("rmId", id ?? "")} placeholder="— Unassigned —" />}</Field>
+          <Field label="Assigned RM" hint={branches ? "The client's branch follows the RM's, unless you choose one below." : undefined}>{() => <RmSelector value={f.rmId || null} onChange={(id) => set("rmId", id ?? "")} placeholder="— Unassigned —" />}</Field>
+        )}
+        {branches && (
+          <Field label="Branch">
+            {(id) => (
+              <SelectField id={id} value={f.branchId} onChange={(e) => set("branchId", e.target.value)} className="w-full" placeholder="Select">
+                <option value="">No branch</option>
+                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </SelectField>
+            )}
+          </Field>
         )}
       </FieldSection>
 
@@ -597,7 +629,12 @@ export function ClientDetailsForm({
           </Field>
         )}
         {flags.showRisk && kind !== "minor" && (
-          <Field label="Risk profile">
+          <Field
+            label="Risk profile"
+            hint={f.riskProfile !== (investor.riskProfile ?? "") && f.riskProfile
+              ? "Provisional — send the questionnaire to confirm. A category chosen here is not the client's signed assessment."
+              : (investor as any).riskProfileProvisional ? "Provisional — the client has not confirmed it yet." : undefined}
+          >
             {(id) => (
               <SelectField id={id} value={f.riskProfile} onChange={(e) => set("riskProfile", e.target.value)} className="w-full" placeholder="Select">
                 <option value="">Select</option>{["conservative", "moderate", "aggressive", "very_aggressive"].map((c) => <option key={c} value={c}>{humanise(c)}</option>)}

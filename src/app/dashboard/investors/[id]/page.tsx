@@ -1,5 +1,6 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { riskProfileLapsed } from "@/lib/risk-profile/expiry";
+import { isMinorClient } from "@/lib/investors/type-rules";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
@@ -432,6 +433,17 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const suitability = assessSuitability((inv as any).riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
   const isRiskProfileMissing = !inv.riskProfile;
   const isRiskProfileExpired = riskProfileLapsed(inv);
+  // Picked by staff or suggested from age, not answered by the client: the
+  // setup checklist does not count it as done.
+  const riskProvisional = !!inv.riskProfile && !!inv.riskProfileProvisional;
+  // A client marked Active whose KYC is not verified or whose risk profile is
+  // not the client's own cannot transact yet: the header says so beside the
+  // status (no separate status value — "active" stays the lifecycle state).
+  const setupGaps = [
+    showKyc && inv.kycStatus !== "verified" ? "KYC not verified" : null,
+    showRisk && !isMinorClient(inv) && (isRiskProfileMissing || riskProvisional) ? (riskProvisional ? "risk profile provisional" : "no risk profile") : null,
+  ].filter((g): g is string => !!g);
+  const onboardingIncomplete = inv.status === "active" && setupGaps.length > 0;
 
   // Profile fields still blank, beyond the compliance items the checklist
   // already tracks as pills (KYC, risk profile, nominee, bank).
@@ -517,6 +529,11 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             {inv.name}
             {showStatus && inv.status && (
               <Badge tone={statusTone(inv.status)} className="ml-1 align-middle text-xs font-medium">{inv.status}</Badge>
+            )}
+            {onboardingIncomplete && (
+              <a href="#client-setup" title={`Still to do: ${setupGaps.join(", ")}`} className="ml-1 align-middle">
+                <Badge tone="warning" className="text-xs font-medium">Onboarding incomplete</Badge>
+              </a>
             )}
           </>
         }
@@ -992,7 +1009,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           <KV label="KYC validated" value={inv.kycValidatedAt ? formatDate(inv.kycValidatedAt) : "—"} edit={{ id: inv.id, field: "kycValidatedAt", type: "date", value: inv.kycValidatedAt ? String(inv.kycValidatedAt).slice(0, 10) : "", nullable: true }} />
           <KV label="KRA" value={inv.kraName ?? "—"} />
           <KV label="FATCA status" value={inv.fatcaStatus ?? "—"} cap />
-          {showRisk && <Status label="Risk profile" value={inv.riskProfile ?? "not_assessed"} good={!!inv.riskProfile && !!inv.riskProfileSignedAt} />}
+          {showRisk && <Status label="Risk profile" value={inv.riskProfile ? (riskProvisional ? `${inv.riskProfile} (provisional)` : inv.riskProfile) : "not_assessed"} good={!!inv.riskProfile && !!inv.riskProfileSignedAt && !riskProvisional} />}
           {showPan && <KV label="UCC (BSE)" value={inv.bseUccCode ?? "—"} mono edit={{ id: inv.id, field: "bseUccCode", value: inv.bseUccCode ?? "", nullable: true }} />}
           {showPan && <KV label="CAN (NSE)" value={inv.nseCanCode ?? "—"} mono edit={{ id: inv.id, field: "nseCanCode", value: inv.nseCanCode ?? "", nullable: true }} />}
           {showPan && ((inv as any).uccCodes as string[] | undefined)?.length ? <KV label="Other UCCs" value={((inv as any).uccCodes as string[]).join(", ")} mono /> : null}
@@ -1293,10 +1310,11 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       {/* What is still missing to make this client transaction-ready, and the
           button that completes it. At the foot of every tab; renders nothing
           once everything is in. */}
+      <div id="client-setup" className="scroll-mt-24">
       <ClientReadinessStrip
         investorId={inv.id}
         kyc={showKyc ? inv.kycStatus === "verified" : null}
-        risk={showRisk ? (isRiskProfileMissing ? "missing" : isRiskProfileExpired ? "expired" : "ok") : null}
+        risk={showRisk ? (isRiskProfileMissing ? "missing" : isRiskProfileExpired ? "expired" : riskProvisional ? "provisional" : "ok") : null}
         nominee={showNominee && nominates ? !!inv.nomineeName || ((inv.nominees as any[] | null)?.length ?? 0) > 0 || !!typeDetails.nominationOptOut : null}
         bank={showBank ? !!(inv.bankAccountNumberMasked || inv.bankName) : null}
         emailVerified={inv.email ? !!inv.emailVerifiedAt : null}
@@ -1310,7 +1328,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             investor={{
               email: inv.email, phone: inv.phone, whatsappPhone: inv.whatsappPhone,
               kycStatus: inv.kycStatus, panAadhaarLinkStatus: inv.panAadhaarLinkStatus, nameAsPerPan: inv.nameAsPerPan,
-              riskProfile: inv.riskProfile, nomineeName: inv.nomineeName, nomineeRelation: inv.nomineeRelation,
+              riskProfile: inv.riskProfile, riskProfileProvisional: inv.riskProfileProvisional, nomineeName: inv.nomineeName, nomineeRelation: inv.nomineeRelation,
               bankName: inv.bankName, bankAccountNumberMasked: inv.bankAccountNumberMasked, bankIfsc: inv.bankIfsc,
             }}
           />
@@ -1325,6 +1343,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           />
         }
       />
+      </div>
     </div>
   );
 }

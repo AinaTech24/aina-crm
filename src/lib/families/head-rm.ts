@@ -5,13 +5,15 @@
  * head's RM. It is a default, not a lock — a member's RM can still be changed
  * on their own record afterwards.
  *
- * Only `investors.rm_id` changes, the same thing the client page's and the
- * bulk "Assign RM" do (the branch is untouched). The family's own rm_id
- * follows the head too, so the family page and the members agree. Every
- * reassignment is audited per client.
+ * `investors.rm_id` changes, and the branch follows the new RM's branch
+ * (lib/investors/rm-branch — the same as the client page and bulk "Assign
+ * RM"; an RM with no branch leaves it). The family's own rm_id follows the
+ * head too, so the family page and the members agree. Every reassignment is
+ * audited per client.
  */
 import { sql } from "drizzle-orm";
 import { recordAudit } from "@/lib/audit";
+import { rmBranchId } from "@/lib/investors/rm-branch";
 
 /** The head's RM, or null when the family has no head or the head has no RM. */
 export async function familyHeadRmId(tx: any, familyId: string): Promise<string | null> {
@@ -55,7 +57,7 @@ export async function applyHeadRmToMembers(
     ? sql` AND m.id = ANY(ARRAY[${sql.join(args.onlyInvestorIds.map((id) => sql`${id}`), sql`, `)}]::uuid[])`
     : sql``;
   const before = await tx.execute(sql`
-    SELECT m.id, m.rm_id
+    SELECT m.id, m.rm_id, m.branch_id
       FROM investors m
       JOIN families f ON f.id = m.family_id AND f.tenant_id = m.tenant_id
      WHERE m.family_id = ${args.familyId}::uuid
@@ -63,11 +65,12 @@ export async function applyHeadRmToMembers(
        AND m.id IS DISTINCT FROM f.primary_investor_id
        AND m.deleted_at IS NULL AND m.merged_into_id IS NULL
        AND m.rm_id IS DISTINCT FROM ${headRmId}::uuid${only}`);
-  const rows = (before.rows ?? []) as Array<{ id: string; rm_id: string | null }>;
+  const rows = (before.rows ?? []) as Array<{ id: string; rm_id: string | null; branch_id: string | null }>;
 
   if (rows.length) {
+    const rmBranch = await rmBranchId(tx, args.tenantId, headRmId);
     await tx.execute(sql`
-      UPDATE investors SET rm_id = ${headRmId}::uuid, updated_at = now()
+      UPDATE investors SET rm_id = ${headRmId}::uuid, branch_id = COALESCE(${rmBranch}::uuid, branch_id), updated_at = now()
        WHERE tenant_id = ${args.tenantId}::uuid
          AND id = ANY(ARRAY[${sql.join(rows.map((r) => sql`${r.id}`), sql`, `)}]::uuid[])`);
     for (const r of rows) {
@@ -77,8 +80,8 @@ export async function applyHeadRmToMembers(
         action: "investor.rm_from_family_head",
         entityType: "investor",
         entityId: r.id,
-        before: { rmId: r.rm_id },
-        after: { rmId: headRmId, familyId: args.familyId, reason: args.reason },
+        before: { rmId: r.rm_id, branchId: r.branch_id },
+        after: { rmId: headRmId, branchId: rmBranch ?? r.branch_id, familyId: args.familyId, reason: args.reason },
         ...(args.clientMeta ?? {}),
       } as any);
     }
@@ -177,14 +180,15 @@ export async function setFamilyRm(
 ): Promise<{ reassigned: number }> {
   const { familyId } = args;
   const before = await tx.execute(sql`
-    SELECT id, rm_id FROM investors
+    SELECT id, rm_id, branch_id FROM investors
      WHERE family_id = ${familyId}::uuid AND tenant_id = ${args.tenantId}::uuid
        AND deleted_at IS NULL AND merged_into_id IS NULL
        AND rm_id IS DISTINCT FROM ${args.rmId}::uuid`);
-  const rows = (before.rows ?? []) as Array<{ id: string; rm_id: string | null }>;
+  const rows = (before.rows ?? []) as Array<{ id: string; rm_id: string | null; branch_id: string | null }>;
   if (rows.length) {
+    const rmBranch = await rmBranchId(tx, args.tenantId, args.rmId);
     await tx.execute(sql`
-      UPDATE investors SET rm_id = ${args.rmId}::uuid, updated_at = now()
+      UPDATE investors SET rm_id = ${args.rmId}::uuid, branch_id = COALESCE(${rmBranch}::uuid, branch_id), updated_at = now()
        WHERE tenant_id = ${args.tenantId}::uuid
          AND id = ANY(ARRAY[${sql.join(rows.map((r) => sql`${r.id}`), sql`, `)}]::uuid[])`);
     for (const r of rows) {
@@ -194,9 +198,10 @@ export async function setFamilyRm(
         action: "investor.rm_from_family_head",
         entityType: "investor",
         entityId: r.id,
-        before: { rmId: r.rm_id },
+        before: { rmId: r.rm_id, branchId: r.branch_id },
         after: {
           rmId: args.rmId,
+          branchId: rmBranch ?? r.branch_id,
           familyId,
           reason: "family_rm_changed",
           ...(args.changedOn ? { changedOn: args.changedOn } : { changedOn: "family" }),

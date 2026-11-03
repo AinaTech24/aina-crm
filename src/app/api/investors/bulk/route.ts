@@ -26,6 +26,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { investors, users } from "@/db/schema";
 import { setFamilyRmFromClient } from "@/lib/families/head-rm";
+import { branchFollowingRmSql } from "@/lib/investors/rm-branch";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { purgeInvestorsChunk, PURGE_REQUEST_MAX, PURGE_TX_CHUNK } from "@/lib/investors/purge";
 import { applyBulkField, BulkFieldError } from "@/lib/investors/bulk-update";
@@ -174,6 +175,8 @@ export async function POST(req: NextRequest) {
           });
           if (!exists) return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
           patch.rmId = value;
+          // The client's branch follows the new RM's (lib/investors/rm-branch).
+          patch.branchId = branchFollowingRmSql(session.tenantId, value);
         } else {
           patch.rmId = null;
         }

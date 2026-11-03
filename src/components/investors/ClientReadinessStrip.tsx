@@ -22,7 +22,8 @@ import { cn } from "@/lib/utils";
  * amber and a missing or expired risk profile — the one SEBI blocker — red.
  */
 
-type RiskState = "ok" | "missing" | "expired";
+/** `provisional`: a category picked by staff or suggested from age — not the client's answers. */
+type RiskState = "ok" | "missing" | "expired" | "provisional";
 
 type Item = { key: string; label: string; ok: boolean; icon: LucideIcon; urgent?: boolean; href?: string };
 
@@ -57,7 +58,7 @@ export function ClientReadinessStrip({
   if (risk !== null) {
     items.push({
       key: "risk",
-      label: risk === "expired" ? "Risk profile (expired)" : "Risk profile",
+      label: risk === "expired" ? "Risk profile (expired)" : risk === "provisional" ? "Risk profile (provisional)" : "Risk profile",
       ok: risk === "ok",
       icon: ShieldAlert,
       urgent: true,
@@ -75,7 +76,7 @@ export function ClientReadinessStrip({
   // Nothing tracked and nothing missing → no strip (keeps active clients clean).
   if (gaps === 0 && missingFields.length === 0) return null;
 
-  const riskNeedsAction = risk === "missing" || risk === "expired";
+  const riskNeedsAction = risk === "missing" || risk === "expired" || risk === "provisional";
 
   return (
     <Card className="px-5 py-4">
@@ -95,7 +96,7 @@ export function ClientReadinessStrip({
               href={`/dashboard/risk-profiles/new?investorId=${investorId}`}
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground shadow-sm hover:bg-primary/90"
             >
-              <ShieldCheck className="size-3.5" /> {risk === "expired" ? "Renew risk profile" : "Start risk assessment"}
+              <ShieldCheck className="size-3.5" /> {risk === "expired" ? "Renew risk profile" : risk === "provisional" ? "Confirm with the client" : "Start risk assessment"}
             </Link>
           )}
           {action}

@@ -25,9 +25,39 @@ import { v4 as uuid } from "uuid";
 import { withSystem, withTenant } from "@/db/client";
 import { tasks } from "@/db/schema";
 import { createNotification } from "@/lib/notifications/create";
+import { aliveClient } from "@/lib/metrics/scope";
+import { activeClientSql } from "@/lib/metrics/clients";
 
 /** How many days ahead of the due date to raise the task. */
 const LEAD_DAYS = 7;
+/** Clients read per query; the run pages through every one that is due. */
+const PAGE = 500;
+
+/**
+ * The clients whose review falls due within the lead window (or is overdue),
+ * soonest first. "Active" is lib/metrics' definition — a live client whose
+ * status is active OR redemption_risk (a client flagged as a redemption risk
+ * is exactly the one whose review must not be missed). Keyset-paged on
+ * (next_review_at, id), so a large book is read in full, never cut at a
+ * silent LIMIT.
+ */
+export function reviewDueQuery(tenantId: string, after: { at: string; id: string } | null, limit = PAGE) {
+  return sql`
+    SELECT i.id, i.name, i.rm_id,
+           i.next_review_at::text AS at, -- full precision for the keyset cursor
+           to_char(i.next_review_at, 'YYYY-MM-DD') AS due_on,
+           to_char(i.last_review_at, 'YYYY-MM-DD') AS last_on,
+           (i.next_review_at::date <= current_date) AS due_now
+      FROM investors i
+     WHERE i.tenant_id = ${tenantId}::uuid
+       AND ${aliveClient("i")}
+       AND ${activeClientSql("i")}
+       AND i.next_review_at IS NOT NULL
+       AND i.next_review_at::date <= (current_date + make_interval(days => ${LEAD_DAYS}))
+       ${after ? sql`AND (i.next_review_at, i.id) > (${after.at}::timestamptz, ${after.id}::uuid)` : sql``}
+     ORDER BY i.next_review_at, i.id
+     LIMIT ${limit}`;
+}
 
 export async function runReviewDueReminder(): Promise<number> {
   let created = 0;
@@ -43,21 +73,18 @@ export async function runReviewDueReminder(): Promise<number> {
   for (const tenantId of tenantIds) {
     try {
       await withTenant(tenantId, async (tx) => {
-        // Clients whose review falls due within the lead window (or is overdue).
-        const due = await tx.execute(sql`
-          SELECT i.id, i.name, i.rm_id,
-                 to_char(i.next_review_at, 'YYYY-MM-DD') AS due_on,
-                 to_char(i.last_review_at, 'YYYY-MM-DD') AS last_on,
-                 (i.next_review_at::date <= current_date) AS due_now
-            FROM investors i
-           WHERE i.tenant_id = ${tenantId}::uuid
-             AND i.deleted_at IS NULL
-             AND i.status = 'active'
-             AND i.merged_into_id IS NULL
-             AND i.next_review_at IS NOT NULL
-             AND i.next_review_at::date <= (current_date + make_interval(days => ${LEAD_DAYS}))
-           LIMIT 500`);
-        if (!due.rows.length) return;
+        // Every client whose review falls due within the lead window (or is
+        // overdue), soonest first, read page by page.
+        const dueRows: any[] = [];
+        let cursor: { at: string; id: string } | null = null;
+        for (;;) {
+          const page = (await tx.execute(reviewDueQuery(tenantId, cursor))).rows as any[];
+          dueRows.push(...page);
+          if (page.length < PAGE) break;
+          const last = page[page.length - 1];
+          cursor = { at: String(last.at), id: String(last.id) };
+        }
+        if (!dueRows.length) return;
 
         // Fallback assignee when the client has no RM.
         const fb = await tx.execute(sql`
@@ -67,7 +94,7 @@ export async function runReviewDueReminder(): Promise<number> {
            ORDER BY ('owner' = ANY(roles)) DESC LIMIT 1`);
         const fallbackId = (fb.rows[0] as any)?.id as string | undefined;
 
-        for (const row of due.rows as any[]) {
+        for (const row of dueRows) {
           const assigneeId = (row.rm_id as string) ?? fallbackId;
           if (!assigneeId) continue;
 
