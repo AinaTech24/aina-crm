@@ -47,6 +47,7 @@ import { durableDelivery } from "./durable-delivery";
 import { firmIntroTokens, readFirmEmailIntro } from "@/lib/firm/email-intro";
 import { leadSubject } from "@/lib/comms/lead-subject";
 import { privacyContact, privacyNoticePath } from "@/lib/privacy/notice";
+import { MINOR_MARKETING_REASON, isMinorRecord } from "@/lib/privacy/minors";
 import { recordNoticeSentOnce } from "@/lib/privacy/consent";
 
 
@@ -430,6 +431,12 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
     if (decision.blocked) {
       return skip(tx, communicationId, input, "skipped_consent", decision.message);
     }
+  }
+
+  // 3-minor. No marketing to a child (DPDP s.9, lib/privacy/minors.ts) —
+  // whatever consent is on file. Service messages are not affected.
+  if (effectiveCategory === "marketing" && input.investorId && subject && isMinorRecord(subject as { isMinor?: boolean | null; dob?: string | Date | null })) {
+    return skip(tx, communicationId, input, "skipped_consent", MINOR_MARKETING_REASON);
   }
 
   // -----------------------------------------------------------

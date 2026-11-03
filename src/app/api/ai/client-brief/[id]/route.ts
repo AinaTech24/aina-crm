@@ -14,6 +14,7 @@ import { requireSession } from "@/lib/auth/session";
 import { buildNextBestActions } from "@/lib/nba/engine";
 import { generateClientBrief } from "@/lib/ai/assistant";
 import { loadViewableInvestor } from "@/lib/investors/access";
+import { noteTenant } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
+    noteTenant(session.tenantId); // the firm's AI switch applies (lib/ai/firm-switch.ts)
 
     const ctx = await withTenant(
       session.tenantId,

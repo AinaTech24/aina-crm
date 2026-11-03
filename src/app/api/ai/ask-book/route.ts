@@ -19,6 +19,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { nlToFilterAst } from "@/lib/ai/assistant";
 import { compileToSelect, bindCompiled } from "@/lib/filter/compiler";
+import { noteTenant } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ const DISPLAY_COLUMNS = [
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    noteTenant(session.tenantId); // the firm's AI switch applies (lib/ai/firm-switch.ts)
     // Same gating as /api/segments/preview — this runs COUNT(*) + a sample
     // over tenant data, so it must not be an open enumeration endpoint for
     // any logged-in user.

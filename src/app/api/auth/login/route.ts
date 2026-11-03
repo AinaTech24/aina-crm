@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const r = await tx.execute(sql`
       SELECT u.id, u.tenant_id, u.branch_id, u.email, u.name, u.password_hash, u.roles, u.status, u.permissions, u.two_fa_enabled,
              u.deleted_at AS user_deleted_at,
-             t.deleted_at AS tenant_deleted_at
+             t.deleted_at AS tenant_deleted_at, t.require_2fa AS tenant_requires_2fa
       FROM users u
       LEFT JOIN tenants t ON t.id = u.tenant_id
       WHERE lower(u.email) = ${email}
@@ -78,6 +78,14 @@ export async function POST(req: NextRequest) {
   if (userRow.two_fa_enabled) {
     const challenge = await sign2faChallenge(userRow.id);
     return NextResponse.json({ require2fa: true, challenge });
+  }
+
+  // The firm requires a second factor and this person has none yet: the
+  // password buys only the right to set one up (/api/auth/2fa/enroll), never a
+  // session — otherwise a stolen password would still open the CRM.
+  if (userRow.tenant_requires_2fa) {
+    const challenge = await sign2faChallenge(userRow.id);
+    return NextResponse.json({ enroll2fa: true, challenge });
   }
 
   // Update last_login_at — fire-and-forget, don't block on it.

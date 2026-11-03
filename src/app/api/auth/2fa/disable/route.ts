@@ -35,6 +35,14 @@ export async function POST(req: NextRequest) {
     if (!row?.password_hash || !(await bcrypt.compare(parse.data.password, row.password_hash))) {
       return NextResponse.json({ error: "invalid password" }, { status: 401 });
     }
+    // A firm that requires two-factor sign-in does not let anyone switch it off.
+    const firm = await withSystem(async (tx) => {
+      const r = await tx.execute(sql`SELECT require_2fa FROM tenants WHERE id = ${session.tenantId}::uuid`);
+      return (r.rows[0] ?? null) as { require_2fa?: boolean } | null;
+    });
+    if (firm?.require_2fa) {
+      return NextResponse.json({ error: "Your firm requires two-factor sign-in, so it cannot be switched off." }, { status: 409 });
+    }
 
     await withSystem(async (tx) => {
       await tx.execute(sql`

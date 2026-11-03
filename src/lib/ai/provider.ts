@@ -17,6 +17,9 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "@/db/client";
+import { currentTenant } from "@/lib/tenant-context";
+import { AiDisabledError, aiEnabledFor } from "./firm-switch";
+import { createPseudonymiser, hideInRequest, revealInResponse } from "./pseudonymise";
 import { encrypt, decrypt } from "@/lib/crypto";
 
 export type AiProvider = "anthropic" | "google" | "openai";
@@ -200,9 +203,25 @@ type AiResponse = { content: Array<{ type: "text"; text: string }> };
  * async config load + dispatch happens inside `create()`.
  */
 export function aiMessagesClient() {
-  return {
-    messages: {
-      create: async (params: CreateParams): Promise<AiResponse> => {
+  return { messages: { create: guardedCreate } };
+}
+
+/**
+ * Every AI call goes through here (DPDP): a firm that switched AI off is
+ * refused (lib/ai/firm-switch.ts, by the firm in context), and PAN, Aadhaar,
+ * phone and email in the prompt are replaced with placeholders before it
+ * leaves the CRM, then put back in the answer (lib/ai/pseudonymise.ts).
+ */
+async function guardedCreate(input: CreateParams): Promise<AiResponse> {
+  const tenantId = currentTenant();
+  if (tenantId && !(await aiEnabledFor(tenantId))) throw new AiDisabledError();
+  const ps = createPseudonymiser();
+  const res = await rawCreate(hideInRequest(input, ps));
+  return revealInResponse(res, ps);
+}
+
+async function rawCreate(params: CreateParams): Promise<AiResponse> {
+      {
         const cfg = await loadAiConfig();
         if (!cfg.apiKey) {
           throw new Error("AI is not configured. Set the provider and API key in Aina Admin → AI & Models.");
@@ -246,9 +265,7 @@ export function aiMessagesClient() {
           }
           throw e;
         }
-      },
-    },
-  };
+      }
 }
 
 // ── Google Gemini (Generative Language API) via raw fetch — no SDK dependency ─

@@ -79,6 +79,11 @@ export function AuthScreen({
   const [busy, setBusy] = useState(false);
   const [challenge, setChallenge] = useState<string | null>(null);
   const [twoFaCode, setTwoFaCode] = useState("");
+  // The firm requires two-factor sign-in and this person has none yet: set it
+  // up here (/api/auth/2fa/enroll) before any session exists.
+  const [enroll, setEnroll] = useState<{ challenge: string; qr: string; secret: string } | null>(null);
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+  const [enrolledRoles, setEnrolledRoles] = useState<unknown>(null);
 
   // ── signup state ─────────────────────────────────────────────────────
   const [firmName, setFirmName] = useState("");
@@ -97,6 +102,7 @@ export function AuthScreen({
     if (m === mode) return;
     setMode(m);
     setChallenge(null);
+    setEnroll(null);
     setBusy(false);
     try {
       window.history.replaceState(null, "", m === "login" ? "/login" : "/signup");
@@ -125,6 +131,22 @@ export function AuthScreen({
         setBusy(false);
         return;
       }
+      if (j.enroll2fa) {
+        const r2 = await fetch("/api/auth/2fa/enroll", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ challenge: j.challenge }),
+        });
+        const k = await r2.json().catch(() => ({}));
+        if (!r2.ok) {
+          toast.error(k.error ?? "Could not start two-factor setup.", "Sign-in failed");
+          setBusy(false);
+          return;
+        }
+        setEnroll({ challenge: j.challenge, qr: k.qrDataUrl, secret: k.secret });
+        setBusy(false);
+        return;
+      }
       toast.success("Signed in successfully — taking you in…", "Welcome back");
       setTimeout(() => window.location.assign(destFor(j.user?.roles)), 650);
     } catch {
@@ -150,6 +172,31 @@ export function AuthScreen({
       }
       toast.success("Verified — taking you in…", "Welcome back");
       setTimeout(() => window.location.assign(destFor(j.user?.roles)), 650);
+    } catch {
+      toast.error("Something went wrong. Please try again.", "Verification failed");
+      setBusy(false);
+    }
+  }
+
+  async function submitEnroll(e: React.FormEvent) {
+    e.preventDefault();
+    if (!enroll) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/auth/2fa/enroll", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ challenge: enroll.challenge, code: twoFaCode.trim() }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(j.error ?? "That code didn't match. Try again.", "Verification failed");
+        setBusy(false);
+        return;
+      }
+      setBackupCodes(Array.isArray(j.backupCodes) ? j.backupCodes : []);
+      setEnrolledRoles(j.user?.roles);
+      setBusy(false);
     } catch {
       toast.error("Something went wrong. Please try again.", "Verification failed");
       setBusy(false);
@@ -240,24 +287,28 @@ export function AuthScreen({
             <img src={brandLogoUrl || "/aina-wordmark.png"} alt={brandName ?? "Aina CRM"} className="h-9 w-auto object-contain" />
           </div>
 
-          <div key={`form-${mode}-${challenge ? "2fa" : "x"}`} className="auth-swap">
+          <div key={`form-${mode}-${challenge ? "2fa" : enroll ? "enroll" : "x"}`} className="auth-swap">
             <h1 className="text-[1.9rem] font-extrabold tracking-tight text-foreground leading-tight">
               {mode === "signup"
                 ? "Create your workspace"
                 : challenge
                   ? "Two-factor verification"
-                  : "Welcome back"}
+                  : enroll
+                    ? "Set up two-factor sign-in"
+                    : "Welcome back"}
             </h1>
             <p className="text-muted-foreground mt-2 text-sm">
               {mode === "signup"
                 ? "14-day free trial. No card required."
                 : challenge
                   ? "Enter the 6-digit code from your authenticator app."
-                  : "Sign in to your firm's workspace."}
+                  : enroll
+                    ? "Your firm requires a second step at sign-in. Scan the code with an authenticator app (Google Authenticator, Microsoft Authenticator)."
+                    : "Sign in to your firm's workspace."}
             </p>
 
             {/* ── LOGIN ── */}
-            {mode === "login" && !challenge && (
+            {mode === "login" && !challenge && !enroll && (
               <form onSubmit={submitLogin} className="mt-8 space-y-4">
                 <FieldShell label="Work email">
                   <input
@@ -308,6 +359,46 @@ export function AuthScreen({
                   ← Back to sign in
                 </button>
               </form>
+            )}
+
+            {/* ── LOGIN · set up 2FA (the firm requires it) ── */}
+            {mode === "login" && enroll && !backupCodes && (
+              <form onSubmit={submitEnroll} className="mt-6 space-y-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={enroll.qr} alt="QR code for your authenticator app" width={180} height={180} className="mx-auto rounded-lg border border-border bg-white p-2" />
+                <p className="text-2xs text-muted-foreground text-center break-all">Can&apos;t scan? Enter this key: <span className="font-mono">{enroll.secret}</span></p>
+                <FieldShell label="Code from the app">
+                  <input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    value={twoFaCode}
+                    onChange={(e) => setTwoFaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="123456"
+                    className="input-base text-center text-lg tracking-[0.3em] font-mono"
+                    required
+                  />
+                </FieldShell>
+                <button disabled={busy} className="btn-primary w-full mt-2">
+                  {busy ? <><Loader2 className="size-4 animate-spin" /> Verifying…</> : <><ShieldCheck className="size-4" /> Turn on & sign in</>}
+                </button>
+                <button type="button" onClick={() => { setEnroll(null); setTwoFaCode(""); }} className="text-xs text-muted-foreground hover:underline w-full text-center">
+                  ← Back to sign in
+                </button>
+              </form>
+            )}
+
+            {/* ── LOGIN · backup codes, shown once ── */}
+            {mode === "login" && enroll && backupCodes && (
+              <div className="mt-6 space-y-4">
+                <p className="text-sm">Two-factor sign-in is on. Keep these backup codes somewhere safe — each one signs you in once if you lose your phone. They are not shown again.</p>
+                <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-secondary/50 p-3 font-mono text-sm">
+                  {backupCodes.map((c) => <span key={c}>{c}</span>)}
+                </div>
+                <button type="button" className="btn-primary w-full" onClick={() => window.location.assign(destFor(enrolledRoles))}>
+                  I have saved them — continue <ArrowRight className="size-4" />
+                </button>
+              </div>
             )}
 
             {/* ── SIGNUP ── */}

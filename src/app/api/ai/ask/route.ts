@@ -23,6 +23,7 @@ import { leadScopeSql } from "@/lib/leads/access";
 import { taskScopeSql } from "@/lib/tasks/scope";
 import { meetingScopeSql } from "@/lib/review-meetings/scope";
 import { needsNomineeSql } from "@/lib/investors/type-rules";
+import { noteTenant } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    noteTenant(session.tenantId); // the firm's AI switch applies (lib/ai/firm-switch.ts)
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 

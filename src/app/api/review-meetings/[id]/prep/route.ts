@@ -21,6 +21,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { generateMeetingPrepPoints } from "@/lib/ai/assistant";
 import { isAiConfigured } from "@/lib/ai/provider";
 import { canSeeMeeting } from "@/lib/review-meetings/scope";
+import { noteTenant } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
+    noteTenant(session.tenantId); // the firm's AI switch applies (lib/ai/firm-switch.ts)
     // Mirror the single-meeting GET: either manage.all or manage.assigned
     // (assigned RMs may only prep their own meetings).
     requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
