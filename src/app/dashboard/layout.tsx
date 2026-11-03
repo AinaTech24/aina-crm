@@ -68,6 +68,7 @@ import { CalendarShortcut } from "@/components/layout/CalendarShortcut";
 import { HelpMenu } from "@/components/layout/HelpMenu";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { DesktopSidebar } from "@/components/layout/DesktopSidebar";
+import { ShellBox } from "@/components/layout/ShellBox";
 import { CustomizableNav, type NavItemData } from "@/components/layout/CustomizableNav";
 import { loadModuleControls } from "@/lib/platform/module-controls";
 import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
@@ -681,8 +682,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
         positioned element with no positioned ancestor (an `sr-only` label is
         one) is placed against the BODY, so overflow-hidden here never clipped
         it: one such label deep in a dashboard made the document 6,741px tall,
-        and the window scrolled the whole shell away into blank space. */}
-    <div className="relative h-screen flex bg-background overflow-hidden print:static print:block print:h-auto print:overflow-visible">
+        and the window scrolled the whole shell away into blank space.
+
+        Every container below that has element children is a ShellBox, not a
+        plain <div>/<main>: a plain one throws React error #418 and re-renders
+        the whole page whenever the browser hydrates before the server has
+        finished streaming. ShellBox.tsx explains why. */}
+    <ShellBox className="relative h-screen flex bg-background overflow-hidden print:static print:block print:h-auto print:overflow-visible">
       {/* ───────────── Desktop sidebar (hidden below lg — mobile uses drawer) ─────────────
           Hover-expand + click-to-pin icon rail. State lives in DesktopSidebar. */}
       <DesktopSidebar>{sidebarInner}</DesktopSidebar>
@@ -690,33 +696,33 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* ────────────────────────── Main ────────────────────────── */}
       {/* h-full + overflow-y-auto = independent scroll, sticky topbar stays
           pinned inside this pane (not at viewport top). */}
-      <main id="main-content" tabIndex={-1} className="relative flex-1 min-w-0 h-full overflow-y-auto print:static print:overflow-visible print:h-auto">
+      <ShellBox as="main" id="main-content" tabIndex={-1} className="relative flex-1 min-w-0 h-full overflow-y-auto print:static print:overflow-visible print:h-auto">
         {/* Topbar — glass, sticky; hidden when printing */}
-        <div className="sticky top-0 z-40 border-b border-border bg-card px-4 sm:px-6 h-16 flex items-center gap-3 sm:gap-4 print:hidden">
-          <div className="flex items-center gap-3 min-w-0">
+        <ShellBox className="sticky top-0 z-40 border-b border-border bg-card px-4 sm:px-6 h-16 flex items-center gap-3 sm:gap-4 print:hidden">
+          <ShellBox className="flex items-center gap-3 min-w-0">
             {/* Mobile hamburger — opens the nav drawer (shares sidebarInner).
                 Firm name + ARN live in the sidebar header only (no duplication). */}
             <MobileNav>{sidebarInner}</MobileNav>
             <BackButton />
-          </div>
+          </ShellBox>
           {/* Reference: a bounded grey search pill, not a full-width bar. */}
-          <div data-tour="global-search" className="flex-1 min-w-0 flex max-w-md">
+          <ShellBox data-tour="global-search" className="flex-1 min-w-0 flex max-w-md">
             {!license.isRestricted && <GlobalSearch />}
-          </div>
-          <div className="ml-auto flex items-center gap-2 sm:gap-3 text-sm">
+          </ShellBox>
+          <ShellBox className="ml-auto flex items-center gap-2 sm:gap-3 text-sm">
             <QuickAdd items={quickAddItems} />
             {/* Convenience icons collapse on phones — everything stays reachable
                 (help via its page, birthdays via My Day, two-factor via the
                 avatar menu). */}
-            <div className="hidden sm:flex items-center gap-3">
+            <ShellBox className="hidden sm:flex items-center gap-3">
             {/* "What's new" is inside this menu now: four icons, not five. */}
             <CalendarShortcut />
             <HelpMenu />
             <BirthdayBell />
-            </div>
-            <span data-tour="notifications" className="inline-flex">
+            </ShellBox>
+            <ShellBox as="span" data-tour="notifications" className="inline-flex">
               <NotificationBell />
-            </span>
+            </ShellBox>
             <span className="hidden sm:block h-6 w-px bg-border mx-0.5" />
             <ProfileMenu
               twoFaEnabled={twoFaEnabled}
@@ -734,10 +740,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
                   : null
               }
             />
-          </div>
-        </div>
+          </ShellBox>
+        </ShellBox>
         {/* pb-24 on phones keeps the floating + button clear of the last row/link. */}
-        <div className="dashboard-content p-4 pb-24 sm:p-6 sm:pb-6 animate-fade-in print:p-0 print:animate-none">
+        <ShellBox className="dashboard-content p-4 pb-24 sm:p-6 sm:pb-6 animate-fade-in print:p-0 print:animate-none">
           {license.isRestricted && !pathAllowed ? (
             <RestrictedNotice license={license} />
           ) : navBlocked ? (
@@ -748,8 +754,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
               {children}
             </>
           )}
-        </div>
-      </main>
+        </ShellBox>
+      </ShellBox>
       {/* Floating quick-create button — bottom-right. Lets users add a lead,
           client, task, meeting, proposal or service request from anywhere
           without hunting through the sidebar. */}
@@ -763,7 +769,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* First-run coachmark tour — runs once, spotlighting nav, search, Ctrl+K,
           quick-create and notifications so a new user isn't overwhelmed. */}
       {!license.isRestricted && <ProductTour />}
-    </div>
+    </ShellBox>
     </ConfirmProvider>
     </ToastProvider>
   );
