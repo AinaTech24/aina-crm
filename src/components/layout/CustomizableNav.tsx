@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Pencil, Check, Plus, GripVertical, X, RotateCcw, Circle, ChevronDown, ChevronUp, Star,
+  Pencil, Check, Plus, Search, GripVertical, X, RotateCcw, Circle, ChevronDown, ChevronUp, Star,
   // ── nav module icons (rendered here by name; see ICONS map) ──
   Activity, AlertTriangle, BarChart3, Bot, Boxes, Briefcase, Cake, Calculator,
   Calendar, CalendarCheck, CalendarOff, ClipboardCheck, Copy, CreditCard,
@@ -169,10 +169,14 @@ export function CustomizableNav({
   storageKey: string;
 }) {
   const pathname = usePathname() ?? "";
+  const router = useRouter();
   const itemMap = useMemo(() => new Map(items.map((i) => [i.href, i])), [items]);
 
   const [layout, setLayout] = useState<Group[]>(() => buildDefault(items));
   const [editing, setEditing] = useState(false);
+  // Sidebar search: a typed word replaces the grouped menu with the modules
+  // whose name contains it (any group, collapsed or not).
+  const [query, setQuery] = useState("");
   const [dragHref, setDragHref] = useState<string | null>(null);
   // Group drag-to-reorder + the inline "new group" composer (name + modules),
   // replacing the old window.prompt.
@@ -272,6 +276,9 @@ export function CustomizableNav({
   const pinsFull = pinned.length >= MAX_PINNED;
   const pinnedSet = new Set(pinned);
   // Only pinned items the user still has access to, in pin order.
+  const needle = query.trim().toLowerCase();
+  const searching = !editing && needle.length > 0;
+  const matches = searching ? items.filter((it) => it.label.toLowerCase().includes(needle)) : [];
   const pinnedItems = pinned.map((h) => itemMap.get(h)).filter((it): it is NavItemData => !!it);
 
   // Whether a pathname falls under an href (exact, or a "/"-bounded sub-route).
@@ -386,7 +393,25 @@ export function CustomizableNav({
       {/* Customise toolbar -- hidden when the rail is collapsed to icons. The old
           "Search modules" box lived here; searching pages is now Ctrl/Cmd+K. */}
       <div className="sidebar-when-expanded px-3 pt-3 pb-1 space-y-2">
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">Search modules</span>
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setQuery("");
+                if (e.key === "Enter" && matches[0]) {
+                  router.push(matches[0].href);
+                  setQuery("");
+                }
+              }}
+              placeholder="Search modules…"
+              className="h-[34px] w-full rounded-lg bg-secondary pl-8 pr-2 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/40"
+            />
+          </label>
           {/* Customize toggle — icon only, sits next to the search box. */}
           <button
             type="button"
@@ -413,7 +438,16 @@ export function CustomizableNav({
       <nav aria-label="Main navigation" data-tour="sidebar" className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 space-y-2 scrollbar-thin">
         {/* ⭐ Pinned favourites — the user's own shortcuts, above every group, so
             the long menu isn't a daily scroll. Hidden while editing/searching. */}
-        {!editing && pinnedItems.length > 0 && (
+        {searching && (
+          <div className="space-y-1">
+            {matches.length === 0 ? (
+              <div className="px-2 py-3 text-xs text-muted-foreground">No module matches “{query.trim()}”.</div>
+            ) : (
+              matches.map((it) => <NavRow key={`find-${it.href}`} item={it} active={isActive(it.href)} />)
+            )}
+          </div>
+        )}
+        {!searching && !editing && pinnedItems.length > 0 && (
           <div>
             <div className="sidebar-section-title px-2 mb-2.5 flex items-center gap-1.5">
               <Star className="size-3 fill-amber-400 text-amber-400 shrink-0" />
@@ -444,7 +478,7 @@ export function CustomizableNav({
             onCancel={() => setShowAddGroup(false)}
           />
         )}
-        {          /* ---- grouped layout ---- */
+        {searching ? null : /* ---- grouped layout ---- */
           layout.map((g) => {
             // De-duplicate: a pinned item lives in the Pinned section only, not
             // again inside its group (while editing we show everything so the
