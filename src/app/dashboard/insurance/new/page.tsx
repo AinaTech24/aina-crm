@@ -364,11 +364,15 @@ function NewInsuranceForm() {
       policyType: x.policyType ?? s.policyType,
       livesCovered: x.livesCovered ?? s.livesCovered,
       sumAssured: x.sumAssured != null ? String(x.sumAssured) : s.sumAssured,
-      // The reader finds the ANNUAL premium; the form holds what is paid each time.
+      // The form holds what is paid each time. The reader returns the figure as
+      // PRINTED for one payment; only when it found a year's figure alone is that
+      // divided by the payments a year.
       premiumAmount:
-        x.annualPremium != null
-          ? perInstallment(Number(x.annualPremium), x.premiumFrequency ?? s.premiumFrequency)
-          : s.premiumAmount,
+        x.installmentPremium != null
+          ? String(x.installmentPremium)
+          : x.annualPremium != null
+            ? perInstallment(Number(x.annualPremium), x.premiumFrequency ?? s.premiumFrequency)
+            : s.premiumAmount,
       premiumFrequency: x.premiumFrequency ?? s.premiumFrequency,
       premiumPayingTermYears:
         x.premiumPayingTermYears != null ? String(x.premiumPayingTermYears) : s.premiumPayingTermYears,
@@ -429,7 +433,7 @@ function NewInsuranceForm() {
         policyNumber: x.policyNumber,
         policyType: x.policyType,
         sumAssured: x.sumAssured,
-        annualPremium: x.annualPremium,
+        annualPremium: x.installmentPremium ?? x.annualPremium,
         premiumFrequency: x.premiumFrequency,
         policyStartDate: x.policyStartDate,
         maturityDate: x.maturityDate,

@@ -12,29 +12,54 @@
 
 import type { InsuranceExtraction, InsuranceCategory } from "@/lib/ai/assistant";
 import { POLICY_TYPES, PREMIUM_FREQUENCIES } from "@/db/schema";
+import { paymentsPerYear } from "@/lib/insurance/premium";
 import type { Field, StructuredExtraction, TableRow } from "./types";
 
 const v = <T>(f?: Field<T>): T | null => (f && f.value != null ? f.value : null);
 
-/** Map a free-text policy type onto the closest enum, else null. */
-function toPolicyType(s: string | null, kind: string): (typeof POLICY_TYPES)[number] | null {
-  if (s) {
-    const norm = s.toLowerCase().replace(/[^a-z]/g, "");
-    const hit = (POLICY_TYPES as readonly string[]).find((t) => norm.includes(t.replace(/_/g, "")) || t.replace(/_/g, "").includes(norm));
-    if (hit) return hit as (typeof POLICY_TYPES)[number];
-    if (/term/.test(norm)) return "term" as any;
-    if (/health|mediclaim/.test(norm)) return "health" as any;
-    if (/motor|vehicle|car|bike/.test(norm)) return "motor" as any;
-    if (/travel/.test(norm)) return "travel" as any;
+/**
+ * Map a free-text policy type onto our enum. Specific words win, in this order,
+ * so "Term Life" is term (not life_other) and "Critical Illness" is not "health".
+ * Exported for the tests.
+ */
+export function toPolicyType(s: string | null, kind: string): (typeof POLICY_TYPES)[number] | null {
+  const norm = (s ?? "").toLowerCase().replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();
+  if (norm) {
+    const exact = (POLICY_TYPES as readonly string[]).find((t) => t.replace(/_/g, " ") === norm);
+    if (exact) return exact as (typeof POLICY_TYPES)[number];
+    const rules: Array<[RegExp, (typeof POLICY_TYPES)[number]]> = [
+      [/critical illness|dread disease/, "critical_illness"],
+      [/personal accident|accidental/, "personal_accident"],
+      [/\bulip\b|unit linked/, "ulip"],
+      [/money back/, "money_back"],
+      [/endowment|savings|guaranteed (?:income|return)/, "endowment"],
+      [/\bterm\b|protect|raksha/, "term"],
+      [/health|mediclaim|hospital|family floater|senior citizen/, "health"],
+      [/motor|vehicle|\bcar\b|two wheeler|bike|private car/, "motor"],
+      [/travel/, "travel"],
+      [/\bhome\b|householder|property|fire/, "home"],
+    ];
+    for (const [re, t] of rules) if (re.test(norm)) return t;
   }
   const byKind: Record<string, string> = { life: "life_other", health: "health", motor: "motor", travel: "travel" };
   return (byKind[kind] as any) ?? null;
 }
-function toFreq(s: string | null): (typeof PREMIUM_FREQUENCIES)[number] | null {
+
+/**
+ * Map the printed premium mode onto our enum. "Half-yearly" and "Semi-annual"
+ * are semi_annual — they both CONTAIN "yearly" / "annual", which used to send
+ * them to annual (and a half-yearly premium was then read as a whole year's).
+ * Exported for the tests.
+ */
+export function toFreq(s: string | null): (typeof PREMIUM_FREQUENCIES)[number] | null {
   if (!s) return null;
-  const n = s.toLowerCase();
-  const hit = (PREMIUM_FREQUENCIES as readonly string[]).find((f) => n.includes(f.toLowerCase()));
-  return (hit as any) ?? (/annual|yearly/.test(n) ? ("annual" as any) : /month/.test(n) ? ("monthly" as any) : /quarter/.test(n) ? ("quarterly" as any) : /half|semi/.test(n) ? ("half_yearly" as any) : /single|one/.test(n) ? ("single" as any) : null);
+  const n = s.toLowerCase().replace(/[_\-]+/g, " ").replace(/\s+/g, " ").trim();
+  if (/single|one ?time|lump ?sum|\bsp\b/.test(n)) return "single";
+  if (/half|semi|6 ?month|six ?month|bi ?annual|\bhy\b/.test(n)) return "semi_annual";
+  if (/quarter|3 ?month|three ?month|\bqtr?\b/.test(n)) return "quarterly";
+  if (/month|\bmly\b/.test(n)) return "monthly";
+  if (/annual|year|12 ?month|per annum|\bp ?a\b|yly/.test(n)) return "annual";
+  return null;
 }
 function toBiz(s: string | null): "new" | "renewal" | "portability" | null {
   if (!s) return null;
@@ -90,16 +115,33 @@ export function structuredToDraft(x: StructuredExtraction): InsuranceExtraction 
   const fc: Record<string, number> = {};
   const put = (key: string, f?: Field<any>) => { if (f && f.value != null) fc[key] = f.confidence; };
   put("insurer", p.insurer); put("planName", p.planName); put("policyNumber", p.policyNumber);
-  put("sumAssured", p.sumAssured); put("annualPremium", p.annualPremium); put("policyStartDate", p.policyStartDate);
+  put("sumAssured", p.sumAssured); put("annualPremium", p.annualPremium ?? p.installmentPremium); put("policyStartDate", p.policyStartDate);
   put("maturityDate", p.maturityDate); put("nextPremiumDueDate", p.renewalDate);
   put("holderName", ph.name); put("email", ph.email); put("mobile", ph.mobile); put("addressLine1", ph.address);
   put("proposerName", pr.name); put("proposerPan", pr.pan); put("proposerEmail", pr.email); put("proposerPhone", pr.phone);
   put("agencyEmail", ag.agentEmail); put("agencyContact", ag.agentPhone); put("gstin", rc.gstin); put("nomineeName", x.nominee.name);
 
+  // The figure printed for one payment and the year's figure must agree; when
+  // they do not, say so rather than fill one silently.
+  const freq = toFreq(v(p.premiumFrequency));
+  const inst = v(p.installmentPremium), annual = v(p.annualPremium);
+  const premiumWarnings: string[] = [];
+  if (inst != null && annual != null && freq) {
+    const expected = inst * paymentsPerYear(freq);
+    if (Math.abs(expected - annual) / Math.max(annual, 1) > 0.03) {
+      premiumWarnings.push(
+        `Premium: the document shows ₹${inst} per payment (${freq.replace("_", "-")}) and ₹${annual} for a year, which do not match — check the premium before saving.`,
+      );
+    }
+  }
+  if (inst == null && annual != null && !freq) {
+    premiumWarnings.push("Premium frequency was not found on the document — set it so the premium reads correctly.");
+  }
+
   return {
     insurer: v(p.insurer), planName: v(p.planName), policyNumber: v(p.policyNumber),
     policyType, category,
-    sumAssured: v(p.sumAssured), annualPremium: v(p.annualPremium),
+    sumAssured: v(p.sumAssured), annualPremium: v(p.annualPremium), installmentPremium: v(p.installmentPremium),
     premiumFrequency: toFreq(v(p.premiumFrequency)),
     premiumPayingTermYears: v(p.premiumPayingTermYears), policyTermYears: v(p.policyTermYears),
     policyStartDate: v(p.policyStartDate), maturityDate: v(p.maturityDate), nextPremiumDueDate: v(p.renewalDate),
@@ -110,6 +152,6 @@ export function structuredToDraft(x: StructuredExtraction): InsuranceExtraction 
     details,
     fieldConfidence: fc,
     overallConfidence: x.overallConfidence,
-    warnings: x.warnings,
+    warnings: [...x.warnings, ...premiumWarnings],
   };
 }

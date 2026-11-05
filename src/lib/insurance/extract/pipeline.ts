@@ -11,7 +11,7 @@ import { NF } from "./types";
 import { extractDoc, stripBoilerplate } from "./text";
 import { extractCandidates } from "./candidates";
 import { classifyDocument } from "./classify";
-import { isEmail, isPhone, isPan, isGstin, isPin, isCleanRef, toMoney, toIso } from "./validate";
+import { isEmail, isPhone, isPan, isGstin, isPin, isCleanRef, cleanPolicyNumber, toMoney, toIso } from "./validate";
 
 const MIN_CONF = 0.7; // below this → drop (never guess)
 
@@ -52,11 +52,12 @@ function sanitize(x: StructuredExtraction): StructuredExtraction {
     policy: {
       insurer: txtField(x.policy?.insurer, 120),
       planName: txtField(x.policy?.planName, 200),
-      policyNumber: field(x.policy?.policyNumber, { validate: isCleanRef, max: 40 }),
+      policyNumber: field(x.policy?.policyNumber, { transform: cleanPolicyNumber, max: 50 }),
       policyType: txtField(x.policy?.policyType, 40),
       businessType: txtField(x.policy?.businessType, 20),
       sumAssured: moneyF(x.policy?.sumAssured),
       annualPremium: moneyF(x.policy?.annualPremium),
+      installmentPremium: moneyF(x.policy?.installmentPremium),
       premiumFrequency: txtField(x.policy?.premiumFrequency, 20),
       commission: moneyF(x.policy?.commission),
       policyStartDate: dateF(x.policy?.policyStartDate),

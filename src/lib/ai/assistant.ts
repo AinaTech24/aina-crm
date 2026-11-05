@@ -107,6 +107,8 @@ export type InsuranceExtraction = {
   category: InsuranceCategory | null;
   sumAssured: number | null;
   annualPremium: number | null;
+  /** The premium for ONE payment at premiumFrequency, as printed on the document. */
+  installmentPremium?: number | null;
   premiumFrequency: (typeof PREMIUM_FREQUENCIES)[number] | null;
   premiumPayingTermYears: number | null;
   policyTermYears: number | null;

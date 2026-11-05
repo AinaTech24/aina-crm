@@ -69,13 +69,17 @@ export async function POST(req: NextRequest) {
     // This is what stops support emails / care numbers / branch addresses from
     // landing in the customer fields. Falls back to the rule-based text parser
     // when AI isn't configured or the pipeline errors out.
+    let aiFailed = false;
     if (await isAiConfigured()) {
       try {
         const { structured, meta } = await runExtractionPipeline(buffer, mediaType);
         const draft = structuredToDraft(structured);
         return NextResponse.json({ draft, engine: "ai", meta }, { status: 200 });
-      } catch {
-        /* fall through to the rule-based parser */
+      } catch (e) {
+        // Fall through to the rule-based parser — but say so: it is far less
+        // accurate, and a quiet fallback read as "the upload fills wrong".
+        console.error("[insurance/extract] AI reader failed, using the basic reader", e);
+        aiFailed = true;
       }
     }
 
@@ -101,6 +105,12 @@ export async function POST(req: NextRequest) {
     }
 
     const draft = parseInsurancePolicy(extracted.text, { ocr: extracted.method === "ocr" });
+    if (aiFailed) {
+      draft.warnings = [
+        "The smart reader could not read this file just now, so a basic reader filled the form. Check every field against the policy, or upload again.",
+        ...(draft.warnings ?? []),
+      ];
+    }
     return NextResponse.json({ draft }, { status: 200 });
   } catch (err: any) {
     return handleApiError(err);

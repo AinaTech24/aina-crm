@@ -53,7 +53,17 @@ DISAMBIGUATION RULES (critical — these are the mistakes to avoid):
 - Customer address = the "Address / Communication Address / Correspondence Address" of the holder. A
   "Branch / Registered Office / Corporate Office" address belongs to the insurer — ignore it.
 - PAN: the proposer's PAN sits by their name; a PAN embedded in a GSTIN is the insurer/agency's — do not use it as the proposer PAN.
-- Policy number: prefer the value next to "Policy No / Certificate No"; reject anything with stray OCR symbols.
+- Policy number: prefer the value next to "Policy No / Certificate No"; copy it EXACTLY as printed (keep its "/", "-", "." and single spaces); reject anything with stray OCR symbols.
+
+PREMIUM — the most commonly mis-read block, read it carefully:
+- installmentPremium = the amount paid ONE TIME, at the document's own frequency, exactly as printed ("Premium ₹2,500 Quarterly" → 2500). Use the BASE premium (before GST / cess / stamp duty); if only a total including taxes is printed, use it and say so in warnings. Put the tax-inclusive total in premiumSummary.grossPremium when both are printed.
+- annualPremium = the premium for a WHOLE YEAR (installmentPremium × payments per year). If the document prints an annual figure use it; if it prints only the instalment, leave annualPremium null — do NOT compute or guess it.
+- premiumFrequency is exactly one of: single | annual | semi_annual | quarterly | monthly ("half-yearly" / "semi-annual" → semi_annual; "yearly" / "per annum" → annual; "single premium" / "one-time" → single). Null when the document does not state it.
+- Never use the sum assured, a cover amount, a maturity benefit or a GST amount as a premium.
+
+TERMS & DATES:
+- policyTermYears is the total policy term; premiumPayingTermYears is how long premiums are paid — they are different numbers on many plans (e.g. term 30, paying term 10). Do not copy one into the other.
+- Dates are yyyy-mm-dd. A date printed dd/mm/yyyy is day first (Indian format). policyStartDate is the date of commencement of risk / policy start, not the proposal or issue date unless that is all there is.
 
 TABLES — extract each INDEPENDENTLY, one object per row, copy values EXACTLY as printed, never merge rows or columns.
 Each table cell is a PLAIN STRING (e.g. "John Doe"), NOT a {value,confidence,...} object — the confidence object format applies ONLY to the scalar entity fields below, never to table cells:
@@ -72,7 +82,7 @@ below 0.70 → set value to null (do not guess). Every scalar field is the objec
 OUTPUT — a SINGLE JSON object, no markdown, exactly this shape (omit nothing; use null fields when absent):
 {
  "documentKind": "life|health|motor|travel|general|policy_schedule|unknown",
- "policy": { "insurer":F, "planName":F, "policyNumber":F, "policyType":F, "businessType":F, "sumAssured":F, "annualPremium":F, "premiumFrequency":F, "commission":F, "policyStartDate":F, "policyTermYears":F, "premiumPayingTermYears":F, "maturityDate":F, "renewalDate":F },
+ "policy": { "insurer":F, "planName":F, "policyNumber":F, "policyType":F, "businessType":F, "sumAssured":F, "annualPremium":F, "installmentPremium":F, "premiumFrequency":F, "commission":F, "policyStartDate":F, "policyTermYears":F, "premiumPayingTermYears":F, "maturityDate":F, "renewalDate":F },
  "policyholder": { "name":F, "customerId":F, "uin":F, "email":F, "mobile":F, "address":F, "city":F, "state":F, "postalCode":F, "country":F },
  "proposer": { "name":F, "pan":F, "status":F, "customerId":F, "phone":F, "email":F, "address":F, "city":F, "state":F, "postalCode":F, "country":F, "remarks":F },
  "nominee": { "name":F, "relation":F, "sharePercent":F },
@@ -101,7 +111,7 @@ export async function classifyDocument(input: {
 
   const res = await aiMessagesClient().messages.create({
     model: "reasoning",
-    max_tokens: 8000,
+    max_tokens: 16000,
     system: SYSTEM,
     responseFormat: "json",
     messages: [

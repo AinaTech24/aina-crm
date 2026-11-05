@@ -170,10 +170,20 @@ export function parseInsurancePolicy(rawText: string, opts: { ocr?: boolean } = 
     toAmount(grabNear(text, ["sum\\s*assured", "sum\\s*insured", "basic\\s*sum\\s*assured", "insured\\s*declared\\s*value", "\\bidv\\b", "total\\s*sum\\s*insured"], AMOUNT_RE))
   );
 
+  // "Annual premium" is a year's premium; every other label ("instalment",
+  // "modal", "premium payable", "total premium"…) is the amount for ONE payment
+  // at the policy's mode. They are kept apart: the form shows what is paid each
+  // time, and dividing an instalment as if it were annual under-stated it.
   const annualPremium = mark(
     "annualPremium",
-    toAmount(grabNear(text, ["annual\\s*premium", "total\\s*premium", "premium\\s*amount", "gross\\s*premium", "instal?ment\\s*premium", "modal\\s*premium", "premium\\s*payable", "premium\\s*\\(.*?\\)"], AMOUNT_RE))
+    toAmount(grabNear(text, ["annual\\s*premium", "yearly\\s*premium", "premium\\s*per\\s*annum"], AMOUNT_RE))
   );
+  const installmentPremium = annualPremium == null
+    ? mark(
+        "annualPremium",
+        toAmount(grabNear(text, ["instal?ment\\s*premium", "modal\\s*premium", "premium\\s*payable", "total\\s*premium", "premium\\s*amount", "gross\\s*premium", "premium\\s*\\(.*?\\)"], AMOUNT_RE))
+      )
+    : null;
 
   const premiumFrequency = findFrequency(text);
   if (premiumFrequency) conf.premiumFrequency = base - 0.05;
@@ -303,6 +313,7 @@ export function parseInsurancePolicy(rawText: string, opts: { ocr?: boolean } = 
     category,
     sumAssured,
     annualPremium,
+    installmentPremium,
     premiumFrequency,
     premiumPayingTermYears,
     policyTermYears,

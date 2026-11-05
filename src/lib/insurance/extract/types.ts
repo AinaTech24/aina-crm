@@ -54,6 +54,8 @@ export type StructuredExtraction = {
     businessType: Field;
     sumAssured: Field<number>;
     annualPremium: Field<number>;
+    /** The premium for ONE payment at premiumFrequency, exactly as the document prints it. */
+    installmentPremium: Field<number>;
     premiumFrequency: Field;
     commission: Field<number>;
     policyStartDate: Field; // ISO yyyy-mm-dd

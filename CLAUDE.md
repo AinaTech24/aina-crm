@@ -655,6 +655,29 @@ and stores `annualFrom(amount, frequency)`; editing shows it back per payment
 "Annual premium" and read back as 2,500 an installment. The policy page and the
 register show the per-payment figure under the annual one.
 
+## Policy upload → auto-fill (2026-11-05)
+
+`POST /api/insurance/extract` reads a policy PDF / photo (`lib/insurance/extract/`:
+text → regex candidates → the model classifies → every field re-validated and gated
+at 0.70) and the New policy form fills from the draft. Rules found wrong in
+practice and now pinned by `tests/insurance-extract.test.ts`:
+
+- **The premium is the figure PRINTED for one payment** (`installmentPremium`),
+  which the form's field holds as-is. `annualPremium` is only a whole year's
+  figure the document itself prints; when only that is found the form divides it
+  by the payments a year (`installmentOf`). The two never get confused: the
+  basic reader ("Premium payable", "Modal premium", "Total premium" =
+  instalment; "Annual premium" = annual), and a mismatch between them is a
+  warning, not a silent fill.
+- **Frequency**: half-yearly / semi-annual are `semi_annual` (they contain
+  "yearly" / "annual", which once made them `annual`). `toFreq`, `toPolicyType`.
+- **Policy number** keeps the separators insurers print — spaces, ".", "_", "/",
+  "-" (`cleanPolicyNumber`); it used to be dropped for a space.
+- Dates read day-first in every shape a policy prints (`toIso`), two-digit years
+  included.
+- When the model reader fails the route falls back to the basic reader AND says so
+  in the draft's warnings — a quiet fallback looked like "the upload fills wrong".
+
 ## KYC status from the KRA (NSE MF Invest)
 
 Each firm connects its OWN NSE MF Invest (NMF II) API user at Settings →

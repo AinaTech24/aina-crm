@@ -34,6 +34,21 @@ export function isCleanRef(v: string): boolean {
   return t.length >= 4 && t.length <= 40 && /^[A-Za-z0-9][A-Za-z0-9\/\-]*$/.test(t);
 }
 
+/**
+ * A policy number as insurers print it: letters, digits and the separators they
+ * really use — "/", "-", ".", "_" and single spaces (e.g. "2805 2003 1234 5600 000",
+ * "P/11/2024/001234"). Stray OCR symbols still fail. Returns the cleaned value
+ * (spaces collapsed) or null.
+ */
+export function cleanPolicyNumber(v: unknown): string | null {
+  if (v == null) return null;
+  const t = String(v).replace(/\s+/g, " ").trim();
+  if (t.length < 4 || t.length > 50) return null;
+  if (!/^[A-Za-z0-9][A-Za-z0-9\/\-._ ]*[A-Za-z0-9]$/.test(t)) return null;
+  if (!/\d/.test(t)) return null; // a policy number always carries a digit
+  return t;
+}
+
 /** Parse a money string ("₹1,25,000.00", "Rs. 1,25,000.00") to a number, or null. */
 export function toMoney(v: unknown): number | null {
   if (v == null) return null;
@@ -60,14 +75,25 @@ export function toIso(v: unknown): string | null {
     const iso = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
     return isIsoDate(iso) ? iso : null;
   }
-  const MON: Record<string, string> = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
-  m = s.match(/^([0-3]?\d)[\s-]([A-Za-z]{3})[a-z]*[\s-,]*((?:19|20)\d{2})$/);
+  // dd/mm/yy — a two-digit year is this century (a policy document never carries a 19xx date in yy form).
+  m = s.match(/^([0-3]?\d)[\/\-.]([01]?\d)[\/\-.](\d{2})$/);
   if (m) {
-    const mm = MON[m[2].toLowerCase()];
-    if (mm) {
-      const iso = `${m[3]}-${mm}-${m[1].padStart(2, "0")}`;
-      return isIsoDate(iso) ? iso : null;
-    }
+    const iso = `20${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+    return isIsoDate(iso) ? iso : null;
+  }
+  const MON: Record<string, string> = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
+  const year = (y: string) => (y.length === 2 ? `20${y}` : y);
+  // 05 Mar 2024 · 5-March-2024 · 05-Mar-24 · 5th March, 2024
+  m = s.match(/^([0-3]?\d)(?:st|nd|rd|th)?[\s\-\/.]+([A-Za-z]{3})[a-z]*\.?[\s\-\/.,]*((?:19|20)?\d{2})$/);
+  if (m && MON[m[2].toLowerCase()]) {
+    const iso = `${year(m[3])}-${MON[m[2].toLowerCase()]}-${m[1].padStart(2, "0")}`;
+    return isIsoDate(iso) ? iso : null;
+  }
+  // March 5, 2024 · Mar 05 2024
+  m = s.match(/^([A-Za-z]{3})[a-z]*\.?[\s\-\/.]+([0-3]?\d)(?:st|nd|rd|th)?[\s,\-\/.]+((?:19|20)\d{2})$/);
+  if (m && MON[m[1].toLowerCase()]) {
+    const iso = `${m[3]}-${MON[m[1].toLowerCase()]}-${m[2].padStart(2, "0")}`;
+    return isIsoDate(iso) ? iso : null;
   }
   return null;
 }
