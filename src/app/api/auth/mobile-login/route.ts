@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   const userRow = await withSystem(async (tx) => {
     const r = await tx.execute(sql`
       SELECT u.id, u.tenant_id, u.branch_id, u.email, u.name, u.password_hash, u.roles, u.status, u.permissions, u.two_fa_enabled,
-             u.deleted_at AS user_deleted_at, t.deleted_at AS tenant_deleted_at
+             u.deleted_at AS user_deleted_at, t.deleted_at AS tenant_deleted_at, t.require_2fa AS tenant_requires_2fa
       FROM users u
       LEFT JOIN tenants t ON t.id = u.tenant_id
       WHERE lower(u.email) = ${email}
@@ -75,6 +75,13 @@ export async function POST(req: NextRequest) {
   if (userRow.two_fa_enabled) {
     const challenge = await sign2faChallenge(userRow.id);
     return NextResponse.json({ require2fa: true, challenge });
+  }
+  // The firm requires a second factor; it is set up on the web sign-in page.
+  if (userRow.tenant_requires_2fa) {
+    return NextResponse.json(
+      { error: "Your firm requires two-factor sign-in. Sign in once on the web to set it up, then use the app." },
+      { status: 403 }
+    );
   }
 
   withSystem(async (tx) => {

@@ -13,6 +13,7 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { summariseMeeting } from "@/lib/ai/assistant";
+import { noteTenant } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    noteTenant(session.tenantId); // the firm's AI switch applies (lib/ai/firm-switch.ts)
     requireCap(session.roles, "review_meeting.manage.all", session.permissions);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

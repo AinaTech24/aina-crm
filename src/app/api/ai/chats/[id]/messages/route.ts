@@ -18,6 +18,7 @@ import { firmSnapshot, assistantSystemPrompt, type FirmSnapshot } from "@/lib/ai
 import { assistantAvailable, runAssistant } from "@/lib/ai/assistant/runner";
 import { answerLocally, suggestTitle } from "@/lib/ai/assistant/engine";
 import { findLearnedIntent, logInteractions, type LogRow } from "@/lib/ai/assistant/learning";
+import { noteTenant } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const { id } = await params;
     const session = await requireSession();
+    noteTenant(session.tenantId); // the firm's AI switch applies (lib/ai/firm-switch.ts)
     const data = await withTenant(session.tenantId, async (tx) => {
       const [chat] = await tx
         .select({ id: aiChats.id, title: aiChats.title, model: aiChats.model, archivedAt: aiChats.archivedAt })
@@ -57,6 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const { id } = await params;
     const session = await requireSession();
+    noteTenant(session.tenantId); // the firm's AI switch applies (lib/ai/firm-switch.ts)
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
     const { model = "reasoning", regenerate } = parse.data;

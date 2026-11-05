@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
+import { noteTenant } from "@/lib/tenant-context";
 import { Pool, type PoolClient } from "pg";
 import * as schema from "./schema";
 
@@ -145,6 +146,9 @@ export async function withTenant<T>(
   fn: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<T>,
   opts?: { userId?: string; branchId?: string; roles?: string[] }
 ): Promise<T> {
+  // Before the first await, so the caller's code after this call knows the
+  // firm too (lib/tenant-context.ts — the AI switch reads it).
+  noteTenant(tenantId);
   return db.transaction(async (tx) => {
     // Parameterized set_config (transaction-LOCAL). MUST use a drizzle `sql`
     // object — a raw string passed to tx.execute() is NOT reliably executed

@@ -471,6 +471,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   });
 
   const tenant = await tenantP;
+  // The firm requires two-factor sign-in (tenants.require_2fa): someone signed
+  // in before it was switched on, without 2FA, is sent to set it up first.
+  // New sign-ins never get this far — /api/auth/login makes them enrol.
+  if (tenant?.require2fa && !twoFaEnabled && !pathname.startsWith("/dashboard/settings/security")) {
+    redirect("/dashboard/settings/security?required=1");
+  }
   const firmLayoutMap: Record<string, Record<string, any>> = {};
   for (const r of firmLayoutRows) (firmLayoutMap[r.moduleKey] ??= {})[r.kind] = r.data;
   const layoutAdmin = can(session.roles, "settings.users", session.permissions);

@@ -133,6 +133,10 @@ export const tenants = pgTable(
     privacyNotice: jsonb("privacy_notice").$type<Record<string, unknown>>().notNull().default({}),
     /** DPDP retention policy (migration 0257, lib/privacy/retention.ts): off until the firm sets it. */
     dataRetention: jsonb("data_retention").$type<Record<string, unknown>>().notNull().default({}),
+    /** Everyone in the firm must sign in with a second factor (migration 0258). */
+    require2fa: boolean("require_2fa").notNull().default(false),
+    /** The firm allows AI features — its data may go to the AI provider (migration 0258, lib/ai/firm-switch.ts). */
+    aiEnabled: boolean("ai_enabled").notNull().default(true),
 
     /** Age → risk-category bands for bulk provisional profiling. NULL = use the
      *  product defaults in src/lib/risk-profile/age-bands.ts. */

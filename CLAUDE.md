@@ -801,8 +801,29 @@ clients and leads; this CRM is its processor. Step 1 of the plan (2026-10-31):
   for the Board's report; the page ticks off Board intimation, the detailed
   report and telling the people affected, and builds both texts — the
   person's notice and the Board report — from the recorded facts.
-- **Still to build** (the plan): no marketing to minors; a per-firm AI
-  switch; enforceable 2FA; DPAs with each firm (paperwork).
+- **No marketing to a child** (step 4, `lib/privacy/minors.ts`): `dispatch()`
+  skips a MARKETING send to a minor client (`is_minor`, or a date of birth
+  under 18) as `skipped_consent` with the reason, whatever consent is on
+  file. Service messages still go.
+- **AI is the firm's choice, and never sees identifiers** (step 4,
+  `tenants.ai_enabled`, migration 0258). Every call goes through
+  `guardedCreate` in `lib/ai/provider.ts`: a firm that switched AI off
+  (Settings → Security) is refused (`lib/ai/firm-switch.ts`), and PAN,
+  Aadhaar, Indian mobile numbers and emails become placeholders before the
+  prompt leaves (`lib/ai/pseudonymise.ts`) and are put back in the answer.
+  The firm is known from `lib/tenant-context.ts` — set by `withTenant`
+  (before its first await, so the caller sees it) and by `noteTenant` right
+  after `requireSession` in every AI route. A new AI route must call
+  `noteTenant(session.tenantId)`.
+- **Required two-factor sign-in** (step 4, `tenants.require_2fa`, Settings →
+  Security, owner only after enabling their own). Someone without 2FA gets
+  `enroll2fa` from `/api/auth/login` — the password buys only the right to
+  enrol (`/api/auth/2fa/enroll`: QR, first code, backup codes, THEN the
+  session). An older session is sent to the Security page by the dashboard
+  layout; the mobile app refuses until 2FA is set up on the web; disabling
+  2FA is refused while the firm requires it.
+- **Still to build** (the plan): DPAs between AinaTech and each firm
+  (paperwork, step 5).
 
 ## Creating a family
 

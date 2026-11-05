@@ -16,6 +16,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { segments } from "@/db/schema";
 import { generateCampaignIdeas } from "@/lib/ai/assistant";
+import { noteTenant } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ const Body = z.union([
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    noteTenant(session.tenantId); // the firm's AI switch applies (lib/ai/firm-switch.ts)
     requireCap(session.roles, "campaign.send", session.permissions);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
