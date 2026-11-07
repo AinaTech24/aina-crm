@@ -300,8 +300,15 @@ journey · access), APIs under `/api/investors/[id]/opportunities` and
 `/api/opportunities/[id]` (+ `/advance`, `/sync`), UI `OpportunitiesPanel` on
 the client page's Overview tab.
 
-- **One open row per (client, product)**; several products can be open at
-  once. Products are the Cross-sell vocabulary plus "other"; creating one marks
+- **Several can be open for one product** (the firm's request of 2026-11-07,
+  migration 0259 dropped the unique index): a second SIP, a top-up, another
+  policy. The New opportunity dialog marks a product "one already open" but
+  still lets it be picked. `createOpportunity` never makes the same click twice
+  (the same person's opportunity for that client and product within a minute is
+  returned), and an automatic caller passes `reuseOpen`. `onProductBooked` wins
+  the OLDEST open one. A journey's facts count only what happened since THAT
+  opportunity opened, so a second one starts clean — though one transaction after
+  both opened can answer both. Products are the Cross-sell vocabulary plus "other"; creating one marks
   the product "Interested" on the Cross-sell card, winning marks it "Held with
   us", and the owner gets a follow-up task (closed with the opportunity).
 - **The journey is a blueprint** (subject_type `opportunity`, module

@@ -131,7 +131,7 @@ The page opens with a summary strip (family, RM, AUM, SIP, last meeting, next re
 
 ![New opportunity](shot:2)
 
-There is one open opportunity per client and product.
+A client can have more than one open opportunity for the same product — a second SIP, a top-up, another policy. The product list says "one already open" as a reminder, and you can still pick it.
 
 ## The journey
 

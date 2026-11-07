@@ -611,7 +611,7 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
       const j = await res.json().catch(() => ({}));
       if (!res.ok) return setErr(j.error ?? "Could not start it");
       notify.success(!j.created
-        ? "Already open — showing that one"
+        ? "You just started this one — showing it"
         : when === "later"
           ? `Saved for later — back on ${formatDate(later.day)}, with a reminder before it`
           : `Opportunity started — follow-up on ${formatDate(followUpOn || istDay(2))} is on ${ownerId === assignTo?.me ? "your" : `${assignTo?.list.find((s) => s.id === ownerId)?.name ?? "the owner"}'s`} list`);
@@ -648,8 +648,8 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
             <SelectField id={id} aria-describedby={d} value={product} onChange={(e) => setProduct(e.target.value)} className="w-full">
               <option value="">Select a product…</option>
               {OPPORTUNITY_PRODUCTS.map((p) => (
-                <option key={p.key} value={p.key} disabled={openProducts.has(p.key)}>
-                  {p.label}{openProducts.has(p.key) ? " — already open" : ""}
+                <option key={p.key} value={p.key}>
+                  {p.label}{openProducts.has(p.key) ? " — one already open" : ""}
                 </option>
               ))}
             </SelectField>

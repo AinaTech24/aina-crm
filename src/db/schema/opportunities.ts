@@ -5,7 +5,7 @@
  * subject_type 'opportunity'). See src/lib/opportunities/.
  */
 
-import { date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { date, index, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
@@ -61,7 +61,8 @@ export const clientOpportunities = pgTable(
     investorIdx: index("client_opps_investor_idx").on(t.tenantId, t.investorId),
     statusIdx: index("client_opps_status_idx").on(t.tenantId, t.status, t.pipeline),
     ownerIdx: index("client_opps_owner_idx").on(t.tenantId, t.ownerId, t.status),
-    oneOpen: uniqueIndex("client_opps_one_open_per_product")
+    // Not unique: a client may have several open for one product (0259).
+    openProduct: index("client_opps_open_product_idx")
       .on(t.tenantId, t.investorId, t.product)
       .where(sql`status = 'open'`),
   })

@@ -1,7 +1,7 @@
 /**
  * The opportunity journey engine — an existing client wants another product.
  *
- *   createOpportunity   one open row per (client, product); marks the product
+ *   createOpportunity   a client may have several open for one product; marks the product
  *                       "Interested" on the client's Cross-sell card and gives
  *                       the owner a follow-up task, due on the follow-up date
  *                       picked when it was opened (else in two days).
@@ -361,17 +361,28 @@ export type CreateInput = {
   sourceLeadId?: string | null;
   /** YYYY-MM-DD — when the owner first follows up. Default: two days from now. */
   followUpOn?: string | null;
+  /** An automatic caller: an open one for the product already answers it. */
+  reuseOpen?: boolean;
 };
 
 export async function createOpportunity(
   tx: Tx, actor: Actor, input: CreateInput,
 ): Promise<{ opportunity: ClientOpportunity; created: boolean }> {
-  const [existing] = await tx.select().from(clientOpportunities).where(and(
+  // A client may have several open for one product (a second SIP, a top-up).
+  // What is never made twice is the same click: an opportunity this person
+  // opened for this client and product a moment ago is returned, not repeated.
+  // A caller that is automatic (not a person choosing "another") sets
+  // `reuseOpen` and gets any open one back instead.
+  const open = await tx.select().from(clientOpportunities).where(and(
     eq(clientOpportunities.tenantId, actor.tenantId),
     eq(clientOpportunities.investorId, input.investorId),
     eq(clientOpportunities.product, input.product),
     eq(clientOpportunities.status, "open"),
-  )).limit(1);
+  )).orderBy(desc(clientOpportunities.createdAt)).limit(5);
+  const justNow = Date.now() - 60_000;
+  const existing = input.reuseOpen
+    ? open[0]
+    : open.find((o) => o.createdBy === actor.userId && o.createdAt.getTime() >= justNow);
   if (existing) return { opportunity: existing, created: false };
 
   const inv = (await tx.execute(sql`
@@ -723,7 +734,7 @@ export async function onProductBooked(
   const [opp] = await tx.select().from(clientOpportunities).where(and(
     eq(clientOpportunities.tenantId, actor.tenantId), eq(clientOpportunities.investorId, investorId),
     eq(clientOpportunities.product, product), eq(clientOpportunities.status, "open"),
-  )).limit(1);
+  )).orderBy(asc(clientOpportunities.createdAt)).limit(1); // several may be open: the oldest is won first
   if (!opp) return null;
   await ensureInstanceFor(tx, actor.tenantId, "opportunity", opp.id);
   const r = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, "won", {
