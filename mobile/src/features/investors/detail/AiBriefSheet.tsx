@@ -32,7 +32,8 @@ export function AiBriefSheet({ id, visible, onClose, phone }: { id: string; visi
         {gen.isPending ? (
           <View style={styles.center}><ActivityIndicator color={palette.brand} /><Text variant="caption" tone="muted" style={{ marginTop: spacing.sm }}>Synthesising the brief…</Text></View>
         ) : gen.isError ? (
-          <View style={styles.center}><Text tone="muted">Couldn't generate the brief.</Text><Button label="Retry" variant="secondary" onPress={() => gen.mutate()} style={{ marginTop: spacing.md }} /></View>
+          // The server says why (e.g. the firm switched AI off — retrying won't help).
+          <View style={styles.center}><Text tone="muted" style={{ textAlign: "center" }}>{(gen.error as any)?.message || "Couldn't generate the brief."}</Text></View>
         ) : brief ? (
           <View>
             <Block title="Summary"><Text variant="body">{brief.summary}</Text></Block>

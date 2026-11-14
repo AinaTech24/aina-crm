@@ -193,7 +193,7 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
           </View>
         ))}
         <Text variant="caption" tone="faint" style={{ marginTop: spacing.sm }}>
-          Tap to record what the client agreed to. Messages are blocked without it.
+          Tap to record what the client agreed to. Service messages go unless the client opted out; marketing needs a recorded consent.
         </Text>
       </Section>
 

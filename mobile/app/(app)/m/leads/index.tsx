@@ -44,7 +44,7 @@ export default function LeadsList() {
 
   const apiFilters = useMemo(() => ({
     q: debounced,
-    stage: stageFilterValues(filters.stage).join(","), source: filters.source.join(","), owner: filters.owner.join(","),
+    stage: stageFilterValues(filters.stage).join(","), source: filters.source.flatMap((v: string) => (v === "referral" ? ["referral", "existing_client"] : [v])).join(","), owner: filters.owner.join(","),
     created_from: filters.created_from, created_to: filters.created_to, sort: filters.sort, dir: filters.dir,
     ...Object.fromEntries(filters.quick.map((k) => [k, "1"])),
   }), [debounced, filters]);

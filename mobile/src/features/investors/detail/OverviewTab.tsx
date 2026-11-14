@@ -63,7 +63,7 @@ export function OverviewTab({ d, id, startOpportunity }: { d: any; id: string; s
 
       <ClientOpportunities investorId={id} startWith={startOpportunity} />
 
-      <ReviewCadence id={id} current={inv.reviewFrequency} />
+      <ReviewCadence id={id} current={inv.reviewFrequency} family={d.family?.reviewFrequency ? (d.family.familyName ?? "the family") : null} />
 
       {/* Financial snapshot */}
       <Section title="Financials" icon="dollar-sign">
@@ -77,8 +77,17 @@ export function OverviewTab({ d, id, startOpportunity }: { d: any; id: string; s
   );
 }
 
-function ReviewCadence({ id, current }: { id: string; current?: string }) {
+/** A family member's cadence is the family's (the CRM ignores a change here). */
+function ReviewCadence({ id, current, family }: { id: string; current?: string; family: string | null }) {
   const [val, setVal] = useState<string>(current ?? "quarterly");
+  if (family) {
+    return (
+      <Section title="Review cadence" icon="repeat">
+        <Text style={{ fontWeight: fontWeight.semibold }}>{CADENCE.find((c) => c.key === current)?.label ?? titleCase(current ?? "") ?? "—"}</Text>
+        <Text variant="caption" tone="muted">From {family} — change it on the family.</Text>
+      </Section>
+    );
+  }
   const save = useSetReviewCadence(id);
   const changed = val !== (current ?? "");
   return (
