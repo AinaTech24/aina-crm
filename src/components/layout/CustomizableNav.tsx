@@ -577,13 +577,18 @@ export function CustomizableNav({
                     aria-expanded={!isCollapsed}
                     className="sidebar-section-title group/sec w-full px-3 py-2.5 flex items-center gap-2 text-left rounded-md hover:bg-secondary transition-colors"
                   >
-                    {/* An icon and the group's name; the group you are in is
-                        marked in the brand colour. */}
+                    {/* A folder reads differently from a module: its icon sits in a
+                        tinted chip (solid for the folder you are in) and its name
+                        is bold, while modules are bare glyphs nested below it. */}
                     {(() => {
                       const Icon = GROUP_ICON[g.id] ?? Folder;
-                      return <Icon className={`size-4 shrink-0 ${groupActive ? "text-primary" : "text-muted-foreground"}`} aria-hidden />;
+                      return (
+                        <span className={`nav-group-chip ${groupActive ? "nav-group-chip-active" : ""}`} aria-hidden>
+                          <Icon className="size-4" />
+                        </span>
+                      );
                     })()}
-                    <span className={`flex-1 truncate text-sm font-medium ${groupActive ? "text-primary" : "text-foreground/80"}`}>
+                    <span className={`flex-1 truncate text-sm font-semibold ${groupActive ? "text-primary" : "text-foreground"}`}>
                       {g.title}
                     </span>
                     {groupBadge > 0 && (
@@ -598,7 +603,7 @@ export function CustomizableNav({
 
                 {/* Items stay mounted; when the section is collapsed we hide them
                     via CSS so the icon-rail still shows every glyph. */}
-                <div className={`nav-sec-body space-y-1 min-h-[8px]  ${isCollapsed || dragGroupId === g.id ? "nav-sec-collapsed" : ""}`}>
+                <div className={`nav-sec-body space-y-1 min-h-[8px] ${titled && !editing ? "nav-sec-nested" : ""} ${isCollapsed || dragGroupId === g.id ? "nav-sec-collapsed" : ""}`}>
                   {visibleItems.map((href) => {
                     const it = itemMap.get(href);
                     if (!it) return null;

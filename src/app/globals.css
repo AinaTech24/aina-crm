@@ -988,6 +988,31 @@
   transition: max-height 300ms ease, opacity 250ms ease;
 }
 .nav-sec-body.nav-sec-collapsed { max-height: 0; min-height: 0; opacity: 0; visibility: hidden; }
+
+/* Folders and modules look different (2026-11-14, the firm's request). A
+   folder heading's icon sits in a brand-tinted chip — solid for the folder you
+   are in — and the modules inside an open folder hang off a thin guide line,
+   indented under it. PLAIN top-level CSS: a bare single-class rule inside
+   @layer components is tree-shaken and never ships. */
+.nav-group-chip {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  border-radius: 0.5rem;
+  background-color: hsl(var(--nav-active-bg) / 0.10);
+  color: hsl(var(--nav-active-fg));
+}
+.nav-group-chip-active {
+  background-color: hsl(var(--nav-active-bg));
+  color: #fff;
+}
+.nav-sec-nested {
+  margin-left: 1.625rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid hsl(var(--border));
+}
 .sidebar-collapsed .nav-sec-body.nav-sec-collapsed { max-height: none; opacity: 1; visibility: visible; }
 
 /* ──────────────────────────────────────────────────────────────────────────
