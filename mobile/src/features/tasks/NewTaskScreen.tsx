@@ -32,6 +32,7 @@ import { useMe } from "../../api/me";
 import { toast } from "../../lib/toast";
 import { useSearch } from "../search/api";
 import { useTeam } from "../team/api";
+import { useMeetings } from "../meetings/api";
 import { useSchemeSearch, type SchemeHit } from "../proposals/api";
 import {
   REQUEST_TYPE_BY_KEY, REDEMPTION_ROUTE_CHECKLISTS, FREQUENCIES, requestTypesFor, rowFieldLabel, categoryOfType,
@@ -41,7 +42,8 @@ import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
 
 type Row = { key: number; schemeName: string; schemeCode?: string; amcName?: string; assetCategory?: string; fromSchemeName: string; fromSchemeCode?: string; amount: string; units: string; allUnits: boolean; folio: string; sipDay: string; frequency: string };
 type Template = { id: string; name: string; description?: string | null; taskType?: string | null; priority?: string | null; dueOffsetDays?: number | null; subtasks?: Array<{ id: string; text: string }> };
-type CheckItem = { id: string; text: string };
+/** A sub-task may have its own owner and date (the web's TaskChecklistItem). */
+type CheckItem = { id: string; text: string; assigneeId?: string | null; actionDate?: string };
 
 const KYC_MODES = [{ key: "online", label: "Online KYC" }, { key: "physical", label: "Physical KYC" }] as const;
 const REMINDERS = [
@@ -63,6 +65,9 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
   const qc = useQueryClient();
   const { data: me } = useMe();
   const team = useTeam();
+  const [relatedMeetingId, setRelatedMeetingId] = useState("");
+  // The web's "Related meeting": a recent meeting this task follows from.
+  const recentMeetings = useMeetings({ sort: "meeting_desc" });
   const templates = useQuery({ queryKey: ["task-templates"], queryFn: () => api.get<{ templates: Template[] }>("/api/task-templates").then((r) => r.templates ?? []), staleTime: 5 * 60_000 });
   const redemptionRoute = me?.license?.featureFlags?.redemptionOnlineOffline === true;
 
@@ -172,7 +177,13 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
       requiresApproval: requiresApproval || undefined,
     };
     if (reminder !== "none" && dueDate) payload.remindAt = new Date(new Date(dueDate).getTime() - (REMIND_MIN[reminder] ?? 0) * 60000).toISOString();
-    const items = checklist.map((c) => ({ id: c.id.slice(0, 64), text: c.text.trim(), done: false })).filter((c) => c.text);
+    const items = checklist
+      .map((c) => ({
+        id: c.id.slice(0, 64), text: c.text.trim(), done: false,
+        ...(c.assigneeId ? { assigneeId: c.assigneeId } : {}),
+        ...(c.actionDate ? { actionDate: c.actionDate } : {}),
+      }))
+      .filter((c) => c.text);
     if (items.length) payload.checklist = items;
     if (templateId) payload.templateId = templateId;
     if (recurrence) { payload.recurrence = recurrence; if (recurrenceUntil) payload.recurrenceUntil = recurrenceUntil; }
@@ -203,6 +214,7 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
     }
     if (client) payload.relatedInvestorId = client.id;
     if (lead) payload.relatedLeadId = lead.id;
+    if (relatedMeetingId) payload.relatedMeetingId = relatedMeetingId;
 
     setBusy(true);
     try {
@@ -301,16 +313,42 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
               options={[{ value: "", label: "Doesn't repeat" }, { value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }, { value: "yearly", label: "Yearly" }]} onChange={setRecurrence} />
             {recurrence ? <DateField label="Until (optional)" value={recurrenceUntil} onChange={setRecurrenceUntil} /> : null}
             <Pick label="Also link to a lead" value={lead?.name} onPress={() => setPick("lead")} onClear={lead ? () => setLead(null) : undefined} />
+            <SelectField
+              label="Related meeting"
+              value={relatedMeetingId || null}
+              placeholder="Pick a recent meeting (optional)"
+              options={[
+                ...(relatedMeetingId ? [{ value: "", label: "No meeting" }] : []),
+                ...(recentMeetings.data?.meetings ?? []).slice(0, 50).map((m) => ({
+                  value: m.id,
+                  label: `${m.meeting_date ? new Date(m.meeting_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"} — ${m.investor_name ?? m.subject_name ?? "—"}${m.category ? ` · ${String(m.category).replace(/_/g, " ")}` : ""}`,
+                })),
+              ]}
+              onChange={setRelatedMeetingId}
+            />
           </Card>
         ) : null}
 
         <Card flat style={{ marginTop: spacing.md }}>
           <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>Sub-tasks</Text>
           {checklist.map((c) => (
-            <View key={c.id} style={styles.item}>
-              <Feather name="circle" size={14} color={palette.faint} />
-              <Text variant="body" style={{ flex: 1 }}>{c.text}</Text>
-              <Pressable onPress={() => setChecklist((l) => l.filter((x) => x.id !== c.id))} hitSlop={8} accessibilityLabel={`Remove ${c.text}`}><Feather name="x" size={15} color={palette.faint} /></Pressable>
+            <View key={c.id} style={styles.subtask}>
+              <View style={styles.item}>
+                <Feather name="circle" size={14} color={palette.faint} />
+                <Text variant="body" style={{ flex: 1 }}>{c.text}</Text>
+                <Pressable onPress={() => setChecklist((l) => l.filter((x) => x.id !== c.id))} hitSlop={8} accessibilityLabel={`Remove ${c.text}`}><Feather name="x" size={15} color={palette.faint} /></Pressable>
+              </View>
+              {/* Each sub-task may go to someone else, by its own date (the web's row). */}
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <SelectField label="Assign to" value={c.assigneeId ?? null} placeholder="Task's assignee"
+                    options={[...(c.assigneeId ? [{ value: "", label: "Task's assignee" }] : []), ...people]}
+                    onChange={(v) => setChecklist((l) => l.map((x) => (x.id === c.id ? { ...x, assigneeId: v || null } : x)))} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <DateField label="Due date" value={c.actionDate ?? ""} onChange={(v) => setChecklist((l) => l.map((x) => (x.id === c.id ? { ...x, actionDate: v } : x)))} />
+                </View>
+              </View>
             </View>
           ))}
           <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "flex-end" }}>
@@ -418,6 +456,7 @@ function SchemePicker({ onClose, onPick }: { onClose: () => void; onPick: (s: Sc
 }
 
 const styles = StyleSheet.create({
+  subtask: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.lineSoft, marginBottom: spacing.sm },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.lg, marginTop: -spacing.sm },
   chip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.surface },
   chipOn: { backgroundColor: palette.brand, borderColor: palette.brand },
