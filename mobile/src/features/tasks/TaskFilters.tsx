@@ -14,7 +14,7 @@ import { Chip } from "../../components/ui/Chip";
 import { DateField } from "../../components/form/DateField";
 import { titleCase } from "../../lib/format";
 import { palette, spacing, fontWeight } from "../../theme/tokens";
-import { TASK_STATUSES, TASK_PRIORITIES, TASK_TYPES, TASK_DEPARTMENTS } from "./api";
+import { TASK_STATUSES, TASK_PRIORITIES, TASK_DEPARTMENTS } from "./api";
 
 export interface UiTaskFilters {
   status: string[];
@@ -72,7 +72,6 @@ export function TaskFilters({
         </Group>
         <ChipGroup title="Status" opts={TASK_STATUSES.map((s) => ({ v: s.key, l: s.label }))} selected={draft.status} onToggle={(v) => toggle("status", v)} />
         <ChipGroup title="Priority" opts={TASK_PRIORITIES.map((p) => ({ v: p.key, l: p.label }))} selected={draft.priority} onToggle={(v) => toggle("priority", v)} />
-        <ChipGroup title="Type" opts={TASK_TYPES.map((t) => ({ v: t, l: titleCase(t) }))} selected={draft.type} onToggle={(v) => toggle("type", v)} />
         <ChipGroup title="Department" opts={TASK_DEPARTMENTS.map((d) => ({ v: d, l: titleCase(d) }))} selected={draft.department} onToggle={(v) => toggle("department", v)} />
         {rmOptions.length > 0 && <ChipGroup title="Assignee" opts={rmOptions.map((r) => ({ v: r.id, l: r.name ?? "—" }))} selected={draft.assignee} onToggle={(v) => toggle("assignee", v)} />}
         <Group title="Created (date range)">

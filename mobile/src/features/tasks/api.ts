@@ -1,6 +1,13 @@
 /**
  * Tasks data layer — GET /api/tasks (full web filter/sort/view set) + KPI strip
  * (GET /api/tasks/kpis). Create / edit / complete / delete via /api/tasks[/id].
+ *
+ * The task page's own endpoints (live CRM): comments (/comments — the old
+ * `remarks` column is read-only "Earlier notes"; PATCHing remarks REPLACES it),
+ * related records (/related; link/unlink by PATCHing related*Id), "Need
+ * information" (/info-request — asking blocks the task, answering restores it)
+ * and the approval loop (PATCH approvalAction; completing a task that needs
+ * approval sends it for approval instead).
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -30,10 +37,20 @@ export interface Task {
   leadName?: string | null;
   remarks: string | null;
   recurrence?: string | null;
-  meta?: { checklist?: ChecklistItem[]; [k: string]: any } | null;
+  /** When the work came in (YYYY-MM-DD); the closed date is completedAt (set by the database). */
+  entryDate?: string | null;
+  requiresApproval?: boolean | null;
+  approvalStatus?: "pending" | "approved" | "rejected" | null;
+  createdById?: string | null;
+  meta?: { checklist?: ChecklistItem[]; infoRequest?: InfoRequest | null; request?: TaskRequest | null; boValue?: number; boChannel?: string; businessEntryId?: string | null; [k: string]: any } | null;
+  /** "How we do this" — the firm's SOPs for this task. */
+  sops?: Array<{ sopId: string; key: string; title: string; category: string | null; versionNumber: number; markdown: string; matched: string }>;
   createdAt?: string | null;
   [key: string]: any;
 }
+
+export interface InfoRequest { question: string; askedById: string; askedByName?: string | null; askedToId: string; askedToName?: string | null; askedAt: string; answer?: string | null; answeredAt?: string | null }
+export interface TaskRequest { kycMode?: string; folio?: string; rows?: Array<{ schemeName?: string; fromSchemeName?: string; amount?: number; units?: number; allUnits?: boolean; folio?: string; sipDay?: string; frequency?: string }> }
 
 export interface ChecklistItem {
   id: string;
@@ -65,7 +82,9 @@ export function useTasks(filters: TaskFilters) {
     queryFn: () =>
       api.get<{ tasks: Task[]; total: number }>("/api/tasks", {
         q: filters.q || undefined,
-        status: filters.status || undefined,
+        // The CRM's list is every unfinished task — a task waiting on "Need
+        // information" is blocked, and the API alone would show only open ones.
+        status: filters.status || (filters.view === "kanban" ? undefined : "open,in_progress,blocked"),
         priority: filters.priority || undefined,
         type: filters.type || undefined,
         department: filters.department || undefined,
@@ -110,11 +129,37 @@ export function useDeleteTask() {
   });
 }
 
+export interface TaskComment { id: string; body: string; authorId: string; authorName: string | null; createdAt: string }
+export function useTaskComments(id?: string) {
+  return useQuery({ queryKey: ["task-comments", id], enabled: !!id, queryFn: () => api.get<{ comments: TaskComment[] }>(`/api/tasks/${id}/comments`).then((r) => r.comments) });
+}
+export function useAddTaskComment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => api.post(`/api/tasks/${id}/comments`, { body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["task-comments", id] }),
+  });
+}
+
+export interface TaskLink { kind: "client" | "lead" | "meeting" | "request"; id: string; name: string; sub: string | null; href: string; fixed: boolean }
+export function useTaskRelated(id?: string) {
+  return useQuery({ queryKey: ["task-related", id], enabled: !!id, queryFn: () => api.get<{ links: TaskLink[]; canEdit: boolean }>(`/api/tasks/${id}/related`) });
+}
+
+/** Ask (blocks the task) or answer (restores its status) a "Need information" question. */
+export function useInfoRequest(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { action: "ask"; question: string; askToId?: string } | { action: "answer"; answer: string }) => api.post(`/api/tasks/${id}/info-request`, body),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["task", id] }); qc.invalidateQueries({ queryKey: ["tasks"] }); },
+  });
+}
+
 export function useUpdateTask(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (patch: Partial<Task>) => queuedPatch(`/api/tasks/${id}`, patch, "Task update"),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["task", id] }); qc.invalidateQueries({ queryKey: ["tasks"] }); qc.invalidateQueries({ queryKey: ["task-kpis"] }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["task", id] }); qc.invalidateQueries({ queryKey: ["tasks"] }); qc.invalidateQueries({ queryKey: ["task-kpis"] }); qc.invalidateQueries({ queryKey: ["task-related", id] }); },
   });
 }
 
@@ -130,7 +175,6 @@ export const TASK_PRIORITIES = [
   { key: "urgent", label: "Urgent" }, { key: "high", label: "High" }, { key: "normal", label: "Normal" }, { key: "low", label: "Low" },
 ];
 export const TASK_DEPARTMENTS = ["sales", "operations", "back_office", "compliance", "marketing", "advisory", "support", "leadership", "other"];
-export const TASK_TYPES = ["follow_up", "review_meeting", "collect_document", "kyc_renewal", "mandate_renewal", "custom"];
 
 export const statusMeta = (s?: string | null) => TASK_STATUSES.find((x) => x.key === s);
 export const TASK_PRIORITY_TONE: Record<string, Tone> = { urgent: "danger", high: "warning", normal: "info", low: "neutral", medium: "info" };

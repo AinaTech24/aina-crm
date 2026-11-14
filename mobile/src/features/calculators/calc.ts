@@ -680,7 +680,10 @@ export type CrashStressResult = {
   finalPanic: number;
   costOfPanic: number;
   crashDropAmount: number;
+  crashInHorizon: boolean; // false when the crash year falls after the horizon
+  /** Months for the MARKET (unit NAV) to regain its pre-crash level — new SIP money excluded. */
   recoveryMonths: number | null;
+  gapToNoCrash: number; // no-crash − stayed-invested at the horizon (≥ 0 = never caught up)
   series: CrashPoint[]; // yearly snapshots
 };
 
@@ -689,13 +692,15 @@ export function computeCrashStress(input: CrashStressInput): CrashStressResult {
   const mFd = monthlyRate(input.fdRatePct);
   const n = Math.max(0, Math.round(input.years * 12));
   const crashMonth = Math.max(1, Math.round(input.crashYear * 12));
+  const drop = Math.min(100, Math.max(0, input.crashPct)) / 100; // a fall can't exceed 100%
 
   let stay = input.lumpsum;
   let noCrash = input.lumpsum;
   let panic = input.lumpsum;
   let panicked = false;
   let invested = input.lumpsum;
-  let preCrashPeak = 0;
+  let nav = 1; // unit NAV — recovery is the market's, not the corpus topped up by new SIPs
+  let preCrashNav = 0;
   let recoveryMonths: number | null = null;
   let crashDropAmount = 0;
 
@@ -711,17 +716,19 @@ export function computeCrashStress(input: CrashStressInput): CrashStressResult {
     stay *= 1 + m;
     noCrash *= 1 + m;
     panic *= panicked ? 1 + mFd : 1 + m;
+    nav *= 1 + m;
 
     if (i === crashMonth) {
-      preCrashPeak = stay;
-      crashDropAmount = stay * (input.crashPct / 100);
-      stay *= 1 - input.crashPct / 100;
+      preCrashNav = nav;
+      nav *= 1 - drop;
+      crashDropAmount = stay * drop;
+      stay *= 1 - drop;
       // Panic seller redeems at the bottom and moves to cash/FD.
-      panic *= 1 - input.crashPct / 100;
+      panic *= 1 - drop;
       panicked = true;
     }
 
-    if (panicked && recoveryMonths === null && i > crashMonth && stay >= preCrashPeak) {
+    if (panicked && recoveryMonths === null && i > crashMonth && nav >= preCrashNav - 1e-9) {
       recoveryMonths = i - crashMonth;
     }
 
@@ -735,7 +742,9 @@ export function computeCrashStress(input: CrashStressInput): CrashStressResult {
     finalPanic: panic,
     costOfPanic: Math.max(0, stay - panic),
     crashDropAmount,
+    crashInHorizon: crashMonth <= n,
     recoveryMonths,
+    gapToNoCrash: noCrash - stay,
     series,
   };
 }
@@ -868,12 +877,13 @@ export type NpsInput = {
 
 export type NpsResult = {
   years: number;
+  annuityPortionPct: number; // the % actually used (clamped to 40–100)
   corpus: number;
   totalContributed: number;
   lumpSum: number; // tax-free withdrawal
   annuityCorpus: number;
   monthlyPension: number;
-  annual80CCD1BBenefit: number; // tax saved this year on the extra ₹50k
+  annual80CCD1BBenefit: number; // tax saved this year on the extra ≤ ₹50k (old regime)
 };
 
 export function computeNps(input: NpsInput): NpsResult {
@@ -893,14 +903,19 @@ export function computeNps(input: NpsInput): NpsResult {
     }
   }
 
-  const annuityPortion = Math.min(100, Math.max(40, input.annuityPortionPct)) / 100;
+  const annuityPortionPct = Math.min(100, Math.max(40, input.annuityPortionPct));
+  const annuityPortion = annuityPortionPct / 100;
   const annuityCorpus = corpus * annuityPortion;
   const lumpSum = corpus - annuityCorpus;
   const monthlyPension = (annuityCorpus * (input.annuityRatePct / 100)) / 12;
-  const annual80CCD1BBenefit = 50000 * (input.taxSlabPct / 100);
+  // 80CCD(1B), old regime only: the year's own contribution, capped at ₹50,000;
+  // the saving includes the 4% cess.
+  const annual80CCD1BBenefit =
+    Math.min(50000, Math.max(0, input.monthlyContribution) * 12) * (input.taxSlabPct / 100) * 1.04;
 
   return {
     years,
+    annuityPortionPct,
     corpus,
     totalContributed,
     lumpSum,
@@ -916,10 +931,14 @@ export function computeNps(input: NpsInput): NpsResult {
  * src/lib/calculators/goal-collision.ts).
  */
 
-/** Monthly SIP to reach `futureCost` in `years` at `ratePct` (begin mode). */
+/** A goal less than half a month away has no SIP horizon — it needs a lumpsum. */
+export const isDueNow = (years: number): boolean => Math.round(years * 12) <= 0;
+
+/** Monthly SIP to reach `futureCost` in `years` at `ratePct` (begin mode).
+ *  0 for a goal due now (see isDueNow) — never the whole cost as a "monthly" SIP. */
 export function requiredMonthlySip(futureCost: number, ratePct: number, years: number): number {
   const months = Math.max(0, Math.round(years * 12));
-  if (months <= 0) return futureCost;
+  if (months <= 0) return 0;
   const m = monthlyRate(ratePct);
   const factor = m === 0 ? months : ((Math.pow(1 + m, months) - 1) / m) * (1 + m);
   return factor > 0 ? futureCost / factor : 0;
@@ -1001,8 +1020,11 @@ export function computeChildEducation(input: ChildEducationInput): ChildEducatio
 }
 
 /* ═══════════════════════ Reference cases (source provenance) ═══════════════════════
- * Each ported symbol with the source file it was copied from VERBATIM. No
- * fabricated expected numbers — verify against the web app at runtime.
+ * Each ported symbol with the source file it was copied from VERBATIM. Synced
+ * with the web's calculator-maths fix 1752943b (2026-11-02): retirement
+ * inflation, STP loss, rent-vs-buy owner savings, BTID after LTCG, EMI→SIP with
+ * no tenure, crash recovery on NAV, NPS 80CCD(1B), due-now goals.
+ * src/lib/__tests__/calcParity.test.ts pins the web's answers for each.
  *
  *   growingSipSchedule    ← src/lib/goal-planning/calc.ts  (effective monthly rate, annuity-due)
  *   costOfDelay           ← src/lib/goal-planning/calc.ts  (nominal r/12 via goals fvSip/fvLumpsum)
@@ -1023,6 +1045,6 @@ export function computeChildEducation(input: ChildEducationInput): ChildEducatio
  *   computeCrashStress    ← src/lib/calculators/crash-stress.ts  (monthlyRate)
  *   computeFire           ← src/lib/calculators/fire.ts  (+ projectedCorpus / sustainabilityCheck, inline)
  *   computeNps            ← src/lib/calculators/nps.ts  (monthlyRate)
- *   computeChildEducation ← src/lib/calculators/child-education.ts  (+ requiredMonthlySip, inline from goal-collision.ts)
+ *   computeChildEducation ← src/lib/calculators/child-education.ts  (+ requiredMonthlySip / isDueNow, inline from goal-collision.ts)
  *   monthlyRate           ← src/lib/calculators/sip360.ts  (shared effective-monthly-rate helper)
  */

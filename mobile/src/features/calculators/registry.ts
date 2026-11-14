@@ -14,7 +14,7 @@ import {
 import {
   growingSipSchedule, costOfDelay, retirementCorpus, swpDeplete, cagrCalculate,
   monthsToTarget, fdVsEquity, rentVsBuy, emergencyFund, btid, computeEmiSip,
-  computeCrashStress, computeFire, computeNps, computeChildEducation,
+  computeCrashStress, computeFire, computeNps, computeChildEducation, isDueNow,
 } from "./calc";
 import { inr } from "../../lib/format";
 import type { CalculatorDef } from "./types";
@@ -147,9 +147,12 @@ const cagr: CalculatorDef = {
   ],
   compute: (v) => {
     const r = cagrCalculate({ initialValue: v.initial, finalValue: v.final, years: v.years });
+    // cagrCalculate returns 0% when there is no base value or period — show "—" (as the CRM does).
+    const hasBase = v.initial > 0;
+    const hasCagr = hasBase && v.years > 0;
     return [
-      { type: "stat", label: "CAGR", value: pct(r.cagrPct), tone: "success" },
-      { type: "stat", label: "Absolute return", value: pct(r.absoluteReturnPct), tone: "neutral" },
+      { type: "stat", label: "CAGR", value: hasCagr ? pct(r.cagrPct) : "—", tone: "success" },
+      { type: "stat", label: "Absolute return", value: hasBase ? pct(r.absoluteReturnPct) : "—", tone: "neutral" },
     ];
   },
 };
@@ -173,7 +176,8 @@ const goal: CalculatorDef = {
     });
     return [
       { type: "stat", label: "Goal cost at that time", value: compact(r.futureTarget), tone: "warning", hint: `${compact(v.presentTarget)} today + ${pct(v.inflationPct)} inflation` },
-      { type: "stat", label: "Monthly SIP needed", value: compact(r.requiredMonthlySipTotal), tone: "success" },
+      // No months left ⇒ no SIP can reach the goal: "—", not ₹0 (as the CRM does).
+      { type: "stat", label: "Monthly SIP needed", value: r.months > 0 ? compact(r.requiredMonthlySipTotal) : "—", tone: "success", hint: r.months > 0 ? undefined : "due now — lumpsum only" },
       { type: "stat", label: "Or lumpsum today", value: compact(r.requiredLumpsumToday), tone: "neutral" },
     ];
   },
@@ -217,7 +221,8 @@ const retirement: CalculatorDef = {
     });
     return [
       { type: "stat", label: "Corpus needed at retirement", value: compact(r.corpusRequired), tone: "warning" },
-      { type: "stat", label: "Monthly SIP from now", value: compact(r.monthlySavingsRequired), tone: "success" },
+      // No years left to save but a shortfall ⇒ "—", not ₹0 (as the CRM does).
+      { type: "stat", label: "Monthly SIP from now", value: r.preRetirementYears <= 0 && r.corpusRequired > r.fvOfExistingFund ? "—" : compact(r.monthlySavingsRequired), tone: "success" },
       { type: "stat", label: "Monthly income at retirement", value: compact(r.monthlyIncomeAtRetirement), tone: "neutral", hint: "inflation-adjusted" },
     ];
   },
@@ -240,9 +245,14 @@ const childEdu: CalculatorDef = {
       existingSavings: v.existingSavings,
       milestones: [{ name: "Education", childAgeAtStart: v.goalAge, currentCost: v.costToday }],
     });
+    // Admission less than half a month away has no SIP horizon: it needs a lumpsum (as the CRM shows).
+    const dueNow = isDueNow(r.milestones[0]?.yearsAway ?? 0);
     return [
       { type: "stat", label: "Future cost", value: compact(r.totalFutureCost), tone: "warning" },
-      { type: "stat", label: "Monthly SIP needed", value: compact(r.totalMonthlySip), tone: "success" },
+      dueNow
+        ? { type: "stat", label: "Monthly SIP needed", value: "Due now — lumpsum", tone: "success" }
+        : { type: "stat", label: "Monthly SIP needed", value: compact(r.totalMonthlySip), tone: "success" },
+      { type: "stat", label: "Or lumpsum today", value: compact(r.totalLumpsum), tone: "neutral" },
       { type: "insight", text: `Education inflation (${pct(v.eduInflationPct)}) runs higher than general inflation — starting early is what makes the SIP affordable.` },
     ];
   },
@@ -313,7 +323,7 @@ const fdEquity: CalculatorDef = {
     return [
       { type: "stat", label: "Equity corpus", value: compact(r.eq), tone: "success" },
       { type: "stat", label: "FD corpus", value: compact(r.fd), tone: "neutral" },
-      { type: "stat", label: "Gap", value: compact(r.gap), tone: "brand" },
+      { type: "stat", label: "Gap", value: compact(Math.abs(r.gap)), tone: "brand", hint: r.gap >= 0 ? "in equity's favour" : "in the FD's favour" },
     ];
   },
 };
@@ -339,7 +349,7 @@ const rentBuy: CalculatorDef = {
       rentInflationPct: v.rentInflationPct, equityReturnPct: v.equityReturnPct, horizonYears: v.years,
     });
     return [
-      { type: "stat", label: "Net worth if you BUY", value: compact(r.buyNetWorth), tone: r.winner === "buy" ? "success" : "neutral" },
+      { type: "stat", label: "Net worth if you BUY", value: compact(r.buyNetWorth), tone: r.winner === "buy" ? "success" : "neutral", hint: "home equity + savings invested" },
       { type: "stat", label: "Net worth if you RENT + invest", value: compact(r.rentNetWorth), tone: r.winner === "rent" ? "success" : "neutral" },
       { type: "insight", text: r.winner === "buy" ? "Buying comes out ahead over this horizon." : "Renting and investing the difference comes out ahead here.", tone: "brand" },
     ];
@@ -379,11 +389,15 @@ const btidCalc: CalculatorDef = {
   ],
   compute: (v) => {
     const r = btid({ annualBudget: v.annualBudget, termAnnualPremium: v.termAnnualPremium, termCover: v.termCover, years: v.years, mfReturnPct: v.mfReturnPct, tradReturnPct: v.tradReturnPct });
+    // Compared after tax, as the CRM does: MF gains pay 12.5% LTCG above ₹1.25 L.
+    const mfAhead = r.wealthGap >= 0;
+    const coverAhead = r.coverGap >= 0;
     return [
-      { type: "stat", label: "Term + MF corpus", value: compact(r.btidCorpus), tone: "success", hint: `+ ${compact(r.btidCover)} life cover` },
-      { type: "stat", label: "ULIP/endowment corpus", value: compact(r.tradCorpus), tone: "neutral", hint: `+ ${compact(r.tradCover)} cover` },
-      { type: "stat", label: "Extra wealth", value: compact(r.wealthGap), tone: "brand" },
-      { type: "insight", text: `Buying a term plan and investing the rest in MF builds ${compact(r.wealthGap)} more — with ${compact(r.coverGap)} more life cover too.` },
+      { type: "stat", label: "Term + MF corpus (post-tax)", value: compact(r.btidPostTax), tone: mfAhead ? "success" : "neutral", hint: `+ ${compact(r.btidCover)} life cover` },
+      { type: "stat", label: "ULIP/endowment corpus", value: compact(r.tradPostTax), tone: mfAhead ? "neutral" : "success", hint: `+ ${compact(r.tradCover)} cover` },
+      { type: "stat", label: mfAhead ? "Extra wealth" : "Wealth short", value: compact(Math.abs(r.wealthGap)), tone: "brand" },
+      { type: "insight", text: `Term + MF builds ${compact(Math.abs(r.wealthGap))} ${mfAhead ? "more" : "less"} wealth after LTCG, with ${compact(Math.abs(r.coverGap))} ${coverAhead ? "more" : "less"} life cover.`, tone: mfAhead && coverAhead ? "success" : "warning" },
+      { type: "insight", text: r.ulipTaxFree ? "ULIP maturity tax-free only while the annual premium is ≤ ₹2.5 L." : "Premium above ₹2.5 L/yr: ULIP gains taxed as LTCG too." },
     ];
   },
 };
@@ -402,12 +416,16 @@ const emergency: CalculatorDef = {
   ],
   compute: (v) => {
     const r = emergencyFund({ monthlyExpense: v.monthlyExpense, monthsBuffer: v.monthsBuffer, existing: v.existing, buildMonths: v.buildMonths, parkReturnPct: v.parkReturnPct });
+    const funded = r.gap <= 0;
+    const noPeriod = !funded && v.buildMonths <= 0; // a gap but no build period → no SIP to show
     return [
       { type: "stat", label: "Target fund", value: compact(r.target), tone: "success" },
       { type: "stat", label: "Still to build", value: compact(r.gap), tone: r.gap > 0 ? "warning" : "neutral" },
-      r.requiredSip > 0
-        ? { type: "stat", label: `Monthly SIP for ${v.buildMonths} months`, value: compact(r.requiredSip), tone: "brand" }
-        : { type: "insight", text: "You're already covered — well done.", tone: "success" },
+      funded
+        ? { type: "insight", text: "You're already covered — well done.", tone: "success" }
+        : noPeriod
+          ? { type: "insight", text: `Set a build period to spread the ${compact(r.gap)} gap.`, tone: "warning" }
+          : { type: "stat", label: `Monthly SIP for ${v.buildMonths} months`, value: compact(r.requiredSip), tone: "brand" },
     ];
   },
 };
@@ -434,7 +452,7 @@ const fire: CalculatorDef = {
       monthlySip: v.monthly, sipStepUpPct: v.stepUpPct, swrPct: v.swrPct, lifeExpectancy: v.lifeExpectancy,
     });
     const out: any[] = [
-      { type: "stat", label: "FIRE number (today's value)", value: compact(r.fireNumberToday), tone: "warning" },
+      { type: "stat", label: "FIRE number (today's value)", value: v.swrPct > 0 ? compact(r.fireNumberToday) : "—", tone: "warning" },
     ];
     if (r.fireAge != null) {
       out.push({ type: "stat", label: "You reach FIRE at age", value: String(r.fireAge), tone: "success", hint: r.yearsToFire != null ? `in ${r.yearsToFire} years` : undefined });
@@ -468,9 +486,9 @@ const nps: CalculatorDef = {
     });
     return [
       { type: "stat", label: "Corpus at retirement", value: compact(r.corpus), tone: "success" },
-      { type: "stat", label: "Lumpsum (tax-free)", value: compact(r.lumpSum), tone: "neutral" },
-      { type: "stat", label: "Monthly pension", value: compact(r.monthlyPension), tone: "brand" },
-      { type: "insight", text: `Plus about ${compact(r.annual80CCD1BBenefit)}/yr saved in tax under 80CCD(1B).` },
+      { type: "stat", label: `Lumpsum (${100 - r.annuityPortionPct}%, tax-free)`, value: compact(r.lumpSum), tone: "neutral" },
+      { type: "stat", label: "Monthly pension", value: compact(r.monthlyPension), tone: "brand", hint: `from ${r.annuityPortionPct}% annuitised` },
+      { type: "insight", text: `Plus about ${compact(r.annual80CCD1BBenefit)}/yr saved in tax under 80CCD(1B) (old regime).` },
     ];
   },
 };
@@ -496,7 +514,9 @@ const crash: CalculatorDef = {
       { type: "stat", label: "If you STAY invested", value: compact(r.finalStay), tone: "success" },
       { type: "stat", label: "If you PANIC-SELL", value: compact(r.finalPanic), tone: "danger" },
       { type: "stat", label: "Cost of panic", value: compact(r.costOfPanic), tone: "warning" },
-      { type: "insight", text: `A ${pct(v.crashPct)} crash in year ${v.crashYear} feels scary, but selling locks in the loss — staying invested ends ${compact(r.costOfPanic)} richer.`, tone: "brand" },
+      !r.crashInHorizon
+        ? { type: "insight", text: `Year ${v.crashYear} is outside the ${yrs(v.years)} horizon — no crash is modelled.`, tone: "warning" }
+        : { type: "insight", text: `A ${pct(Math.min(100, v.crashPct))} crash in year ${v.crashYear} feels scary, but selling locks in the loss — ${r.recoveryMonths != null ? `the market regains its pre-crash level in about ${(Math.round((r.recoveryMonths / 12) * 10) / 10)} years, and ` : ""}staying invested ends ${compact(r.costOfPanic)} richer.`, tone: "brand" },
     ];
   },
 };
