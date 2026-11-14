@@ -5,8 +5,8 @@
  * an active RM. Two strategies — settable per-tenant later via masters; for
  * now we pick the strategy that gives the most balanced distribution:
  *
- *   1. "least_loaded"  — pick the RM with the fewest open (un-converted, un-lost)
- *                        leads. Self-balancing.
+ *   1. "least_loaded"  — pick the RM with the fewest OPEN leads (leadOpenSql:
+ *                        not won, converted, lost or deleted). Self-balancing.
  *   2. "round_robin"   — pick the RM who hasn't received a lead in the longest
  *                        time (LRU). Fair sequence.
  *
@@ -19,6 +19,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { leadOpenSql } from "@/lib/metrics/leads";
 
 export type AssignStrategy = "least_loaded" | "round_robin";
 
@@ -47,9 +48,13 @@ export async function pickRmForNewLead(
   if (strategy === "least_loaded") {
     const r = await tx.execute(sql`
       SELECT u.id,
+        -- Genuinely open leads only: the board's open columns (New → Proposal
+        -- Sent, loops folded in), never a converted, lost, onboarding or
+        -- deleted one (audit L13) — the same definition the dashboards count.
         (SELECT COUNT(*) FROM leads l
           WHERE l.owner_id = u.id
-            AND l.stage NOT IN ('converted', 'lost', 'cold', 'not_interested')
+            AND l.lost_reason IS DISTINCT FROM '__deleted__'
+            AND ${leadOpenSql("l")}
         )::int AS open_count
       FROM users u
       WHERE 'rm' = ANY(u.roles)

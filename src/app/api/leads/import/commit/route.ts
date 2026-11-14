@@ -1,6 +1,20 @@
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/leads/import/commit  Body: { mapping, rows }
+ *
+ * Each row is held to the New lead rules (audit L19):
+ *   - phone / email are stored with their normalised twins (the duplicate
+ *     check and every lookup read those), as POST /api/leads does;
+ *   - a PAN that is not a PAN rejects the row, with the reason;
+ *   - a row whose phone, email or PAN is already a CLIENT, an existing lead,
+ *     or an earlier row of the same file is skipped with the reason — never a
+ *     silent duplicate (no name or owner of the match is shown);
+ *   - the owner is the row's Owner column (a team member's email or name)
+ *     when it names an active member the importer may assign to, else the
+ *     firm's Assignment Rules / least-loaded pick (lib/leads/ownership.ts) —
+ *     never simply the importer; the lead's branch is its owner's, and each
+ *     owner is told how many leads they were given.
+ * Every row runs in its own savepoint, so one bad row never aborts the rest.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -13,6 +27,18 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { scoreFields } from "@/lib/leads/score";
+import {
+  LEAD_PHASE_STAGES,
+  normalizeEmail,
+  normalizeLeadSource,
+  normalizeLeadStage,
+  normalizePhoneLast10,
+} from "@/lib/leads/normalize";
+import { isValidPan } from "@/lib/leads/contact-rules";
+import { isBranchScoped } from "@/lib/leads/access";
+import { autoAssignLeadOwner } from "@/lib/leads/ownership";
+import { createNotification } from "@/lib/notifications/create";
+import { startJourneyAt } from "@/lib/blueprints/journey-access";
 import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
 
 export const dynamic = "force-dynamic";
@@ -25,11 +51,6 @@ const Body = z.object({
   rows: z.array(z.record(z.string(), z.any())).max(10000),
 });
 
-const VALID_STAGES = new Set(["new", "contacted", "qualified", "proposal_sent", "converted", "lost", "cold"]);
-const VALID_SOURCES = new Set([
-  "website", "referral", "meta_ads", "google_ads", "linkedin", "youtube",
-  "webinar", "event", "walk_in", "manual", "other",
-]);
 const VALID_AUM = new Set(["under_10l", "10l_50l", "50l_2cr", "hni_2cr_plus"]);
 const VALID_LEAD_TYPE = new Set(["individual", "hni", "nri", "huf", "corporate", "minor"]);
 
@@ -80,12 +101,54 @@ export async function POST(req: NextRequest) {
     }
 
     let inserted = 0;
-    const skipped = 0;
+    let skipped = 0;
     const errors: Array<{ rowIndex: number; error: string }> = [];
+    const skippedRows: Array<{ rowIndex: number; reason: string }> = [];
 
     await withTenant(session.tenantId, async (tx) => {
       // Firm custom-field definitions — any mapped cf_* column is sanitized + stored.
       const cfDefs = await loadCustomFieldDefs(tx, session.tenantId, "lead");
+
+      // Who is already on file — clients and (live) leads — by the same keys
+      // the New lead form's duplicate check uses. Loaded once, not per row.
+      const keysOf = (rows: any[]) => ({
+        phone: new Set(rows.map((r) => r.phone).filter(Boolean) as string[]),
+        email: new Set(rows.map((r) => r.email).filter(Boolean) as string[]),
+        pan: new Set(rows.map((r) => r.pan).filter(Boolean) as string[]),
+      });
+      const clientKeys = keysOf((await tx.execute(sql`
+        SELECT NULLIF(right(regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10), '') AS phone,
+               NULLIF(lower(btrim(COALESCE(email, ''))), '') AS email,
+               NULLIF(upper(btrim(COALESCE(pan, ''))), '') AS pan
+          FROM investors
+         WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
+      `)).rows as any[]);
+      const leadKeys = keysOf((await tx.execute(sql`
+        SELECT phone_normalized AS phone, email_normalized AS email, NULLIF(upper(btrim(COALESCE(pan, ''))), '') AS pan
+          FROM leads
+         WHERE tenant_id = ${session.tenantId}::uuid AND lost_reason IS DISTINCT FROM '__deleted__'
+      `)).rows as any[]);
+      const dupOf = (keys: ReturnType<typeof keysOf>, k: { phone: string | null; email: string | null; pan: string | null }) =>
+        [k.phone && keys.phone.has(k.phone) ? "phone" : null, k.email && keys.email.has(k.email) ? "email" : null, k.pan && keys.pan.has(k.pan) ? "PAN" : null]
+          .filter(Boolean) as string[];
+
+      // The team the Owner column may name: active members — a branch-locked
+      // importer only their own branch's.
+      const members = (await tx.execute(sql`
+        SELECT id::text AS id, lower(email) AS email, name, branch_id::text AS branch_id
+          FROM users WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+      `)).rows as Array<{ id: string; email: string | null; name: string | null; branch_id: string | null }>;
+      const branchLocked = isBranchScoped(session);
+      const findOwner = (raw: string) => {
+        const v = raw.trim().toLowerCase();
+        if (!v) return null;
+        const byEmail = members.filter((m) => m.email === v);
+        // "Pooja Shah (RM)" → "pooja shah": the role is not part of the name.
+        const byName = members.filter((m) => (m.name ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim().toLowerCase() === v);
+        const hits = byEmail.length ? byEmail : byName;
+        return hits.length === 1 ? hits[0] : null;
+      };
+      const assignedCount = new Map<string, number>();
 
       for (let i = 0; i < parse.data.rows.length; i++) {
         const row = parse.data.rows[i];
@@ -94,13 +157,56 @@ export async function POST(req: NextRequest) {
           errors.push({ rowIndex: i, error: "missing name" });
           continue;
         }
-        const sourceRaw = pick(row, reverse.source).toLowerCase().replace(/\s+/g, "_");
-        const source = VALID_SOURCES.has(sourceRaw) ? sourceRaw : "manual";
-        const stageRaw = pick(row, reverse.stage).toLowerCase().replace(/\s+/g, "_");
-        const stage = VALID_STAGES.has(stageRaw) ? stageRaw : "new";
+        // The same source vocabulary as the form and the filters (aliases
+        // such as "Facebook" or "Google Ads" fold onto it).
+        const source = normalizeLeadSource(pick(row, reverse.source));
+        // The SOP's own lead stage (legacy names folded onto it); a client
+        // stage or "converted" is not something a spreadsheet can make a lead.
+        const stageRaw = pick(row, reverse.stage);
+        const folded = stageRaw ? normalizeLeadStage(stageRaw) : "new";
+        const stage = (LEAD_PHASE_STAGES as readonly string[]).includes(folded) && folded !== "won_lead" ? folded : "new";
 
         const emailVal = pick(row, reverse.email) || null;
         const phoneVal = pick(row, reverse.phone) || null;
+        const panRaw = pick(row, reverse.pan).toUpperCase();
+        if (panRaw && !isValidPan(panRaw)) {
+          errors.push({ rowIndex: i, error: `invalid PAN "${panRaw.slice(0, 12)}" — 5 letters, 4 digits, 1 letter` });
+          continue;
+        }
+        const keys = { phone: normalizePhoneLast10(phoneVal), email: normalizeEmail(emailVal), pan: panRaw || null };
+        const asClient = dupOf(clientKeys, keys);
+        if (asClient.length) {
+          skipped++;
+          skippedRows.push({ rowIndex: i, reason: `already a client (same ${asClient.join(", ")}) — start an opportunity on their record instead` });
+          continue;
+        }
+        const asLead = dupOf(leadKeys, keys);
+        if (asLead.length) {
+          skipped++;
+          skippedRows.push({ rowIndex: i, reason: `already a lead (same ${asLead.join(", ")})` });
+          continue;
+        }
+
+        // Owner: the row's Owner column, else the assignment rules.
+        let ownerId: string | null = null;
+        let ownerBranch: string | null = null;
+        const ownerRaw = pick(row, reverse.owner);
+        if (ownerRaw) {
+          const m = findOwner(ownerRaw);
+          if (!m) {
+            errors.push({ rowIndex: i, error: `owner "${ownerRaw.slice(0, 60)}" is not one active team member (use their email)` });
+            continue;
+          }
+          if (branchLocked && m.branch_id !== session.branchId) {
+            errors.push({ rowIndex: i, error: `owner "${ownerRaw.slice(0, 60)}" is outside your branch` });
+            continue;
+          }
+          ownerId = m.id;
+          ownerBranch = m.branch_id;
+        } else {
+          ownerId = (await autoAssignLeadOwner(tx, { tenantId: session.tenantId, source, branchId: session.branchId ?? null })) ?? session.userId;
+          ownerBranch = members.find((m) => m.id === ownerId)?.branch_id ?? null;
+        }
         const intendedVal = pick(row, reverse.intendedAmount) || null;
         // New-lead-form fields.
         const aumRaw = pick(row, reverse.aumPotential).toLowerCase().replace(/\s+/g, "_");
@@ -127,9 +233,11 @@ export async function POST(req: NextRequest) {
         });
 
         try {
-          await tx.execute(sql`
+          const leadId = uuid();
+          await tx.transaction(async (sp) => {
+          await sp.execute(sql`
             INSERT INTO leads (
-              id, tenant_id, branch_id, name, email, phone, alt_phone, alt_email, pan, city, pincode,
+              id, tenant_id, branch_id, name, email, email_normalized, phone, phone_normalized, alt_phone, alt_email, pan, city, pincode,
               source, source_campaign, stage, stage_changed_at, score, intended_amount,
               expected_business_amount, aum_potential, lead_type, interest_products, profile,
               referred_by_name, next_follow_up_at, tags,
@@ -137,13 +245,13 @@ export async function POST(req: NextRequest) {
               owner_id, notes, custom_fields, created_at, updated_at
             )
             VALUES (
-              ${uuid()}, ${session.tenantId}, ${session.branchId ?? null},
+              ${leadId}, ${session.tenantId}, ${ownerBranch ?? session.branchId ?? null},
               ${name},
-              ${emailVal},
-              ${phoneVal},
+              ${emailVal}, ${keys.email},
+              ${phoneVal}, ${keys.phone},
               ${pick(row, reverse.altPhone) || null},
               ${pick(row, reverse.altEmail) || null},
-              ${pick(row, reverse.pan).toUpperCase() || null},
+              ${keys.pan},
               ${pick(row, reverse.city) || null},
               ${pick(row, reverse.pincode) || null},
               ${source}, ${pick(row, reverse.campaignName) || null},
@@ -158,16 +266,41 @@ export async function POST(req: NextRequest) {
               ${dateOrNull(pick(row, reverse.nextFollowUpAt))},
               ${tags ? JSON.stringify(tags) : "[]"}::jsonb,
               ${sc.leadScore}, ${sc.scoreBand}, now(),
-              ${session.userId},
+              ${ownerId},
               ${pick(row, reverse.notes) || null},
               ${cfJson}::jsonb,
               now(), now()
             )
           `);
+          // A row imported past "New" starts its journey at that stage, so
+          // the board and the stepper agree (audit L9).
+          if (stage !== "new") {
+            await startJourneyAt(sp as any, session.tenantId, leadId, stage, session.userId);
+          }
+          });
           inserted++;
+          // A later row with the same details is a duplicate of this one.
+          if (keys.phone) leadKeys.phone.add(keys.phone);
+          if (keys.email) leadKeys.email.add(keys.email);
+          if (keys.pan) leadKeys.pan.add(keys.pan);
+          if (ownerId && ownerId !== session.userId) assignedCount.set(ownerId, (assignedCount.get(ownerId) ?? 0) + 1);
         } catch (err: any) {
           errors.push({ rowIndex: i, error: String(err.message ?? "insert failed") });
         }
+      }
+
+      // Each owner hears once how many leads came their way.
+      for (const [ownerId, n] of assignedCount) {
+        await createNotification(tx, {
+          tenantId: session.tenantId,
+          userId: ownerId,
+          kind: "lead.assigned",
+          title: n === 1 ? "1 new lead imported for you" : `${n} new leads imported for you`,
+          body: "From a lead import — they are on your Leads board.",
+          linkUrl: "/dashboard/leads?mine=1",
+          severity: "info",
+          meta: { how: "imported", count: n, assigned_by: session.userId },
+        });
       }
 
       await recordAudit(tx, {
@@ -176,12 +309,12 @@ export async function POST(req: NextRequest) {
         action: "lead.bulk_import",
         entityType: "lead",
         entityId: null,
-        meta: { inserted, skipped, errored: errors.length, totalRows: parse.data.rows.length },
+        meta: { inserted, skipped, errored: errors.length, totalRows: parse.data.rows.length, skippedRows: skippedRows.slice(0, 200) },
         ...clientMeta,
       });
     });
 
-    return NextResponse.json({ inserted, skipped, errored: errors.length, errors: errors.slice(0, 50) });
+    return NextResponse.json({ inserted, skipped, errored: errors.length, errors: errors.slice(0, 50), skippedRows: skippedRows.slice(0, 50) });
   } catch (err: any) {
     return handleApiError(err);
   }

@@ -5,10 +5,12 @@
  *   revisit date   when the client said they would go ahead ("after Diwali",
  *                  "in three months", the day their FD matures).
  *   reminder       a task for the owner LEAD days before it — a week for
- *                  mutual funds, two for insurance (underwriting takes time) —
+ *                  mutual funds and other products, fifteen days for
+ *                  insurance (underwriting takes time) —
  *                  so the call comes while the money is still uncommitted.
  *   escalation     a reminder ESCALATE_AFTER_DAYS overdue goes to the
- *                  client's branch head as well.
+ *                  client's branch head as well — or the owner's reporting
+ *                  manager when the owner is that branch head.
  *   snooze limit   put off SNOOZE_LIMIT times, the card asks whether it is
  *                  really lost.
  *

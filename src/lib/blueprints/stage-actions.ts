@@ -95,6 +95,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       hint: "Long-term nurture — resurface in 30 / 60 / 90 days.",
       behaviour: { kind: "advance_only" },
     },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
+      behaviour: { kind: "advance_only" },
+    },
   ],
 
   // 2. Call Done ("Contacted") — schedule a meeting, propose straight from the
@@ -128,7 +136,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
     },
     {
       key: "not_qualified",
-      label: "Not Qualified",
+      label: "Mark Lost",
       tone: "danger",
       targetStage: "not_qualified",
       hint: "Lead isn't a fit — close as lost.",
@@ -162,6 +170,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       hint: "Park for 30+ days.",
       behaviour: { kind: "advance_only" },
     },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
+      behaviour: { kind: "advance_only" },
+    },
   ],
 
   // 4. Call Not Connected — same loop, different defaults
@@ -188,6 +204,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "secondary",
       targetStage: "contact_in_future",
       hint: "Move to drip campaign.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
       behaviour: { kind: "advance_only" },
     },
   ],
@@ -246,6 +270,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       hint: "Client didn't turn up — move to nurture and set a re-engage reminder.",
       behaviour: { kind: "advance_only" },
     },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
+      behaviour: { kind: "advance_only" },
+    },
   ],
 
   // 7. Meeting Pending
@@ -274,6 +306,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       hint: "Client didn't turn up — move to nurture and set a re-engage reminder.",
       behaviour: { kind: "advance_only" },
     },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
+      behaviour: { kind: "advance_only" },
+    },
   ],
 
   // 8. Meeting Done — propose, skip the proposal, or kill. The firm's flow
@@ -291,7 +331,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
     },
     {
       key: "skip_proposal",
-      label: "Skip Proposal — Won Lead",
+      label: "Skip Proposal — Won",
       tone: "secondary",
       targetStage: "won_lead",
       hint: "The client has decided without a proposal. Pick the product(s) they are investing in — the onboarding flow adapts to it.",
@@ -313,7 +353,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
   proposal_sent: [
     {
       key: "won_lead",
-      label: "Proposal Approved — Won Lead",
+      label: "Proposal Approved — Won",
       tone: "success",
       targetStage: "won_lead",
       hint: "The client approved the proposal (by phone or in person). Marks it accepted, wins the lead and sends the document checklist. If they approve through the proposal link, this happens by itself.",
@@ -378,6 +418,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       hint: "Begin the protection journey: needs analysis → quote → proposal → underwriting → policy.",
       behaviour: { kind: "advance_only" },
       pipelines: ["insurance"],
+    },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
+      behaviour: { kind: "advance_only" },
     },
   ],
 
@@ -541,6 +589,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       targetStage: "ucc_create",
       hint: "Generate BSE/NSE Unique Client Code.",
       behaviour: { kind: "advance_only" },
+      pipelines: ["mf"],
     },
     {
       key: "ucc_already",
@@ -549,6 +598,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       targetStage: "ucc_activated",
       hint: "Client already has an active UCC from a prior platform.",
       behaviour: { kind: "advance_only" },
+      pipelines: ["mf"],
     },
     {
       // The physical route: signed forms to CAMS / KFintech / the AMC, no UCC.
@@ -558,6 +608,17 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       targetStage: "rta_forms_ready",
       hint: "Invest by signed forms submitted to CAMS / KFintech / the AMC — no UCC or exchange.",
       behaviour: { kind: "advance_only" },
+      pipelines: ["mf"],
+    },
+    {
+      // General products (NPS, PMS, FD …): no UCC, mandate or exchange order.
+      key: "product_executed",
+      label: "Product Executed",
+      tone: "primary",
+      targetStage: "transaction_successful",
+      hint: "The NPS / PMS / FD / bond is in place — the client is invested.",
+      behaviour: { kind: "advance_only" },
+      pipelines: ["general"],
     },
   ],
 

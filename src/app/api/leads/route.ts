@@ -6,17 +6,18 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { LEAD_PIPELINE_STAGE_VALUES } from "@/lib/leads/stages";
 import { v4 as uuid } from "uuid";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
-import { pickAssignee } from "@/lib/assignment/engine";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense, assertModuleEnabled } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { pickRmForNewLead } from "@/lib/leads/assign";
+import { autoAssignLeadOwner, notifyLeadAssigned, ownerBranchId } from "@/lib/leads/ownership";
+import { leadContactIssue } from "@/lib/leads/contact-rules";
 import { canEditAllLeads, leadScopeCondition, leadScopeSql, requireLeadView } from "@/lib/leads/access";
 import { users } from "@/db/schema";
 import {
@@ -73,14 +74,10 @@ const CreateBody = z.object({
   customFields: z.record(z.string(), z.any()).optional(),
 });
 
-// Lead-phase blueprint stages (mirror of the web list page) — leads live here
-// until Convert-to-Client. Excludes converted (converted_investor_id) + archived.
-const LEAD_PHASE_STAGES = [
-  "new", "call_done", "contacted", "first_call_pending", "call_back_later", "call_not_connected",
-  "contact_in_future", "follow_up", "meeting_scheduled", "appointment_scheduled", "qualified",
-  "meeting_pending", "meeting_done", "won_lead", "converted", "post_meeting_qualified",
-  "not_qualified", "lost", "not_interested", "cold",
-];
+// Lead-phase stages — the Leads board's columns, every member and legacy
+// alias (lib/leads/stages.ts), so Proposal Sent and anything else the board
+// shows is listed here too (audit L7). Excludes converted + archived below.
+const LEAD_PHASE_STAGES = LEAD_PIPELINE_STAGE_VALUES;
 
 export async function GET(req: NextRequest) {
   try {
@@ -167,6 +164,10 @@ export async function POST(req: NextRequest) {
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     const body = parse.data;
+    // Name always; a phone or an email to reach them by; a real phone, email
+    // and PAN — an invalid PAN is refused with its field, never dropped (L21).
+    const issue = leadContactIssue(body, { requireContact: true, requireName: true });
+    if (issue) return NextResponse.json({ error: issue.error, field: issue.field }, { status: 400 });
 
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
@@ -190,38 +191,25 @@ export async function POST(req: NextRequest) {
       } else {
         // Configurable Assignment Rules win when defined; else the built-in
         // least-loaded picker; else the creator.
-        const rulePick = await pickAssignee(tx, {
+        const picked = await autoAssignLeadOwner(tx, {
           tenantId: session.tenantId,
-          subjectType: "lead",
-          record: { source: body.source },
+          source: body.source,
+          branchId: session.branchId ?? null,
+          excludeUserId: session.roles.includes("rm") ? null : session.userId,
         });
-        if (rulePick) {
-          assignedOwnerId = rulePick;
+        if (picked) {
+          assignedOwnerId = picked;
           assignedVia = "round_robin";
         } else {
-          const picked = await pickRmForNewLead(tx, {
-            branchId: session.branchId ?? null,
-            strategy: "least_loaded",
-            excludeUserId: session.roles.includes("rm") ? null : session.userId,
-          });
-          if (picked) {
-            assignedOwnerId = picked;
-            assignedVia = "round_robin";
-          } else {
-            assignedOwnerId = session.userId;
-            assignedVia = "creator";
-          }
+          assignedOwnerId = session.userId;
+          assignedVia = "creator";
         }
       }
 
-      // Mobile branch visibility follows the assigned RM, including entries
-      // made by a firm-wide Operations user for a different branch.
-      let assignedBranchId = session.branchId;
-      if (session.mobile && assignedOwnerId) {
-        const assigned = (await tx.execute(sql`SELECT branch_id FROM users
-          WHERE tenant_id = ${session.tenantId}::uuid AND id = ${assignedOwnerId}::uuid`)).rows[0];
-        assignedBranchId = assigned?.branch_id as string | undefined;
-      }
+      // The lead's branch is its OWNER's branch (audit L12) — on the web as on
+      // the app, so a lead an ops user keys in for another branch's RM shows
+      // in that branch. An owner with no branch leaves the creator's.
+      const assignedBranchId = (await ownerBranchId(tx, session.tenantId, assignedOwnerId)) ?? session.branchId ?? null;
 
       // Canonical pipeline value wins; keep intended_amount populated (from it)
       // so legacy scoring + old readers keep working.
@@ -302,8 +290,14 @@ export async function POST(req: NextRequest) {
           createdById: session.userId,
           department: "sales",
           dueAt: followUpAt,
+          // The lead's next-touch reminder: a later call-back moves this one
+          // rather than adding a second (stage-side-effects.ts).
+          meta: { nextTouch: true },
         } as any);
       }
+
+      // The owner hears about it (unless they keyed it in themselves).
+      await notifyLeadAssigned(tx, { tenantId: session.tenantId, leadId: id, ownerId: assignedOwnerId, actorUserId: session.userId, how: "new" });
 
       await tx.insert(eventsOutbox).values({
         tenantId: session.tenantId,

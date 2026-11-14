@@ -69,7 +69,7 @@ export function ProductInterestDialog({
       <div className="bg-card border border-border rounded-xl max-w-lg w-full p-6 space-y-4 shadow-2xl text-foreground" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 border-b border-border pb-3">
           <Sparkles className="size-5 text-emerald-600" />
-          <h3 className="font-bold text-base">Won Lead — what is {leadName ? leadName : "the client"} investing in?</h3>
+          <h3 className="font-bold text-base">Won — what is {leadName ? leadName : "the client"} investing in?</h3>
         </div>
 
         <p className="text-xs text-muted-foreground">

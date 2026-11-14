@@ -14,7 +14,8 @@ import {
   Eye,
 } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
-import { formatINR, formatDate } from "@/lib/utils";
+import { formatINR, formatDate, formatPhone } from "@/lib/utils";
+import { isClosedLeadStage } from "@/lib/leads/stages";
 import { leadScoreBand } from "@/lib/leads/scoring";
 import { Avatar } from "@/components/ui/Avatar";
 import { TableDensityToggle, useTableDensity } from "@/components/common/TableDensityToggle";
@@ -135,8 +136,12 @@ export function LeadsTable({
         setErr(j.error ?? `Failed (${res.status})`);
         return;
       }
-      // A lead whose journey is finished cannot be moved; say so rather than imply it moved.
-      if (j.skipped) setErr(`${j.skipped} lead${j.skipped === 1 ? "" : "s"} not moved — the journey is already completed.`);
+      // Leads outside your scope, or whose journey refused the move, are left
+      // as they were — say which and why rather than imply they changed.
+      if (j.skipped) {
+        const reasons = [...new Set(((j.skippedLeads ?? []) as Array<{ reason: string }>).map((s) => s.reason))].slice(0, 3);
+        setErr(`${j.skipped} lead${j.skipped === 1 ? "" : "s"} not changed${reasons.length ? ` — ${reasons.join("; ")}` : ""}.`);
+      }
       setSelected(new Set());
       router.refresh();
     } catch (e: any) {
@@ -222,7 +227,7 @@ export function LeadsTable({
                         <Link href={`/dashboard/leads/${l.id}`} className="hover:text-brand-navy hover:underline">{l.name}</Link>
                         {(l.phone || l.email) && (
                           <div className="text-2xs text-muted-foreground mt-0.5 space-x-2 font-mono">
-                            {l.phone && <span>{l.phone}</span>}
+                            {l.phone && <span>{formatPhone(l.phone)}</span>}
                             {l.phone && l.email && <span>·</span>}
                             {l.email && <span>{l.email}</span>}
                           </div>
@@ -240,7 +245,7 @@ export function LeadsTable({
                     <span className={`chip text-xs border ${sourceColors[l.source] ?? "bg-muted"}`}>{leadSourceLabel(l.source)}</span>
                   </td>
                   <td data-col="nextFollowUpAt" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs text-muted-foreground tabular-nums`}>
-                    {l.nextFollowUpAt ? formatDate(l.nextFollowUpAt) : "—"}
+                    {l.nextFollowUpAt && !isClosedLeadStage(l.stage) ? formatDate(l.nextFollowUpAt) : "—"}
                   </td>
                   <td data-col="lastContactAt" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs text-muted-foreground tabular-nums`}>
                     {l.lastContactAt ? formatDate(l.lastContactAt) : "—"}

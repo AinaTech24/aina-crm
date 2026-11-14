@@ -9,7 +9,9 @@ export const BOARD_COLUMNS = [
   { key: "discussion", label: "Discussion", stages: ["discussion"] },
   { key: "suitability", label: "Suitability", stages: ["suitability"] },
   { key: "proposal", label: "Proposal shared", stages: ["proposal"] },
-  { key: "accepted", label: "Client accepted", stages: ["accepted"] },
+  // The proposal or quote is with the client and the journey waits for their
+  // yes — named for what the column holds, not the step it is waiting on.
+  { key: "accepted", label: "Awaiting acceptance", stages: ["accepted"] },
   {
     key: "processing", label: "Processing",
     stages: ["mf_transaction", "txn_review", "rta_check", "ins_proposal_form", "ins_underwriting", "ins_issued", "gen_executed"],

@@ -23,6 +23,7 @@ import { investors } from "@/db/schema/investors";
 import { kycChecks } from "@/db/schema/kyc_checks";
 import { eventsOutbox } from "@/db/schema/outbox";
 import { recordAudit } from "@/lib/audit";
+import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { getNseCredentials, noteNseState } from "./credentials";
 import { nseKycCheck, type NseCallResult, type NseCredentials } from "./nse-client";
 import { kraLabel, kycVerdict, nseDate, PAN_RE, type CrmKycStatus } from "./nse-status";
@@ -131,6 +132,17 @@ export async function recordKycAnswer(
       after: { kycStatus: after, kraRemark: a.remark, kra, source: "nse_mf" },
       meta: { trigger, actorUserId: byUserId },
     });
+  }
+
+  // The KRA says verified: a client still onboarding moves to KYC Validated
+  // (automatic, so forward-only — a client already past it stays put; audit C14).
+  if (after === "verified") {
+    const leadId = await resolveLeadIdForInvestor(tx, subject.id);
+    if (leadId) {
+      await autoAdvance(tx, tenantId, leadId, "kyc.validated", {
+        remarks: `Auto: KYC verified by ${kra ?? "the KRA"} (NSE MF Invest check).`,
+      });
+    }
   }
 
   return {

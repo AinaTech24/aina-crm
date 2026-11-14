@@ -16,6 +16,8 @@ import { requireSession } from "@/lib/auth/session";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { transitionTo } from "@/lib/blueprints/engine";
 import { loadEditableLead } from "@/lib/leads/access";
+import { closeLeadTasks, touchClientContact } from "@/lib/leads/open-tasks";
+import { scheduleNextTouchReminder } from "@/lib/blueprints/stage-side-effects";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +74,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .update(leads)
         .set({ lastContactAt: now, updatedAt: now })
         .where(eq(leads.id, id));
+      // A converted lead is a client now: the call is client contact too.
+      const converted = !!lead.convertedInvestorId;
+      if (lead.convertedInvestorId) await touchClientContact(tx, session.tenantId, lead.convertedInvestorId, now);
 
       // 3. Side-effect: meeting / follow-up / close
       let toStageKey: string | null = null;
@@ -110,29 +115,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
 
       if (body.outcome === "call_later" && body.followUpDate) {
+        // The lead's ONE next-touch reminder moves (or is created), and its
+        // next follow-up date with it — a second "call later" never adds a
+        // second task (audit L14).
         const dueAt = new Date(`${body.followUpDate}T09:00:00`);
-        await tx.insert(tasks).values({
-          tenantId: session.tenantId,
-          subjectType: "lead" as any,
-          subjectId: id,
-          relatedLeadId: id,
-          type: "follow_up",
-          title: `Follow-up call: ${lead.name}`,
-          description: body.notes ?? null,
-          priority: "normal",
-          status: "open",
-          assigneeId: lead.ownerId ?? session.userId,
-          department: "sales",
-          dueAt,
-        } as any);
-        await tx
-          .update(leads)
-          .set({ nextFollowUpAt: dueAt, updatedAt: now } as any)
-          .where(eq(leads.id, id));
+        await scheduleNextTouchReminder(tx, session.tenantId, id, lead.ownerId ?? session.userId, dueAt.toISOString(), "call_back_later");
         toStageKey = "call_back_later";
       }
 
-      if (body.outcome === "not_interested" || body.outcome === "wrong_number") {
+      // A client is never marked lost from a call on their old lead record;
+      // the lost reason is written only once the journey really closed.
+      const losing = !converted && (body.outcome === "not_interested" || body.outcome === "wrong_number");
+      if (losing) toStageKey = "not_qualified";
+
+      // "connected" without an appointment → move to post-meeting qualification
+      if (body.outcome === "not_reachable") toStageKey = "call_not_connected";
+      if (body.outcome === "connected") toStageKey = "call_done";
+
+      // 4. Advance blueprint stage if we picked one. The stage follows from
+      //    the outcome rather than a chosen step, so it is an AUTOMATIC move:
+      //    forward-only, and never back into the lead phase for a client
+      //    (lib/blueprints/journey-rules.ts) — e.g. "not reachable" on a lead
+      //    already at Meeting Done leaves it there.
+      let transition = null as null | { ok?: boolean; fromStage?: string; toStage?: string; reason?: string };
+      if (toStageKey) {
+        transition = await tx.transaction((sp) =>
+          transitionTo(sp as any, session.tenantId, id, toStageKey!, {
+            actorUserId: session.userId,
+            actorRoles: session.roles ?? [],
+            systemBypass: true,
+            automatic: true,
+            remarks: body.notes,
+          }),
+        );
+      }
+
+      if (losing && transition?.ok && transition.toStage === "not_qualified") {
         await tx
           .update(leads)
           .set({
@@ -143,23 +161,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               `[${now.toISOString().slice(0, 16).replace("T", " ")} · ${body.outcome} · ${session.userId}]\n${body.lostReason ?? "no reason"}`,
           } as any)
           .where(eq(leads.id, id));
-        toStageKey = "not_qualified";
-      }
-
-      // "connected" without an appointment → move to post-meeting qualification
-      if (body.outcome === "not_reachable") toStageKey = "call_not_connected";
-      if (body.outcome === "connected") toStageKey = "call_done";
-
-      // 4. Advance blueprint stage if we picked one — systemBypass so we
-      //    can jump from any source stage (e.g. directly new → meeting_done).
-      let transition = null as null | { fromStage?: string; toStage?: string; reason?: string };
-      if (toStageKey) {
-        transition = await transitionTo(tx, session.tenantId, id, toStageKey, {
-          actorUserId: session.userId,
-          actorRoles: session.roles ?? [],
-          systemBypass: true,
-          remarks: body.notes,
-        });
+        await closeLeadTasks(tx, session.tenantId, id, { reason: `Lead closed as lost (${body.outcome.replace(/_/g, " ")}).` });
       }
 
       // Emit lead.updated (after all the outcome side-effects) so record_action

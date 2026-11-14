@@ -6,26 +6,32 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { leadScopeSql } from "@/lib/leads/access";
-import { dataWallAppliesFor } from "@/lib/investors/access";
 import { can } from "@/lib/auth/rbac";
 import type { SessionUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
+import { LEAD_OPEN_STAGE_VALUES, leadStageDisplay } from "@/lib/leads/stages";
+import { leadSourceLabel } from "@/lib/leads/sources";
+import { formatPhone } from "@/lib/utils";
 
 const canViewLeads = (s: SessionUser) =>
   can(s.roles, "lead.view.all", s.permissions) || can(s.roles, "lead.view.assigned", s.permissions);
+
+/**
+ * Every OPEN lead, in the board's current stages (lib/leads/stages.ts — New,
+ * Contacted with its call-back / not-connected / contact-in-future loops,
+ * Meeting Scheduled / Pending, Meeting Done, Proposal Sent, and the legacy
+ * values folded into them) — never Won, Lost, converted or deleted (audit L15).
+ */
+const NURTURE_STAGES = LEAD_OPEN_STAGE_VALUES;
 
 export const dynamic = "force-dynamic";
 
 export default async function LeadNurturePage() {
   const session = await requireSession();
-  // Under the data wall, the same lead scope as the Leads board (own / branch
-  // / firm); a viewer with no lead capability goes back to their dashboard
-  // rather than hitting a thrown 403. Without the wall, every lead, as before.
-  let scope = sql`TRUE`;
-  if (await dataWallAppliesFor(session)) {
-    if (!canViewLeads(session)) redirect("/dashboard");
-    scope = leadScopeSql(session, "l");
-  }
+  // The Leads board's own scope (own / team / branch / firm), always — not
+  // only under the data wall (audit L15). No lead access: back to the dashboard.
+  if (!canViewLeads(session)) redirect("/dashboard");
+  const scope = leadScopeSql(session, "l");
 
   const rows = await withTenant(session.tenantId, async (tx) => {
     const r = await tx.execute(sql`
@@ -35,9 +41,10 @@ export default async function LeadNurturePage() {
       FROM leads l
       LEFT JOIN users u ON u.id = l.owner_id
       WHERE l.tenant_id = ${session.tenantId}::uuid AND ${scope}
-        AND l.stage IN ('follow_up', 'contacted', 'meeting_scheduled', 'meeting_done')
+        AND l.stage IN (${sql.join(NURTURE_STAGES.map((v) => sql`${v}`), sql`, `)})
         AND l.converted_investor_id IS NULL
-        AND (l.next_follow_up_at IS NOT NULL OR l.last_contact_at < now() - interval '14 days')
+        AND l.lost_reason IS DISTINCT FROM '__deleted__'
+        AND (l.next_follow_up_at IS NOT NULL OR COALESCE(l.last_contact_at, l.created_at) < now() - interval '14 days')
       ORDER BY
         CASE WHEN l.next_follow_up_at IS NOT NULL THEN 0 ELSE 1 END,
         l.next_follow_up_at NULLS LAST,
@@ -128,10 +135,11 @@ function Section({
                     {r.name}
                   </Link>
                   <div className="flex items-center gap-2 text-2xs text-muted-foreground mt-0.5">
-                    {r.phone && <span><Phone className="inline size-2.5 mr-0.5" />{r.phone}</span>}
+                    {r.phone && <span><Phone className="inline size-2.5 mr-0.5" />{formatPhone(r.phone)}</span>}
+                    <span>· {leadStageDisplay(r.stage)}</span>
                   </div>
                 </td>
-                <td className="py-3 text-xs capitalize">{r.source?.replace(/_/g, " ")}</td>
+                <td className="py-3 text-xs">{leadSourceLabel(r.source)}</td>
                 <td className="py-3 text-xs">{r.rm_name ?? <span className="text-muted-foreground">—</span>}</td>
                 <td className="py-3 text-xs tabular-nums">
                   {r.last_contact_at ? formatRelative(r.last_contact_at) : <span className="text-muted-foreground">never</span>}

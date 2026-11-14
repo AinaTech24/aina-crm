@@ -30,8 +30,9 @@ import {
 import { Loader2, CalendarClock, PhoneCall } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
 import { leadTemperature, stageAgingDays } from "@/lib/leads/scoring";
-import { LEAD_STAGE_TAG, leadPipelineColumn, leadStageSlaDays, type StageTone } from "@/lib/leads/stages";
+import { LEAD_STAGE_TAG, isClosedLeadStage, leadPipelineColumn, leadStageSlaDays, type StageTone } from "@/lib/leads/stages";
 import { leadSourceLabel } from "@/lib/leads/sources";
+import { formatPhone } from "@/lib/utils";
 import { ScheduleMeetingDialog } from "@/components/leads/LeadActions";
 
 type LeadRow = {
@@ -260,7 +261,9 @@ export function LeadsKanban({
       const res = await fetch(`/api/leads/${leadId}/convert`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ pan, segmentTag }),
+        // Dropping on Won and confirming the dialog IS marking it Won — the
+        // convert API wins the lead first (it refuses an un-won lead otherwise).
+        body: JSON.stringify({ pan, segmentTag, confirmWon: true }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -586,7 +589,7 @@ function DraggableCard({
         </Link>
         {(l.mobile || l.phone) && (
           <div className="text-2xs text-muted-foreground tabular-nums truncate mt-0.5">
-            {l.mobile ?? l.phone}
+            {formatPhone(l.mobile ?? l.phone)}
           </div>
         )}
       </div>
@@ -610,7 +613,8 @@ function DraggableCard({
       {/* RM + next action */}
       <div className="mt-2 pt-2 border-t border-border/60 flex items-center gap-2">
         <RmAvatar owner={owner} />
-        <NextAction at={l.nextFollowUpAt ?? null} />
+        {/* A Won or Lost lead has no next follow-up to chase. */}
+        {!isClosedLeadStage(l.stage) && <NextAction at={l.nextFollowUpAt ?? null} />}
       </div>
     </div>
   );

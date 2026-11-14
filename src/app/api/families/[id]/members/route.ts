@@ -25,7 +25,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -34,11 +34,10 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { investors, families, eventsOutbox } from "@/db/schema";
 import { recomputeFamilyHealth } from "@/lib/families/health-persist";
 import { assertFamilyEditable } from "@/lib/families/access";
-import { loadViewableInvestor } from "@/lib/investors/access";
-import { HEAD_ROLE, isHeadRole } from "@/lib/families/roles";
-import { onClientFamilyMapped } from "@/lib/families/journey";
+import { isHeadRole } from "@/lib/families/roles";
 import { applyHeadRmToMembers } from "@/lib/families/head-rm";
 import { applyFamilySharedDetails } from "@/lib/families/shared-details";
+import { attachClientsToFamily, makeFamilyHead } from "@/lib/families/attach";
 
 export const dynamic = "force-dynamic";
 
@@ -53,18 +52,6 @@ const AddBody = z
   .refine((b) => b.investorId || b.investorIds?.length, { message: "investorId or investorIds required" });
 
 const PatchBody = z.object({ investorId: z.string().uuid(), familyRole: Role });
-
-/** Make `investorId` the head of `familyId`: the pointer, and the only head role. */
-async function makeHead(tx: any, familyId: string, investorId: string) {
-  await tx.update(families).set({ primaryInvestorId: investorId, updatedAt: new Date() } as any).where(eq(families.id, familyId));
-  // Anyone else carrying the head role becomes "other" — two heads is how the
-  // page used to badge one person "primary" and the map another "Head".
-  await tx
-    .update(investors)
-    .set({ familyRole: "other", updatedAt: new Date() } as any)
-    .where(and(eq(investors.familyId, familyId), ne(investors.id, investorId), inArray(investors.familyRole, ["self", "head", "primary"])));
-  await tx.update(investors).set({ familyRole: HEAD_ROLE, updatedAt: new Date() } as any).where(eq(investors.id, investorId));
-}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: familyId } = await params;
@@ -81,103 +68,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const clientMeta = clientMetaFromHeaders(req.headers);
-    const result = await withTenant(session.tenantId, async (tx) => {
-      await assertFamilyEditable(tx, session, familyId, "create");
-      const fam = (await tx.select().from(families).where(eq(families.id, familyId)).limit(1))[0];
-      if (!fam) throw Object.assign(new Error("family not found"), { status: 404 });
-
-      const linked: string[] = [];
-      const priorFamilies = new Set<string>();
-      for (const investorId of ids) {
-        // Only a client this person can open — and never a merged-away record.
-        const inv = await loadViewableInvestor(tx, session, investorId);
-        if (!inv) throw Object.assign(new Error("client not found"), { status: 404 });
-        if ((inv as any).mergedIntoId) throw Object.assign(new Error(`${inv.name} was merged into another record`), { status: 409 });
-        // Mapped to this family — newly or already: either way the client's
-        // onboarding "Map Family" step is done (lib/families/journey).
-        await onClientFamilyMapped(tx, session.tenantId, investorId);
-        if (inv.familyId === familyId) continue;
-
-        // Leaving a family they headed: that family loses its head, rather than
-        // keep pointing at someone who is no longer in it.
-        if (inv.familyId) {
-          priorFamilies.add(inv.familyId);
-          await tx
-            .update(families)
-            .set({ primaryInvestorId: null, updatedAt: new Date() } as any)
-            .where(and(eq(families.id, inv.familyId), eq(families.primaryInvestorId, investorId)));
-        }
-
-        await tx
-          .update(investors)
-          .set({ familyId, familyRole: role && isHeadRole(role) ? HEAD_ROLE : role, updatedAt: new Date() } as any)
-          .where(eq(investors.id, investorId));
-
-        await tx.insert(eventsOutbox).values({
-          tenantId: session.tenantId,
-          kind: "investor.family_linked",
-          entityType: "investor",
-          entityId: investorId,
-          before: { familyId: inv.familyId } as any,
-          after: { familyId, familyRole: role } as any,
-          meta: { userId: session.userId } as any,
-        } as any);
-        linked.push(investorId);
-      }
-
-      // Head: an explicit head link, or the first member of a family without one.
-      const headless = !fam.primaryInvestorId;
-      let headChanged = false;
-      if (ids.length === 1 && role && isHeadRole(role)) {
-        await makeHead(tx, familyId, ids[0]);
-        headChanged = ids[0] !== fam.primaryInvestorId;
-      } else if (headless && linked.length) {
-        const live = await tx
-          .select({ id: investors.id })
-          .from(investors)
-          .where(and(eq(investors.familyId, familyId), isNull(investors.deletedAt), isNull(investors.mergedIntoId)));
-        if (live.length === linked.length) {
-          await makeHead(tx, familyId, linked[0]);
-          headChanged = true;
-        }
-      }
-
-      // The head's RM: for everyone when the head changed, else for the
-      // clients just mapped.
-      const rm = await applyHeadRmToMembers(tx, {
-        tenantId: session.tenantId,
-        familyId,
-        onlyInvestorIds: headChanged ? undefined : linked,
-        actorUserId: session.userId,
-        reason: headChanged ? "head_changed" : "mapped_to_family",
-        clientMeta,
-      });
-      // The head's address and the family's review frequency, the same way.
-      await applyFamilySharedDetails(tx, {
-        tenantId: session.tenantId,
-        familyId,
-        onlyInvestorIds: headChanged ? undefined : linked,
-        actorUserId: session.userId,
-        reason: headChanged ? "head_changed" : "mapped_to_family",
-        clientMeta,
-      });
-
-      if (linked.length) {
-        await recordAudit(tx, {
-          tenantId: session.tenantId,
-          actorUserId: session.userId,
-          action: "family.member.add",
-          entityType: "family",
-          entityId: familyId,
-          after: { investorIds: linked, familyRole: role },
-          ...clientMeta,
-        });
-      }
-
-      await recomputeFamilyHealth(tx, familyId);
-      for (const prior of priorFamilies) if (prior !== familyId) await recomputeFamilyHealth(tx, prior);
-      return { linked: linked.length, rmAssigned: rm.reassigned };
-    });
+    // lib/families/attach — shared with Add client "into this family".
+    const result = await withTenant(session.tenantId, (tx) =>
+      attachClientsToFamily(tx, session, { familyId, investorIds: ids, familyRole: role, clientMeta })
+    );
     return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);
@@ -206,7 +100,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       let rmAssigned = 0;
       if (isHeadRole(familyRole)) {
-        await makeHead(tx, familyId, investorId);
+        await makeFamilyHead(tx, familyId, investorId);
         // A new head: every member takes the new head's RM (by default).
         if (investorId !== fam.primaryInvestorId) {
           const rm = await applyHeadRmToMembers(tx, {

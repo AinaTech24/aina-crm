@@ -26,6 +26,17 @@ const OPTS: Record<string, [string, string][]> = {
   panAadhaarLinkStatus: [["linked", "Linked"], ["not_linked", "Not linked"], ["pending", "Pending"], ["not_applicable", "N/A"]],
   riskProfile: [["conservative", "Conservative"], ["moderate", "Moderate"], ["aggressive", "Aggressive"], ["very_aggressive", "Very aggressive"]],
 };
+/**
+ * A step is done when its required fields are filled — except the risk
+ * profile, which is done only when it is the CLIENT's: a category picked here
+ * (or on Add client) is saved provisional until the client answers the
+ * questionnaire, so it does not tick the step.
+ */
+function stepDone(s: (typeof STEPS)[number], f: Inv, saved: Inv): boolean {
+  if (s.key === "risk") return !!f.riskProfile && f.riskProfile === saved.riskProfile && !saved.riskProfileProvisional;
+  return s.required.every((k) => f[k]);
+}
+
 const LABELS: Record<string, string> = {
   email: "Email", phone: "Phone", whatsappPhone: "WhatsApp number", kycStatus: "KYC status", panAadhaarLinkStatus: "PAN–Aadhaar link", nameAsPerPan: "Name as per PAN",
   riskProfile: "Risk profile", nomineeName: "Nominee name", nomineeRelation: "Nominee relation", bankName: "Bank name", bankAccountNumberMasked: "Account no.", bankIfsc: "IFSC",
@@ -41,7 +52,7 @@ export function OnboardingWizardButton({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const doneCount = STEPS.filter((s) => s.required.every((f) => investor[f])).length;
+  const doneCount = STEPS.filter((s) => stepDone(s, investor, investor)).length;
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className={className ?? "btn-secondary text-xs inline-flex items-center gap-1"} title="Fill in contact, KYC, risk profile, nominee and bank details step by step">
@@ -64,7 +75,7 @@ function Wizard({ investor, investorId, onClose }: { investor: Inv; investorId: 
   const [doneAll, setDoneAll] = useState(false);
   const set = (k: string, v: any) => setF((s) => ({ ...s, [k]: v }));
   const cur = STEPS[step];
-  const isDone = (s: (typeof STEPS)[number]) => s.required.every((k) => f[k]);
+  const isDone = (s: (typeof STEPS)[number]) => stepDone(s, f, investor);
 
   async function saveStep(advance: boolean) {
     setBusy(true); setErr(null);
@@ -120,6 +131,13 @@ function Wizard({ investor, investorId, onClose }: { investor: Inv; investorId: 
                   )}
                 </label>
               ))}
+              {cur.key === "risk" && (
+                <p className="text-xs text-muted-foreground">
+                  {f.riskProfile && (f.riskProfile !== investor.riskProfile || investor.riskProfileProvisional)
+                    ? "Provisional — send the questionnaire to confirm. A category chosen here is not the client's signed assessment."
+                    : "Done once the client has answered the risk questionnaire."}
+                </p>
+              )}
               {err && <div className="text-sm text-rose-600">{err}</div>}
             </>
           )}

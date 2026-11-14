@@ -31,5 +31,9 @@ it("denies mobile branch-head list and detail access when no branch is assigned"
 it("allows a configured branch head to assign leads while retaining branch-scoped reads", () => {
   const session = { ...base, mobile: true, roles: ["branch_head"], branchId: base.tenantId };
   expect(canEditAllLeads(session)).toBe(true);
-  expect(new PgDialect().sqlToQuery(leadScopeSql(session)).params).toEqual([base.tenantId]);
+  // The branch (here equal to the tenant id) — recorded on the lead, or, with
+  // none recorded, its owner's (audit L12).
+  const q = new PgDialect().sqlToQuery(leadScopeSql(session));
+  expect(q.sql).toContain("leads.branch_id");
+  expect(q.params).toEqual([base.tenantId, base.tenantId, base.tenantId]);
 });

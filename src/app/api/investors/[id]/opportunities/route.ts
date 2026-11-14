@@ -21,7 +21,8 @@ import { requireSession } from "@/lib/auth/session";
 import { handleApiError } from "@/lib/api/error-handler";
 import { loadViewableInvestor } from "@/lib/investors/access";
 import { canWorkOpportunities, requireWorkOpportunities } from "@/lib/opportunities/access";
-import { createOpportunity, listOpportunities } from "@/lib/opportunities/journey";
+import { createOpportunity, listOpportunities, REOPEN_CAP, REVIEW_CAP } from "@/lib/opportunities/journey";
+import { can } from "@/lib/auth/rbac";
 import { isOpportunityProduct, OPPORTUNITY_SOURCES } from "@/lib/opportunities/products";
 import { LaterBody, parkOpportunity } from "@/lib/opportunities/later";
 import { assertAssignable, notifyOpportunityOwner, opportunityAssignees } from "@/lib/opportunities/assignees";
@@ -73,7 +74,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const assignees = canWork ? await opportunityAssignees(tx, session, id) : [];
       return { items, staff, assignees };
     }, ctx(session));
-    return NextResponse.json({ items, staff, assignees, me: session.userId, canWork });
+    // What the viewer may do beyond working it: operations' transaction review /
+    // RTA check, and a supervisor's move back / reopen.
+    const perms = {
+      review: can(session.roles, REVIEW_CAP, session.permissions),
+      reopen: can(session.roles, REOPEN_CAP, session.permissions),
+    };
+    return NextResponse.json({ items, staff, assignees, me: session.userId, canWork, perms });
   } catch (err) {
     return handleApiError(err);
   }
@@ -97,6 +104,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           sql`SELECT 1 FROM users WHERE id = ${parsed.data.coOwnerId}::uuid AND tenant_id = ${session.tenantId}::uuid AND status = 'active'`,
         )).rows.length;
         if (!ok) throw Object.assign(new Error("The chosen co-owner is not an active user in this firm."), { status: 400 });
+      }
+      // A lead it came from must be one of this firm's leads, else it is not recorded.
+      if (parsed.data.sourceLeadId) {
+        const ok = (await tx.execute(
+          sql`SELECT 1 FROM leads WHERE id = ${parsed.data.sourceLeadId}::uuid AND tenant_id = ${session.tenantId}::uuid`,
+        )).rows.length;
+        if (!ok) parsed.data.sourceLeadId = null;
       }
       const { later, ...input } = parsed.data;
       const actor = { tenantId: session.tenantId, userId: session.userId };

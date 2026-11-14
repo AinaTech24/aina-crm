@@ -8,16 +8,23 @@
  * opportunity's earliest open task (journey.ts, "Follow-ups ARE tasks").
  *
  * The board's columns group the journey's stages: the five people steps each
- * get a column, the product branch (KYC → UCC → mandate → transaction, the
- * insurer's proposal form → underwriting → issue, "executed") is one
- * "Processing" column, then "Later" — open ones the client has put off
- * (lib/opportunities/later.ts), whatever step they stood at — then Won and Lost.
+ * get a column, the product branch (MF: transaction placed → approve / reject
+ * → RTA data check; insurance: the insurer's proposal form → underwriting →
+ * issue; everything else: "executed") is one "Processing" column, then
+ * "Later" — open ones the client has put off (lib/opportunities/later.ts),
+ * whatever step they stood at — then Won and Lost.
+ *
+ * Only a LIVE client's opportunities are counted (aliveClient: not in the
+ * Trash, not merged away, not closed / exited) — the same rule as the
+ * dashboard's Opportunity cards (lib/metrics/opportunities.ts), so a tile and
+ * the card it mirrors never disagree.
  */
 
 import { sql, type SQL } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
 import { investorScopeSql } from "@/lib/investors/access";
 import { textList } from "@/lib/metrics";
+import { aliveClient } from "@/lib/metrics/scope";
 import { OPPORTUNITY_PRODUCTS, productLabel, type OpportunityPipeline } from "./products";
 import { stageName } from "./stages";
 
@@ -111,7 +118,7 @@ async function baseQuery(tx: any, session: SessionUser, where: SQL[], limit: num
       LEFT JOIN blueprint_instances bi
         ON bi.tenant_id = o.tenant_id AND bi.subject_type = 'opportunity' AND bi.subject_id = o.id
       LEFT JOIN fu ON fu.oid = o.id::text
-     WHERE o.tenant_id = ${session.tenantId}::uuid AND i.deleted_at IS NULL AND ${scope}
+     WHERE o.tenant_id = ${session.tenantId}::uuid AND ${aliveClient("i")} AND ${scope}
        ${where.length ? sql`AND ${sql.join(where, sql` AND `)}` : sql``}
      ORDER BY CASE WHEN o.status = 'open' THEN 0 ELSE 1 END,
               fu.due ASC NULLS LAST, o.created_at DESC
@@ -206,7 +213,7 @@ export async function loadBoardKpis(tx: any, session: SessionUser): Promise<Boar
       SELECT o.*, fu.due FROM client_opportunities o
         JOIN investors i ON i.id = o.investor_id AND i.tenant_id = o.tenant_id
         LEFT JOIN fu ON fu.oid = o.id::text
-       WHERE o.tenant_id = ${session.tenantId}::uuid AND i.deleted_at IS NULL AND ${scope}
+       WHERE o.tenant_id = ${session.tenantId}::uuid AND ${aliveClient("i")} AND ${scope}
     )
     SELECT
       count(*) FILTER (WHERE status = 'open')::int AS open,

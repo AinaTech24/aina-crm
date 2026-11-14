@@ -26,11 +26,13 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { investors, users } from "@/db/schema";
 import { setFamilyRmFromClient } from "@/lib/families/head-rm";
+import { branchFollowingRmSql } from "@/lib/investors/rm-branch";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { purgeInvestorsChunk, PURGE_REQUEST_MAX, PURGE_TX_CHUNK } from "@/lib/investors/purge";
 import { applyBulkField, BulkFieldError } from "@/lib/investors/bulk-update";
 import { investorScopeCondition } from "@/lib/investors/access";
 import { clientsHoldingMoney, holdersMessage, type MoneyHolder } from "@/lib/investors/holds-money";
+import { closeOpportunitiesOfGoneClients } from "@/lib/opportunities/journey";
 
 export const dynamic = "force-dynamic";
 
@@ -134,6 +136,8 @@ export async function POST(req: NextRequest) {
           const visible = await inScope(tx, ids ?? []);
           if (visible.length === 0) throw new BulkFieldError("None of the selected clients are in your book.");
           const r = await applyBulkField(tx, { tenantId: session.tenantId, ids: visible, field: parsed.data.field!, value });
+          // Clients now closed / exited take their open opportunities with them.
+          await closeOpportunitiesOfGoneClients(tx, { tenantId: session.tenantId, userId: session.userId }, visible);
           await recordAudit(tx, {
             tenantId: session.tenantId,
             actorUserId: session.userId,
@@ -174,6 +178,8 @@ export async function POST(req: NextRequest) {
           });
           if (!exists) return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
           patch.rmId = value;
+          // The client's branch follows the new RM's (lib/investors/rm-branch).
+          patch.branchId = branchFollowingRmSql(session.tenantId, value);
         } else {
           patch.rmId = null;
         }
@@ -230,6 +236,10 @@ export async function POST(req: NextRequest) {
           .returning({ id: investors.id });
       } else {
         updated = await tx.update(investors).set(patch as any).where(scope).returning({ id: investors.id });
+      }
+      // Clients moved to the Trash take their open opportunities with them.
+      if (action === "delete") {
+        await closeOpportunitiesOfGoneClients(tx, { tenantId: session.tenantId, userId: session.userId }, updated.map((u) => u.id));
       }
       // A family has one RM: assigning an RM to any member assigns it to the whole family.
       if (action === "assign" && patch.rmId) {

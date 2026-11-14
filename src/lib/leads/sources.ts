@@ -1,16 +1,25 @@
 /**
- * Lead sources as people read them. The Leads filters, the quick filter and the
- * kanban card all use this list, so "referral" reads "Client Referral" on every
- * one of them. Pure data: safe to import from client components.
+ * Lead sources as people read them. The New lead form, the Leads filters, the
+ * quick filter, the kanban card and the list all use this list — every value
+ * the leads table stores (lib/leads/normalize.ts LEAD_SOURCE_VALUES) — so
+ * "referral" reads "Client Referral" on every one of them and every stored
+ * source can be filtered on. Pure data: safe to import from client components.
  */
 export const LEAD_SOURCE_OPTIONS: readonly { value: string; label: string }[] = [
   { value: "referral", label: "Client Referral" },
   { value: "website", label: "Website" },
   { value: "social_media", label: "Social Media" },
+  // Paid ads are their own sources (the import and the API already store
+  // them): a "Google" filter that missed every Google-ads lead read as a bug.
+  { value: "google_ads", label: "Google Ads" },
+  { value: "meta_ads", label: "Meta Ads" },
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "youtube", label: "YouTube" },
+  { value: "google", label: "Google (search)" },
   { value: "webinar", label: "Webinar" },
   { value: "seminar", label: "Seminar" },
+  { value: "event", label: "Event" },
   { value: "walk_in", label: "Walk-in" },
-  { value: "google", label: "Google" },
   { value: "cold_call", label: "Cold Call" },
   { value: "manual", label: "Manual entry" },
   { value: "other", label: "Other" },

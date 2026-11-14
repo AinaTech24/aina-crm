@@ -14,6 +14,7 @@ import { expectedInflows, tasks } from "@/db/schema";
 import { InflowPatchBody } from "@/lib/inflows/schema";
 import { syncInflowReminder } from "@/lib/inflows/reminder";
 import { isClientVisible } from "@/lib/transactions/client-scope";
+import { onInflowChanged } from "@/lib/opportunities/later";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (taskId && taskId !== before.reminderTaskId) {
           await tx.update(expectedInflows).set({ reminderTaskId: taskId }).where(eq(expectedInflows.id, id));
         }
+        // An opportunity parked until this money comes in comes back once it is settled.
+        await onInflowChanged(tx, { tenantId: session.tenantId, userId: session.userId }, id, merged.status);
         return { ok: true as const };
       },
       { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles }
@@ -101,6 +104,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
             .set({ status: "cancelled", updatedAt: new Date() })
             .where(and(eq(tasks.id, row.reminderTaskId), eq(tasks.tenantId, session.tenantId)));
         }
+        await onInflowChanged(tx, { tenantId: session.tenantId, userId: session.userId }, id, "deleted");
         await tx
           .delete(expectedInflows)
           .where(and(eq(expectedInflows.id, id), eq(expectedInflows.tenantId, session.tenantId)));

@@ -11,9 +11,15 @@
  * review frequency (lib/families/shared-details.ts), so neither is asked. A
  * minor's risk profile is the guardian's (migration 0234), so it is not asked
  * either; the guardian's client record is linked instead.
+ *
+ * A risk category picked here is the RM's view, saved PROVISIONAL until the
+ * client answers the questionnaire. Added into a family, the client is mapped
+ * by the same request (POST /api/investors familyId + familyRole), inside the
+ * create transaction — a refused mapping refuses the create, with its reason.
  */
 
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
+import { notify } from "@/components/ui/Toast";
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -138,6 +144,15 @@ function NewInvestorPageInner() {
   const [customFields, setCustomFields] = useState<Record<string, any>>({});
   const [cfDefs, setCfDefs] = useState<CustomFieldDef[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  // KYC "Verified" is recorded only by someone whose job is KYC (kyc.manage),
+  // or later by the KRA check / a KYC proof on the client (audit C8).
+  const [canVerifyKyc, setCanVerifyKyc] = useState(false);
+  useEffect(() => {
+    fetch("/api/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setCanVerifyKyc(Array.isArray(j?.capabilities) && j.capabilities.includes("kyc.manage")))
+      .catch(() => {});
+  }, []);
   // The PAN belongs to a client already in the CRM (someone who left, or in
   // the Trash): bring them back instead of adding a second record.
   const [existing, setExisting] = useState<{ id: string | null; name: string | null; state: "trash" | "exited" | "active" } | null>(null);
@@ -258,6 +273,8 @@ function NewInvestorPageInner() {
           // A minor's risk profile is the guardian's (migration 0234).
           riskProfile: kind === "minor" ? undefined : form.riskProfile || undefined,
           guardianInvestorId: kind === "minor" ? guardianLink.id ?? undefined : undefined,
+          familyId: familyId || undefined,
+          familyRole: familyRole || undefined,
           householdType: u(form.householdType),
           familyOwnerName: u(form.familyOwnerName),
           referralClientName: u(form.referralClientName),
@@ -313,12 +330,9 @@ function NewInvestorPageInner() {
         return;
       }
       const j = await res.json();
+      if (j.kycNotice) notify.info(j.kycNotice);
       if (familyId) {
-        await fetch(`/api/families/${familyId}/members`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ investorId: j.id, familyRole: familyRole || undefined }),
-        });
+        // Mapped into the family by the create itself (same transaction).
         router.push(`/dashboard/families/${familyId}`);
       } else {
         router.push(`/dashboard/investors/${j.id}`);
@@ -431,7 +445,27 @@ function NewInvestorPageInner() {
           </div>
           <SelectField label="Tax status" value={form.taxStatus} onChange={(v) => set("taxStatus", v)} options={["", ...taxStatusOptions(form.investorCategory)]} />
           <SelectField label="Residential status" value={form.residencyStatus} onChange={(v) => set("residencyStatus", v)} options={[{ value: "", label: "Select" }, { value: "indian_resident", label: "Indian resident" }, { value: "nri", label: "NRI" }, { value: "oci", label: "OCI" }, { value: "pio", label: "PIO" }, { value: "foreign_national", label: "Foreign national" }]} />
-          <SelectField label="KYC status" value={form.kycStatus} onChange={(v) => set("kycStatus", v)} options={[{ value: "pending", label: "Pending" }, { value: "registered", label: "Registered" }, { value: "verified", label: "Verified" }, { value: "hold", label: "Hold" }, { value: "rejected", label: "Rejected" }, { value: "expired", label: "Expired" }, { value: "re_kyc_required", label: "Re-KYC required" }]} />
+          <div>
+            <SelectField
+              label="KYC status"
+              value={form.kycStatus}
+              onChange={(v) => set("kycStatus", v)}
+              options={[
+                { value: "pending", label: "Pending" },
+                { value: "registered", label: "Registered" },
+                ...(canVerifyKyc ? [{ value: "verified", label: "Verified" }] : []),
+                { value: "hold", label: "Hold" },
+                { value: "rejected", label: "Rejected" },
+                { value: "expired", label: "Expired" },
+                { value: "re_kyc_required", label: "Re-KYC required" },
+              ]}
+            />
+            {!canVerifyKyc && (
+              <p className="text-2xs text-muted-foreground mt-1">
+                Verified needs a KRA check or KYC proof — run Check now on the client once it is saved.
+              </p>
+            )}
+          </div>
           {kind === "minor" ? (
             <div className="block">
               <div className="text-xs font-medium mb-1">Risk profile</div>
@@ -440,7 +474,12 @@ function NewInvestorPageInner() {
               </div>
             </div>
           ) : (
-          <SelectField label="Risk profile" value={form.riskProfile} onChange={(v) => set("riskProfile", v)} options={[{ value: "", label: "Select" }, { value: "conservative", label: "Conservative" }, { value: "moderate", label: "Moderate" }, { value: "aggressive", label: "Aggressive" }, { value: "very_aggressive", label: "Very aggressive" }]} />
+          <div className="block">
+            <SelectField label="Risk profile (provisional)" value={form.riskProfile} onChange={(v) => set("riskProfile", v)} options={[{ value: "", label: "Select" }, { value: "conservative", label: "Conservative" }, { value: "moderate", label: "Moderate" }, { value: "aggressive", label: "Aggressive" }, { value: "very_aggressive", label: "Very aggressive" }]} />
+            {form.riskProfile && (
+              <p className="mt-1 text-xs text-muted-foreground">Provisional — send the questionnaire to confirm. It is not the client&rsquo;s signed assessment.</p>
+            )}
+          </div>
           )}
         </Section>
 

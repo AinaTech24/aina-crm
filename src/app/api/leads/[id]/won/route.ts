@@ -47,7 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const pipeline = productToPipeline(primaryProduct);
     const clientMeta = clientMetaFromHeaders(req.headers);
 
-    const result = await withTenant(session.tenantId, async (tx) => {
+    await withTenant(session.tenantId, async (tx) => {
       await loadEditableLead(tx, session, id);
 
       // Snapshot BEFORE so workflow rules can detect the stage change to won_lead.
@@ -69,9 +69,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ...clientMeta,
       });
 
+      // A refused move saves nothing: throwing rolls the product / pipeline
+      // write above back with it (audit L21).
+      if (!res.ok) {
+        throw Object.assign(new Error(res.reason ?? "Could not move the lead to Won."), { status: 409 });
+      }
+
       // Emit lead.updated (before/after) so the workflow-rules engine can react
       // to "lead won" — e.g. send the risk-profile form on a Mutual Funds win.
-      if (res.ok && before) {
+      if (before) {
         const [after] = await tx.select().from(leads).where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId))).limit(1);
         await tx.insert(eventsOutbox).values({
           tenantId: session.tenantId,
@@ -86,12 +92,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return res;
     });
 
-    if (!result.ok) {
-      return NextResponse.json(
-        { error: result.reason ?? "Could not move the lead to Won Lead." },
-        { status: 409 }
-      );
-    }
     return NextResponse.json({ ok: true, pipeline });
   } catch (err) {
     return handleApiError(err);

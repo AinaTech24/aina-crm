@@ -13,15 +13,21 @@ import { handleApiError } from "@/lib/api/error-handler";
  * would duplicate the person and fail at conversion on the PAN. A client
  * outside the viewer's book is reported only as "already a client", with no
  * name or RM, so the check never widens what someone may see.
+ *
+ * Leads follow the same rule (audit L3): a matching lead the viewer may see
+ * (leadScopeSql — own / team / branch / firm) comes back in full; one outside
+ * it only as "already a lead with another RM" and what it matched on — no
+ * name, phone, email, stage, source or id. A viewer with no lead access at
+ * all gets the signal only.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { can } from "@/lib/auth/rbac";
 import { investorScopeSql } from "@/lib/investors/access";
-import { desc, eq, ilike, or, sql } from "drizzle-orm";
+import { leadScopeSql } from "@/lib/leads/access";
+import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
-import { leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -58,21 +64,24 @@ export async function POST(req: NextRequest) {
     const where = sql.join(conds, sql` OR `);
 
     const rows = await withTenant(session.tenantId, async (tx) => {
+      const visible = canSeeLeads(session) ? leadScopeSql(session, "leads") : sql`FALSE`;
       return tx.execute(sql`
         SELECT id, name, stage, source, phone, email, pan,
-               phone_normalized, email_normalized, created_at
+               phone_normalized, email_normalized, created_at, (${visible}) AS visible
         FROM leads
         WHERE (${where})
+          AND leads.lost_reason IS DISTINCT FROM '__deleted__'
         ORDER BY created_at DESC
         LIMIT 5
       `);
     });
 
-    const matches = (rows.rows as any[]).map((r) => {
+    const all = (rows.rows as any[]).map((r) => {
       const matchedOn: string[] = [];
       if (last10 && r.phone_normalized === last10) matchedOn.push("phone");
       if (emailLower && (r.email_normalized ?? "") === emailLower) matchedOn.push("email");
       if (panUpper && (r.pan ?? "").toUpperCase() === panUpper) matchedOn.push("pan");
+      if (!r.visible) return { outsideScope: true as const, matchedOn };
       return {
         id: r.id,
         name: r.name,
@@ -84,6 +93,13 @@ export async function POST(req: NextRequest) {
         matchedOn,
       };
     });
+    // Leads outside the viewer's scope fold into ONE signal (how many there
+    // are is not theirs to know either).
+    const hidden = all.filter((m): m is { outsideScope: true; matchedOn: string[] } => "outsideScope" in m);
+    const matches = [
+      ...all.filter((m) => !("outsideScope" in m)),
+      ...(hidden.length ? [{ outsideScope: true as const, matchedOn: [...new Set(hidden.flatMap((m) => m.matchedOn))] }] : []),
+    ];
 
     // Existing clients with the same phone, email or PAN.
     const iconds: any[] = [];
@@ -117,6 +133,11 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     return handleApiError(err);
   }
+}
+
+/** leadScopeSql throws for a role with no lead access. */
+function canSeeLeads(session: { roles: string[]; permissions?: string[] | null }) {
+  return can(session.roles, "lead.view.all", session.permissions) || can(session.roles, "lead.view.assigned", session.permissions);
 }
 
 /** investorScopeSql throws for a role with no client access (marketing creates leads too). */

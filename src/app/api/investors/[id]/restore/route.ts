@@ -1,4 +1,5 @@
 import { handleApiError } from "@/lib/api/error-handler";
+import { isUuid } from "@/lib/api/uuid";
 /**
  * POST /api/investors/[id]/restore — recover a soft-deleted client from the
  * Trash bin (clears deleted_at). All related data was preserved while it sat in
@@ -21,6 +22,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   try {
     const session = await requireSession();
     requireCap(session.roles, "investor.delete", session.permissions);
+    if (!isUuid(id)) return NextResponse.json({ error: "not found" }, { status: 404 });
 
     const outcome = await withTenant(session.tenantId, async (tx) => {
       // Data scope: only a client in the viewer's book.

@@ -88,8 +88,10 @@ export const docsReceivedConvertRecipe: RecipeDef = {
         severity: "info",
         title: "New client to onboard: {{vars.conversion.investorName}}",
         body:
-          "Documents have been received. 4 operations tasks have been created. Click to open the client's onboarding pipeline.",
-        linkUrl: "/dashboard/onboarding",
+          "Documents have been received. 4 operations tasks have been created. Click to open the client's onboarding journey.",
+        // The lead's page carries the onboarding journey (the old
+        // /dashboard/onboarding pipeline is retired and only redirects).
+        linkUrl: "/dashboard/leads/{{subject.id}}",
         audience: { roles: ["back_office", "ops", "owner"], users: [], subjectRm: false },
       }),
 

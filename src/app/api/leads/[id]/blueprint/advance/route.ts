@@ -14,20 +14,30 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  * Backwards moves and sideways branches are still subject to the
  * transition graph (and the role gate).
+ *
+ * Who may move it: journey-access.ts — the lead's rule in the lead phase, the
+ * CLIENT's rule (current RM, client editors, compliance on KYC steps,
+ * operations on theirs) in the client phase. `force` (the boards' drag) is
+ * limited to lead-phase targets for RMs; client steps only for managers and
+ * operations; a converted lead never goes back to a lead stage. Every path —
+ * direct, walk, force — runs the same step side effects
+ * (stage-side-effects.ts) and, for KYC Validated, needs evidence.
+ * `reopen` (owner only, audited) reopens a completed journey.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { sql, eq, and } from "drizzle-orm";
+import { recordAudit } from "@/lib/audit";
+import { checkPrerequisites } from "@/lib/blueprints/prerequisites";
+import { authorizeJourneyMove } from "@/lib/blueprints/journey-access";
+import { kycValidationBlock, runStageSideEffects } from "@/lib/blueprints/stage-side-effects";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { clientMetaFromHeaders } from "@/lib/audit";
 import { transitionTo } from "@/lib/blueprints/engine";
-import { leads, tasks } from "@/db/schema";
-import { v4 as uuid } from "uuid";
-import { loadEditableLead } from "@/lib/leads/access";
+import { leads } from "@/db/schema";
 import {
   normalizeEmail,
   normalizeLeadSource,
@@ -49,6 +59,9 @@ const Body = z.object({
    * the SOP prereq gates still run.
    */
   force: z.boolean().optional(),
+  /** Reopen a COMPLETED journey (Active Client / Policy Issued) to this step.
+   *  Owner only; audited. */
+  reopen: z.boolean().optional(),
   fields: z.record(z.string(), z.any()).optional(),
   /** ISO/local datetime — when moving to "call_back_later", schedules a
    *  reminder task for the lead owner at this time. */
@@ -76,127 +89,11 @@ const Body = z.object({
     .optional(),
 });
 
-/** Store the activated UCC on the client master (the lead's converted investor,
- *  or the investor directly when the blueprint subject is already a client). */
-async function storeClientUcc(tx: any, tenantId: string, leadId: string, ucc: string): Promise<void> {
-  const v = ucc.trim();
-  if (!v) return;
-  await tx.execute(sql`
-    UPDATE investors SET bse_ucc_code = ${v}, updated_at = now()
-    WHERE tenant_id = ${tenantId}::uuid
-      AND (id = (SELECT converted_investor_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid)
-           OR id = ${leadId}::uuid)
-  `);
-}
-
-/** "KYC Validated" on the journey IS the KYC record: set the client's KYC
- *  status to verified, stamped with who and when. A client already verified
- *  keeps its original validation date. */
-async function storeClientKycValidated(tx: any, tenantId: string, leadId: string, userId: string): Promise<void> {
-  await tx.execute(sql`
-    UPDATE investors SET
-      kyc_status = 'verified',
-      kyc_validated_at = COALESCE(kyc_validated_at, (now() AT TIME ZONE 'Asia/Kolkata')::date),
-      kyc_last_updated_by = ${userId}::uuid,
-      updated_at = now()
-    WHERE tenant_id = ${tenantId}::uuid
-      AND kyc_status IS DISTINCT FROM 'verified'
-      AND (id = (SELECT converted_investor_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid)
-           OR id = ${leadId}::uuid)
-  `);
-}
-
-/** Store the activated SIP mandate on the client master: status → active, the
- *  approval reference, the max debit amount, and the bank it's drawn on (which
- *  also fills the client's primary bank columns). */
-async function storeClientMandate(
-  tx: any,
-  tenantId: string,
-  leadId: string,
-  m: { bank?: string; ifsc?: string; masked?: string; amount?: number; ref?: string }
-): Promise<void> {
-  await tx.execute(sql`
-    UPDATE investors SET
-      mandate_status = 'active',
-      mandate_ref_no = COALESCE(${m.ref ?? null}, mandate_ref_no),
-      mandate_amount = COALESCE(${m.amount ?? null}, mandate_amount),
-      bank_name = COALESCE(${m.bank ?? null}, bank_name),
-      bank_ifsc = COALESCE(${m.ifsc ?? null}, bank_ifsc),
-      bank_account_masked = COALESCE(${m.masked ?? null}, bank_account_masked),
-      updated_at = now()
-    WHERE tenant_id = ${tenantId}::uuid
-      AND (id = (SELECT converted_investor_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid)
-           OR id = ${leadId}::uuid)
-  `);
-}
-
-/** Stages whose transition schedules a next-touch reminder for the lead owner so
- *  parked leads never go silent. (call_back_later already did; the other two
- *  loop stages promised "resurface" but scheduled nothing.) */
-const NEXT_TOUCH_STAGES = ["call_back_later", "call_not_connected", "contact_in_future"];
-
-/** Create a next-touch reminder task for the lead owner at the chosen time. The
- *  wording adapts to the loop stage (call back vs long-term re-engagement). */
-async function scheduleNextTouchReminder(
-  tx: any,
-  tenantId: string,
-  leadId: string,
-  fallbackAssigneeId: string,
-  callBackAt: string,
-  stageKey: string
-): Promise<void> {
-  const due = new Date(callBackAt);
-  if (isNaN(due.getTime())) return; // ignore an unparseable date rather than fail the move
-  const lr = await tx.execute(
-    sql`SELECT name, owner_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1`
-  );
-  const lead = lr.rows[0] as { name?: string; owner_id?: string } | undefined;
-  const title =
-    stageKey === "contact_in_future"
-      ? `Re-engage lead: ${lead?.name ?? "lead"}`
-      : `Call back: ${lead?.name ?? "lead"}`;
-  await tx.insert(tasks).values({
-    id: uuid(),
-    tenantId,
-    assigneeId: lead?.owner_id ?? fallbackAssigneeId,
-    subjectType: "lead",
-    subjectId: leadId,
-    relatedLeadId: leadId,
-    type: "follow_up",
-    title,
-    priority: "normal",
-    status: "open",
-    dueAt: due,
-  } as any);
-}
-
-/** On a bank-rejected mandate, create a high-priority task to re-do it. Assigned
- *  to the lead owner (or the acting user if none). */
-async function createRedoMandateTask(tx: any, tenantId: string, leadId: string, fallbackAssigneeId: string): Promise<void> {
-  const lr = await tx.execute(
-    sql`SELECT name, owner_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1`
-  );
-  const lead = lr.rows[0] as { name?: string; owner_id?: string } | undefined;
-  await tx.insert(tasks).values({
-    id: uuid(),
-    tenantId,
-    assigneeId: lead?.owner_id ?? fallbackAssigneeId,
-    subjectType: "lead",
-    subjectId: leadId,
-    relatedLeadId: leadId,
-    type: "follow_up",
-    title: `Re-do SIP mandate — bank rejected: ${lead?.name ?? "client"}`,
-    description: "The bank rejected the mandate. Resolve the issue and re-register the NACH / e-mandate.",
-    priority: "high",
-    status: "open",
-  } as any);
-}
-
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    // Capability gate (ownership is further enforced by loadEditableLead).
-    requireAny(session.roles, ["lead.edit.all", "lead.edit.assigned"], session.permissions);
+    // Ownership / capability: authorizeJourneyMove (lead rule in the lead
+    // phase, the client's rule in the client phase).
     await assertActiveLicense(session.tenantId, session.roles);
     const { id } = await params;
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
@@ -219,12 +116,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const clientMeta = clientMetaFromHeaders(req.headers);
 
+    const sideInput = {
+      callBackAt,
+      uccNumber,
+      mandate: {
+        bank: mandateBank?.trim() || undefined,
+        ifsc: mandateIfsc?.trim() || undefined,
+        masked: mandateAccountMasked?.trim() || undefined,
+        amount: mandateAmount,
+        ref: mandateRef?.trim() || undefined,
+      },
+    };
+
     const res = await withTenant(session.tenantId, async (tx) => {
-      await loadEditableLead(tx, session, id);
+      const subject = await authorizeJourneyMove(tx, session, id, toStageKey, { force: !!force });
+
+      // Reopening a completed journey is an owner's decision, on the record.
+      const reopen = !!parsed.data.reopen;
+      if (reopen) {
+        if (!session.roles.includes("owner")) {
+          throw Object.assign(new Error("Only the firm owner can reopen a completed onboarding journey."), { status: 403 });
+        }
+      }
+
+      // KYC Validated is the KYC record: it needs evidence and never
+      // overrides a KRA hold or rejection — on every path, forced included.
+      if (toStageKey === "kyc_validated" && subject.currentKey !== "kyc_validated") {
+        const block = await kycValidationBlock(tx, session.tenantId, id);
+        if (block) return { ok: false as const, code: "prereq" as const, reason: block };
+      }
 
       // Update any required fields collected during the transition
       const safeFields = sanitizeLeadFields(fields);
-      if (Object.keys(safeFields).length > 0) {
+      if (Object.keys(safeFields).length > 0 && !subject.converted) {
         await tx
           .update(leads)
           .set({
@@ -234,18 +158,40 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)));
       }
 
-      // Force mode — admin override — (e.g. Kanban drag). Skip the SOP graph
-      // and just move directly. No walk, no intermediate history rows. The move
-      // is audit-logged (forced=true) by transitionTo.
-      if (force) {
-        return await transitionTo(tx, session.tenantId, id, toStageKey, {
+      const done = async <T extends { ok: boolean; toStage?: string }>(r: T): Promise<T> => {
+        if (r.ok) {
+          await runStageSideEffects(tx, { tenantId: session.tenantId, leadId: id, stageKey: toStageKey, actorUserId: session.userId }, sideInput);
+          if (reopen && subject.instanceStatus === "completed") {
+            await recordAudit(tx, {
+              tenantId: session.tenantId,
+              actorUserId: session.userId,
+              action: "lead.blueprint.reopen",
+              entityType: "lead",
+              entityId: id,
+              before: { stage: subject.currentKey, status: "completed" },
+              after: { stage: toStageKey, status: "in_progress" },
+              reason: remarks ?? null,
+              ...clientMeta,
+            });
+          }
+        }
+        return r;
+      };
+
+      // Force mode — (e.g. Kanban drag). Skip the SOP graph and just move
+      // directly. No walk, no intermediate history rows. The move is
+      // audit-logged (forced=true) by transitionTo; the step's own writes
+      // still happen.
+      if (force || reopen) {
+        return done(await transitionTo(tx, session.tenantId, id, toStageKey, {
           actorUserId: session.userId,
           actorRoles: session.roles ?? [],
-          remarks: remarks ?? `Forced move via Kanban drag.`,
+          remarks: remarks ?? (reopen ? "Completed journey reopened by the owner." : `Forced move via Kanban drag.`),
           systemBypass: true,
+          allowReopen: reopen,
           task: journeyTask,
           ...clientMeta,
-        });
+        }));
       }
 
       // 1. Try the direct one-hop transition first — the cheap path.
@@ -256,30 +202,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         task: journeyTask,
         ...clientMeta,
       });
-      if (first.ok) {
-        if (NEXT_TOUCH_STAGES.includes(toStageKey) && callBackAt) {
-          await scheduleNextTouchReminder(tx, session.tenantId, id, session.userId, callBackAt, toStageKey);
-        }
-        if (toStageKey === "ucc_activated" && uccNumber) {
-          await storeClientUcc(tx, session.tenantId, id, uccNumber);
-        }
-        if (toStageKey === "kyc_validated") {
-          await storeClientKycValidated(tx, session.tenantId, id, session.userId);
-        }
-        if (toStageKey === "mandate_activated") {
-          await storeClientMandate(tx, session.tenantId, id, {
-            bank: mandateBank?.trim() || undefined,
-            ifsc: mandateIfsc?.trim() || undefined,
-            masked: mandateAccountMasked?.trim() || undefined,
-            amount: mandateAmount,
-            ref: mandateRef?.trim() || undefined,
-          });
-        }
-        if (toStageKey === "mandate_reject") {
-          await createRedoMandateTask(tx, session.tenantId, id, session.userId);
-        }
-        return first;
-      }
+      if (first.ok) return done(first);
       // Don't let the multi-hop walk silently bypass a prerequisite / role /
       // terminal block from the direct hop — surface it so the user fixes it.
       if (first.code === "prereq" || first.code === "role" || first.code === "terminal") return first;
@@ -313,15 +236,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (targetIdx < 0) return first; // off-path target (e.g. kyc_pending) — keep original error
 
       // Look up the lead's current stage to compute distance.
-      const cur = await tx.execute(sql`
-        SELECT current_stage_key FROM lead_blueprint_instances WHERE lead_id = ${id}::uuid LIMIT 1
-      `);
-      const currentKey = (cur.rows[0] as any)?.current_stage_key as string | undefined;
+      const currentKey = subject.currentKey;
       const currentIdx = currentKey ? HAPPY_PATH.indexOf(currentKey) : -1;
       if (currentIdx < 0 || targetIdx <= currentIdx) {
         // Current stage isn't on the happy path, or move is backwards/unchanged.
         // Return the original error — caller can retry with force=true.
         return first;
+      }
+
+      // The walk's hops skip the graph, but the TARGET's own checks still
+      // apply: it must be as ready as a direct move would need it to be.
+      const finalCheck = await checkPrerequisites(tx, session.tenantId, id, toStageKey);
+      if (!finalCheck.ok) {
+        const missing = finalCheck.items.filter((i) => !i.satisfied).map((i) => i.label).join("; ");
+        return { ok: false as const, code: "prereq" as const, reason: `Complete these first: ${missing}` };
+      }
+
+      // Walking THROUGH KYC Validated makes the same claim as stopping there.
+      const kycIdx = HAPPY_PATH.indexOf("kyc_validated");
+      const passesKyc = currentIdx < kycIdx && kycIdx < targetIdx;
+      if (passesKyc) {
+        const block = await kycValidationBlock(tx, session.tenantId, id);
+        if (block) return { ok: false as const, code: "prereq" as const, reason: block };
       }
 
       // Walk forward along the happy path. Each hop uses systemBypass so
@@ -344,14 +280,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
         if (!last.ok) return last;
       }
-      if (toStageKey === "kyc_validated") {
-        await storeClientKycValidated(tx, session.tenantId, id, session.userId);
+      if (passesKyc) {
+        await runStageSideEffects(tx, { tenantId: session.tenantId, leadId: id, stageKey: "kyc_validated", actorUserId: session.userId }, {});
       }
-      return last;
+      return done(last);
     });
 
     if (!res.ok) {
-      return NextResponse.json({ error: res.reason }, { status: 409 });
+      return NextResponse.json({ error: res.reason, code: res.code ?? null }, { status: 409 });
     }
     return NextResponse.json(res);
   } catch (err: any) {

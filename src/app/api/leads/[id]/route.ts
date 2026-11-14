@@ -4,11 +4,12 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  *   GET    /api/leads/[id]   — fetch one lead
  *   PATCH  /api/leads/[id]   — partial update
- *   DELETE /api/leads/[id]   — soft delete (stage='lost', lostReason='deleted')
+ *   DELETE /api/leads/[id]   — soft delete (lib/leads/lifecycle.ts; restorable)
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
+import { writeStageThroughJourney } from "@/lib/blueprints/journey-access";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -16,6 +17,9 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { leads, eventsOutbox, users } from "@/db/schema";
 import { canEditAllLeads, loadEditableLead, loadViewableLead } from "@/lib/leads/access";
+import { reassignLead } from "@/lib/leads/ownership";
+import { leadContactIssue } from "@/lib/leads/contact-rules";
+import { softDeleteLead } from "@/lib/leads/lifecycle";
 import { scoreFields } from "@/lib/leads/score";
 import {
   normalizeEmail,
@@ -65,6 +69,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
+    // What an edit changes is held to the create rules (L21): a real phone /
+    // email / PAN — an invalid PAN is refused with its field, never dropped.
+    const issue = leadContactIssue(parse.data);
+    if (issue) return NextResponse.json({ error: issue.error, field: issue.field }, { status: 400 });
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
@@ -83,8 +91,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (u.status !== "active") return "bad_owner" as const;
         if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))
           && (!session.branchId || u.branchId !== session.branchId)) return "bad_owner" as const;
-        if (session.mobile) patch.branchId = u.branchId;
       }
+      // Owner and branch move together, the lead's follow-ups go with it and
+      // the new owner is told (lib/leads/ownership.ts, L12 / L13 / L14).
+      let newOwner: string | null | undefined;
+      if (patch.ownerId && patch.ownerId !== before.ownerId) newOwner = patch.ownerId;
+      delete patch.ownerId;
       if (Object.prototype.hasOwnProperty.call(patch, "email")) {
         patch.email = patch.email || null;
         patch.emailNormalized = normalizeEmail(patch.email);
@@ -99,9 +111,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (Object.prototype.hasOwnProperty.call(patch, "source")) {
         patch.source = normalizeLeadSource(patch.source);
       }
+      // A stage edit goes through the journey (below), never a bare
+      // leads.stage write — the board and the stepper must agree (audit L9).
+      let stageMove: string | null = null;
       if (Object.prototype.hasOwnProperty.call(patch, "stage")) {
-        patch.stage = normalizeLeadStage(patch.stage);
-        patch.stageChangedAt = new Date();
+        const next = normalizeLeadStage(patch.stage);
+        if (next !== normalizeLeadStage(before.stage)) stageMove = next;
+        delete patch.stage;
       }
       if (Object.prototype.hasOwnProperty.call(patch, "nextFollowUpAt")) {
         patch.nextFollowUpAt = patch.nextFollowUpAt ? new Date(patch.nextFollowUpAt) : null;
@@ -123,11 +139,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         pan: merged.pan,
         interestProducts: merged.interestProducts,
       });
-      const after = await tx
+      let after = await tx
         .update(leads)
         .set({ ...patch, ...scored, updatedAt: new Date() } as any)
         .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)))
         .returning();
+      if (newOwner) {
+        await reassignLead(tx, { tenantId: session.tenantId, leadId: id, toOwnerId: newOwner, actorUserId: session.userId });
+        after = await tx.select().from(leads).where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)));
+      }
+      if (stageMove) {
+        const moved = await writeStageThroughJourney(tx, session, id, stageMove, {
+          remarks: "Stage changed on the lead record.",
+          ...clientMeta,
+        });
+        if (!moved.ok) throw Object.assign(new Error(moved.reason ?? "This stage move is not allowed."), { status: 409 });
+        after = await tx.select().from(leads).where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)));
+      }
 
       // Emit lead.updated (before/after) so the workflow-rules engine can react
       // to a lead edit — e.g. a stage change made from the edit panel. (Only the
@@ -149,7 +177,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         entityType: "lead",
         entityId: id,
         before: { name: before.name, stage: before.stage } as any,
-        after: patch as any,
+        after: { ...patch, ...(stageMove ? { stage: stageMove } : {}), ...(newOwner ? { ownerId: newOwner } : {}) } as any,
         ...clientMeta,
       });
       return after[0];
@@ -171,36 +199,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const clientMeta = clientMetaFromHeaders(req.headers);
     await withTenant(session.tenantId, async (tx) => {
       const before = await loadEditableLead(tx, session, id);
-      await tx
-        .update(leads)
-        .set({
-          stage: "not_qualified",
-          stageChangedAt: new Date(),
-          // Distinct sentinel so deleted leads are HIDDEN from every lead list /
-          // kanban / KPI (filtered out), instead of polluting the genuine
-          // "Not qualified" bucket. (A real archived_at column is staged for the
-          // next migration; this is the no-migration equivalent.)
-          lostReason: "__deleted__",
-          lostAt: new Date(),
-          updatedAt: new Date(),
-        } as any)
-        .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)));
-      await tx.insert(eventsOutbox).values({
-        tenantId: session.tenantId,
-        kind: "lead.deleted",
-        entityType: "lead",
-        entityId: id,
-        meta: { userId: session.userId } as any,
-      } as any);
-      await recordAudit(tx, {
-        tenantId: session.tenantId,
-        actorUserId: session.userId,
-        action: "lead.delete",
-        entityType: "lead",
-        entityId: id,
-        before: { name: before.name, stage: before.stage } as any,
-        ...clientMeta,
-      });
+      // lib/leads/lifecycle.ts: hidden everywhere, journey stopped (its step
+      // kept for a restore), follow-ups and step tasks cancelled, audited.
+      await softDeleteLead(tx, { tenantId: session.tenantId, actorUserId: session.userId, lead: before }, clientMeta);
     });
     return NextResponse.json({ ok: true });
   } catch (err: any) {

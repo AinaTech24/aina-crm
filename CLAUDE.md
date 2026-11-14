@@ -297,8 +297,9 @@ NPS or an FD is an **opportunity** on their client record (`client_opportunities
 migration 0224) — never a new lead, which would duplicate the person and fail
 at conversion on the PAN. Code: `src/lib/opportunities/` (products · stages ·
 journey · access), APIs under `/api/investors/[id]/opportunities` and
-`/api/opportunities/[id]` (+ `/advance`, `/sync`), UI `OpportunitiesPanel` on
-the client page's Overview tab.
+`/api/opportunities/[id]` (+ `/advance`, `/sync`, `/step`, `/later`,
+`/transaction-review`, `/manage`), UI `OpportunitiesPanel` on the client
+page's Overview tab.
 
 - **Several can be open for one product** (the firm's request of 2026-11-07,
   migration 0259 dropped the unique index): a second SIP, a top-up, another
@@ -313,28 +314,56 @@ the client page's Overview tab.
   us", and the owner gets a follow-up task (closed with the opportunity).
 - **The journey is a blueprint** (subject_type `opportunity`, module
   `opportunities`): identified → discussion → suitability → proposal → accepted
-  → the product branch (MF: transaction → review → RTA data check; insurance: proposal form →
-  underwriting → issued; general: executed) → won. Lost from any open stage,
-  with a reason and an optional revisit task. **KYC, UCC and mandate are not
+  → the product branch (MF: Transaction placed → Approve / reject transaction
+  → RTA data check; insurance: proposal form → underwriting → issued; general,
+  which has no suitability step: executed) → won. Lost from any open stage,
+  with a reason and an optional revisit task (its date must be after today). **KYC, UCC and mandate are not
   steps** (removed at the firm's request 2026-10-17, migration 0251 — they are
   client onboarding); do not put them back. They remain a gate on
   Transaction placed.
 - **Skips**: a stage the client already satisfies (a current risk profile or
-  needs analysis, a sent / accepted proposal, a recorded transaction or
-  policy) is passed automatically with a history remark. The
+  needs analysis, a sent / accepted proposal, a recorded acceptance, the MF
+  business, a policy of the opportunity's line, an FD) is passed automatically
+  with a history remark. The
   people steps (identified, discussion) are never skipped — except when a
   proposal has been shared, which proves they happened.
+- **What counts as evidence** (`loadFacts`, 2026-11 journey audit): MF
+  "Transaction placed" — the order number recorded at "Order placed" first,
+  else a purchase or a NEW SIP (a `sips` row registered since the opportunity
+  opened, or the first debit of a scheme with no SIP and no SIP debit before
+  it); an instalment of a SIP the client already had never counts. Insurance —
+  only a policy of the opportunity's LINE (`insuranceLineOf` in products.ts,
+  the split `lib/metrics/opportunities.ts` uses), recorded after it opened. FD —
+  a deposit recorded after it opened, or one that became active in this write
+  (`syncFdAutomations` `previousStatus`). A proposal — one linked to it, or an
+  unlinked one only when exactly ONE open opportunity of the client could be
+  it (`onProposalEvent` then links it); a mixed proposal with two candidates
+  moves neither.
+- **"Client accepted"**: with a CRM proposal the client approves it there and
+  the journey moves on by itself. With none — NPS, PMS, demat, loan, other, or
+  a quote shared outside the CRM — the RM records the acceptance
+  (`record_acceptance`: the date and how — in person / call / email / WhatsApp
+  / signed form; audited `opportunity.acceptance_recorded`), and that is the
+  evidence the next step's gate reads (`Prerequisite.byAction`). "Create
+  proposal" is offered at Proposal and Client accepted for every product. A
+  declined proposal takes a journey at Client accepted back to Proposal; the
+  board's column for that step is "Awaiting acceptance".
 - **Gates, never bypassed**: an MF proposal needs a client-CONFIRMED risk
   profile signed in the last 12 months (a provisional, age-suggested one does
   not count) — **except for a MINOR** (2026-10-30, `isMinorClient` in
   `lib/investors/type-rules.ts`; `Facts.riskExempt`, `ProposalSnapshot.riskExempt`):
   a minor goes to the proposal without a profile of their own, in the journey
   and in the proposal send route, and no other client type is let off; an insurance quote needs a recorded needs analysis; an MF
-  transaction needs KYC, a UCC and, for a SIP, a mandate covering it.
+  transaction needs KYC, a UCC and, for a SIP, a mandate covering it. At MF
+  Suitability the card offers "Send risk-profile link" (the client's
+  share-token link, `SendRiskProfileLinkButton`).
 - **Entry points**: "New opportunity" on the client page, the Cross-sell
   card's opportunity chips, and the new-lead form — `check-duplicate` also
   matches existing clients and offers "Start opportunity" (a client outside the
-  viewer's book is reported only as "already a client", no name or RM).
+  viewer's book is reported only as "already a client", no name or RM); it
+  records source `lead_match` (`&leadId=` also records `source_lead_id`). The
+  client's RM is notified when someone else opens one for their client, and no
+  opportunity can be opened for a client who is closed, merged or trashed.
 - **Proposals**: `proposals.opportunity_id` links a proposal to the
   opportunity it answers; the proposals module calls
   `onProposalEvent(tx, tenantId, proposalId, "sent" | "accepted" | "declined")`.
@@ -357,12 +386,16 @@ the client page's Overview tab.
   The step after "Client accepted" is gated on the client having APPROVED the
   proposal (`AFTER_ACCEPTED` in stages.ts); until then the journey waits, and
   `onProposalEvent("accepted")` moves it on by itself. An MF journey now ends
-  Transaction placed → **Approve / reject transaction** (`txn_review`) → Won,
-  and is never skipped or advanced generically: `decideTransaction` /
-  `POST /api/opportunities/[id]/transaction-review`. Approve wins the client and
-  creates a "client won" task (`meta.wonOpportunityId`, so closing does not
-  complete it); reject needs a reason, returns to Transaction placed with a fix
-  task, and the rejected transaction no longer counts in `loadFacts`.
+  Transaction placed → **Approve / reject transaction** (`txn_review`) → RTA
+  data check → Won, and the review is never skipped or advanced generically:
+  `decideTransaction` / `POST /api/opportunities/[id]/transaction-review`.
+  Approve moves to the RTA data check (below); reject needs a reason, returns
+  to Transaction placed with a fix task, and the rejected transaction no
+  longer counts in `loadFacts`.
+- **Four eyes** (2026-11): approving / rejecting the transaction and the RTA
+  data check need the capability `opportunity.review_transaction` (back office
+  / ops; the firm owner implicitly; grantable) and are never done by the
+  opportunity's own owner.
 - **Each step asks for what it needs** (2026-10-17, migration 0250,
   `lib/opportunities/steps.ts`, `POST /api/opportunities/[id]/step`,
   `StepActions.tsx`): Need identified → Log call (no answer stays, with a
@@ -377,19 +410,45 @@ the client page's Overview tab.
 - **RTA data check** (2026-10-19, migration 0240). Approving an MF transaction
   no longer wins the client: it moves to `rta_check` and creates a high-priority
   task (`meta.opportunityId` + `rtaCheck: true`) to check the transaction against
-  the RTA data, assigned to whoever the approver picks in the Approve dialog
-  (default the opportunity's owner; the assignee is notified) and due the day they
-  choose (default tomorrow). **Won** is gated on that task being completed (`gateFor("won")`);
-  the "client won" task is created at that point (`createWonTask`). The gate's link opens that
-  task itself (`/dashboard/tasks/<id>`), and at the RTA data check step the card offers
-  **Complete RTA data check** (`Prerequisite.completeTaskId`), which completes the task through
-  the ordinary `PATCH /api/tasks/[id]` so it reads completed in the Tasks module too.
+  the RTA data, assigned to someone in operations the approver picks (default
+  the approver; never the opportunity's owner; the assignee is notified) and
+  due the day they choose (default tomorrow). **Completing that task wins the
+  opportunity**: `onOpportunityTaskCompleted`, called by `PATCH /api/tasks/[id]`
+  and the bulk route, refuses (403, rolled back) anyone without the capability
+  or the owner, and otherwise advances to Won, which creates the "client won"
+  task (`createWonTask`, `meta.wonOpportunityId`). The card offers **Complete
+  RTA data check** (`Prerequisite.completeTaskId`) to operations; "Mark won" is
+  only the fallback once the task is done.
+- **Undo** (capability `opportunity.reopen`: branch heads, the owner
+  implicitly; grantable): "Move back one step" on an open journey and
+  "Reopen" on a won / lost one (at the step it closed from; refused while
+  the client is gone),
+  `POST /api/opportunities/[id]/manage`, audited `opportunity.moved_back` /
+  `opportunity.reopened` with the reason. Going back to or before Client
+  accepted forgets a recorded acceptance; leaving the RTA check cancels its task.
+- **Closing** CANCELS (never completes) the opportunity's open tasks, detaches
+  any inflow it waited for (the reminder becomes the inflow's own again), and on
+  a LOSS writes the Cross-sell card back to what it said before the opportunity
+  (`step_details._crossSell.before`), else "Not held" — only while the card
+  still says "Interested". The Cross-sell card re-syncs from the page and saves
+  only the keys changed (`PATCH /api/investors/[id]/cross-sell`, merged and
+  audited); its badge reads "N not held with us".
+- **Live clients only**: the board, its list and tiles count a client by
+  `aliveClient`, as the dashboard cards do. A client closed / exited / merged
+  away / trashed takes their open opportunities with them
+  (`closeOpportunitiesOfGoneClients`: the bulk client actions, the client
+  edit / delete route, `syncOpportunity` and the nightly ops scan). A merge
+  moves every open opportunity to the survivor first — a client may hold two
+  for the same product since 0259 — so nothing is closed by a merge.
+- **A policy recorded** in the Insurance register (create / edit) runs
+  `onPolicyRecorded`: in force → the open opportunity of that line is won,
+  else the journey catches up. The register's bulk import does not.
 - **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
   open task with `meta.opportunityId` — there is no column. The follow-up date
   chosen at creation is the first task's due date (10:00 IST; default two
-  days), and `setFollowUp` (PATCH `followUpOn`) moves the open one or creates
-  one. Completing the task clears it; an open opportunity with none reads
-  "No follow-up set".
+  days), and `setFollowUp` (PATCH `followUpOn`) moves the OWNER's open one
+  (never operations' RTA data check) or creates one. Completing the task
+  clears it; an open opportunity with none reads "No follow-up set".
 - **"Later" — the client wants it, but not yet** (2026-10-07, migration 0231,
   `lib/opportunities/later.ts` + `later-core.ts`). "After Diwali", "in three
   months", "when my FD matures": the opportunity is PARKED — still open (one
@@ -399,7 +458,12 @@ the client page's Overview tab.
   revisit date for MF / other, 15 for insurance. Waiting for MONEY records an
   expected inflow (`expected_inflow_id`) whose own reminder task is that
   reminder — never two. A reminder 3 days overdue notifies the client's branch
-  head once (task reminder scanner, `escalateOverdueRevisits`). Resume, moving
+  head once — the owner's reporting manager when the owner IS that branch head
+  (task reminder scanner, `escalateOverdueRevisits`). The awaited money marked
+  invested / lapsed / cancelled / deleted resumes it with a follow-up saying so
+  (`onInflowChanged`, from the expected-inflow API); once it is no longer
+  waiting, an inflow edit never revives its reminder as a revisit. Inflow
+  reminders fall due 09:00 IST. Resume, moving
   the journey on, or a proposal being shared brings it back; the Opportunities
   board has a "Later" column and tile. Started from the card ("Client wants it
   later") or the New opportunity dialog (Now / Later). Diwali dates are a
@@ -599,6 +663,95 @@ Reports → "Bottlenecks — Where Work Waits" (`/dashboard/reports/bottlenecks`
 - Person = the case's owner, branch = the lead's / client's branch; what the
   viewer sees is `resolveDataAccess` (firm / branch / team / own), as on the
   dashboards. Tasks: creation → done by type, by assignee.
+
+## The lead → client journey (blueprint engine)
+
+`lib/blueprints/` — one journey per lead (`lead_blueprint_instances`), lead
+phase then client onboarding. Rules since 2026-11 (journey audit L1–L20,
+C1–C17):
+
+- **Automatic moves are forward-only** (`transitionTo({ automatic: true })`;
+  every `autoAdvance` is). `journey-rules.ts` ranks stages by key (loops,
+  KYC branches, retries, the physical route and insurance sit level with
+  their step), never by stored order. A converted lead / client-phase journey
+  is never moved back into a lead stage (Lost included), never across
+  branch or route, and a deleted lead never moves. Only a person moves back.
+- **Never write `leads.stage` directly** — the engine mirrors it. A stage
+  chosen as a field (lead PATCH, `/stage`, CSV import) goes through
+  `writeStageThroughJourney` / `startJourneyAt` (`journey-access.ts`).
+- **Who moves a step by hand**: `authorizeJourneyMove` — the lead's rule in
+  the lead phase, the CLIENT's (current RM, client editors, compliance on KYC
+  steps, ops on theirs) in the client phase. `force` (board drag): lead-phase
+  targets for RMs, client steps for managers / ops only. Every path runs the
+  same step writes (`stage-side-effects.ts`); KYC Validated needs evidence
+  and never overrides a KRA hold / rejection. An owner may reopen a completed
+  journey (`reopen`, audited).
+- **Convert** needs a Won lead (or the board's drop on Won, `confirmWon`) and
+  `investor.edit.*`; it reuses the client already on file (409
+  `existing_client`, check-duplicate's visibility rule), carries the lead's
+  PAN and details, cancels its follow-ups (`lib/leads/open-tasks.ts`
+  `closeLeadTasks`) and starts the product's onboarding — insurance → Needs
+  Analysis; general products (NPS / PMS / FD) skip UCC / mandate:
+  KYC Validated → "Product Executed".
+- **Step tasks**: an automatic move closes the tasks of the steps behind it;
+  `cancelJourneyTasks` is for a client who exits / is trashed (the client
+  write paths should call it). SLA alerts: untouched leads (the sweep opens
+  their journey) go to the owner, firm owners and the lead's branch head;
+  stalled onboarding to the step's task holder and the client's RM.
+- A directly-added client's journey (`/api/investors/[id]/blueprint`) is
+  placed from facts (`client-facts.ts`), never a fake "all done".
+
+## Leads — capture, access and admin
+
+Since 2026-11 (journey audit L3–L22; `tests/lead-capture-access-db.test.ts`):
+
+- **One lead scope** (`leadScopeSql` / `leadScopeCondition`,
+  `lib/leads/access.ts`) for the list, the API, nurture, deleted leads and the
+  duplicate check: firm (`lead.view.all`) · branch (a branch head: the lead's
+  `branch_id`, or with none recorded its owner's branch — `leadWhere`'s rule) ·
+  own + the reporting line below (`users.reporting_manager_id`, the
+  dashboards' team). A teammate's lead is visible, not editable
+  (`loadEditableLead`). The app (`session.mobile`) keeps own-only.
+- **check-duplicate never widens access**: a lead outside the scope is only
+  `{ outsideScope: true, matchedOn }` ("already a lead with another RM"),
+  like a client outside the book.
+- **A lead's branch is its owner's** on every write — create (web, app,
+  import, public form) and every reassignment (`lib/leads/ownership.ts`
+  `reassignLead`, which also moves the lead's open follow-ups to the new owner).
+  Every assignment notifies the owner (`lead.assigned`). Auto-assignment is
+  `autoAssignLeadOwner`: Assignment Rules, then least-loaded by OPEN leads
+  (`leadOpenSql`).
+- **Bulk** (`/api/leads/bulk`) checks each id with `loadEditableLead`, reports
+  skips (`skippedLeads`), moves stages with `writeStageThroughJourney`.
+- **Follow-ups end with the lead**: Lost (every path — `runStageSideEffects`
+  on `not_qualified`), delete and convert call `closeLeadTasks`. A lead has ONE
+  next-touch reminder (`scheduleNextTouchReminder`, meta `nextTouch`: the lead
+  form's first follow-up, call-backs, "call later"), and it sets
+  `next_follow_up_at`.
+- **Delete is soft and restorable** (`lib/leads/lifecycle.ts`): the
+  `__deleted__` marker, journey stopped with its step kept, tasks cancelled; a
+  converted lead is not deleted (409). Restore (`POST /api/leads/[id]/restore`,
+  page `/dashboard/leads/deleted`): owner, branch head, lead managers
+  (`canRestoreLeads`).
+- **Contact rules** (`lib/leads/contact-rules.ts`, form + API): name, and a
+  phone OR email; an Indian mobile (+91 / 0 allowed) or "+<country>…"; an
+  invalid PAN is a 400 with `field: "pan"`. Manual leads record no consent
+  row: `privacy_consents` holds consent the PERSON ticked; the notice is
+  recorded on the first email by `dispatch()`.
+- **Import** normalises phone/email, rejects a bad PAN, skips a row matching a
+  client, a live lead or an earlier row (`skippedRows` with reasons), and
+  owns rows by the Owner column (email or name) else `autoAssignLeadOwner`.
+  **A public form** from an existing client becomes a task for the client's
+  RM; from an existing lead, a note on that lead — never a second record; the
+  answer is the same either way.
+- **Sources**: one list, `LEAD_SOURCE_OPTIONS` (form, filters, cards), every
+  stored value incl. Google Ads / Meta Ads / LinkedIn. Lead-phase labels come
+  from `stages.ts` (the stepper and its history relabel; "Mark Lost", "Won").
+- **Sending to a lead** (checklist, template dispatch) needs
+  `loadEditableLead`; the checklist email is the `doc_checklist` template via
+  `dispatch()`.
+- **Add client "KYC Verified"** needs `kyc.manage`; anyone else's choice is
+  saved Pending with `kycNotice` (the KRA check on the client moves it).
 
 ## Meetings — attendees and action items
 
@@ -880,9 +1033,10 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   every member the new head's RM; merging families gives the moved members the
   survivor head's RM; a client created straight into a family gets the head's
   RM unless an RM was chosen (an own-book-only creator keeps their own). It is
-  a default, not a lock — a member's RM can be changed on their record. Only
-  `rm_id` moves (as the client page and bulk Assign RM do), and each change is
-  audited as `investor.rm_from_family_head`.
+  a default, not a lock — a member's RM can be changed on their record.
+  `rm_id` moves and the branch follows the new RM's (as the client page and
+  bulk Assign RM do, below), and each change is audited as
+  `investor.rm_from_family_head` (before / after RM and branch).
   A family has ONE RM (2026-10-22): changing the RM of ANY member — head or not — on
   the client's record or by bulk Assign RM gives the head and every member the same RM,
   and the family (`setFamilyRmFromClient`, reason `family_rm_changed`; clearing an RM
@@ -890,6 +1044,15 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   (`PATCH /api/families/[id]`) does the same through `setFamilyRm`. The head's RM also reaches the family when a client reaches the
   **Family Mapping** step of the onboarding journey (`blueprints/engine.ts`,
   reason `family_mapping_stage`: a head's whole family, or a member alone).
+- **A client's branch follows its RM by default** (`lib/investors/rm-branch.ts`,
+  2026-11-03): Add client puts the client in the RM's branch, and an RM change
+  — the client page, bulk Assign RM, the family RM cascade — moves it to the
+  new RM's branch. An RM with no branch (an owner) leaves it. The edit form's
+  Branch field (investor.edit.all only) sets one explicitly, and that wins.
+- **Add client into a family maps it in the create transaction**
+  (`POST /api/investors` `familyId` + `familyRole` →
+  `lib/families/attach.ts`, the same code as `POST /api/families/[id]/members`):
+  a family the user may not map into refuses the create, nothing half-made.
 - **Family mapping has its own permissions** (2026-10-19, "Family Mapping" group
   in Customize Access Permissions): `family.map.view` / `.create` / `.edit` /
   `.delete` — see families, add a client to a family, change a member's
@@ -946,6 +1109,26 @@ the imports and every label; never copy the enum again.
   found by the guardian PAN typed), and two triggers keep the category, score,
   signed date and provisional flag equal to the guardian's — on any write path.
   The forms show it read-only for a minor and never send `riskProfile`.
+- **The APIs enforce the type's requirements** (`clientTypeIssue`, 2026-11-03):
+  a minor needs a DOB under 18 and a guardian's name, an HUF a Karta's name —
+  a 400 naming the field (`dob`, `typeDetails.guardian.name`,
+  `typeDetails.karta.name`). PATCH checks only the rules whose inputs the edit
+  changed (or all of them on a type change), so an old import's gap does not
+  block an unrelated edit. Create drops fields a type does not have.
+- **Minor to major** (PATCH, 2026-11-03): changing the type from Minor needs
+  the client's OWN PAN (typed, or the one in `MINOR:<PAN>`), stored with no
+  prefix (PAN dedup applies; the guardian's PAN is refused as taken). It sets
+  KYC to pending, unlinks the guardian, replaces the copied guardian risk with
+  the client's own latest assessment or nothing, and audits
+  `investor.minor_to_major` (ids and key kinds, never a PAN). A client still a
+  minor keeps the guardian-keyed PAN locked.
+- **A risk category picked by staff is PROVISIONAL** (`STAFF_ENTRY` in
+  `lib/risk-profile/apply.ts`, 2026-11-03): Add client, the edit form and the
+  guided setup store it provisional, signed by nobody, basis `staff_entry` —
+  it never passes the "client-confirmed in 12 months" gate, and the setup
+  checklist, the wizard and the header ("Onboarding incomplete") do not count
+  it as done. The edit path records only a CHANGED category. (The spreadsheet
+  import still writes a non-provisional category.)
 - **Dropdowns, not free text** (lists in client-types.ts): tax status by type
   (`taxStatusOptions`, defaulted on a type change), marital status, income
   range, household type (Individual · Family · Company · HUF). `withCurrent`

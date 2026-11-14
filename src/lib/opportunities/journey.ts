@@ -63,14 +63,17 @@ import { clientOpportunities, eventsOutbox, tasks, type ClientOpportunity, type 
 import { blueprintStageHistory } from "@/db/schema";
 import { ensureInstanceFor, transitionPoly } from "@/lib/blueprints/poly-engine";
 import { recordAudit } from "@/lib/audit";
+import { can } from "@/lib/auth/rbac";
 import { isMinorClient } from "@/lib/investors/type-rules";
 import { createNotification } from "@/lib/notifications/create";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
+  HEALTH_POLICY_TYPES, LIFE_POLICY_TYPES, insuranceLineOf,
   isCrossSellProduct, productLabel, productPipeline, proposalTypesFor, type OpportunityPipeline, type OpportunitySource,
 } from "./products";
 import { AFTER_ACCEPTED, isClosedStage, nextStage, OPPORTUNITY_PATHS, stageName, type OpportunityStageKey } from "./stages";
-import { resumeOpportunity } from "./later";
+import { detachInflow, resumeOpportunity } from "./later";
+import { istDay } from "./later-core";
 import { INFLOW_SOURCE_LABELS, type InflowSourceType } from "@/db/schema";
 
 export type Actor = { tenantId: string; userId: string };
@@ -87,6 +90,9 @@ export type Prerequisite = {
   /** An open task that, once completed, satisfies this prerequisite — the card
    *  offers a "Complete" button for it (the RTA data check). */
   completeTaskId?: string;
+  /** The current step's action that satisfies this prerequisite itself — the
+   *  card keeps that action enabled while the rest of the gate is met. */
+  byAction?: "record_acceptance";
 };
 
 // "changes_requested" (proposal redesign, migration 0225) is still a shared
@@ -109,9 +115,24 @@ export type Facts = {
   riskSignedAt: string | null;
   /** A minor needs no risk profile (the firm's rule of 2026-10-30) — never true for another client type. */
   riskExempt: boolean;
+  /**
+   * The CRM proposal that answers this opportunity: linked to it, or an
+   * unlinked one of a matching type when this is the ONLY open opportunity of
+   * the client it could answer (a mixed proposal with two candidates answers
+   * neither — onProposalEvent links it once one is unambiguous).
+   */
   proposal: { id: string; status: string; type: string } | null;
+  /** The client's acceptance, recorded by a person (steps.ts record_acceptance) — counts only when no CRM proposal applies. */
+  acceptance?: { by: string | null; at: string | null; on: string | null; how: string | null } | null;
+  /** Insurance only: a policy of THIS opportunity's line, recorded since it opened. */
   policy: { id: string; status: string; policyType: string | null } | null;
-  transaction: { id: string; orderDate: string | null; amount: number | null } | null;
+  /**
+   * MF only: the business this opportunity placed — the order number recorded
+   * at "Order placed" when it is on file, else a purchase or a NEW SIP since
+   * the opportunity opened. An instalment of a SIP registered before it is
+   * never evidence.
+   */
+  transaction: { id: string; orderDate: string | null; amount: number | null; kind?: "order" | "purchase" | "new_sip" | "sip_registration" } | null;
   /** FD / Bonds / NCD only: a fixed deposit recorded since the opportunity opened. */
   fixedDeposit: { id: string; status: string; issuer: string } | null;
   /** MF only: the "RTA data check" task created when the transaction was approved. */
@@ -127,27 +148,18 @@ export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> 
   `)).rows[0] as Record<string, any> | undefined;
 
   const since = sql`${opp.createdAt.toISOString()}::timestamptz - interval '7 days'`;
-  const types = proposalTypesFor(opp.product);
-  const proposal = (await tx.execute(sql`
-    SELECT id, status, type FROM proposals
-     WHERE tenant_id = ${opp.tenantId}::uuid
-       AND (opportunity_id = ${opp.id}::uuid
-            OR (opportunity_id IS NULL AND investor_id = ${opp.investorId}::uuid
-                AND type IN (${sql.join(types.map((t) => sql`${t}`), sql`, `)})
-                AND created_at >= ${since}))
-       AND status NOT IN ('draft', 'rejected', 'expired', 'superseded')
-     ORDER BY (opportunity_id = ${opp.id}::uuid) DESC NULLS LAST,
-              CASE WHEN status IN ('accepted', 'partially_approved', 'executed') THEN 0 ELSE 1 END,
-              created_at DESC
-     LIMIT 1
-  `)).rows[0] as { id: string; status: string; type: string } | undefined;
+  const opened = sql`${opp.createdAt.toISOString()}::timestamptz`;
+  const proposal = await proposalFor(tx, opp, since);
 
   let policy: Facts["policy"] = null;
   if (opp.pipeline === "insurance") {
+    // Only a policy of this opportunity's LINE: a motor policy never wins a Health ask.
     const r = (await tx.execute(sql`
       SELECT id, status, policy_type FROM insurance_policies
        WHERE tenant_id = ${opp.tenantId}::uuid AND investor_id = ${opp.investorId}::uuid
-         AND created_at >= ${opp.createdAt.toISOString()}::timestamptz
+         AND status NOT IN ('cancelled', 'lapsed')
+         AND created_at >= ${opened}
+         AND ${policyLineSql(opp.product)}
        ORDER BY CASE WHEN status IN ('active', 'claim_filed', 'claim_settled') THEN 0 ELSE 1 END, created_at DESC
        LIMIT 1
     `)).rows[0] as { id: string; status: string; policy_type: string | null } | undefined;
@@ -166,27 +178,18 @@ export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> 
          AND bi.subject_id = ${opp.id}::uuid AND h.stage_key = 'txn_review'
          AND h.remarks LIKE ${TXN_REJECTED_PREFIX + "%"}
     `)).rows[0] as { at: string | Date | null } | undefined)?.at ?? null;
-    const afterRejection = rejectedAt ? sql`AND created_at >= ${new Date(rejectedAt).toISOString()}::timestamptz` : sql``;
-    const r = (await tx.execute(sql`
-      SELECT id, order_date, amount FROM transactions
-       WHERE tenant_id = ${opp.tenantId}::uuid AND investor_id = ${opp.investorId}::uuid
-         AND type IN ('purchase', 'sip', 'lumpsum') AND direction = 'inflow'
-         AND status NOT IN ('rejected', 'cancelled', 'failed')
-         AND COALESCE(order_date, created_at::date) >= (${opp.createdAt.toISOString()}::timestamptz AT TIME ZONE 'Asia/Kolkata')::date
-         ${afterRejection}
-       ORDER BY COALESCE(order_date, created_at::date) ASC
-       LIMIT 1
-    `)).rows[0] as { id: string; order_date: string | null; amount: string | null } | undefined;
-    if (r) transaction = { id: r.id, orderDate: r.order_date, amount: r.amount == null ? null : Number(r.amount) };
+    transaction = await transactionFor(tx, opp, rejectedAt ? new Date(rejectedAt) : null);
   }
 
   let fixedDeposit: Facts["fixedDeposit"] = null;
   if (opp.product === "fd_bonds_ncd") {
+    // Only a deposit recorded AFTER the opportunity opened: editing an old FD
+    // is not the client taking a new one.
     const r = (await tx.execute(sql`
       SELECT id, status, issuer FROM fixed_deposits
        WHERE tenant_id = ${opp.tenantId}::uuid AND investor_id = ${opp.investorId}::uuid
          AND deleted_at IS NULL AND status <> 'cancelled'
-         AND created_at >= ${since}
+         AND created_at >= ${opened}
        ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, created_at DESC
        LIMIT 1
     `)).rows[0] as { id: string; status: string; issuer: string } | undefined;
@@ -222,10 +225,139 @@ export async function loadFacts(tx: Tx, opp: ClientOpportunity): Promise<Facts> 
     riskSignedAt: signed ? signed.toISOString() : null,
     riskExempt: isMinorClient({ investorCategory: inv?.investor_category, isMinor: inv?.is_minor }),
     proposal: proposal ?? null,
+    acceptance: recordedAcceptance(opp),
     policy,
     transaction,
     fixedDeposit,
   };
+}
+
+/** The acceptance a person recorded at "Client accepted" (steps.ts), if any. */
+export function recordedAcceptance(opp: Pick<ClientOpportunity, "stepDetails">): Facts["acceptance"] {
+  const a = (opp.stepDetails as Record<string, Record<string, unknown>> | null | undefined)?.accepted;
+  if (!a || a.action !== "record_acceptance") return null;
+  const str = (v: unknown) => (typeof v === "string" ? v : null);
+  return { by: str(a.by), at: str(a.at), on: str(a.on), how: str(a.how) };
+}
+
+/** Policy types of the opportunity's insurance line (products.ts insuranceLineOf). */
+function policyLineSql(product: string) {
+  const health = sql.join(HEALTH_POLICY_TYPES.map((t) => sql`${t}`), sql`, `);
+  const life = sql.join(LIFE_POLICY_TYPES.map((t) => sql`${t}`), sql`, `);
+  if (product === "health_insurance") return sql`policy_type IN (${health})`;
+  if (product === "life_insurance") return sql`policy_type IN (${life})`;
+  return sql`policy_type NOT IN (${health}, ${life})`;
+}
+
+/**
+ * The CRM proposal for an opportunity: one linked to it first; otherwise an
+ * unlinked proposal of a covering type — but only when no OTHER open
+ * opportunity of the client could be the one it answers.
+ */
+async function proposalFor(tx: Tx, opp: ClientOpportunity, since: ReturnType<typeof sql>) {
+  const order = sql`CASE WHEN status IN ('accepted', 'partially_approved', 'executed') THEN 0 ELSE 1 END, created_at DESC`;
+  const live = sql`status NOT IN ('draft', 'rejected', 'expired', 'superseded')`;
+  const linked = (await tx.execute(sql`
+    SELECT id, status, type FROM proposals
+     WHERE tenant_id = ${opp.tenantId}::uuid AND opportunity_id = ${opp.id}::uuid AND ${live}
+     ORDER BY ${order} LIMIT 1
+  `)).rows[0] as { id: string; status: string; type: string } | undefined;
+  if (linked) return linked;
+  const types = proposalTypesFor(opp.product);
+  const candidates = (await tx.execute(sql`
+    SELECT id, status, type FROM proposals
+     WHERE tenant_id = ${opp.tenantId}::uuid AND opportunity_id IS NULL AND investor_id = ${opp.investorId}::uuid
+       AND type IN (${sql.join(types.map((t) => sql`${t}`), sql`, `)})
+       AND created_at >= ${since} AND ${live}
+     ORDER BY ${order} LIMIT 20
+  `)).rows as Array<{ id: string; status: string; type: string }>;
+  if (!candidates.length) return undefined;
+  const others = (await tx.execute(sql`
+    SELECT product FROM client_opportunities
+     WHERE tenant_id = ${opp.tenantId}::uuid AND investor_id = ${opp.investorId}::uuid
+       AND status = 'open' AND id <> ${opp.id}::uuid
+  `)).rows as Array<{ product: string }>;
+  return candidates.find((c) => !others.some((o) => proposalTypesFor(o.product).includes(c.type)));
+}
+
+/**
+ * MF evidence that the opportunity's business happened (see Facts.transaction).
+ * Preference: the order recorded at "Order placed"; then (by the investment
+ * mode) a purchase, a SIP registered since the opportunity opened, or the first
+ * SIP debit of a scheme that had no SIP before it. A rejected transaction's
+ * replacement counts only once booked after the rejection.
+ */
+async function transactionFor(tx: Tx, opp: ClientOpportunity, rejectedAt: Date | null): Promise<Facts["transaction"]> {
+  const t = { tenant: sql`${opp.tenantId}::uuid`, investor: sql`${opp.investorId}::uuid` };
+  const openedAt = sql`${opp.createdAt.toISOString()}::timestamptz`;
+  const openedDay = sql`(${opp.createdAt.toISOString()}::timestamptz AT TIME ZONE 'Asia/Kolkata')::date`;
+  const after = rejectedAt ? sql`AND created_at >= ${rejectedAt.toISOString()}::timestamptz` : sql``;
+  const good = sql`status NOT IN ('rejected', 'cancelled', 'failed')`;
+  type Row = { id: string; order_date: string | null; amount: string | null };
+  const out = (r: Row | undefined, kind: NonNullable<Facts["transaction"]>["kind"]): Facts["transaction"] =>
+    r ? { id: r.id, orderDate: r.order_date, amount: r.amount == null ? null : Number(r.amount), kind } : null;
+
+  const orderNo = String(((opp.stepDetails as any)?.mf_transaction?.orderNo ?? "")).trim();
+  if (orderNo) {
+    const r = (await tx.execute(sql`
+      SELECT id, order_date::text AS order_date, amount FROM transactions
+       WHERE tenant_id = ${t.tenant} AND investor_id = ${t.investor} AND ${good}
+         AND upper(btrim(order_id)) = upper(${orderNo}) AND direction = 'inflow' ${after}
+       ORDER BY created_at DESC LIMIT 1
+    `)).rows[0] as Row | undefined;
+    if (r) return out(r, "order");
+  }
+
+  const found: NonNullable<Facts["transaction"]>[] = [];
+  if (opp.investmentMode !== "sip") {
+    const r = (await tx.execute(sql`
+      SELECT id, order_date::text AS order_date, amount FROM transactions
+       WHERE tenant_id = ${t.tenant} AND investor_id = ${t.investor} AND ${good}
+         AND type IN ('purchase', 'lumpsum') AND direction = 'inflow'
+         AND COALESCE(order_date, created_at::date) >= ${openedDay} ${after}
+       ORDER BY COALESCE(order_date, created_at::date) ASC LIMIT 1
+    `)).rows[0] as Row | undefined;
+    if (r) found.push(out(r, "purchase")!);
+  }
+  if (opp.investmentMode !== "lumpsum") {
+    // A SIP registered since the opportunity opened.
+    const reg = (await tx.execute(sql`
+      SELECT id, COALESCE(start_date, created_at::date)::text AS order_date, amount FROM sips
+       WHERE tenant_id = ${t.tenant} AND investor_id = ${t.investor}
+         AND status NOT IN ('rejected', 'stopped', 'expired')
+         AND created_at >= ${openedAt} ${after}
+       ORDER BY created_at ASC LIMIT 1
+    `)).rows[0] as Row | undefined;
+    if (reg) found.push(out(reg, "sip_registration")!);
+    // Or the first debit of a NEW SIP: a scheme with no SIP registered, and no
+    // SIP debit, before the opportunity opened. An instalment of a SIP the
+    // client already had is not this opportunity's business.
+    const sameScheme = (a: string, b: string) => sql`(
+      (${sql.raw(`${a}.scheme_code`)} IS NOT NULL AND ${sql.raw(`${a}.scheme_code`)} = ${sql.raw(`${b}.scheme_code`)})
+      OR (${sql.raw(`${a}.scheme_code`)} IS NULL OR ${sql.raw(`${b}.scheme_code`)} IS NULL)
+         AND lower(btrim(COALESCE(${sql.raw(`${a}.scheme_name`)}, ''))) = lower(btrim(COALESCE(${sql.raw(`${b}.scheme_name`)}, '')))
+    )`;
+    const deb = (await tx.execute(sql`
+      SELECT t.id, t.order_date::text AS order_date, t.amount FROM transactions t
+       WHERE t.tenant_id = ${t.tenant} AND t.investor_id = ${t.investor}
+         AND t.type = 'sip' AND t.direction = 'inflow'
+         AND t.status NOT IN ('rejected', 'cancelled', 'failed')
+         AND COALESCE(t.order_date, t.created_at::date) >= ${openedDay}
+         ${rejectedAt ? sql`AND t.created_at >= ${rejectedAt.toISOString()}::timestamptz` : sql``}
+         AND NOT EXISTS (
+           SELECT 1 FROM sips s
+            WHERE s.tenant_id = t.tenant_id AND s.investor_id = t.investor_id
+              AND s.created_at < ${openedAt} AND ${sameScheme("s", "t")})
+         AND NOT EXISTS (
+           SELECT 1 FROM transactions p
+            WHERE p.tenant_id = t.tenant_id AND p.investor_id = t.investor_id AND p.type = 'sip'
+              AND COALESCE(p.order_date, p.created_at::date) < ${openedDay} AND ${sameScheme("p", "t")})
+       ORDER BY COALESCE(t.order_date, t.created_at::date) ASC LIMIT 1
+    `)).rows[0] as Row | undefined;
+    if (deb) found.push(out(deb, "new_sip")!);
+  }
+  found.sort((a, b) => String(a.orderDate ?? "9999").localeCompare(String(b.orderDate ?? "9999")));
+  return found[0] ?? null;
 }
 
 const hasNeedsAnalysis = (n: NeedsAnalysis | null | undefined) =>
@@ -258,14 +390,25 @@ export function gateFor(target: string, opp: ClientOpportunity, f: Facts): Prere
   }
   const out: Prerequisite[] = [];
   if (AFTER_ACCEPTED.has(target)) {
-    const status = f.proposal?.status ?? null;
-    out.push({
-      label: "The client has approved the proposal",
-      satisfied: !!status && PROPOSAL_ACCEPTED.has(status),
-      hint: !f.proposal ? "No proposal has been shared yet."
-        : "Waiting for the client — the journey moves on as soon as they approve it.",
-      cta: f.proposal ? { href: `/dashboard/proposals/${f.proposal.id}`, label: "Open proposal" } : undefined,
-    });
+    // With a CRM proposal, the client approves THAT. With none — a product the
+    // proposals module does not carry, or a quote given outside the CRM — the
+    // RM records the client's yes (who, when, how; audited), and that is the
+    // evidence (steps.ts record_acceptance).
+    if (f.proposal) {
+      out.push({
+        label: "The client has approved the proposal",
+        satisfied: PROPOSAL_ACCEPTED.has(f.proposal.status),
+        hint: "Waiting for the client — the journey moves on as soon as they approve it.",
+        cta: { href: `/dashboard/proposals/${f.proposal.id}`, label: "Open proposal" },
+      });
+    } else {
+      out.push({
+        label: "The client's acceptance is recorded",
+        satisfied: !!f.acceptance,
+        hint: "No proposal in the CRM — record when and how the client said yes (\"Client accepted\").",
+        byAction: "record_acceptance",
+      });
+    }
   }
   if (target === "won" && opp.pipeline === "mf") {
     out.push({
@@ -326,15 +469,19 @@ export function skipReason(stage: string, opp: ClientOpportunity, f: Facts): Ski
     case "proposal":
       return f.proposal && PROPOSAL_SENT.has(f.proposal.status) ? { kind: "evidence", reason: "proposal shared" } : null;
     case "accepted":
-      return f.proposal && PROPOSAL_ACCEPTED.has(f.proposal.status) ? { kind: "evidence", reason: "client accepted the proposal" } : null;
-    case "mf_transaction":
-      return f.transaction
-        ? { kind: "evidence", reason: `transaction on ${f.transaction.orderDate ? formatDate(f.transaction.orderDate) : "record"}` }
-        : null;
+      if (f.proposal) return PROPOSAL_ACCEPTED.has(f.proposal.status) ? { kind: "evidence", reason: "client accepted the proposal" } : null;
+      return f.acceptance ? { kind: "evidence", reason: "client's acceptance recorded" } : null;
+    case "mf_transaction": {
+      if (!f.transaction) return null;
+      const what = f.transaction.kind === "order" ? "the order placed"
+        : f.transaction.kind === "sip_registration" ? "a new SIP registered"
+        : f.transaction.kind === "new_sip" ? "a new SIP's first debit" : "a purchase";
+      return { kind: "evidence", reason: `${what} on ${f.transaction.orderDate ? formatDate(f.transaction.orderDate) : "record"}` };
+    }
     case "ins_proposal_form":
       return f.policy ? { kind: "evidence", reason: "policy recorded on the client" } : null;
     case "ins_underwriting":
-      return f.policy && f.policy.status !== "proposed" ? { kind: "evidence", reason: "past underwriting" } : null;
+      return f.policy && !["proposed", "in_underwriting"].includes(f.policy.status) ? { kind: "evidence", reason: "past underwriting" } : null;
     case "ins_issued":
       return f.policy && POLICY_ISSUED.has(f.policy.status) ? { kind: "evidence", reason: "policy issued" } : null;
     case "gen_executed":
@@ -386,9 +533,12 @@ export async function createOpportunity(
   if (existing) return { opportunity: existing, created: false };
 
   const inv = (await tx.execute(sql`
-    SELECT name, rm_id FROM investors WHERE id = ${input.investorId}::uuid AND tenant_id = ${actor.tenantId}::uuid
-  `)).rows[0] as { name: string; rm_id: string | null } | undefined;
+    SELECT name, rm_id, cross_sell ->> ${input.product} AS cross_sell_before,
+           (deleted_at IS NULL AND merged_into_id IS NULL AND status NOT IN ('closed', 'exited')) AS alive
+      FROM investors WHERE id = ${input.investorId}::uuid AND tenant_id = ${actor.tenantId}::uuid
+  `)).rows[0] as { name: string; rm_id: string | null; cross_sell_before: string | null; alive: boolean } | undefined;
   if (!inv) throw Object.assign(new Error("Client not found"), { status: 404 });
+  if (!inv.alive) throw Object.assign(new Error("This client is closed, merged or in the Trash — no new opportunity can be opened."), { status: 409 });
 
   const pipeline = productPipeline(input.product);
   const ownerId = input.ownerId || inv.rm_id || actor.userId;
@@ -404,8 +554,11 @@ export async function createOpportunity(
     coOwnerId: input.coOwnerId || null,
     sourceLeadId: input.sourceLeadId || null,
     notes: input.notes?.trim() || null,
+    // What the Cross-sell card said before this opportunity marked it
+    // "Interested" — written back if the opportunity is lost (closeOpportunity).
+    stepDetails: { _crossSell: { before: inv.cross_sell_before ?? null } },
     createdBy: actor.userId,
-  }).returning();
+  } as any).returning();
 
   await ensureInstanceFor(tx, actor.tenantId, "opportunity", opp.id);
 
@@ -437,6 +590,19 @@ export async function createOpportunity(
     meta: { opportunityId: opp.id },
   } as any);
 
+  // The client's RM hears when someone else opens one for their client (the
+  // owner, when it is not the RM, is told by the API — notifyOpportunityOwner).
+  if (inv.rm_id && inv.rm_id !== actor.userId && inv.rm_id !== ownerId) {
+    const by = (await tx.execute(sql`SELECT name FROM users WHERE id = ${actor.userId}::uuid`)).rows[0] as { name: string } | undefined;
+    await createNotification(tx, {
+      tenantId: actor.tenantId, userId: inv.rm_id, kind: "opportunity.opened_for_client", severity: "info",
+      title: `${productLabel(input.product)} opportunity opened for ${inv.name}`,
+      body: `${by?.name?.replace(/\s*\([^)]*\)\s*$/, "") ?? "A colleague"} opened it for your client.`,
+      linkUrl: `/dashboard/opportunities/${opp.id}`,
+      meta: { opportunity_id: opp.id, opened_by: actor.userId },
+    });
+  }
+
   await tx.insert(eventsOutbox).values({
     tenantId: actor.tenantId, kind: "opportunity.created", entityType: "opportunity", entityId: opp.id,
     after: { investorId: opp.investorId, product: opp.product, pipeline, source: opp.source },
@@ -460,9 +626,13 @@ export async function createOpportunity(
  */
 export async function setFollowUp(tx: Tx, actor: Actor, opp: ClientOpportunity, day: string) {
   const due = followUpDue(day);
+  // Only the OWNER's follow-up moves: the RTA data check (operations' task)
+  // and anything else put on another person's list stay where they are.
+  const owner = opp.ownerId ?? actor.userId;
   const [open] = (await tx.execute(sql`
     SELECT id, due_at FROM tasks
      WHERE tenant_id = ${opp.tenantId}::uuid AND meta ->> 'opportunityId' = ${opp.id} AND ${OPEN_TASK}
+       AND assignee_id = ${owner}::uuid AND COALESCE(meta ->> 'rtaCheck', '') <> 'true'
      ORDER BY due_at ASC NULLS LAST LIMIT 1
   `)).rows as Array<{ id: string; due_at: string | null }>;
   if (open) {
@@ -507,6 +677,9 @@ export async function advanceOpportunity(tx: Tx, actor: Actor, id: string, input
   if (input.to === "lost") {
     const reason = input.lostReason?.trim();
     if (!reason) return { ok: false, error: "Say why it was lost.", status: 400 };
+    if (input.revisitOn && (!/^\d{4}-\d{2}-\d{2}$/.test(input.revisitOn) || input.revisitOn <= istDay())) {
+      return { ok: false, error: "Pick a revisit date after today.", status: 400 };
+    }
     const r = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, "lost", {
       actorUserId: actor.userId, remarks: reason, finalStatus: "lost",
     });
@@ -564,6 +737,11 @@ export async function decideTransaction(
   const opp = await loadOpp(tx, actor.tenantId, id);
   if (!opp) return { ok: false, error: "Opportunity not found", status: 404 };
   if (opp.status !== "open") return { ok: false, error: `This opportunity is already ${opp.status}.`, status: 409 };
+  // Four eyes: the person who sold it never approves their own transaction
+  // (the API also requires the opportunity.review_transaction capability).
+  if (opp.ownerId && opp.ownerId === actor.userId) {
+    return { ok: false, error: "The opportunity's owner can't approve or reject its transaction — operations does.", status: 403 };
+  }
   const inst = await ensureInstanceFor(tx, actor.tenantId, "opportunity", opp.id);
   if (inst.currentStageKey !== "txn_review") {
     return { ok: false, error: "There is no transaction waiting for approval on this opportunity.", status: 409 };
@@ -594,18 +772,26 @@ export async function decideTransaction(
     return { ok: true, stage: "mf_transaction" };
   }
 
+  // Checked before anything moves: a refused assignee leaves the journey where it was.
+  const assignee = input.assigneeId || actor.userId;
+  if (assignee === opp.ownerId) {
+    return { ok: false, error: "The RTA data check can't go to the opportunity's owner — pick someone in operations.", status: 400 };
+  }
+  if (!(await mayReviewTransactions(tx, opp.tenantId, assignee))) {
+    return { ok: false, error: "The RTA data check goes to someone in operations (back office).", status: 400 };
+  }
   const r = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, "rta_check", {
     actorUserId: actor.userId, remarks: remarks ? `Transaction approved — ${remarks}` : "Transaction approved",
     finalStatus: "in_progress",
   });
   if (!r.ok) return { ok: false, error: (r as any).reason ?? "Could not approve", status: 409 };
-  // The task that gates "won": it carries opportunityId so it shows as the next follow-up.
-  // Assigned to whoever the approver picked (default: the opportunity's owner), due the day they chose.
-  const assignee = input.assigneeId || base.assigneeId;
+  // The task that gates "won": it carries opportunityId so it shows on the
+  // opportunity. It is OPERATIONS' check: assigned to whoever the approver
+  // picked from operations (default: the approver), never to the owner.
   const dueAt = input.dueOn ? followUpDue(input.dueOn) : new Date(Date.now() + 864e5);
   await tx.insert(tasks).values({
     ...base, assigneeId: assignee, title: `RTA data check — ${clientName}, ${product}: confirm the transaction in the RTA data`,
-    description: "Check the transaction / RTA status (CAMS or KFintech). Complete this task to mark the opportunity won.",
+    description: "Check the transaction / RTA status (CAMS or KFintech). Completing this task marks the opportunity won.",
     priority: "high", dueAt, meta: { opportunityId: opp.id, rtaCheck: true },
   } as any);
   if (assignee && assignee !== actor.userId) {
@@ -622,6 +808,198 @@ export async function decideTransaction(
     entityType: "opportunity", entityId: opp.id, after: { remarks: remarks || null },
   } as any);
   return { ok: true, stage: "rta_check" };
+}
+
+/** Who may approve / reject an opportunity's transaction and do its RTA data check. */
+export const REVIEW_CAP = "opportunity.review_transaction" as const;
+
+/** Does this active team member hold the review capability (operations / back office, or the firm owner)? */
+export async function mayReviewTransactions(tx: Tx, tenantId: string, userId: string): Promise<boolean> {
+  const u = (await tx.execute(sql`
+    SELECT roles, permissions FROM users WHERE id = ${userId}::uuid AND tenant_id = ${tenantId}::uuid AND status = 'active'
+  `)).rows[0] as { roles: string[] | null; permissions: string[] | null } | undefined;
+  return !!u && can(u.roles ?? [], REVIEW_CAP, u.permissions);
+}
+
+/**
+ * The task-completion seam (PATCH /api/tasks/[id], the bulk route): a task of
+ * an opportunity was just completed.
+ *
+ *   RTA data check   only operations — never the opportunity's owner — may
+ *                    complete it (throws 403, which rolls the completion
+ *                    back); completing it WINS the opportunity, as its
+ *                    description says.
+ */
+export async function onOpportunityTaskCompleted(
+  tx: Tx, who: Actor & { roles: string[]; permissions?: string[] | null },
+  task: { id: string; meta: unknown },
+): Promise<void> {
+  const meta = (task.meta ?? {}) as Record<string, unknown>;
+  if (meta.rtaCheck !== true && meta.rtaCheck !== "true") return;
+  const oid = typeof meta.opportunityId === "string" ? meta.opportunityId : null;
+  if (!oid) return;
+  const opp = await loadOpp(tx, who.tenantId, oid);
+  if (!opp) return;
+  if (!can(who.roles, REVIEW_CAP, who.permissions) || (opp.ownerId && opp.ownerId === who.userId)) {
+    throw Object.assign(new Error("Only operations — not the opportunity's owner — can complete the RTA data check."), { status: 403 });
+  }
+  if (opp.status !== "open") return;
+  const inst = await ensureInstanceFor(tx, who.tenantId, "opportunity", opp.id);
+  if (inst.currentStageKey !== "rta_check") return;
+  const r = await advanceOpportunity(tx, who, opp.id, { to: "won", remarks: "RTA data check completed — transaction confirmed in the RTA data" });
+  if (!r.ok) throw Object.assign(new Error(r.error), { status: r.status });
+}
+
+/* ───────────────────────── move back / reopen ───────────────────────── */
+
+/** Who may move a journey back a step or reopen a closed one (owner implicitly; branch heads by default). */
+export const REOPEN_CAP = "opportunity.reopen" as const;
+
+/** The step before `current` on the product's path, or null at the start. */
+export function previousStage(pipeline: OpportunityPipeline, current: string): OpportunityStageKey | null {
+  const path = OPPORTUNITY_PATHS[pipeline];
+  const i = path.indexOf(current as OpportunityStageKey);
+  return i > 0 ? path[i - 1] : null;
+}
+
+/** A step at or before "Client accepted": a recorded acceptance no longer stands once the journey is back there. */
+async function forgetAcceptanceIfBefore(tx: Tx, opp: ClientOpportunity, target: string) {
+  const path = OPPORTUNITY_PATHS[opp.pipeline as OpportunityPipeline] as string[];
+  if (path.indexOf(target) > path.indexOf("accepted")) return;
+  await tx.execute(sql`
+    UPDATE client_opportunities SET step_details = step_details - 'accepted', updated_at = now()
+     WHERE id = ${opp.id}::uuid AND tenant_id = ${opp.tenantId}::uuid AND step_details ? 'accepted'
+  `);
+}
+
+export type ManageResult = { ok: true; stage: string } | { ok: false; error: string; status: number };
+
+/**
+ * Back one step — a step marked done by mistake. Audited
+ * (opportunity.moved_back), with the reason on the stage history. Leaving the
+ * RTA data check cancels its open task; going back to or before "Client
+ * accepted" forgets a recorded acceptance.
+ */
+export async function moveOpportunityBack(tx: Tx, actor: Actor, id: string, reason: string): Promise<ManageResult> {
+  const opp = await loadOpp(tx, actor.tenantId, id);
+  if (!opp) return { ok: false, error: "Opportunity not found", status: 404 };
+  if (opp.status !== "open") return { ok: false, error: `This opportunity is ${opp.status} — reopen it instead.`, status: 409 };
+  const why = reason.trim();
+  if (!why) return { ok: false, error: "Say why it is going back.", status: 400 };
+  const inst = await ensureInstanceFor(tx, actor.tenantId, "opportunity", opp.id);
+  const from = inst.currentStageKey;
+  const to = previousStage(opp.pipeline as OpportunityPipeline, from);
+  if (!to) return { ok: false, error: "This is the first step — there is nothing to go back to.", status: 409 };
+  const r = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, to, {
+    actorUserId: actor.userId, remarks: `Moved back from "${stageName(from)}" — ${why}`, systemBypass: true, finalStatus: "in_progress",
+  });
+  if (!r.ok) return { ok: false, error: (r as any).reason ?? "Could not move back", status: 409 };
+  if (from === "rta_check") {
+    await tx.execute(sql`
+      UPDATE tasks SET status = 'cancelled', updated_at = now()
+       WHERE tenant_id = ${opp.tenantId}::uuid AND meta ->> 'opportunityId' = ${opp.id}
+         AND meta ->> 'rtaCheck' = 'true' AND ${OPEN_TASK}
+    `);
+  }
+  await forgetAcceptanceIfBefore(tx, opp, to);
+  await recordAudit(tx, {
+    tenantId: opp.tenantId, actorUserId: actor.userId, action: "opportunity.moved_back",
+    entityType: "opportunity", entityId: opp.id, before: { stage: from }, after: { stage: to, reason: why },
+  } as any);
+  return { ok: true, stage: to };
+}
+
+/**
+ * Reopen a won or lost opportunity at the step it closed from — closed by
+ * mistake, or the client came back. Refused when the client is no longer a
+ * live client (a second open one for the same product is allowed since 0259).
+ * The owner gets a follow-up for tomorrow; audited
+ * (opportunity.reopened).
+ */
+export async function reopenOpportunity(tx: Tx, actor: Actor, id: string, reason: string): Promise<ManageResult> {
+  const opp = await loadOpp(tx, actor.tenantId, id);
+  if (!opp) return { ok: false, error: "Opportunity not found", status: 404 };
+  if (opp.status === "open") return { ok: false, error: "It is already open.", status: 409 };
+  const why = reason.trim();
+  if (!why) return { ok: false, error: "Say why it is being reopened.", status: 400 };
+  const alive = (await tx.execute(sql`
+    SELECT (deleted_at IS NULL AND merged_into_id IS NULL AND status NOT IN ('closed', 'exited')) AS alive
+      FROM investors WHERE id = ${opp.investorId}::uuid AND tenant_id = ${opp.tenantId}::uuid
+  `)).rows[0] as { alive: boolean } | undefined;
+  if (!alive?.alive) return { ok: false, error: "The client is closed, merged or in the Trash — it can't be reopened.", status: 409 };
+
+  const inst = await ensureInstanceFor(tx, actor.tenantId, "opportunity", opp.id);
+  // The step it closed FROM: the last step it stood at before Won / Lost.
+  const last = (await tx.execute(sql`
+    SELECT stage_key FROM blueprint_stage_history
+     WHERE instance_id = ${inst.id}::uuid AND stage_key NOT IN ('won', 'lost')
+     ORDER BY entered_at DESC LIMIT 1
+  `)).rows[0] as { stage_key: string } | undefined;
+  const path = OPPORTUNITY_PATHS[opp.pipeline as OpportunityPipeline] as string[];
+  const to = last && path.includes(last.stage_key) && last.stage_key !== "won" ? last.stage_key : "identified";
+  const was = opp.status;
+  await tx.update(clientOpportunities).set({
+    status: "open", wonAt: null, lostAt: null, lostReason: null, revisitOn: null, parkedAt: null, updatedAt: new Date(),
+  } as any).where(eq(clientOpportunities.id, opp.id));
+  const r = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, to, {
+    actorUserId: actor.userId, remarks: `Reopened (was ${was}) — ${why}`, systemBypass: true, finalStatus: "in_progress",
+  });
+  if (!r.ok) return { ok: false, error: (r as any).reason ?? "Could not reopen", status: 409 };
+  if (isCrossSellProduct(opp.product)) {
+    await tx.execute(sql`
+      UPDATE investors
+         SET cross_sell = COALESCE(cross_sell, '{}'::jsonb) || jsonb_build_object(${opp.product}::text, 'interested'),
+             updated_at = now()
+       WHERE id = ${opp.investorId}::uuid AND tenant_id = ${opp.tenantId}::uuid
+         AND COALESCE(cross_sell ->> ${opp.product}, '') <> 'held_with_us'
+    `);
+  }
+  // A lost one's revisit reminder is its follow-up now; otherwise give the owner one.
+  const fresh = (await loadOpp(tx, actor.tenantId, opp.id))!;
+  const hasOpen = (await tx.execute(sql`
+    SELECT 1 FROM tasks WHERE tenant_id = ${opp.tenantId}::uuid AND meta ->> 'opportunityId' = ${opp.id} AND ${OPEN_TASK} LIMIT 1
+  `)).rows.length > 0;
+  if (!hasOpen) await setFollowUp(tx, actor, fresh, istDay(1));
+  await recordAudit(tx, {
+    tenantId: opp.tenantId, actorUserId: actor.userId, action: "opportunity.reopened",
+    entityType: "opportunity", entityId: opp.id, before: { status: was }, after: { status: "open", stage: to, reason: why },
+  } as any);
+  return { ok: true, stage: to };
+}
+
+/* ───────────────────────── the client is gone ───────────────────────── */
+
+/**
+ * Close, as lost, the open opportunities of clients who are no longer live —
+ * closed / exited, merged away, or in the Trash (the same rule as aliveClient).
+ * `investorIds` limits it to those clients (a bulk change); without, every
+ * client of the firm (the nightly ops scan). Returns how many it closed.
+ */
+export async function closeOpportunitiesOfGoneClients(tx: Tx, actor: Actor, investorIds?: string[]): Promise<number> {
+  if (investorIds && !investorIds.length) return 0;
+  const rows = (await tx.execute(sql`
+    SELECT o.id, i.deleted_at IS NOT NULL AS trashed, i.merged_into_id IS NOT NULL AS merged, i.status AS client_status
+      FROM client_opportunities o JOIN investors i ON i.id = o.investor_id AND i.tenant_id = o.tenant_id
+     WHERE o.tenant_id = ${actor.tenantId}::uuid AND o.status = 'open'
+       AND NOT (i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited'))
+       ${investorIds ? sql`AND o.investor_id IN (${sql.join(investorIds.map((i) => sql`${i}::uuid`), sql`, `)})` : sql``}
+     LIMIT 500
+  `)).rows as Array<{ id: string; trashed: boolean; merged: boolean; client_status: string }>;
+  let n = 0;
+  for (const r of rows) {
+    const reason = r.trashed ? "Client moved to the Trash" : r.merged ? "Client record merged into another"
+      : `Client ${r.client_status === "exited" ? "exited" : "closed"}`;
+    const opp = await loadOpp(tx, actor.tenantId, r.id);
+    if (!opp || opp.status !== "open") continue;
+    await ensureInstanceFor(tx, actor.tenantId, "opportunity", opp.id);
+    const t = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, "lost", {
+      actorUserId: actor.userId || undefined, remarks: reason, systemBypass: true, finalStatus: "lost",
+    });
+    if (!t.ok) continue;
+    await closeOpportunity(tx, actor, opp, "lost", { lostReason: reason });
+    n++;
+  }
+  return n;
 }
 
 /**
@@ -665,9 +1043,16 @@ async function autoSkip(tx: Tx, actor: Actor, opp: ClientOpportunity, facts: Fac
 export async function syncOpportunity(tx: Tx, actor: Actor, id: string) {
   const opp = await loadOpp(tx, actor.tenantId, id);
   if (!opp || opp.status !== "open") return null;
+  // A client who is no longer live takes their open opportunities with them.
+  if (await closeOpportunitiesOfGoneClients(tx, actor, [opp.investorId])) return null;
   const inst = await ensureInstanceFor(tx, actor.tenantId, "opportunity", opp.id);
   if (inst.currentStageKey === "identified" || inst.currentStageKey === "discussion") return { stage: inst.currentStageKey, skipped: [] };
   return autoSkip(tx, actor, opp, await loadFacts(tx, opp), inst.currentStageKey);
+}
+
+/** What a lost opportunity writes back on the Cross-sell card: what it said before, else "Not held". */
+export function crossSellAfterLoss(before: string | null | undefined): string {
+  return before && !["interested", "held_with_us"].includes(before) ? before : "not_held";
 }
 
 async function closeOpportunity(
@@ -675,9 +1060,14 @@ async function closeOpportunity(
   extra: { lostReason?: string; revisitOn?: string | null } = {},
 ) {
   const now = new Date();
+  const actorId = actor.userId || null;
+  // The money it waited for is no longer this opportunity's: its reminder goes
+  // back to being the inflow's own (later.ts detachInflow) before the
+  // opportunity's tasks are cancelled below.
+  if (opp.expectedInflowId) await detachInflow(tx, actor, opp);
   await tx.update(clientOpportunities).set(outcome === "won"
-    ? { status: "won", wonAt: now, parkedAt: null, updatedAt: now }
-    : { status: "lost", lostAt: now, lostReason: extra.lostReason ?? null, revisitOn: extra.revisitOn || null, parkedAt: null, updatedAt: now },
+    ? { status: "won", wonAt: now, parkedAt: null, expectedInflowId: null, updatedAt: now }
+    : { status: "lost", lostAt: now, lostReason: extra.lostReason ?? null, revisitOn: extra.revisitOn || null, parkedAt: null, expectedInflowId: null, updatedAt: now },
   ).where(eq(clientOpportunities.id, opp.id));
 
   if (outcome === "won" && isCrossSellProduct(opp.product)) {
@@ -688,11 +1078,25 @@ async function closeOpportunity(
        WHERE id = ${opp.investorId}::uuid AND tenant_id = ${opp.tenantId}::uuid
     `);
   }
+  // Lost: the card stops saying "Interested" — it goes back to what it said
+  // before the opportunity, else "Not held". Only when it still says what the
+  // opportunity wrote: a status a person set since is theirs.
+  if (outcome === "lost" && isCrossSellProduct(opp.product)) {
+    const before = ((opp.stepDetails as any)?._crossSell?.before ?? null) as string | null;
+    await tx.execute(sql`
+      UPDATE investors
+         SET cross_sell = COALESCE(cross_sell, '{}'::jsonb) || jsonb_build_object(${opp.product}::text, ${crossSellAfterLoss(before)}::text),
+             updated_at = now()
+       WHERE id = ${opp.investorId}::uuid AND tenant_id = ${opp.tenantId}::uuid
+         AND cross_sell ->> ${opp.product} = 'interested'
+    `);
+  }
 
   // The opportunity's open tasks end with it — its follow-ups and the steps'
-  // hand-offs to operations (steps.ts).
+  // hand-offs to operations (steps.ts). CANCELLED, not completed: nobody did
+  // them, and a completed follow-up would count as work done.
   await tx.execute(sql`
-    UPDATE tasks SET status = 'completed', completed_at = now(), updated_at = now()
+    UPDATE tasks SET status = 'cancelled', updated_at = now()
      WHERE tenant_id = ${opp.tenantId}::uuid
        AND (meta ->> 'opportunityId' = ${opp.id} OR meta ->> 'opportunityStepOf' = ${opp.id})
        AND status IN ('open', 'in_progress', 'blocked')
@@ -704,7 +1108,7 @@ async function closeOpportunity(
       tenantId: opp.tenantId, subjectType: "investor", subjectId: opp.investorId, relatedInvestorId: opp.investorId,
       type: "follow_up", title: `Revisit ${productLabel(opp.product)} — ${inv?.name ?? "client"}`,
       description: `Lost earlier: ${extra.lostReason}`, priority: "normal", status: "open",
-      assigneeId: opp.ownerId, dueAt: new Date(`${extra.revisitOn}T09:00:00+05:30`), createdById: actor.userId,
+      assigneeId: opp.ownerId, dueAt: new Date(`${extra.revisitOn}T09:00:00+05:30`), createdById: actorId,
       meta: { opportunityId: opp.id, revisit: true },
     } as any);
   }
@@ -712,10 +1116,10 @@ async function closeOpportunity(
   await tx.insert(eventsOutbox).values({
     tenantId: opp.tenantId, kind: `opportunity.${outcome}`, entityType: "opportunity", entityId: opp.id,
     after: { investorId: opp.investorId, product: opp.product, pipeline: opp.pipeline, lostReason: extra.lostReason ?? null },
-    meta: { actorUserId: actor.userId },
+    meta: { actorUserId: actorId },
   } as any);
   await recordAudit(tx, {
-    tenantId: opp.tenantId, actorUserId: actor.userId, action: `opportunity.${outcome}`,
+    tenantId: opp.tenantId, actorUserId: actorId, action: `opportunity.${outcome}`,
     entityType: "opportunity", entityId: opp.id,
     after: { product: opp.product, lostReason: extra.lostReason ?? null, revisitOn: extra.revisitOn ?? null },
   } as any);
@@ -730,12 +1134,16 @@ async function closeOpportunity(
  */
 export async function onProductBooked(
   tx: Tx, actor: Actor, investorId: string, product: string, remark: string,
+  opts: { bookedAt?: Date | null } = {},
 ): Promise<string | null> {
   const [opp] = await tx.select().from(clientOpportunities).where(and(
     eq(clientOpportunities.tenantId, actor.tenantId), eq(clientOpportunities.investorId, investorId),
     eq(clientOpportunities.product, product), eq(clientOpportunities.status, "open"),
   )).orderBy(asc(clientOpportunities.createdAt)).limit(1); // several may be open: the oldest is won first
   if (!opp) return null;
+  // Only business booked once the opportunity was open answers it: editing a
+  // deposit or a policy the client already had is not them taking a new one.
+  if (opts.bookedAt && opts.bookedAt.getTime() < opp.createdAt.getTime()) return null;
   await ensureInstanceFor(tx, actor.tenantId, "opportunity", opp.id);
   const r = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, "won", {
     actorUserId: actor.userId, remarks: `Done automatically — ${remark}`, systemBypass: true, finalStatus: "completed",
@@ -743,6 +1151,43 @@ export async function onProductBooked(
   if (!r.ok) return null;
   await closeOpportunity(tx, actor, opp, "won");
   return opp.id;
+}
+
+/**
+ * An insurance policy was recorded or changed (the Insurance register, its
+ * import): the client's open opportunity for THAT line — health, life or
+ * general (products.ts insuranceLineOf) — moves on. In force → won, like any
+ * booked product; proposed / in underwriting → the journey catches up to it.
+ * A policy recorded before the opportunity opened is never its evidence.
+ */
+type RecordedPolicy = { id: string; investorId: string; policyType: string | null; status: string; createdAt: Date | string; planName?: string | null; insurer?: string | null };
+
+export async function onPolicyRecorded(tx: Tx, actor: Actor, policy: RecordedPolicy): Promise<string | null> {
+  // In a savepoint: the opportunity following the register must never roll
+  // back the policy write it rides on.
+  try {
+    return await tx.transaction(async (sp: Tx) => policyRecorded(sp, actor, policy));
+  } catch (e) {
+    console.warn("[opportunities] policy hook skipped:", (e as Error)?.message);
+    return null;
+  }
+}
+
+async function policyRecorded(tx: Tx, actor: Actor, policy: RecordedPolicy): Promise<string | null> {
+  const line = insuranceLineOf(policy.policyType);
+  const [opp] = await tx.select().from(clientOpportunities).where(and(
+    eq(clientOpportunities.tenantId, actor.tenantId), eq(clientOpportunities.investorId, policy.investorId),
+    eq(clientOpportunities.product, line), eq(clientOpportunities.status, "open"),
+  )).limit(1);
+  if (!opp) return null;
+  const createdAt = new Date(policy.createdAt);
+  if (createdAt.getTime() < opp.createdAt.getTime()) return null;
+  if (POLICY_ISSUED.has(policy.status)) {
+    const what = [policy.insurer, policy.planName].filter(Boolean).join(" ");
+    return onProductBooked(tx, actor, policy.investorId, line, `policy ${what ? `${what} ` : ""}recorded in force`, { bookedAt: createdAt });
+  }
+  await syncOpportunity(tx, actor, opp.id);
+  return null;
 }
 
 /* ─────────────────────────── proposals seam ─────────────────────────── */
@@ -762,17 +1207,37 @@ export async function onProposalEvent(
   if (!p) return null;
 
   let opp: ClientOpportunity | null = p.opportunity_id ? await loadOpp(tx, tenantId, p.opportunity_id) : null;
-  if (!opp && p.investor_id) {
+  if (!opp && !p.opportunity_id && p.investor_id) {
+    // An unlinked proposal answers an opportunity only when exactly ONE open
+    // opportunity of the client could be it — a mixed or comprehensive
+    // proposal with two candidates moves neither. Once unambiguous, it is
+    // linked, so the answer cannot change when another opportunity opens.
     const open = await tx.select().from(clientOpportunities).where(and(
       eq(clientOpportunities.tenantId, tenantId), eq(clientOpportunities.investorId, p.investor_id),
       eq(clientOpportunities.status, "open"),
     )).orderBy(desc(clientOpportunities.createdAt));
-    opp = open.find((o) => proposalTypesFor(o.product).includes(p.type)) ?? null;
+    const candidates = open.filter((o) => proposalTypesFor(o.product).includes(p.type));
+    opp = candidates.length === 1 ? candidates[0] : null;
+    if (opp) {
+      await tx.execute(sql`
+        UPDATE proposals SET opportunity_id = ${opp.id}::uuid
+         WHERE id = ${p.id}::uuid AND tenant_id = ${tenantId}::uuid AND opportunity_id IS NULL
+      `);
+    }
   }
   if (!opp || opp.status !== "open") return null;
   const actor: Actor = { tenantId, userId: actorUserId ?? opp.ownerId ?? opp.createdBy ?? "" };
 
   if (event === "declined") {
+    // Waiting for the client's yes, and it was no: the journey goes back to
+    // "Proposal / quote shared" for a revised proposal (or Mark lost).
+    const inst = await ensureInstanceFor(tx, tenantId, "opportunity", opp.id);
+    if (inst.currentStageKey === "accepted") {
+      await transitionPoly(tx, tenantId, "opportunity", opp.id, "proposal", {
+        actorUserId: actor.userId || undefined, remarks: "Proposal declined by the client — back to Proposal", systemBypass: true,
+        finalStatus: "in_progress",
+      });
+    }
     await tx.insert(tasks).values({
       tenantId, subjectType: "investor", subjectId: opp.investorId, relatedInvestorId: opp.investorId,
       type: "follow_up", title: `${productLabel(opp.product)} proposal declined — revise or close`,
@@ -846,6 +1311,8 @@ export type OpportunityView = {
   current: { key: string; name: string; enteredAt: string; slaDays: number | null; delayed: boolean };
   stages: StageView[];
   next: { key: string; name: string } | null;
+  /** The step before the current one — where "Move back one step" goes (open only). */
+  previous: { key: string; name: string } | null;
   gate: Prerequisite[];
   /** The current stage is already satisfied — a sync would move it on. */
   canSync: boolean;
@@ -1004,6 +1471,10 @@ export async function listOpportunities(
       },
       stages,
       next: next ? { key: next, name: stageName(next as OpportunityStageKey) } : null,
+      previous: (() => {
+        const p = opp.status === "open" ? previousStage(opp.pipeline as OpportunityPipeline, cur) : null;
+        return p ? { key: p, name: stageName(p) } : null;
+      })(),
       gate,
       canSync,
       meeting: opp.status === "open" && opp.meetingId ? meetings.get(opp.meetingId) ?? null : null,

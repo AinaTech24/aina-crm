@@ -11,7 +11,9 @@
  *      Renewed, closed early, cancelled or deleted → the inflow is
  *      cancelled (no money is coming) and its reminder with it.
  *   2. Active → the Cross-sell card's "FD / Bonds / NCD" becomes "Held with
- *      us", and the client's open opportunity for it is won.
+ *      us", and the client's open opportunity for it is won — but only by a
+ *      deposit recorded after the opportunity opened, or one that BECAME
+ *      active in this write (`previousStatus`). Editing an old FD wins nothing.
  */
 
 import { and, eq } from "drizzle-orm";
@@ -34,7 +36,9 @@ export function maturityInflowAmount(fd: Pick<FixedDeposit, "maturityAmount" | "
   return String(fd.principal);
 }
 
-export async function syncFdAutomations(tx: Tx, actor: Actor, fd: FixedDeposit, opts: { deleted?: boolean } = {}) {
+export async function syncFdAutomations(
+  tx: Tx, actor: Actor, fd: FixedDeposit, opts: { deleted?: boolean; previousStatus?: string | null } = {},
+) {
   const wantsInflow = !opts.deleted && isLive(fd.status) && String(fd.maturityDate) >= indiaToday();
   const moneyNotComing = opts.deleted || ["renewed", "closed_early", "cancelled"].includes(fd.status);
 
@@ -100,7 +104,11 @@ export async function syncFdAutomations(tx: Tx, actor: Actor, fd: FixedDeposit, 
        WHERE id = ${fd.investorId}::uuid AND tenant_id = ${actor.tenantId}::uuid
          AND COALESCE(cross_sell ->> ${FD_PRODUCT}, '') <> 'held_with_us'
     `);
+    // When it was booked: activated just now (an edit from applied → active),
+    // else when it was recorded.
+    const activatedNow = opts.previousStatus != null && opts.previousStatus !== "active";
     await onProductBooked(tx, actor, fd.investorId, FD_PRODUCT,
-      `fixed deposit of ${formatMoney(Number(fd.principal))} with ${fd.issuer} recorded`);
+      `fixed deposit of ${formatMoney(Number(fd.principal))} with ${fd.issuer} recorded`,
+      { bookedAt: activatedNow ? new Date() : new Date(fd.createdAt) });
   }
 }

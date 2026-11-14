@@ -26,6 +26,7 @@ import { notifyWatchers } from "@/lib/tasks/watchers";
 import { taskInScope } from "@/lib/tasks/scope";
 import { sopsForTask } from "@/lib/practice/sop-links";
 import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
+import { onOpportunityTaskCompleted } from "@/lib/opportunities/journey";
 import { tasks, users, taskChecklist } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -425,6 +426,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (finalStatus !== before.status) {
         const ctx = { tenantId: session.tenantId, userId: session.userId, clientMeta };
         if (finalStatus === "completed") await syncTaskBusinessEntry(tx, ctx, before, "completed");
+        // An opportunity's RTA data check: operations only, and completing it wins the opportunity.
+        if (finalStatus === "completed") {
+          await onOpportunityTaskCompleted(tx, { tenantId: session.tenantId, userId: session.userId, roles: session.roles, permissions: session.permissions }, before);
+        }
         else if (finalStatus === "cancelled") await syncTaskBusinessEntry(tx, ctx, before, "cancelled");
         else if (before.status === "cancelled" || before.status === "completed")
           await syncTaskBusinessEntry(tx, ctx, before, "reopened");

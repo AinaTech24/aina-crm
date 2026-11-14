@@ -4,7 +4,7 @@
  * client's Cross-sell card always talk about the same products.
  *
  * The pipeline decides the journey's product branch:
- *   mf         KYC → UCC → mandate → transaction
+ *   mf         transaction placed → approve / reject → RTA data check
  *   insurance  proposal form → underwriting → policy issued
  *   general    executed (NPS, FD, PMS, demat, loan, other)
  */
@@ -54,6 +54,21 @@ export function proposalTypesFor(product: string): string[] {
   if (p === "insurance") return ["insurance", "mixed", "comprehensive"];
   if (product === "pms") return ["pms", "mixed", "comprehensive"];
   return ["mixed", "comprehensive"];
+}
+
+/**
+ * Which insurance LINE a policy type belongs to — the opportunity products
+ * life_insurance / health_insurance / general_insurance. The same split the
+ * Cross-sell metrics count held lines by (lib/metrics/opportunities.ts), so a
+ * motor policy never wins a Health opportunity.
+ */
+export const HEALTH_POLICY_TYPES = ["health", "critical_illness", "group_health"] as const;
+export const LIFE_POLICY_TYPES = ["term", "ulip", "endowment", "money_back", "life_other"] as const;
+
+export function insuranceLineOf(policyType: string | null | undefined): "health_insurance" | "life_insurance" | "general_insurance" {
+  if ((HEALTH_POLICY_TYPES as readonly string[]).includes(policyType ?? "")) return "health_insurance";
+  if ((LIFE_POLICY_TYPES as readonly string[]).includes(policyType ?? "")) return "life_insurance";
+  return "general_insurance";
 }
 
 /** A lead's product interest (LEAD_PRODUCTS) as an opportunity product. */

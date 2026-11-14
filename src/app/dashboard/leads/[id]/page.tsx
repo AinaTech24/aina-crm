@@ -18,6 +18,8 @@ import { withTenant } from "@/db/client";
 import { users, tasks, communications, riskProfileResponses, proposals, activities, reviewMeetings } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { loadViewableLead } from "@/lib/leads/access";
+import { leadTaskLinkSql } from "@/lib/leads/open-tasks";
+import { isClientPhaseStage } from "@/lib/blueprints/journey-rules";
 import { formatDate, formatRelative, formatPhone } from "@/lib/utils";
 import { formatDueIn, formatMoney } from "@/lib/format";
 import { fromActivities, fromCommunications, fromLeadNotes, fromMeetings, fromTasks, mergeTimeline } from "@/lib/timeline";
@@ -103,7 +105,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       tx
         .select()
         .from(tasks)
-        .where(and(eq(tasks.subjectType, "lead"), eq(tasks.subjectId, id), isNull(tasks.deletedAt)))
+        // Every task about the lead: either link (related_lead_id, or
+        // subject lead), and the onboarding step tasks of its journey — the
+        // same set the tasks module shows for it (taskLead).
+        .where(and(isNull(tasks.deletedAt), leadTaskLinkSql("tasks", id)))
         .orderBy(desc(tasks.createdAt))
         .limit(50),
       tx
@@ -208,6 +213,12 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 leadPhone={l.phone}
                 currentStage={l.stage}
                 alreadyConvertedInvestorId={l.convertedInvestorId ?? null}
+                leadPan={l.pan ?? null}
+                canConvert={
+                  (l.stage === "won_lead" || isClientPhaseStage(l.stage)) &&
+                  (can(session.roles, "investor.edit.all", session.permissions) ||
+                    can(session.roles, "investor.edit.assigned", session.permissions))
+                }
               />
               <SendTemplateButtons type="lead" id={l.id} name={l.name} email={l.email} phone={l.phone} />
               <RecordMenu>

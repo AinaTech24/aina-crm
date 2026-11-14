@@ -20,16 +20,17 @@
 
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { leads, tenants, templates, templateVersions } from "@/db/schema";
+import { leads, templates, templateVersions } from "@/db/schema";
 import { createShareToken } from "@/lib/share-tokens";
-import { emailAdapter } from "@/lib/comms/adapters/resend";
-import { resolveEmailSender } from "@/lib/comms/sender";
-import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
 import { dispatch } from "@/lib/comms/pipeline";
+import { ensureStarterTemplate } from "@/lib/templates/ensure";
 import { nameAndLinkVariables, pickTemplateRow } from "@/lib/comms/template-variables";
 import { getChecklist, type ClientType } from "@/lib/onboarding/doc-checklists";
 import { getFieldChecklist } from "@/lib/onboarding/kyc-fields";
 import { ensureDocCollectionTemplate } from "@/lib/onboarding/doc-template";
+
+/** The vendor starter email (lib/templates/starters.ts) that carries the link. */
+const DOC_CHECKLIST_EMAIL = "doc_checklist";
 
 const DOCS_LINE = "PAN card, Aadhaar, passport-size photo, recent bank statement, cancelled cheque";
 
@@ -60,14 +61,7 @@ export async function sendDocChecklist(opts: {
 
   const ctx = await withTenant(tenantId, async (tx) => {
     const lead = (await tx.select().from(leads).where(and(eq(leads.id, id), eq(leads.tenantId, tenantId))).limit(1))[0] ?? null;
-    const tenant = (await tx.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1))[0] ?? null;
-    let sender: Awaited<ReturnType<typeof resolveEmailSender>>;
-    try {
-      sender = await resolveEmailSender(tx, tenantId, actorUserId);
-    } catch {
-      sender = { source: "resend" };
-    }
-    return { lead, tenant, sender };
+    return { lead };
   });
 
   if (!ctx.lead) throw refuse("Lead not found", 404);
@@ -76,10 +70,6 @@ export async function sendDocChecklist(opts: {
   const email = (ctx.lead as any).email as string | null;
   const phone = (ctx.lead as any).phone as string | null;
   const investorId = (ctx.lead as any).convertedInvestorId as string | null;
-  // The firm is a distributor; the fallback must not call it an adviser.
-  const firmName = (ctx.tenant as any)?.displayName ?? (ctx.tenant as any)?.legalName ?? "Your mutual fund distributor";
-  const logoUrl = (ctx.tenant as any)?.logoUrl as string | null;
-  const arn = (ctx.tenant as any)?.arn as string | null;
 
   if (!email && !phone) {
     throw refuse("This client has no email or phone on file — add a contact first.", 400);
@@ -94,7 +84,8 @@ export async function sendDocChecklist(opts: {
     subjectType: investorId ? "investor" : "lead",
     subjectId: investorId ?? id,
     payload: { requiredDocs, requiredFields, clientType },
-    expiresInDays: 7,
+    // The email template promises 14 days.
+    expiresInDays: 14,
     createdBy: actorUserId,
   });
   const url = (token as any).url as string;
@@ -102,45 +93,38 @@ export async function sendDocChecklist(opts: {
 
   const waText = `Hi ${name}, please upload your KYC documents to complete your account setup — secure, single-use link:\n\n${url}\n\nYou'll need: ${DOCS_LINE}.`;
 
-  // 2. Email via the firm's connected sender (mailbox / Resend).
+  // 2. Email — through dispatch() like every other outbound (audit L17), so
+  //    an opt-out, missing consent or a compliance block stops it and leaves
+  //    the usual skipped_* record. The firm's "doc_checklist" email template
+  //    (a vendor starter, provisioned on first use) carries the link; the
+  //    sending RM's mailbox is used when they connected one.
   let emailed = false;
   let emailError: string | undefined;
-  const canEmail = !!email && !!(ctx.sender.smtp?.host || ctx.sender.apiKey || process.env.RESEND_API_KEY);
   if (!email) {
     emailError = "no email on file";
-  } else if (!canEmail) {
-    emailError = "no mailbox connected (Settings → Email)";
   } else {
     try {
-      const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;">
-          ${emailLogoHeaderHtml(logoUrl, firmName)}
-          <div style="padding:4px 4px 0;">
-            <p>Hi ${escapeHtml(name)},</p>
-            <p>To complete your account setup, please upload your KYC documents using this secure, single-use link:</p>
-            <p style="margin:18px 0;"><a href="${escapeAttr(url)}" style="background:#0e2557;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;display:inline-block;">Upload documents</a></p>
-            <p style="font-size:13px;color:#475569;">Required: ${DOCS_LINE}.</p>
-            <p style="margin-top:18px;">Warm regards,<br/><strong>${escapeHtml(firmName)}</strong></p>
-          </div>
-          <div style="margin-top:22px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;line-height:1.6;">
-            <div><strong style="color:#64748b;">${escapeHtml(firmName)}</strong>${arn ? ` &middot; ${escapeHtml(arn)}` : ""}</div>
-            <div>The link is single-use and expires in 7 days. Mutual fund investments are subject to market risks; read all scheme-related documents carefully.</div>
-          </div>
-        </div>`;
-      await emailAdapter.send({
-        tenantId,
-        recipient: email,
-        category: "transactional",
-        tokens: {},
-        rendered: { subject: "Documents needed for your investment account", text: `Hi ${name}, please upload your KYC documents using this secure link: ${url}\n\nRequired: ${DOCS_LINE}.`, tokens: {} },
-        inlineHtml: html,
-        smtp: ctx.sender.smtp,
-        apiKey: ctx.sender.apiKey,
-        fromOverride: ctx.sender.fromEmail || undefined,
-        fromNameOverride: ctx.sender.fromName || firmName,
-        replyTo: ctx.sender.replyTo || undefined,
-        idempotencyKey: `doc-checklist:${id}:${tokenId}`,
+      const r = await withTenant(tenantId, async (tx) => {
+        await ensureStarterTemplate(tx, tenantId, actorUserId, DOC_CHECKLIST_EMAIL);
+        return dispatch(tx, {
+          tenantId,
+          channel: "email",
+          templateKey: DOC_CHECKLIST_EMAIL,
+          recipient: email,
+          variables: { name, document_collection_link: url },
+          category: "transactional",
+          investorId: investorId ?? undefined,
+          leadId: investorId ? undefined : id,
+          actorUserId,
+          idempotencyKey: `doc-checklist:${id}:${tokenId}`,
+        });
       });
-      emailed = true;
+      emailed = r.status === "sent" || r.status === "queued";
+      if (!emailed) {
+        emailError = r.skipped
+          ? `not sent — ${String(r.skipped.detail ?? r.skipped.reason).replace(/_/g, " ")}`
+          : (r.error ? String(r.error).slice(0, 120) : "send failed");
+      }
     } catch (e: any) {
       const m = String(e?.message ?? "");
       emailError = /RESEND_API_KEY|EAUTH|invalid login|535|ECONNREFUSED|getaddrinfo|ETIMEDOUT|certificate|authentication|domain/i.test(m)
@@ -214,11 +198,4 @@ export async function sendDocChecklist(opts: {
   ].filter(Boolean).join("  ·  ");
 
   return { ok, url, summary, emailed, emailError, whatsapp: { status: waStatus, sent: whatsapped }, templateNote, waMeUrl };
-}
-
-function escapeHtml(s: string): string {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-function escapeAttr(s: string): string {
-  return String(s).replace(/"/g, "&quot;");
 }

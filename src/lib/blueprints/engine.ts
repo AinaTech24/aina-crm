@@ -47,7 +47,15 @@ import {
   stageFlavour,
 } from "./lead_to_client";
 import { checkPrerequisites } from "./prerequisites";
-import { createJourneyTask, isOnboardingStage, type JourneyTaskInput, type JourneyTaskResult } from "./journey-task";
+import {
+  closeJourneyTasksBehind,
+  createJourneyTask,
+  isOnboardingStage,
+  type JourneyTaskInput,
+  type JourneyTaskResult,
+} from "./journey-task";
+import { automaticMoveBlock, canCloseAsLost, isClientPhaseStage, LOST_STAGE } from "./journey-rules";
+import { GENERAL_EXECUTED_STAGE, GENERAL_HIDDEN_KEYS } from "./lead_to_client";
 
 const MODULE = "leads";
 
@@ -103,7 +111,7 @@ export async function ensureActiveBlueprint(tx: Tx, tenantId: string) {
       tenantId,
       moduleName: MODULE,
       blueprintName: LEAD_TO_CLIENT_BLUEPRINT_NAME,
-      description: "Full Lead → Client SOP — 30 stages with branching paths (call-back loops, KYC routes, mandate/transaction retries).",
+      description: "Full Lead → Client SOP — the lead stages, then client onboarding, with branching paths (call-back loops, KYC routes, mandate/transaction retries).",
       versionNumber: 1,
       isActive: true,
     })
@@ -141,7 +149,7 @@ export async function ensureActiveBlueprint(tx: Tx, tenantId: string) {
 
 // ── Instance management ──────────────────────────────────────────────────
 
-export async function ensureInstance(tx: Tx, tenantId: string, leadId: string) {
+export async function ensureInstance(tx: Tx, tenantId: string, leadId: string, opts: { enteredAt?: Date } = {}) {
   const [existing] = await tx
     .select()
     .from(leadBlueprintInstances)
@@ -158,7 +166,9 @@ export async function ensureInstance(tx: Tx, tenantId: string, leadId: string) {
     .limit(1);
   if (!firstStage) throw new Error("Blueprint has no stages");
 
-  const now = new Date();
+  // A journey opened late (the SLA sweep for a lead nobody opened) dates the
+  // first stage from when the lead arrived, not from now.
+  const now = opts.enteredAt ?? new Date();
   // Race-safe create: two near-simultaneous first-touch events (e.g. the
   // lead-detail GET racing a call-outcome auto-advance) both pass the SELECT
   // above. ON CONFLICT on the (tenant, lead) unique index turns the loser into
@@ -209,6 +219,14 @@ export interface TransitionOptions {
   /** If set, override role + transition-graph + prerequisite checks (use
    *  sparingly — for system/auto-advance events and explicit admin overrides). */
   systemBypass?: boolean;
+  /** The move comes from an automatic source (an event elsewhere in the CRM,
+   *  not a person choosing this step). Automatic moves are forward-only, never
+   *  put a client back into the lead phase, never change onboarding branch or
+   *  route, and never touch a deleted lead (journey-rules.ts). A refused move
+   *  returns ok:false with code "not_forward" and changes nothing. */
+  automatic?: boolean;
+  /** Reopen a COMPLETED journey (the owner's audited reopen, advance route). */
+  allowReopen?: boolean;
   /** Suppress on-enter / on-exit automation emission — used for the
    *  intermediate hops of a multi-stage walk so only the FINAL target fires
    *  its recipes (a passed-through stage shouldn't trigger sends). */
@@ -225,7 +243,7 @@ export interface TransitionResult {
   ok: boolean;
   reason?: string;
   /** Machine code so callers can branch (e.g. don't bypass a prereq failure). */
-  code?: "no_transition" | "role" | "prereq" | "terminal" | "stage_not_found";
+  code?: "no_transition" | "role" | "prereq" | "terminal" | "stage_not_found" | "not_forward";
   fromStage?: string;
   toStage?: string;
   /** What the step's task in the Tasks module came to (client onboarding steps). */
@@ -269,12 +287,23 @@ export async function transitionTo(
   // ── Terminal guard ─────────────────────────────────────────────────────
   // A completed journey (Active Client) is frozen — even systemBypass/force
   // must not silently reopen it and re-fire on-enter automations.
-  if (instStatus === "completed") {
+  if (instStatus === "completed" && !(opts.allowReopen && !opts.automatic)) {
     return { ok: false, code: "terminal", reason: "This journey is already completed and cannot be advanced." };
   }
 
+  // Who the journey belongs to: a lead (converted or not), or — with no lead
+  // row — a client directly.
+  const subj = (await tx.execute(
+    sql`SELECT converted_investor_id, lost_reason, pipeline FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1` as any
+  )).rows?.[0] as { converted_investor_id?: string | null; lost_reason?: string | null; pipeline?: string | null } | undefined;
+  const converted = !subj || !!subj.converted_investor_id;
+  const deletedLead = subj?.lost_reason === "__deleted__";
+  if (opts.automatic && deletedLead) {
+    return { ok: false, code: "not_forward", reason: "The lead was deleted." };
+  }
+
   // Look up the transition
-  const [tr] = await tx
+  const [tr0] = await tx
     .select()
     .from(blueprintTransitions)
     .where(
@@ -285,6 +314,16 @@ export async function transitionTo(
       )
     )
     .limit(1);
+  // Closing a lead as Lost is allowed from every open lead stage (Won Lead
+  // included, before conversion) — a firm's stored graph predates that rule,
+  // so it is applied here rather than relying on a transition row.
+  const tr = tr0 ?? (toStageKey === LOST_STAGE && canCloseAsLost(currentStageKey, converted)
+    ? { transitionName: "Not Qualified", allowedRoles: [] as string[] }
+    // General products (NPS, PMS, FD, bonds …) need no UCC, mandate or
+    // exchange order: after KYC the product is simply executed (audit C17).
+    : subj?.pipeline === "general" && currentStageKey === "kyc_validated" && toStageKey === GENERAL_EXECUTED_STAGE
+      ? { transitionName: "Product Executed", allowedRoles: [] as string[] }
+      : undefined);
   if (!tr && !opts.systemBypass) {
     return { ok: false, code: "no_transition", reason: `No transition defined from "${currentStageKey}" to "${toStageKey}"` };
   }
@@ -309,6 +348,16 @@ export async function transitionTo(
     .where(and(eq(blueprintStages.blueprintId, inst.blueprintId), eq(blueprintStages.stageKey, toStageKey)))
     .limit(1);
   if (!toStage) return { ok: false, code: "stage_not_found", reason: "Target stage not found" };
+
+  // Automatic sources only ever move the journey forward (journey-rules.ts).
+  if (opts.automatic) {
+    const blocked = automaticMoveBlock(currentStageKey, toStageKey, {
+      converted,
+      currentOrder: fromStage?.stageOrder ?? null,
+      targetOrder: toStage.stageOrder,
+    });
+    if (blocked) return { ok: false, code: "not_forward", reason: `Not moved: ${blocked}.`, fromStage: currentStageKey, toStage: toStageKey };
+  }
 
   // ── P1: enforce prerequisites server-side ──────────────────────────────
   // The SAME artefact checklist the UI surfaces via /can-advance is now also a
@@ -388,6 +437,14 @@ export async function transitionTo(
     sql`UPDATE leads SET stage = ${toStageKey}, stage_changed_at = ${now}, updated_at = ${now} WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid` as any
   );
 
+  // Reopening a lost lead clears why and when it was lost, so the record no
+  // longer reads as lost (a deleted lead keeps its marker).
+  if (currentStageKey === LOST_STAGE && toStageKey !== LOST_STAGE) {
+    await tx.execute(
+      sql`UPDATE leads SET lost_reason = NULL, lost_at = NULL WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND lost_reason IS DISTINCT FROM '__deleted__'` as any
+    );
+  }
+
   // Re-score the lead off the freshly-mirrored stage. Every blueprint
   // transition (call-outcome, advance, sync) flows through here, so this is
   // the single point that keeps leads.lead_score in step with the funnel.
@@ -406,7 +463,7 @@ export async function transitionTo(
     before: { stage: currentStageKey },
     after: { stage: toStageKey, status: disposition },
     reason: opts.remarks ?? null,
-    meta: { transition: tr?.transitionName ?? null, forced: !!opts.systemBypass },
+    meta: { transition: tr?.transitionName ?? null, forced: !!opts.systemBypass, automatic: !!opts.automatic },
     ipAddress: opts.ipAddress ?? null,
     userAgent: opts.userAgent ?? null,
   });
@@ -462,6 +519,13 @@ export async function transitionTo(
       actorUserId: opts.actorUserId ?? null,
       input: opts.task,
     });
+  }
+
+  // An automatic move means the work of the steps behind it is done: their
+  // open "Onboarding: …" tasks close (a person's own move leaves them for the
+  // assignee to complete — the firm's rule of 2026-10-17).
+  if (opts.automatic && isClientPhaseStage(toStageKey, toStage.stageOrder)) {
+    await closeJourneyTasksBehind(tx, { tenantId, leadId, stageKey: toStageKey, reason: opts.remarks ?? null });
   }
 
   // Family Mapping: the family is served by its head's RM (lib/families/head-rm.ts).
@@ -560,13 +624,19 @@ export async function getStage(tx: Tx, tenantId: string, leadId: string): Promis
   // Hide the OFF-branch onboarding stages so the stepper shows one clean path.
   // Lead-phase / shared stages always show; the current stage is never hidden
   // (e.g. if a lead is mid-insurance but its pipeline flag was changed).
-  const stages = allDbStages.filter((s) => {
-    if (s.stageKey === inst.currentStageKey) return true;
-    const b = onboardingBranchOf(s.stageKey);
-    if (b !== null && b !== branch) return false;
-    const r = routeOfStage(s.stageKey);
-    return r === null || r === route;
-  });
+  const general = pipeline === "general";
+  const stages = allDbStages
+    .filter((s) => {
+      if (s.stageKey === inst.currentStageKey) return true;
+      const b = onboardingBranchOf(s.stageKey);
+      if (b !== null && b !== branch) return false;
+      // General products: documents and KYC, then executed — no UCC, mandate,
+      // exchange order or RTA forms.
+      if (general && (GENERAL_HIDDEN_KEYS as readonly string[]).includes(s.stageKey)) return false;
+      const r = routeOfStage(s.stageKey);
+      return r === null || r === route || (general && s.stageKey === GENERAL_EXECUTED_STAGE);
+    })
+    .map((s) => (general && s.stageKey === GENERAL_EXECUTED_STAGE ? { ...s, stageName: "Product Executed" } : s));
   const currentIdx = stages.findIndex((s) => s.stageKey === inst.currentStageKey);
   const current = stages[currentIdx];
 
