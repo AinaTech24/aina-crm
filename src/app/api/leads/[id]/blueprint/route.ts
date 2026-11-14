@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { getStage } from "@/lib/blueprints/engine";
-import { loadViewableLead } from "@/lib/leads/access";
+import { loadJourneyLeadForView } from "@/lib/blueprints/journey-access";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const session = await requireSession();
     const { id } = await params;
     const data = await withTenant(session.tenantId, async (tx) => {
-      const lead = await loadViewableLead(tx, session, id);
+      // The lead's own rule — or, once it is a client, the CLIENT's: the
+      // current RM / branch head sees the onboarding bar (audit C4).
+      const lead = await loadJourneyLeadForView(tx, session, id);
       if (!lead) throw Object.assign(new Error("Lead not found"), { status: 404 });
       const stage = await getStage(tx, session.tenantId, id);
       // Surface the lead's deterministic score + band so the blueprint bar can

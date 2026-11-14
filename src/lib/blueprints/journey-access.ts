@@ -15,11 +15,12 @@
  * never moved back into the lead phase, by anyone.
  */
 
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { leads } from "@/db/schema";
 import type { Tx } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { loadEditableLead } from "@/lib/leads/access";
+import { loadEditableLead, loadViewableLead } from "@/lib/leads/access";
 import { loadViewableInvestor } from "@/lib/investors/access";
 import { normalizeLeadStage } from "@/lib/leads/normalize";
 import { LEAD_TO_CLIENT_STAGES } from "./lead_to_client";
@@ -162,4 +163,18 @@ export async function startJourneyAt(tx: Tx, tenantId: string, leadId: string, s
     suppressAutomations: true,
     remarks: "Imported at this stage.",
   });
+}
+
+/**
+ * Load a lead for READING its journey: the lead's own rule, or — once it is a
+ * client — the client's (current RM, branch head, firm), so the onboarding
+ * bar shows for whoever may see the client (audit C4). Null when neither.
+ */
+export async function loadJourneyLeadForView(tx: Tx, session: SessionUser, leadId: string) {
+  const own = await loadViewableLead(tx, session, leadId).catch(() => null);
+  if (own) return own;
+  const [row] = await tx.select().from(leads).where(and(eq(leads.id, leadId), eq(leads.tenantId, session.tenantId))).limit(1);
+  if (!row?.convertedInvestorId) return null;
+  const client = await loadViewableInvestor(tx, session, row.convertedInvestorId).catch(() => null);
+  return client ? row : null;
 }

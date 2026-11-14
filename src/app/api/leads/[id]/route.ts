@@ -10,6 +10,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { writeStageThroughJourney } from "@/lib/blueprints/journey-access";
+import { cancelJourneyTasks } from "@/lib/blueprints/journey-task";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -203,6 +204,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         UPDATE lead_blueprint_instances SET status = 'lost', is_delayed = false, delayed_since = NULL, updated_at = now()
          WHERE lead_id = ${id}::uuid AND tenant_id = ${session.tenantId}::uuid AND status = 'in_progress'
       `);
+      // …and its onboarding step tasks with it (a converted lead's belong to
+      // the client and stay).
+      if (!before.convertedInvestorId) {
+        await cancelJourneyTasks(tx, { tenantId: session.tenantId, leadId: id, reason: "Lead deleted — onboarding step no longer needed." });
+      }
       await tx.insert(eventsOutbox).values({
         tenantId: session.tenantId,
         kind: "lead.deleted",

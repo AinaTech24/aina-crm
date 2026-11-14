@@ -593,6 +593,43 @@ Reports → "Bottlenecks — Where Work Waits" (`/dashboard/reports/bottlenecks`
   viewer sees is `resolveDataAccess` (firm / branch / team / own), as on the
   dashboards. Tasks: creation → done by type, by assignee.
 
+## The lead → client journey (blueprint engine)
+
+`lib/blueprints/` — one journey per lead (`lead_blueprint_instances`), lead
+phase then client onboarding. Rules since 2026-11 (journey audit L1–L20,
+C1–C17):
+
+- **Automatic moves are forward-only** (`transitionTo({ automatic: true })`;
+  every `autoAdvance` is). `journey-rules.ts` ranks stages by key (loops,
+  KYC branches, retries, the physical route and insurance sit level with
+  their step), never by stored order. A converted lead / client-phase journey
+  is never moved back into a lead stage (Lost included), never across
+  branch or route, and a deleted lead never moves. Only a person moves back.
+- **Never write `leads.stage` directly** — the engine mirrors it. A stage
+  chosen as a field (lead PATCH, `/stage`, CSV import) goes through
+  `writeStageThroughJourney` / `startJourneyAt` (`journey-access.ts`).
+- **Who moves a step by hand**: `authorizeJourneyMove` — the lead's rule in
+  the lead phase, the CLIENT's (current RM, client editors, compliance on KYC
+  steps, ops on theirs) in the client phase. `force` (board drag): lead-phase
+  targets for RMs, client steps for managers / ops only. Every path runs the
+  same step writes (`stage-side-effects.ts`); KYC Validated needs evidence
+  and never overrides a KRA hold / rejection. An owner may reopen a completed
+  journey (`reopen`, audited).
+- **Convert** needs a Won lead (or the board's drop on Won, `confirmWon`) and
+  `investor.edit.*`; it reuses the client already on file (409
+  `existing_client`, check-duplicate's visibility rule), carries the lead's
+  PAN and details, cancels its follow-ups (`lib/leads/open-tasks.ts`
+  `closeLeadTasks`) and starts the product's onboarding — insurance → Needs
+  Analysis; general products (NPS / PMS / FD) skip UCC / mandate:
+  KYC Validated → "Product Executed".
+- **Step tasks**: an automatic move closes the tasks of the steps behind it;
+  `cancelJourneyTasks` is for a client who exits / is trashed (the client
+  write paths should call it). SLA alerts: untouched leads (the sweep opens
+  their journey) go to the owner, firm owners and the lead's branch head;
+  stalled onboarding to the step's task holder and the client's RM.
+- A directly-added client's journey (`/api/investors/[id]/blueprint`) is
+  placed from facts (`client-facts.ts`), never a fake "all done".
+
 ## Meetings — attendees and action items
 
 `review_meetings` (the Meetings module). Two rules since 2026-10-01:
