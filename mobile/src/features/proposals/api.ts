@@ -222,11 +222,13 @@ export const riskReady = (s?: RecipientSnapshot) => !!s && (s.riskExempt || s.ri
 
 // ── The firm's Scheme Master (every MF scheme / AMC picks from it) ──
 export interface SchemeHit { schemeCode: string; schemeName: string; amc: string | null; category: string | null; nav: number | null; navDate: string | null; risk: { band: number; label: string; tone: string } | null; plan?: string | null }
-export function useSchemeSearch(q: string, amc?: string | null) {
+/** A proposal recommends Regular plans only; a task's scheme row may be any plan in the master. */
+export function useSchemeSearch(q: string, amc?: string | null, opts: { regularOnly?: boolean } = {}) {
   const term = q.trim();
+  const regular = opts.regularOnly !== false;
   return useQuery({
-    queryKey: ["mf-schemes", term, amc ?? ""],
-    queryFn: () => api.get<{ schemes: SchemeHit[]; masterEmpty?: boolean }>("/api/mf/schemes", { q: term, limit: "20", plan: "regular", amc: amc || undefined }),
+    queryKey: ["mf-schemes", term, amc ?? "", regular],
+    queryFn: () => api.get<{ schemes: SchemeHit[]; masterEmpty?: boolean }>("/api/mf/schemes", { q: term, limit: "20", plan: regular ? "regular" : undefined, amc: amc || undefined }),
     enabled: term.length >= 2 || !!amc,
     staleTime: 60_000,
     placeholderData: (prev) => prev,
