@@ -34,14 +34,14 @@ import { applyFamilySharedDetails } from "@/lib/families/shared-details";
 
 /** Make `investorId` the head of `familyId`: the pointer, and the only head role. */
 export async function makeFamilyHead(tx: any, familyId: string, investorId: string) {
-  await tx.update(families).set({ primaryInvestorId: investorId, updatedAt: new Date() } as any).where(eq(families.id, familyId));
+  await tx.update(families).set({ primaryInvestorId: investorId, updatedAt: new Date() }).where(eq(families.id, familyId));
   // Anyone else carrying the head role becomes "other" — two heads is how the
   // page used to badge one person "primary" and the map another "Head".
   await tx
     .update(investors)
-    .set({ familyRole: "other", updatedAt: new Date() } as any)
+    .set({ familyRole: "other", updatedAt: new Date() })
     .where(and(eq(investors.familyId, familyId), ne(investors.id, investorId), inArray(investors.familyRole, ["self", "head", "primary"])));
-  await tx.update(investors).set({ familyRole: HEAD_ROLE, updatedAt: new Date() } as any).where(eq(investors.id, investorId));
+  await tx.update(investors).set({ familyRole: HEAD_ROLE, updatedAt: new Date() }).where(eq(investors.id, investorId));
 }
 
 const err = (message: string, status: number) => Object.assign(new Error(message), { status });
@@ -77,7 +77,7 @@ export async function attachClientsToFamily(
       ? (await tx.select().from(investors).where(and(eq(investors.id, investorId), eq(investors.tenantId, session.tenantId))).limit(1))[0]
       : await loadViewableInvestor(tx, session, investorId);
     if (!inv) throw err("client not found", 404);
-    if ((inv as any).mergedIntoId) throw err(`${inv.name} was merged into another record`, 409);
+    if (inv.mergedIntoId) throw err(`${inv.name} was merged into another record`, 409);
     // Mapped to this family — newly or already: either way the client's
     // onboarding "Map Family" step is done (lib/families/journey).
     await onClientFamilyMapped(tx, session.tenantId, investorId);
@@ -89,13 +89,13 @@ export async function attachClientsToFamily(
       priorFamilies.add(inv.familyId);
       await tx
         .update(families)
-        .set({ primaryInvestorId: null, updatedAt: new Date() } as any)
+        .set({ primaryInvestorId: null, updatedAt: new Date() })
         .where(and(eq(families.id, inv.familyId), eq(families.primaryInvestorId, investorId)));
     }
 
     await tx
       .update(investors)
-      .set({ familyId, familyRole: role && isHeadRole(role) ? HEAD_ROLE : role, updatedAt: new Date() } as any)
+      .set({ familyId, familyRole: role && isHeadRole(role) ? HEAD_ROLE : role, updatedAt: new Date() })
       .where(eq(investors.id, investorId));
 
     await tx.insert(eventsOutbox).values({

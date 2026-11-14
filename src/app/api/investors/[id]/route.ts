@@ -395,17 +395,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       delete (fields as any).branchId; // written through branchPatch
       const panPatch: { pan?: string } = {};
       const pan = (typedPan ?? "").replace(/\s+/g, "").toUpperCase();
-      const nextType = (parse.data.investorCategory ?? (before as any).investorCategory ?? "individual") as string;
+      const nextType = (parse.data.investorCategory ?? before.investorCategory ?? "individual") as string;
       const nextKind = clientTypeDef(nextType).kind;
 
       // What the client type requires (lib/investors/client-types.ts), for the
       // inputs this edit changes — an unrelated edit of an old imported record
       // is not refused for a gap it already had.
       {
-        const typeChanged = parse.data.investorCategory !== undefined && parse.data.investorCategory !== (before as any).investorCategory;
+        const typeChanged = parse.data.investorCategory !== undefined && parse.data.investorCategory !== before.investorCategory;
         const beforeDob = before.dob ? String(before.dob).slice(0, 10) : null;
         const nextDob = parse.data.dob !== undefined ? (parse.data.dob ? String(parse.data.dob).slice(0, 10) : null) : beforeDob;
-        const beforeDetails = ((before as any).typeDetails ?? {}) as any;
+        const beforeDetails = (before.typeDetails ?? {}) as any;
         const nextDetails = (parse.data.typeDetails !== undefined ? parse.data.typeDetails ?? {} : beforeDetails) as any;
         const name = (d: any, k: string) => String(d?.[k]?.name ?? "").trim();
         const issue = clientTypeIssue({ type: nextType, dob: nextDob, typeDetails: nextDetails }, indiaToday(), typeChanged ? undefined : {
@@ -424,14 +424,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // and not another client's.
       const minorToMajor =
         nextKind !== "minor" &&
-        ((before as any).investorCategory === "minor" || (isMinorKey(before.pan) && !!pan));
+        (before.investorCategory === "minor" || (isMinorKey(before.pan) && !!pan));
       const majorPatch: Record<string, unknown> = {};
       if (minorToMajor) {
         const adultPan = pan || ownPan(before.pan);
         if (!adultPan) return "adult_needs_pan" as const;
         if (!PAN_RE.test(adultPan)) return "bad_pan" as const;
         if (adultPan !== before.pan) {
-          if ((before as any).dedupPan !== false) {
+          if (before.dedupPan !== false) {
             const clash = await tx.execute(sql`
               SELECT 1 FROM investors
               WHERE tenant_id = ${session.tenantId}::uuid AND id <> ${id}::uuid
@@ -445,7 +445,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         majorPatch.kycStatus = "pending";
         majorPatch.kycValidatedAt = null;
         majorPatch.isMinor = false;
-        if ((before as any).guardianInvestorId) {
+        if (before.guardianInvestorId) {
           majorPatch.guardianInvestorId = null;
           // The risk profile on the row was the guardian's (migration 0234);
           // the adult keeps only an assessment of their own, if any.
@@ -464,7 +464,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const minor = isMinorKey(before.pan);
         if (minor && !ownPan(before.pan)) return "pan_locked" as const;
         const next = minor ? `MINOR:${pan}` : pan;
-        if ((before as any).dedupPan !== false) {
+        if (before.dedupPan !== false) {
           const clash = await tx.execute(sql`
             SELECT 1 FROM investors
             WHERE tenant_id = ${session.tenantId}::uuid AND id <> ${id}::uuid
@@ -518,7 +518,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       const typePatch: Record<string, unknown> = {};
       if (parse.data.typeDetails !== undefined || parse.data.investorCategory !== undefined) {
-        typePatch.typeDetails = cleanTypeDetails(nextType, (parse.data.typeDetails ?? (before as any).typeDetails) as any);
+        typePatch.typeDetails = cleanTypeDetails(nextType, (parse.data.typeDetails ?? before.typeDetails) as any);
       }
       delete (fields as any).typeDetails;
       if (parse.data.investorCategory !== undefined) {
@@ -537,8 +537,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             SELECT 1 FROM investors WHERE id = ${gid}::uuid AND tenant_id = ${session.tenantId}::uuid
               AND id <> ${id}::uuid AND deleted_at IS NULL`)).rows.length;
           if (!ok) gid = undefined;
-        } else if (gid === undefined && !(before as any).guardianInvestorId) {
-          const gp = String(((typePatch.typeDetails ?? (before as any).typeDetails) as any)?.guardian?.pan ?? "").trim().toUpperCase();
+        } else if (gid === undefined && !before.guardianInvestorId) {
+          const gp = String(((typePatch.typeDetails ?? before.typeDetails) as any)?.guardian?.pan ?? "").trim().toUpperCase();
           if (gp) {
             const g = (await tx.execute(sql`
               SELECT id FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND pan = ${gp}
@@ -735,9 +735,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           entityType: "investor",
           entityId: id,
           before: {
-            investorCategory: (before as any).investorCategory,
+            investorCategory: before.investorCategory,
             panKey: !isMinorKey(before.pan) ? "pan" : ownPan(before.pan) ? "minor_own_pan" : "guardian_pan",
-            guardianInvestorId: (before as any).guardianInvestorId ?? null,
+            guardianInvestorId: before.guardianInvestorId ?? null,
             kycStatus: before.kycStatus ?? null,
           },
           after: {
