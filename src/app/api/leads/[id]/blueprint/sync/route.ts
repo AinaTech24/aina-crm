@@ -2,122 +2,103 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/leads/[id]/blueprint/sync
  *
- * Reconciles a lead's blueprint stage with its actual journey artefacts.
- * Looks at: risk_profile_responses, proposals + proposal_approvals,
- * compliance_documents (KYC type), and the lead's converted_investor_id —
- * then advances the blueprint instance to the furthest stage that's
- * actually been reached.
+ * Re-syncs a journey with what is on record — through the SAME event map the
+ * automatic moves use (lib/blueprints/auto-advance.ts), so a re-sync can
+ * never disagree with them (audit C12):
  *
- * This is the recovery path for leads created BEFORE the share-token /
- * public-form flows started transitioning the blueprint automatically.
+ *   lead phase    last contact → call logged · a completed meeting → meeting
+ *                 completed · a proposal sent → Proposal Sent · a proposal
+ *                 the client approved → Won
+ *   client phase  (the lead was converted — read from the CLIENT record)
+ *                 onboarding started · documents on file → Documents Received
+ *                 · KYC verified → KYC Validated · a UCC → UCC Activated · an
+ *                 active mandate → Mandate Activated · a processed
+ *                 transaction → Transaction Successful
+ *
+ * The furthest fact wins and the journey moves ONCE to it (no step task is
+ * opened for a step only passed through). Automatic, so forward-only: a
+ * re-sync never moves a journey back, and never a client into a lead stage.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import {
-  riskProfileResponses,
-  proposals,
-  proposalApprovals,
-  complianceDocuments,
-} from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
-import { transitionTo } from "@/lib/blueprints/engine";
-import { LEAD_TO_CLIENT_STAGES } from "@/lib/blueprints/lead_to_client";
-import { loadEditableLead } from "@/lib/leads/access";
+import { autoAdvance, EVENT_TO_STAGE, type BlueprintEvent } from "@/lib/blueprints/auto-advance";
+import { authorizeJourneyMove } from "@/lib/blueprints/journey-access";
+import { journeyRank } from "@/lib/blueprints/journey-rules";
 
 export const dynamic = "force-dynamic";
 
-const STAGE_ORDER = new Map(LEAD_TO_CLIENT_STAGES.map((s) => [s.key, s.order]));
-const orderOf = (key?: string | null) => (key ? STAGE_ORDER.get(key) ?? 0 : 0);
+type Fact = { event: BlueprintEvent; reason: string };
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireAny(session.roles, ["lead.edit.all", "lead.edit.assigned"], session.permissions);
+    requireAny(
+      session.roles,
+      ["lead.edit.all", "lead.edit.assigned", "investor.edit.all", "investor.edit.assigned"],
+      session.permissions,
+    );
     await assertActiveLicense(session.tenantId, session.roles);
     const { id } = await params;
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const lead = await loadEditableLead(tx, session, id);
+      const lead = (await tx.execute(sql`
+        SELECT id, last_contact_at, converted_investor_id FROM leads
+         WHERE id = ${id}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1
+      `)).rows[0] as { id: string; last_contact_at: string | null; converted_investor_id: string | null } | undefined;
+      const investorId = lead ? lead.converted_investor_id : id;
+      // Access: the lead's rule in the lead phase, the client's in the client phase.
+      const subject = await authorizeJourneyMove(tx, session, id, investorId ? "request_documents" : "call_done");
 
-      // The sync backfill should only ever move a lead FORWARD to the furthest
-      // stage its artefacts justify — never regress one a human already pushed
-      // further. Read the current stage once and gate every advance on it.
-      const cur = await tx.execute(
-        sql`SELECT current_stage_key FROM lead_blueprint_instances WHERE lead_id = ${id}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1` as any
-      );
-      const currentKey = (cur.rows?.[0] as any)?.current_stage_key as string | undefined;
-      const currentOrder = orderOf(currentKey);
-
-      const advanceIfForward = async (target: string, reason: string) => {
-        if (orderOf(target) <= currentOrder) {
-          return { advancedTo: currentKey ?? target, reason: `Already at or beyond ${target} — no change.` };
-        }
-        await transitionTo(tx, session.tenantId, id, target, { systemBypass: true, remarks: reason });
-        return { advancedTo: target, reason };
-      };
-
-      // 1. Already converted?
-      if (lead.convertedInvestorId) {
-        return advanceIfForward("request_documents", "Backfill — lead already converted to client.");
+      const facts: Fact[] = [];
+      if (lead) {
+        if (lead.last_contact_at) facts.push({ event: "call.logged", reason: "a contact is on record" });
+        const m = await tx.execute(sql`
+          SELECT 1 FROM review_meetings WHERE tenant_id = ${session.tenantId}::uuid AND lead_id = ${id}::uuid AND status = 'completed' LIMIT 1
+        `);
+        if (m.rows.length) facts.push({ event: "meeting.completed", reason: "a meeting was held" });
+        const p = (await tx.execute(sql`
+          SELECT bool_or(p.status IN ('sent', 'viewed', 'accepted', 'partially_approved', 'executed', 'changes_requested')) AS sent,
+                 bool_or(p.status IN ('accepted', 'partially_approved', 'executed')
+                         OR EXISTS (SELECT 1 FROM proposal_approvals pa WHERE pa.proposal_id = p.id)) AS accepted
+            FROM proposals p WHERE p.tenant_id = ${session.tenantId}::uuid AND p.lead_id = ${id}::uuid
+        `)).rows[0] as { sent: boolean | null; accepted: boolean | null } | undefined;
+        if (p?.sent) facts.push({ event: "proposal.sent", reason: "a proposal was sent" });
+        if (p?.accepted) facts.push({ event: "proposal.accepted", reason: "the client accepted a proposal" });
+      }
+      if (investorId) {
+        facts.push({ event: "client.converted", reason: "the lead is a client" });
+        const c = (await tx.execute(sql`
+          SELECT i.kyc_status = 'verified' AS kyc,
+                 (NULLIF(btrim(COALESCE(i.bse_ucc_code, '')), '') IS NOT NULL
+                   OR jsonb_array_length(COALESCE(i.ucc_codes, '[]'::jsonb)) > 0) AS ucc,
+                 i.mandate_status = 'active' AS mandate,
+                 EXISTS (SELECT 1 FROM transactions t WHERE t.tenant_id = i.tenant_id AND t.investor_id = i.id
+                           AND t.direction = 'inflow' AND t.status IN ('processed', 'successful')) AS invested,
+                 EXISTS (SELECT 1 FROM compliance_documents d WHERE d.tenant_id = i.tenant_id
+                           AND d.related_entity_id IN (i.id, ${id}::uuid) AND d.superseded_by_id IS NULL) AS docs
+            FROM investors i WHERE i.id = ${investorId}::uuid AND i.tenant_id = ${session.tenantId}::uuid
+        `)).rows[0] as { kyc: boolean; ucc: boolean; mandate: boolean; invested: boolean; docs: boolean } | undefined;
+        if (c?.docs) facts.push({ event: "docs.received", reason: "documents are on file" });
+        if (c?.kyc) facts.push({ event: "kyc.validated", reason: "the client's KYC is verified" });
+        if (c?.ucc) facts.push({ event: "ucc.activated", reason: "a UCC is on the client" });
+        if (c?.mandate) facts.push({ event: "mandate.activated", reason: "a mandate is active" });
+        if (c?.invested) facts.push({ event: "transaction.successful", reason: "a processed investment is on record" });
       }
 
-      // 2. Documents on file?
-      const docs = await tx
-        .select()
-        .from(complianceDocuments)
-        .where(
-          and(
-            eq(complianceDocuments.relatedEntityType, "lead"),
-            eq(complianceDocuments.relatedEntityId, id)
-          )
-        );
-      if (docs.length > 0) {
-        return advanceIfForward("documents_received", `Backfill — ${docs.length} KYC doc(s) on file.`);
+      // Furthest fact first; the first one the journey accepts wins.
+      const ranked = facts
+        .filter((f) => EVENT_TO_STAGE[f.event])
+        .sort((a, b) => journeyRank(EVENT_TO_STAGE[b.event]!) - journeyRank(EVENT_TO_STAGE[a.event]!));
+      for (const f of ranked) {
+        const r = await autoAdvance(tx, session.tenantId, id, f.event, { remarks: `Re-sync — ${f.reason}.` });
+        if (r.moved) return { advancedTo: r.toStage, reason: `Re-sync — ${f.reason}.` };
       }
-
-      // 3. Proposal approved / sent / drafted?
-      const [leadProposal] = await tx
-        .select()
-        .from(proposals)
-        .where(eq(proposals.leadId, id))
-        .orderBy(desc(proposals.createdAt))
-        .limit(1);
-      if (leadProposal) {
-        const [approval] = await tx
-          .select()
-          .from(proposalApprovals)
-          .where(eq(proposalApprovals.proposalId, leadProposal.id))
-          .limit(1);
-        if (approval) return advanceIfForward("won_lead", "Backfill — proposal already approved.");
-        if (leadProposal.status === "sent" || leadProposal.status === "viewed") {
-          return advanceIfForward("won_lead", "Backfill — proposal already sent.");
-        }
-        if (leadProposal.status === "draft" || leadProposal.status === "ready") {
-          return advanceIfForward("won_lead", "Backfill — proposal in draft.");
-        }
-      }
-
-      // 4. Risk profile on file?
-      const [risk] = await tx
-        .select()
-        .from(riskProfileResponses)
-        .where(eq(riskProfileResponses.investorId, id))
-        .orderBy(desc(riskProfileResponses.signedAt))
-        .limit(1);
-      if (risk) {
-        return advanceIfForward("won_lead", `Backfill — risk profile on file (${risk.finalCategory}, ${risk.totalScore}).`);
-      }
-
-      // 5. Just contacted?
-      if (lead.lastContactAt) {
-        return advanceIfForward("call_done", "Backfill — last contact on file.");
-      }
-
-      return { advancedTo: currentKey ?? "new", reason: "No journey artefacts found yet" };
+      return { advancedTo: subject.currentKey, reason: facts.length ? "Already at or beyond what the record shows — no change." : "No journey facts found yet." };
     });
 
     return NextResponse.json(result);

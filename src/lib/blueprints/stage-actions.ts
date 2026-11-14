@@ -589,6 +589,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       targetStage: "ucc_create",
       hint: "Generate BSE/NSE Unique Client Code.",
       behaviour: { kind: "advance_only" },
+      pipelines: ["mf"],
     },
     {
       key: "ucc_already",
@@ -597,6 +598,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       targetStage: "ucc_activated",
       hint: "Client already has an active UCC from a prior platform.",
       behaviour: { kind: "advance_only" },
+      pipelines: ["mf"],
     },
     {
       // The physical route: signed forms to CAMS / KFintech / the AMC, no UCC.
@@ -606,6 +608,17 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       targetStage: "rta_forms_ready",
       hint: "Invest by signed forms submitted to CAMS / KFintech / the AMC — no UCC or exchange.",
       behaviour: { kind: "advance_only" },
+      pipelines: ["mf"],
+    },
+    {
+      // General products (NPS, PMS, FD …): no UCC, mandate or exchange order.
+      key: "product_executed",
+      label: "Product Executed",
+      tone: "primary",
+      targetStage: "transaction_successful",
+      hint: "The NPS / PMS / FD / bond is in place — the client is invested.",
+      behaviour: { kind: "advance_only" },
+      pipelines: ["general"],
     },
   ],
 

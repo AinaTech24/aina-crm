@@ -62,7 +62,7 @@ export type BlueprintEvent =
   | "call.completed.positive";
 
 /** Mapping table — event → target stage key (new 30-stage SOP). */
-const EVENT_TO_STAGE: Record<BlueprintEvent, string | null> = {
+export const EVENT_TO_STAGE: Record<BlueprintEvent, string | null> = {
   // ── Lead phase ──
   "call.logged": "call_done",                  // a call activity was logged
   "call.completed": "call_done",

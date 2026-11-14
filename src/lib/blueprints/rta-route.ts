@@ -48,12 +48,14 @@ export async function syncRtaJourneys(tx: Tx, tenantId: string): Promise<{ proce
     if (ok) {
       const r = await transitionTo(tx, tenantId, w.lead_id, "rta_processed", {
         systemBypass: true,
+        automatic: true,
         remarks: `Auto: the RTA feed shows it processed${ok.scheme_name ? ` — ${ok.scheme_name}` : ""}${ok.folio_number ? `, folio ${ok.folio_number}` : ""}.`,
       });
       if (r.ok) processed++;
     } else if (bad) {
       const r = await transitionTo(tx, tenantId, w.lead_id, "rta_rejected", {
         systemBypass: true,
+        automatic: true,
         remarks: `Auto: the RTA feed shows it rejected${bad.reason_description ? ` — ${bad.reason_description}` : ""}.`,
       });
       if (r.ok) rejected++;

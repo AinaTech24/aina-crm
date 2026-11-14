@@ -220,11 +220,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           systemBypass: true,
           ...clientMeta,
         });
-        // Keep the lead's own stage column in sync (mirrors the public submit).
-        await tx
-          .update(leads)
-          .set({ stage: "documents_received" as any, stageChangedAt: new Date(), updatedAt: new Date() } as any)
-          .where(eq(leads.id, id));
+        // leads.stage is mirrored by the engine when the move happens — never
+        // written on its own, or the board and the stepper disagree.
         return { ok: true, advanced: t.ok !== false, savedFields: Object.keys(values).length, warning };
       }
       return { ok: true, advanced: false, savedFields: Object.keys(values).length, warning };

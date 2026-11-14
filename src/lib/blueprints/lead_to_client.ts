@@ -548,6 +548,19 @@ export function routeOfStage(stageKey: string): OnboardingRoute | null {
   return null;
 }
 
+/**
+ * General products (NPS, PMS / AIF, FD / bonds, other — leads.pipeline
+ * "general") walk a SHORT branch of MF onboarding: documents → KYC →
+ * "Product Executed" (the Transaction Successful step, relabelled) → family →
+ * update → Active Client. The exchange / mandate / RTA-form steps do not apply.
+ */
+export const GENERAL_EXECUTED_STAGE = "transaction_successful";
+export const GENERAL_HIDDEN_KEYS = [
+  "ucc_create", "ucc_activated", "mandate_create", "mandate_activated", "mandate_reject",
+  "make_transaction", "transaction_failed",
+  "rta_forms_ready", "rta_client_signed", "rta_submitted", "rta_processed", "rta_rejected",
+] as const;
+
 export const INSURANCE_ONBOARDING_KEYS = [
   "insurance_needs_analysis", "insurance_quote", "insurance_proposal",
   "insurance_underwriting", "insurance_policy_issued", "insurance_lost",

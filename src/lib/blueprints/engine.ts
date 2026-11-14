@@ -55,6 +55,7 @@ import {
   type JourneyTaskResult,
 } from "./journey-task";
 import { automaticMoveBlock, canCloseAsLost, isClientPhaseStage, LOST_STAGE } from "./journey-rules";
+import { GENERAL_EXECUTED_STAGE, GENERAL_HIDDEN_KEYS } from "./lead_to_client";
 
 const MODULE = "leads";
 
@@ -318,7 +319,11 @@ export async function transitionTo(
   // so it is applied here rather than relying on a transition row.
   const tr = tr0 ?? (toStageKey === LOST_STAGE && canCloseAsLost(currentStageKey, converted)
     ? { transitionName: "Not Qualified", allowedRoles: [] as string[] }
-    : undefined);
+    // General products (NPS, PMS, FD, bonds …) need no UCC, mandate or
+    // exchange order: after KYC the product is simply executed (audit C17).
+    : subj?.pipeline === "general" && currentStageKey === "kyc_validated" && toStageKey === GENERAL_EXECUTED_STAGE
+      ? { transitionName: "Product Executed", allowedRoles: [] as string[] }
+      : undefined);
   if (!tr && !opts.systemBypass) {
     return { ok: false, code: "no_transition", reason: `No transition defined from "${currentStageKey}" to "${toStageKey}"` };
   }
@@ -619,13 +624,19 @@ export async function getStage(tx: Tx, tenantId: string, leadId: string): Promis
   // Hide the OFF-branch onboarding stages so the stepper shows one clean path.
   // Lead-phase / shared stages always show; the current stage is never hidden
   // (e.g. if a lead is mid-insurance but its pipeline flag was changed).
-  const stages = allDbStages.filter((s) => {
-    if (s.stageKey === inst.currentStageKey) return true;
-    const b = onboardingBranchOf(s.stageKey);
-    if (b !== null && b !== branch) return false;
-    const r = routeOfStage(s.stageKey);
-    return r === null || r === route;
-  });
+  const general = pipeline === "general";
+  const stages = allDbStages
+    .filter((s) => {
+      if (s.stageKey === inst.currentStageKey) return true;
+      const b = onboardingBranchOf(s.stageKey);
+      if (b !== null && b !== branch) return false;
+      // General products: documents and KYC, then executed — no UCC, mandate,
+      // exchange order or RTA forms.
+      if (general && (GENERAL_HIDDEN_KEYS as readonly string[]).includes(s.stageKey)) return false;
+      const r = routeOfStage(s.stageKey);
+      return r === null || r === route || (general && s.stageKey === GENERAL_EXECUTED_STAGE);
+    })
+    .map((s) => (general && s.stageKey === GENERAL_EXECUTED_STAGE ? { ...s, stageName: "Product Executed" } : s));
   const currentIdx = stages.findIndex((s) => s.stageKey === inst.currentStageKey);
   const current = stages[currentIdx];
 
