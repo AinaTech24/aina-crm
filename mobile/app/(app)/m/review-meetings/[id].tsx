@@ -11,6 +11,7 @@
  * so the next save edits it). The meeting has no notes box and no Outcome card.
  */
 
+import { renderReviewAgendaTemplate } from "../../../../src/features/meetings/agenda";
 import React, { useEffect, useState } from "react";
 import { View, ScrollView, Pressable, StyleSheet, KeyboardAvoidingView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -280,6 +281,9 @@ export default function MeetingDetail() {
           {/* Discussion */}
           <Card style={{ marginTop: spacing.lg }}>
             <TextField label="Discussion points (agenda)" value={discussion} onChangeText={setDiscussion} placeholder="What you plan to cover with the client…" multiline />
+            {/* The CRM's standard 7-question review agenda; appended, never over the RM's notes. */}
+            <Button label="Insert standard review agenda" size="sm" variant="secondary" icon={<Feather name="list" size={14} color={palette.ink} />}
+              onPress={() => { const t = renderReviewAgendaTemplate(); setDiscussion((cur) => (cur.trim() ? `${cur.trim()}\n\n${t}` : t)); }} />
           </Card>
 
           {/* Action items — each one is a task for the person it is given to */}

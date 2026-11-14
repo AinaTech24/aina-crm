@@ -75,6 +75,10 @@ export const reviewMeetingForm: FormSpec = {
     };
   },
 
+  // Only the chosen subject's picker shows (web: Client / Lead / Family tabs);
+  // a family meeting is always a review.
+  derive: (v) => (v.subjectKind === "family" && v.category !== "review" ? { category: "review" } : null),
+
   validate: (v) => {
     const e: Record<string, string> = {};
     if (!v.meetingDay) e.meetingDay = "Date is required";
@@ -109,6 +113,7 @@ export const reviewMeetingForm: FormSpec = {
           searchLabel: (i) => i.name,
           searchSublabel: (i) => [i.pan_display, i.segment_tag].filter(Boolean).join(" · "),
           placeholder: "Search a client by name or PAN…",
+          visibleIf: (v) => v.subjectKind === "client",
         },
         {
           key: "leadId",
@@ -119,6 +124,7 @@ export const reviewMeetingForm: FormSpec = {
           searchLabel: (l) => l.name,
           searchSublabel: (l) => [l.phone, l.stage ? String(l.stage).replace(/_/g, " ") : ""].filter(Boolean).join(" · "),
           placeholder: "Search a lead by name or phone…",
+          visibleIf: (v) => v.subjectKind === "lead",
         },
         {
           key: "familyId",
@@ -131,11 +137,14 @@ export const reviewMeetingForm: FormSpec = {
           placeholder: "Search a family group…",
           clearable: true,
           help: "only families with a primary client can be met",
+          visibleIf: (v) => v.subjectKind === "family",
         },
         {
           key: "category",
           label: "Meeting type",
           type: "select",
+          // A family meeting is a review (web ScheduleMeetingForm).
+          visibleIf: (v) => v.subjectKind !== "family",
           options: [
             { value: "new", label: "New Meeting" },
             { value: "review", label: "Review Meeting" },
