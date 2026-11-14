@@ -184,7 +184,7 @@ function classifyUnzipFailure(error: any, triedCount: number, hadAnyPassword: bo
       message:
         triedCount > 1
           ? `Not this firm's file — none of the ${triedCount} saved passwords opened the archive, so it was ignored. ` +
-            `(Multiple mailback subscriptions, or another platform's reports, can arrive at the same address.)`
+            `If you know this file's password (a registrar lets one be set on each request), use the key button on this row.`
           : NOT_OUR_FILE,
     };
   }
@@ -210,8 +210,9 @@ async function markRejected(job: RtaImportJob, reason: string, extra?: { checksu
 
 /** Shown on every archive we could not open — deliberately not phrased as an error. */
 const NOT_OUR_FILE =
-  "Not this firm's file — the archive is encrypted with a different password, " +
-  "so it was ignored. (Other platforms' mailback reports can arrive at the same address.)";
+  "Not this firm's file — the archive is encrypted with a different password from the only one saved, " +
+  "so it was ignored. Save the password this report was requested with (Settings → Integrations → RTA Mailback), " +
+  "or use the key button on this row to open it with that password.";
 
 /**
  * Idempotency guard. A worker restart (deploy / OOM) can leave a job 'stalled',

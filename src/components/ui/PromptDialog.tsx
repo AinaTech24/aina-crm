@@ -27,6 +27,7 @@ export function PromptDialog({
   confirmLabel = "Save",
   cancelLabel = "Cancel",
   multiline = false,
+  secret = false,
   optional = false,
   maxLength,
   onConfirm,
@@ -41,6 +42,8 @@ export function PromptDialog({
   confirmLabel?: string;
   cancelLabel?: string;
   multiline?: boolean;
+  /** A password / key: the field is masked and never autofilled. */
+  secret?: boolean;
   optional?: boolean;
   maxLength?: number;
   onConfirm: (value: string) => void;
@@ -100,7 +103,8 @@ export function PromptDialog({
             <input
               id={id}
               autoFocus
-              type="text"
+              type={secret ? "password" : "text"}
+              autoComplete={secret ? "off" : undefined}
               maxLength={maxLength}
               value={value}
               placeholder={placeholder}

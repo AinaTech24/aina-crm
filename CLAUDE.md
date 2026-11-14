@@ -1159,6 +1159,16 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   the RTA File Imports page says how many jobs are in line (`lib/rta/queue-status.ts`).
 - A ZIP none of the saved passwords opens is `rejected`, and the dialog used to
   call that "This file is already imported". It now shows the real reason.
+- **A registrar lets a ZIP password be set on EACH request** (KFintech's "Self
+  Extraction Password" on every report form), so one firm can hold files with
+  several passwords — the same report type, hours apart, one imports and one is
+  `rejected` (Shah Financial, 14 Nov 2026). Only passwords saved under Settings →
+  Integrations → RTA Mailback are tried. A rejected row has a **key button**
+  (`RtaImportsTable`): type that file's password once (masked,
+  `promptDialog({ secret })`), and optionally keep it — `POST /api/rta-imports/[id]/reimport`
+  `{ password, save }` tries it first, `appendMailbackPassword`s it when asked and
+  rescans the firm's other rejected files. The audit row records only that a
+  password was typed, never the password.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.

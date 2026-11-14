@@ -10,10 +10,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Trash2, RotateCcw, RefreshCw } from "lucide-react";
+import { Loader2, Trash2, RotateCcw, RefreshCw, KeyRound } from "lucide-react";
 import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
 import { formatRelative, formatDate } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { confirmDialog, promptDialog } from "@/components/ui/ConfirmProvider";
 
 type Row = {
   id: string;
@@ -80,11 +81,39 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
   const [reimporting, setReimporting] = useState<string | null>(null);
   const [reimportMsg, setReimportMsg] = useState<string | null>(null);
 
-  async function reimport(id: string) {
+  /**
+   * A file no saved password opens: the person who made the request knows its
+   * password (a registrar lets one be set on every request, so they differ).
+   * Type it once for this file, and say whether to keep it for the next ones.
+   */
+  async function reimportWithPassword(id: string, canSave: boolean) {
+    const typed = await promptDialog({
+      title: "This file's ZIP password",
+      message: "The password you typed for this report when you requested it from the registrar. It is tried on this file only, unless you choose to keep it.",
+      label: "ZIP password",
+      secret: true,
+      confirmLabel: "Open the file",
+    });
+    if (!typed) return;
+    const save = canSave
+      ? await confirmDialog({
+          title: "Keep this password for the next files?",
+          message: "Files from the registrar that use the same password will then import on their own.",
+          confirmLabel: "Keep it",
+          cancelLabel: "Only this file",
+        })
+      : false;
+    await reimport(id, { password: typed, save });
+  }
+
+  async function reimport(id: string, extra?: { password: string; save: boolean }) {
     setReimporting(id);
     setReimportMsg(null);
     try {
-      const res = await fetch(`/api/rta-imports/${id}/reimport`, { method: "POST" });
+      const res = await fetch(`/api/rta-imports/${id}/reimport`, {
+        method: "POST",
+        ...(extra ? { headers: { "content-type": "application/json" }, body: JSON.stringify(extra) } : {}),
+      });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { setReimportMsg(j.error ?? "Could not re-import this file"); return; }
       // The worker picks it up within a second or two; the in-flight poller
@@ -261,6 +290,17 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                               {reimporting === r.id
                                 ? <Loader2 className="size-3.5 animate-spin" />
                                 : <RefreshCw className="size-3.5" />}
+                            </button>
+                          )}
+                          {r.status === "rejected" && (
+                            <button
+                              onClick={() => reimportWithPassword(r.id, r.source === "cams" || r.source === "kfintech")}
+                              disabled={busy || reimporting === r.id}
+                              className="text-muted-foreground hover:text-brand-cyan p-1 disabled:opacity-50"
+                              title="Open this file with its own ZIP password"
+                              aria-label="Enter this file's ZIP password"
+                            >
+                              <KeyRound className="size-3.5" />
                             </button>
                           )}
                           <button onClick={() => bulk("trash", [r.id])} disabled={busy} className="text-muted-foreground hover:text-rose-600 p-1" title="Move to trash" aria-label="Move to trash">

@@ -15,9 +15,10 @@ import { sql } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
-import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
+import { appendMailbackPassword, getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { Q } from "@/workers/queues";
+import { enqueueRejectedRescan } from "@/workers/rta-import-worker";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const cfg = await withTenant(session.tenantId, async (tx) => getMailbackPasswords(tx, session.tenantId));
   // Offer every saved secret regardless of the label it sits under — labels name
   // mailboxes for humans, they do not route, and they get mixed up in practice.
-  const passwords = passwordsToTry(cfg, row.source);
+  // A person who knows THIS file's password can type it: it is tried first, and
+  // — when they say so — kept with the firm's saved ones, so the next file with
+  // the same password opens by itself. (A registrar lets a password be set on
+  // each request, so one firm can hold several.)
+  const body = (await req.json().catch(() => ({}))) as { password?: unknown; save?: unknown };
+  const typed = typeof body.password === "string" ? body.password.trim().slice(0, 200) : "";
+  const passwords = [...new Set([...(typed ? [typed] : []), ...passwordsToTry(cfg, row.source)])];
+  const savePassword = !!typed && body.save === true && (row.source === "cams" || row.source === "kfintech");
+  if (savePassword && !passwordsToTry(cfg, row.source).includes(typed)) {
+    await withTenant(session.tenantId, async (tx) => {
+      await appendMailbackPassword(tx, session.tenantId, row.source, { label: "Added from RTA imports", password: typed });
+    });
+  }
 
   const opts = { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 } } as const;
   if (RICH_KINDS.has(row.kind)) {
@@ -82,6 +95,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
+  // A saved password may open other files that were waiting for it too.
+  if (savePassword) {
+    await enqueueRejectedRescan(session.tenantId, row.source).catch((err) =>
+      console.error("[rta-reimport] rescan enqueue failed", row.source, err),
+    );
+  }
+
   await withTenant(session.tenantId, async (tx) => {
     await recordAudit(tx, {
       tenantId: session.tenantId,
@@ -90,7 +110,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       entityType: "rta_file_import",
       entityId: row.id,
       before: { status: row.status },
-      after: { queued: true },
+      // Never the password itself — only that one was typed, and whether it was kept.
+      after: { queued: true, typedPassword: !!typed, savedPassword: savePassword },
       ...clientMetaFromHeaders(req.headers),
     });
   });

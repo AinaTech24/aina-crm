@@ -57,6 +57,8 @@ export type PromptOptions = {
   confirmLabel?: string;
   cancelLabel?: string;
   multiline?: boolean;
+  /** A password / key: masked in the field. */
+  secret?: boolean;
   optional?: boolean;
   maxLength?: number;
 };
@@ -171,6 +173,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         confirmLabel={asking?.confirmLabel ?? "Save"}
         cancelLabel={asking?.cancelLabel ?? "Cancel"}
         multiline={asking?.multiline ?? false}
+        secret={asking?.secret ?? false}
         optional={asking?.optional ?? false}
         maxLength={asking?.maxLength}
         onConfirm={(v) => answerPrompt(v)}
