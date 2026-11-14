@@ -28,6 +28,7 @@ import {
 import { leads, eventsOutbox, tasks } from "@/db/schema";
 import { scoreFields } from "@/lib/leads/score";
 import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
+import { LEAD_PIPELINE_STAGE_VALUES } from "@/lib/leads/stages";
 
 export const dynamic = "force-dynamic";
 
@@ -73,14 +74,10 @@ const CreateBody = z.object({
   customFields: z.record(z.string(), z.any()).optional(),
 });
 
-// Lead-phase blueprint stages (mirror of the web list page) — leads live here
-// until Convert-to-Client. Excludes converted (converted_investor_id) + archived.
-const LEAD_PHASE_STAGES = [
-  "new", "call_done", "contacted", "first_call_pending", "call_back_later", "call_not_connected",
-  "contact_in_future", "follow_up", "meeting_scheduled", "appointment_scheduled", "qualified",
-  "meeting_pending", "meeting_done", "won_lead", "converted", "post_meeting_qualified",
-  "not_qualified", "lost", "not_interested", "cold",
-];
+// The stages the Leads module shows — the web page's own list (lib/leads/stages),
+// so this API can never drift from it again. A hand-kept copy here lacked
+// "proposal_sent", which made every lead at Proposal Sent vanish from the app.
+const LEAD_PHASE_STAGES = LEAD_PIPELINE_STAGE_VALUES;
 
 export async function GET(req: NextRequest) {
   try {

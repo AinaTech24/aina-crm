@@ -5,7 +5,6 @@
  *   - /api/reports/net-sales         gross / redemption / net business this month
  *   - /api/reports/sip-health        SIP-book health (live, fresh, stopped, bounced)
  *   - /api/portfolio-intelligence    AUM composition (asset class, AMC, direct-plan)
- *   - /api/dashboard/widgets/[key]   individually-addressable business widgets
  *
  * All are firm-wide for managers (owner/branch_head/ops/…) and own-book for RMs,
  * so the same screen serves both — the numbers just scope down for a field RM.
@@ -78,19 +77,6 @@ export function usePortfolioIntel() {
     queryKey: ["portfolio-intel"],
     queryFn: () => api.get<PortfolioIntel>("/api/portfolio-intelligence"),
     staleTime: 120_000,
-    retry: false,
-  });
-}
-
-// ── Generic widget (self-describing: {key,title,type,view,rows}) ──
-export interface WidgetView { kind: string; columns?: { key: string; label: string; format?: string }[]; labelKey?: string; valueKey?: string; format?: string; [k: string]: any }
-export interface Widget { key: string; title: string; type: string; view: WidgetView; rows: any[] }
-export function useWidget(key: string, enabled = true) {
-  return useQuery({
-    queryKey: ["widget", key],
-    queryFn: () => api.get<Widget>(`/api/dashboard/widgets/${key}`),
-    staleTime: 120_000,
-    enabled,
     retry: false,
   });
 }

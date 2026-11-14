@@ -7,7 +7,7 @@
 
 import React from "react";
 import { View, Pressable, ScrollView, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { Screen } from "../../../../src/components/ui/Screen";
 import { Card } from "../../../../src/components/ui/Card";
@@ -23,6 +23,7 @@ import {
   type ProposalLine, type LineKind, type RecipientType, type RiskRating,
 } from "../../../../src/features/proposals/api";
 import { toast } from "../../../../src/lib/toast";
+import { api } from "../../../../src/api/client";
 import { inr, titleCase } from "../../../../src/lib/format";
 import { spacing, palette, radius, fontWeight } from "../../../../src/theme/tokens";
 
@@ -43,6 +44,20 @@ export default function NewProposal() {
   const [coverLetter, setCoverLetter] = React.useState("");
   const [products, setProducts] = React.useState<ProposalLine[]>([]);
   const [lineOpen, setLineOpen] = React.useState(false);
+
+  // ?leadId= / ?investorId= — opened from a lead's journey ("Create Proposal")
+  // or a client: start with that recipient chosen, as the web builder does.
+  const params = useLocalSearchParams<{ leadId?: string; investorId?: string }>();
+  React.useEffect(() => {
+    let alive = true;
+    const load = params.leadId
+      ? api.get<any>(`/api/leads/${params.leadId}`).then((l) => ({ type: "lead" as const, id: l.id, name: l.name, email: l.email, phone: l.phone }))
+      : params.investorId
+      ? api.get<any>(`/api/investors/${params.investorId}`).then(({ investor: i }) => ({ type: "investor" as const, id: i.id, name: i.name, email: i.email, phone: i.phone }))
+      : null;
+    load?.then((r) => { if (alive && r?.id) setRecipient((cur) => cur ?? r); }).catch(() => {});
+    return () => { alive = false; };
+  }, [params.leadId, params.investorId]);
 
   const total = products.reduce((s, l) => s + lineAmount(l), 0);
   const kinds = new Set(products.map((p) => p.kind));

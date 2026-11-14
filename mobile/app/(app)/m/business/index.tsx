@@ -16,7 +16,7 @@ import { Text } from "../../../../src/components/ui/Text";
 import { Skeleton } from "../../../../src/components/ui/Skeleton";
 import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
 import {
-  useBusinessKpis, useNetSales, useSipHealth, usePortfolioIntel, useWidget,
+  useBusinessKpis, useNetSales, useSipHealth, usePortfolioIntel,
   currentPeriod, num, type PiSlice,
 } from "../../../../src/features/business/api";
 import { type Kpi } from "../../../../src/features/dashboard/api";
@@ -32,10 +32,8 @@ export default function BusinessDashboard() {
   const netSales = useNetSales(period);
   const sip = useSipHealth(period);
   const pi = usePortfolioIntel();
-  const rmBoard = useWidget("table_rm_business");
-  const byProduct = useWidget("chart_business_by_product");
 
-  const refetch = () => { kpis.refetch(); netSales.refetch(); sip.refetch(); pi.refetch(); rmBoard.refetch(); byProduct.refetch(); };
+  const refetch = () => { kpis.refetch(); netSales.refetch(); sip.refetch(); pi.refetch(); };
   const refreshing = kpis.isRefetching || netSales.isRefetching || pi.isRefetching;
 
   const byKey = (k: string): Kpi | undefined => kpis.data?.kpis.find((x) => x.key === k);
@@ -114,44 +112,6 @@ export default function BusinessDashboard() {
           )}
         </Card>
 
-        {/* Business by product */}
-        <SectionLabel icon="grid" text="BUSINESS BY PRODUCT" />
-        <Card>
-          {byProduct.isLoading ? (
-            <Skeleton width="100%" height={40} />
-          ) : (byProduct.data?.rows.length ?? 0) === 0 ? (
-            <EmptyRow icon="grid" text="Booked business splits by product here (MF / PMS / AIF / insurance)." />
-          ) : (
-            (() => {
-              const rows = (byProduct.data?.rows ?? []).map((r: any) => ({ label: String(r[byProduct.data!.view.labelKey ?? "label"]), value: num(r[byProduct.data!.view.valueKey ?? "value"]) }));
-              const max = Math.max(...rows.map((r) => r.value), 1);
-              return rows.map((r, i) => <Bar key={r.label} slice={{ label: titleCase(r.label.replace(/_/g, " ")), value: r.value, pct: (r.value / max) * 100 }} color={CLASS_COLORS[i % CLASS_COLORS.length]} showInr />);
-            })()
-          )}
-        </Card>
-
-        {/* RM leaderboard */}
-        <SectionLabel icon="award" text={rmBoard.data?.title?.toUpperCase() ?? "RM LEADERBOARD"} />
-        <Card flat style={{ padding: 0, overflow: "hidden" }}>
-          {rmBoard.isLoading ? (
-            <View style={{ padding: spacing.lg }}><Skeleton width="100%" height={40} /></View>
-          ) : (rmBoard.data?.rows.length ?? 0) === 0 ? (
-            <EmptyRow icon="award" text="Per-RM business appears once the team books business." />
-          ) : (
-            [...(rmBoard.data?.rows ?? [])]
-              .sort((a: any, b: any) => num(b.aum) - num(a.aum))
-              .map((r: any, i: number, arr: any[]) => (
-                <View key={r.rm_name + i} style={[styles.rmRow, i < arr.length - 1 && styles.divider]}>
-                  <View style={[styles.rank, i === 0 && { backgroundColor: toneColors("success").bg }]}><Text variant="caption" style={{ fontWeight: fontWeight.bold, color: i === 0 ? toneColors("success").fg : palette.muted }}>{i + 1}</Text></View>
-                  <View style={{ flex: 1 }}>
-                    <Text variant="body" numberOfLines={1}>{r.rm_name}</Text>
-                    <Text variant="caption" tone="muted">{num(r.clients)} clients · {inr(num(r.sip_book))} SIP</Text>
-                  </View>
-                  <Text variant="body" style={{ fontWeight: fontWeight.semibold }}>{inr(num(r.aum))}</Text>
-                </View>
-              ))
-          )}
-        </Card>
       </Screen>
     </View>
   );

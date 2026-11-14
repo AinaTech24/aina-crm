@@ -1,8 +1,12 @@
 /**
  * Lead detail — web parity. Hero (score band, stage, source, owner + stat strip),
  * call/WhatsApp/email, a stage stepper, and 3 tabs (Overview / Details / Activity)
- * with actions: change stage, log activity, add follow-up, convert-to-client,
- * edit, delete. Data from GET /api/leads/[id]/full.
+ * with actions: the CRM's guided next step (JourneyPanel), log activity,
+ * convert-to-client, edit, delete. Data from GET /api/leads/[id]/full.
+ *
+ * There is no free stage picker: a lead moves the way the CRM moves it
+ * (journey.ts) — Won on an approved proposal or the Won product pick, a call
+ * loop with its next follow-up, a close with its reason.
  */
 
 import { toast } from "../../../../src/lib/toast";
@@ -12,17 +16,16 @@ import { View, ScrollView, Pressable, Linking, RefreshControl, StyleSheet } from
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
 import { Text } from "../../../../src/components/ui/Text";
 import { Button } from "../../../../src/components/ui/Button";
 import { TextField } from "../../../../src/components/ui/TextField";
 import { Segmented } from "../../../../src/components/ui/Segmented";
 import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
-import { DateField } from "../../../../src/components/form/DateField";
 import { LoadingState, ErrorState } from "../../../../src/components/states";
 import { Section, FieldRow, Empty } from "../../../../src/features/investors/detail/primitives";
-import { useLeadFull, useUpdateLeadStage, useLogActivity, useConvertLead, useDeleteLead, LEAD_STAGES, stageMeta, canonicalStage } from "../../../../src/features/leads/api";
+import { useLeadFull, useLogActivity, useConvertLead, useDeleteLead, LEAD_STAGES, stageMeta, stageDisplay, canonicalStage } from "../../../../src/features/leads/api";
+import { JourneyPanel } from "../../../../src/features/leads/JourneyPanel";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { startCall } from "../../../../src/features/activities/callAndLog";
 import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
@@ -48,7 +51,6 @@ export default function LeadDetail() {
   const router = useRouter();
   const { brand } = useBrand();
   const { data: d, isLoading, isError, refetch, isRefetching } = useLeadFull(id);
-  const stageMut = useUpdateLeadStage(id!);
   const logAct = useLogActivity(id!);
   const convert = useConvertLead(id!);
   const del = useDeleteLead();
@@ -57,10 +59,8 @@ export default function LeadDetail() {
   const [formOpen, setFormOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(false);
   const [commsOpen, setCommsOpen] = useState(false);
-  const [stageOpen, setStageOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState<false | string>(false);
   const [convertOpen, setConvertOpen] = useState(false);
-  const [lostFor, setLostFor] = useState<string | null>(null);
 
   useEffect(() => {
     const ld = (d as any)?.lead;
@@ -78,13 +78,6 @@ export default function LeadDetail() {
   const amount = l.intendedAmount ?? l.expectedBusinessAmount;
   const stats = d.stats ?? {};
 
-  const pickStage = (key: string) => {
-    setStageOpen(false);
-    if (key === "won_lead") { setConvertOpen(true); return; }
-    if (key === "not_qualified") { setLostFor(key); return; }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    stageMut.mutate({ stage: key });
-  };
   const doDelete = () => {
     setActions(false);
     confirmDelete({ title: `Delete ${l.name}?`, message: "The lead is archived and hidden from the pipeline.", confirmLabel: "Delete" }, () => del.mutate(id!, { onSuccess: () => router.back() }));
@@ -108,7 +101,7 @@ export default function LeadDetail() {
             <View style={{ flex: 1 }}>
               <View style={styles.badgeRow}>
                 {l.scoreBand ? <Badge label={String(l.scoreBand).toUpperCase()} tone={BAND_TONE[l.scoreBand] ?? palette.muted} /> : null}
-                {converted ? <Badge label="Converted" tone={palette.success} /> : meta ? <Badge label={meta.label} tone={toneColor(meta.tone)} /> : null}
+                {converted ? <Badge label="Converted" tone={palette.success} /> : meta ? <Badge label={stageDisplay(l.stage)} tone={toneColor(meta.tone)} /> : null}
               </View>
               <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>
                 {titleCase(l.source) || "—"}{l.city ? ` · ${l.city}` : ""}{d.owner?.name ? ` · RM ${d.owner.name}` : ""}
@@ -146,7 +139,7 @@ export default function LeadDetail() {
         <View style={styles.tabBar}><Segmented<Tab> options={TABS as any} value={tab} onChange={setTab} /></View>
 
         <Animated.View key={tab} entering={FadeIn.duration(200)}>
-          {tab === "overview" ? <Overview d={d} converted={converted} onChangeStage={() => setStageOpen(true)} onLog={() => setActivityOpen(true)} />
+          {tab === "overview" ? <Overview d={d} id={id!} converted={converted} onLog={(t) => setActivityOpen(t)} />
             : tab === "details" ? <Details l={l} owner={d.owner} />
             : <Activity d={d} />}
         </Animated.View>
@@ -154,8 +147,7 @@ export default function LeadDetail() {
 
       {/* Actions */}
       <BottomSheet visible={actions} onClose={() => setActions(false)} title={l.name}>
-        {!converted && <Button label="Change stage" variant="secondary" full icon={<Feather name="git-branch" size={15} color={palette.ink} />} onPress={() => { setActions(false); setStageOpen(true); }} style={{ marginBottom: spacing.sm }} />}
-        <Button label="Log activity" variant="secondary" full icon={<Feather name="edit-3" size={15} color={palette.ink} />} onPress={() => { setActions(false); setActivityOpen(true); }} style={{ marginBottom: spacing.sm }} />
+        <Button label="Log activity" variant="secondary" full icon={<Feather name="edit-3" size={15} color={palette.ink} />} onPress={() => { setActions(false); setActivityOpen("note"); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Quick comms" variant="secondary" full icon={<Feather name="send" size={15} color={palette.ink} />} onPress={() => { setActions(false); setCommsOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Send a form" variant="secondary" full icon={<Feather name="file-text" size={15} color={palette.ink} />} onPress={() => { setActions(false); setFormOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Assign to team" variant="secondary" full icon={<Feather name="users" size={15} color={palette.ink} />} onPress={() => { setActions(false); setOpsOpen(true); }} style={{ marginBottom: spacing.sm }} />
@@ -167,25 +159,8 @@ export default function LeadDetail() {
       <SendFormSheet visible={formOpen} onClose={() => setFormOpen(false)} subjectType="lead" subjectId={id!} name={l.name} />
       <AssignOpsSheet visible={opsOpen} onClose={() => setOpsOpen(false)} subjectType="lead" subjectId={id!} subjectName={l.name} />
 
-      {/* Stage picker */}
-      <BottomSheet visible={stageOpen} onClose={() => setStageOpen(false)} title="Change stage">
-        {LEAD_STAGES.map((s) => {
-          const active = canonicalStage(l.stage) === s.key;
-          return (
-            <Pressable key={s.key} style={styles.stageRow} onPress={() => pickStage(s.key)}>
-              <View style={[styles.colDot, { backgroundColor: toneColor(s.tone) }]} />
-              <Text style={{ flex: 1, fontWeight: (active ? fontWeight.semibold : fontWeight.regular), color: active ? palette.brand : palette.ink }}>{s.label}</Text>
-              {active ? <Feather name="check" size={16} color={palette.brand} /> : null}
-            </Pressable>
-          );
-        })}
-      </BottomSheet>
-
-      {/* Lost reason */}
-      <LostReasonSheet visible={!!lostFor} onClose={() => setLostFor(null)} pending={stageMut.isPending} onSubmit={(reason) => { stageMut.mutate({ stage: "not_qualified", lostReason: reason }, { onSuccess: () => setLostFor(null) }); }} />
-
       {/* Log activity */}
-      <LogActivitySheet visible={activityOpen} onClose={() => setActivityOpen(false)} pending={logAct.isPending} onSubmit={async (v) => { await logAct.mutateAsync(v); setActivityOpen(false); }} />
+      <LogActivitySheet visible={!!activityOpen} initialType={activityOpen || "note"} onClose={() => setActivityOpen(false)} pending={logAct.isPending} onSubmit={async (v) => { await logAct.mutateAsync(v); setActivityOpen(false); }} />
 
       {/* Convert */}
       <ConvertSheet visible={convertOpen} onClose={() => setConvertOpen(false)} pending={convert.isPending} defaultPan={l.pan} error={(convert.error as any)?.message}
@@ -195,13 +170,17 @@ export default function LeadDetail() {
 }
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
-function Overview({ d, converted, onChangeStage, onLog }: { d: any; converted: boolean; onChangeStage: () => void; onLog: () => void }) {
-  const curIdx = LEAD_STAGES.findIndex((s) => s.key === canonicalStage(d.lead.stage));
+function Overview({ d, id, converted, onLog }: { d: any; id: string; converted: boolean; onLog: (type: "call" | "meeting") => void }) {
+  // The stepper is the six forward columns; a closed lead says so instead.
+  const steps = LEAD_STAGES.filter((s) => s.key !== "not_qualified");
+  const col = canonicalStage(d.lead.stage);
+  const lost = col === "not_qualified";
+  const curIdx = steps.findIndex((s) => s.key === col);
   return (
     <View>
-      <Section title="Pipeline stage" icon="git-branch" right={!converted ? <Text variant="caption" tone="brand" onPress={onChangeStage}>Change</Text> : undefined}>
+      <Section title="Pipeline stage" icon="git-branch" right={lost ? <Text variant="caption" style={{ color: palette.danger, fontWeight: fontWeight.semibold }}>Lost</Text> : undefined}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: spacing.xs }}>
-          {LEAD_STAGES.map((s, i) => {
+          {steps.map((s, i) => {
             const done = converted || i < curIdx;
             const active = !converted && i === curIdx;
             return (
@@ -219,10 +198,7 @@ function Overview({ d, converted, onChangeStage, onLog }: { d: any; converted: b
       {d.lead.convertedInvestorId ? (
         <Section title="Converted" icon="check-circle"><Empty text={`Converted to a client on ${fmtDate(d.lead.convertedAt)}.`} /></Section>
       ) : (
-        <Section title="Next step" icon="zap">
-          <Text variant="caption" tone="muted">Log a call or meeting to advance this lead, or change the stage manually.</Text>
-          <Button label="Log activity" size="sm" variant="secondary" onPress={onLog} style={{ marginTop: spacing.sm, alignSelf: "flex-start" }} icon={<Feather name="edit-3" size={13} color={palette.ink} />} />
-        </Section>
+        <JourneyPanel leadId={id} leadStage={d.lead.stage} onLog={onLog} />
       )}
     </View>
   );
@@ -305,30 +281,16 @@ function parseFollowUpNotes(raw?: string | null): { header: string; body: string
 }
 
 // ── Action sheets ─────────────────────────────────────────────────────────────
-function LostReasonSheet({ visible, onClose, onSubmit, pending }: { visible: boolean; onClose: () => void; onSubmit: (r: string) => void; pending: boolean }) {
-  const REASONS = ["Not interested", "Budget too low", "Chose competitor", "Unreachable", "Wrong number", "Other"];
-  const [reason, setReason] = useState("");
-  return (
-    <BottomSheet visible={visible} onClose={onClose} title="Mark not qualified">
-      {REASONS.map((r) => (
-        <Pressable key={r} style={styles.stageRow} onPress={() => onSubmit(r)}>
-          <Text style={{ flex: 1 }}>{r}</Text>
-        </Pressable>
-      ))}
-      <View style={{ height: spacing.sm }} />
-      <TextField label="Custom reason" value={reason} onChangeText={setReason} placeholder="Type a reason" />
-      <Button label="Mark not qualified" full loading={pending} disabled={!reason.trim()} onPress={() => onSubmit(reason.trim())} style={{ marginTop: spacing.sm }} />
-    </BottomSheet>
-  );
-}
-
-function LogActivitySheet({ visible, onClose, onSubmit, pending }: { visible: boolean; onClose: () => void; onSubmit: (v: { note: string; activityType: string; nextFollowUpAt?: string }) => Promise<void>; pending: boolean }) {
+function LogActivitySheet({ visible, initialType, onClose, onSubmit, pending }: { visible: boolean; initialType: string; onClose: () => void; onSubmit: (v: { note: string; activityType: string; nextFollowUpAt?: string }) => Promise<void>; pending: boolean }) {
   const [note, setNote] = useState("");
-  const [type, setType] = useState("note");
+  const [type, setType] = useState(initialType);
+  // Opened from the journey's "Call Done" / "Meeting Done": start on that type
+  // (logging it is what moves the lead on).
+  useEffect(() => { if (visible) setType(initialType); }, [visible, initialType]);
   const [next, setNext] = useState("");
   const submit = async () => { if (!note.trim()) return; if (next && !Number.isFinite(new Date(next).getTime())) { toast.error("Choose a valid follow-up time"); return; } try { await onSubmit({ note: note.trim(), activityType: type, nextFollowUpAt: next ? new Date(next).toISOString() : undefined }); setNote(""); setNext(""); setType("note"); } catch { /* Mutation displays the error; preserve the draft. */ } };
   return (
-    <BottomSheet visible={visible} onClose={onClose} title="Log activity">
+    <BottomSheet visible={visible} onClose={onClose} title={type === "call" ? "Log the call" : type === "meeting" ? "Log the meeting" : "Log activity"}>
       <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>Type</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}><Segmented<string> options={ACTIVITY_TYPES} value={type} onChange={setType} /></ScrollView>
       <View style={{ height: spacing.md }} />
@@ -387,8 +349,6 @@ const styles = StyleSheet.create({
   step: { width: 74, alignItems: "center", gap: 4 },
   node: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: "center", justifyContent: "center" },
   stepLabel: { textAlign: "center", fontSize: 10 },
-  stageRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.lineSoft },
-  colDot: { width: 8, height: 8, borderRadius: 4 },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.lineSoft },
   logRow: { paddingVertical: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.lineSoft, gap: 2 },
   tags: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
