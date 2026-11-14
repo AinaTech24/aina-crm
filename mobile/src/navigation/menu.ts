@@ -30,7 +30,6 @@ export const MENU: MenuGroup[] = [
   {
     title: "Overview",
     items: [
-      { key: "daily", label: "Daily Plan", icon: "sun", route: "/m/daily" },
       { key: "attendance", label: "Attendance", icon: "clock", route: "/m/attendance" },
       { key: "review", label: "Monthly Review", icon: "clipboard", route: "/m/review" },
       { key: "business", label: "Business", icon: "bar-chart-2", route: "/m/business", anyCap: ["dashboard.view.owner", "reports.business", "reports.manage"] },
@@ -40,6 +39,10 @@ export const MENU: MenuGroup[] = [
     title: "Clients",
     items: [
       { key: "investors", label: "Clients", icon: "users", route: "/m/investors", anyCap: ["investor.view.all", "investor.view.assigned"] },
+      { key: "opportunities", label: "Opportunities", icon: "crosshair", route: "/m/opportunities", anyCap: ["investor.view.all", "investor.view.assigned"] },
+      { key: "risk-profiles", label: "Risk Profiles", icon: "shield", route: "/m/risk-profiles", anyCap: ["investor.view.all", "investor.view.assigned"] },
+      { key: "discovery", label: "Discovery (Fact-find)", icon: "clipboard", route: "/m/discovery", anyCap: ["investor.view.all", "investor.view.assigned", "lead.view.all", "lead.view.assigned"] },
+      { key: "fixed-deposits", label: "Fixed Deposits", icon: "lock", route: "/m/fixed-deposits", anyCap: ["investor.view.all", "investor.view.assigned"] },
       { key: "goals", label: "Goal Planning", icon: "target", route: "/m/goals", anyCap: ["goal.manage"] },
     ],
   },

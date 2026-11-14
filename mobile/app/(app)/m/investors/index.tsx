@@ -2,7 +2,9 @@
  * Clients (Investors) list — web-parity: 8-KPI strip, debounced search, a full
  * filter+sort sheet (segment / category / tier / KYC / status / RM / date range +
  * 10 sort options), a virtualized infinite list of InvestorCards with row
- * actions (edit / delete), pull-to-refresh, and a create FAB.
+ * actions (edit / delete), pull-to-refresh, and a create FAB. A List / Kanban
+ * switch opens the web's Clients board by onboarding stage (long-press a card
+ * to move it; clients with no source lead can't move).
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
@@ -21,7 +23,12 @@ import { EmptyState, SearchEmptyState, ErrorState, NetworkErrorState } from "../
 import { InvestorCard } from "../../../../src/components/domain/InvestorCard";
 import { InvestorKpiStrip } from "../../../../src/features/investors/InvestorKpiStrip";
 import { InvestorFilters, EMPTY_FILTERS, countActive, type UiFilters } from "../../../../src/features/investors/InvestorFilters";
-import { useInvestors, flattenInvestors, useDeleteInvestor, type Investor } from "../../../../src/features/investors/api";
+import { useInvestors, flattenInvestors, useDeleteInvestor, useInvestorBoard, useMoveClientStage, type Investor } from "../../../../src/features/investors/api";
+import { CLIENT_PHASE_STAGES, boardStage } from "../../../../src/features/investors/client-stages";
+import { KanbanBoard } from "../../../../src/components/domain/KanbanBoard";
+import { LayoutSwitch } from "../../../../src/components/ui/LayoutSwitch";
+import { toast } from "../../../../src/lib/toast";
+import { inr } from "../../../../src/lib/format";
 import { useTeam } from "../../../../src/features/team/api";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { ApiError } from "../../../../src/api/client";
@@ -44,6 +51,9 @@ export default function InvestorsList() {
   const [rowAction, setRowAction] = useState<Investor | null>(null);
   const debounced = useDebounced(search);
   const del = useDeleteInvestor();
+  const [layout, setLayout] = useState<"list" | "kanban">("list");
+  const isKanban = layout === "kanban";
+  const moveStage = useMoveClientStage();
 
   const rmTeam = useTeam();
   const rmOptions = rmTeam.data?.rows ?? [];
@@ -67,6 +77,14 @@ export default function InvestorsList() {
 
   const query = useInvestors(apiFilters);
   const { rows, total } = flattenInvestors(query.data);
+  const board = useInvestorBoard(apiFilters, isKanban);
+  const boardRows = board.data?.rows ?? [];
+  const moveClient = async (inv: Investor, toStageKey: string) => {
+    if (!inv.leadId) return;
+    await moveStage.mutateAsync({ leadId: inv.leadId, toStageKey });
+    toast.success(`Moved to ${CLIENT_PHASE_STAGES.find((s) => s.key === toStageKey)?.label ?? toStageKey}`);
+    await board.refetch();
+  };
   const activeCount = countActive(filters);
 
   const onEndReached = useCallback(() => {
@@ -97,11 +115,42 @@ export default function InvestorsList() {
             <Text variant="caption" style={{ color: palette.danger }}>Clear</Text>
           </Pressable>
         ) : null}
+        <LayoutSwitch value={layout} onChange={setLayout} />
       </View>
     </View>
   );
 
   const renderBody = () => {
+    if (isKanban) {
+      if (board.isLoading) return (<><View style={{ paddingHorizontal: spacing.lg }}>{header}</View><SkeletonList count={6} /></>);
+      if (board.isError) return <ErrorState message={(board.error as any)?.message} onRetry={() => board.refetch()} />;
+      return (
+        <View style={{ flex: 1 }}>
+          <View style={{ paddingHorizontal: spacing.lg }}>{header}</View>
+          <KanbanBoard<Investor>
+            columns={CLIENT_PHASE_STAGES}
+            items={boardRows}
+            columnOf={(inv) => boardStage(inv.stageKey)}
+            keyOf={(inv) => inv.id}
+            onOpen={(inv) => router.push(`/m/investors/${inv.id}`)}
+            onMove={moveClient}
+            canMove={(inv) => !!inv.leadId}
+            emptyText="No clients"
+            renderCard={(inv) => {
+              const money = [Number(inv.aum) > 0 ? `AUM ${inr(inv.aum)}` : null, Number(inv.activeSipAmount) > 0 ? `SIP ${inr(inv.activeSipAmount)}` : null].filter(Boolean).join(" · ");
+              return (
+                <View style={{ gap: 2 }}>
+                  <Text variant="caption" style={{ fontWeight: fontWeight.semibold }} numberOfLines={1}>{inv.name}</Text>
+                  {inv.pan ? <Text variant="caption" tone="muted" numberOfLines={1}>{inv.pan}</Text> : null}
+                  {money ? <Text variant="caption" tone="muted" numberOfLines={1}>{money}</Text> : null}
+                  {!inv.leadId ? <Text variant="caption" tone="faint" numberOfLines={1}>No onboarding journey</Text> : null}
+                </View>
+              );
+            }}
+          />
+        </View>
+      );
+    }
     if (query.isLoading) {
       return (<><View style={{ paddingHorizontal: spacing.lg }}>{header}</View><SkeletonList count={6} /></>);
     }

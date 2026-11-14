@@ -46,9 +46,12 @@ export function currentMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-/** The 6 kinds getCalendarItems produces — mirrors the web InteractiveCalendar
- *  KIND_META (label + icon + colour). Drives the filter legend + day dots. */
+/** The 7 kinds getCalendarItems produces — mirrors the web InteractiveCalendar
+ *  KIND_META (label + icon + colour). Drives the filter legend + day dots.
+ *  A kind missing here is dropped from the calendar: "meeting" (the Meetings
+ *  module, including ones I attend) was, so no meeting ever showed. */
 export const CALENDAR_KINDS: { value: string; label: string; icon: string; color: string }[] = [
+  { value: "meeting", label: "Meeting", icon: "video", color: "#0891B2" },
   { value: "task", label: "Task", icon: "check-square", color: "#D97706" },
   { value: "follow_up", label: "Follow-up", icon: "phone-call", color: "#2563EB" },
   { value: "review", label: "Review", icon: "users", color: "#7C3AED" },
@@ -60,7 +63,7 @@ export const kindLabel = (k: string) => CALENDAR_KINDS.find((x) => x.value === k
 
 const KIND_ICON: Record<string, string> = {
   task: "check-square",
-  meeting: "users",
+  meeting: "video",
   review: "users",
   review_meeting: "users",
   follow_up: "phone-call",

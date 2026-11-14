@@ -153,7 +153,8 @@ export function costOfDelay(params: {
  * over distribution years at postReturnPct.
  *
  * Rate convention: uses the goal-planning fvLumpsum/requiredSip (NOMINAL r/12)
- * for the accumulation side; distribution PV uses NOMINAL monthly r/12 and g/12.
+ * for the accumulation side; distribution PV uses NOMINAL monthly return r/12
+ * and EFFECTIVE monthly inflation (1+i)^(1/12) − 1 (web 1752943b).
  */
 export function retirementCorpus(params: {
   currentAge: number;
@@ -193,7 +194,10 @@ export function retirementCorpus(params: {
   // at inflation, draw rate = postReturnPct. Closed-form:
   //   PV = P × (1 − ((1+g)/(1+r))^n) / (r − g)
   // where g = monthly inflation, r = monthly return, P = first month's withdrawal.
-  const g = inflationPct / 100 / 12;
+  // g is the EFFECTIVE monthly inflation, so income grows exactly inflationPct a
+  // year after retirement too (6%/12 compounded to 6.17%, overstating the corpus
+  // ~2% against the annual inflation used before retirement).
+  const g = Math.pow(1 + inflationPct / 100, 1 / 12) - 1;
   const r = postReturnPct / 100 / 12;
   let corpusRequired = 0;
   if (distMonths === 0) {
@@ -316,7 +320,7 @@ export function stpCalculate(params: {
     sourceFinalValue: balanceSource,
     targetFinalValue: balanceTarget,
     totalFinalValue,
-    gain: Math.max(0, totalFinalValue - lumpsum),
+    gain: totalFinalValue - lumpsum, // negative = a loss (never shown as ₹0)
   };
 }
 
@@ -391,7 +395,7 @@ export function rentVsBuy(p: {
   const emi = n === 0 ? 0 : r === 0 ? loan / n : (loan * r) / (1 - Math.pow(1 + r, -n));
   const Hm = Math.round(p.horizonYears * 12);
 
-  // BUY — net worth = appreciated home value − outstanding loan.
+  // BUY — appreciated home value and the loan still outstanding at the horizon.
   const homeValue = p.homePrice * Math.pow(1 + p.homeAppreciationPct / 100, p.horizonYears);
   let bal = loan;
   const monthsPaid = Math.min(Hm, n);
@@ -400,14 +404,16 @@ export function rentVsBuy(p: {
     bal = bal - (emi - interest);
   }
   const outstanding = Hm >= n ? 0 : Math.max(0, bal);
-  const buyNetWorth = homeValue - outstanding;
 
-  // RENT + INVEST the difference — invest the down-payment as a lumpsum, then
-  // each month invest whatever the owner spends above the renter (EMI +
-  // maintenance − rent). Rent escalates annually.
+  // Both sides spend the same each month: whichever spends LESS invests the
+  // difference (web 1752943b). The renter starts with the down-payment as a
+  // lumpsum and invests (EMI + maintenance − rent) while that is positive; the
+  // owner invests (rent − EMI − maintenance) once rent overtakes it (e.g. after
+  // the loan closes). Rent escalates annually.
   const eqM = p.equityReturnPct / 100 / 12;
   const maintenanceMonthly = (p.homePrice * (p.maintenancePctPerYear / 100)) / 12;
   let invest = down;
+  let ownerInvest = 0;
   let rent = p.monthlyRent;
   const buySeries: { year: number; value: number }[] = [{ year: 0, value: down }];
   const rentSeries: { year: number; value: number }[] = [{ year: 0, value: down }];
@@ -417,6 +423,7 @@ export function rentVsBuy(p: {
     const ownerOutflow = (m < n ? emi : 0) + maintenanceMonthly;
     const surplus = ownerOutflow - rent;
     invest = invest * (1 + eqM) + (surplus > 0 ? surplus : 0);
+    ownerInvest = ownerInvest * (1 + eqM) + (surplus < 0 ? -surplus : 0);
     // track owner equity over time for the chart
     if (m < n) {
       const interest = runBal * r;
@@ -425,10 +432,12 @@ export function rentVsBuy(p: {
     if ((m + 1) % 12 === 0) {
       const yr = (m + 1) / 12;
       const hv = p.homePrice * Math.pow(1 + p.homeAppreciationPct / 100, yr);
-      buySeries.push({ year: yr, value: hv - Math.max(0, runBal) });
+      buySeries.push({ year: yr, value: hv - Math.max(0, runBal) + ownerInvest });
       rentSeries.push({ year: yr, value: invest });
     }
   }
+  // BUY — net worth = appreciated home − outstanding loan + the owner's savings invested.
+  const buyNetWorth = homeValue - outstanding + ownerInvest;
   const rentNetWorth = invest;
   return {
     emi,
@@ -507,13 +516,27 @@ export function btid(p: {
   const btidCorpus = fvAnnualDue(investable, p.mfReturnPct, p.years);
   const tradCorpus = fvAnnualDue(p.annualBudget, p.tradReturnPct, p.years);
   const tradCover = p.annualBudget * (p.tradCoverMultiple ?? 10);
+  // Equity LTCG on redemption: 12.5% above the ₹1.25 L exemption (from 23 Jul 2024).
+  const ltcg = (corpus: number, paidIn: number) => 0.125 * Math.max(0, corpus - paidIn - 125000);
+  const btidTax = ltcg(btidCorpus, investable * p.years);
+  // ULIP maturity is tax-free only while the annual premium is ≤ ₹2.5 L; above
+  // that its gains are taxed as equity LTCG too.
+  const ulipTaxFree = p.annualBudget <= 250000;
+  const tradTax = ulipTaxFree ? 0 : ltcg(tradCorpus, p.annualBudget * p.years);
+  const btidPostTax = btidCorpus - btidTax;
+  const tradPostTax = tradCorpus - tradTax;
   return {
     investable,
     btidCorpus,
     tradCorpus,
+    btidTax,
+    tradTax,
+    btidPostTax,
+    tradPostTax,
+    ulipTaxFree,
     btidCover: p.termCover,
     tradCover,
-    wealthGap: btidCorpus - tradCorpus,
+    wealthGap: btidPostTax - tradPostTax,
     coverGap: p.termCover - tradCover,
   };
 }
@@ -607,8 +630,9 @@ export function computeEmiSip(input: EmiSipInput): EmiSipResult {
   if (input.mode === "loan") {
     monthlyEmi = computeEmi(input.loanAmount, input.interestRatePct, n);
     totalRepayment = monthlyEmi * n;
-    principalRepayment = input.loanAmount;
-    interestRepayment = totalRepayment - input.loanAmount;
+    // No tenure ⇒ nothing is repaid (not "−principal" of interest).
+    principalRepayment = n > 0 ? input.loanAmount : 0;
+    interestRepayment = n > 0 ? totalRepayment - input.loanAmount : 0;
   } else {
     monthlyEmi = input.emiAmount;
     totalRepayment = input.emiAmount * n;
@@ -656,7 +680,10 @@ export type CrashStressResult = {
   finalPanic: number;
   costOfPanic: number;
   crashDropAmount: number;
+  crashInHorizon: boolean; // false when the crash year falls after the horizon
+  /** Months for the MARKET (unit NAV) to regain its pre-crash level — new SIP money excluded. */
   recoveryMonths: number | null;
+  gapToNoCrash: number; // no-crash − stayed-invested at the horizon (≥ 0 = never caught up)
   series: CrashPoint[]; // yearly snapshots
 };
 
@@ -665,13 +692,15 @@ export function computeCrashStress(input: CrashStressInput): CrashStressResult {
   const mFd = monthlyRate(input.fdRatePct);
   const n = Math.max(0, Math.round(input.years * 12));
   const crashMonth = Math.max(1, Math.round(input.crashYear * 12));
+  const drop = Math.min(100, Math.max(0, input.crashPct)) / 100; // a fall can't exceed 100%
 
   let stay = input.lumpsum;
   let noCrash = input.lumpsum;
   let panic = input.lumpsum;
   let panicked = false;
   let invested = input.lumpsum;
-  let preCrashPeak = 0;
+  let nav = 1; // unit NAV — recovery is the market's, not the corpus topped up by new SIPs
+  let preCrashNav = 0;
   let recoveryMonths: number | null = null;
   let crashDropAmount = 0;
 
@@ -687,17 +716,19 @@ export function computeCrashStress(input: CrashStressInput): CrashStressResult {
     stay *= 1 + m;
     noCrash *= 1 + m;
     panic *= panicked ? 1 + mFd : 1 + m;
+    nav *= 1 + m;
 
     if (i === crashMonth) {
-      preCrashPeak = stay;
-      crashDropAmount = stay * (input.crashPct / 100);
-      stay *= 1 - input.crashPct / 100;
+      preCrashNav = nav;
+      nav *= 1 - drop;
+      crashDropAmount = stay * drop;
+      stay *= 1 - drop;
       // Panic seller redeems at the bottom and moves to cash/FD.
-      panic *= 1 - input.crashPct / 100;
+      panic *= 1 - drop;
       panicked = true;
     }
 
-    if (panicked && recoveryMonths === null && i > crashMonth && stay >= preCrashPeak) {
+    if (panicked && recoveryMonths === null && i > crashMonth && nav >= preCrashNav - 1e-9) {
       recoveryMonths = i - crashMonth;
     }
 
@@ -711,7 +742,9 @@ export function computeCrashStress(input: CrashStressInput): CrashStressResult {
     finalPanic: panic,
     costOfPanic: Math.max(0, stay - panic),
     crashDropAmount,
+    crashInHorizon: crashMonth <= n,
     recoveryMonths,
+    gapToNoCrash: noCrash - stay,
     series,
   };
 }
@@ -844,12 +877,13 @@ export type NpsInput = {
 
 export type NpsResult = {
   years: number;
+  annuityPortionPct: number; // the % actually used (clamped to 40–100)
   corpus: number;
   totalContributed: number;
   lumpSum: number; // tax-free withdrawal
   annuityCorpus: number;
   monthlyPension: number;
-  annual80CCD1BBenefit: number; // tax saved this year on the extra ₹50k
+  annual80CCD1BBenefit: number; // tax saved this year on the extra ≤ ₹50k (old regime)
 };
 
 export function computeNps(input: NpsInput): NpsResult {
@@ -869,14 +903,19 @@ export function computeNps(input: NpsInput): NpsResult {
     }
   }
 
-  const annuityPortion = Math.min(100, Math.max(40, input.annuityPortionPct)) / 100;
+  const annuityPortionPct = Math.min(100, Math.max(40, input.annuityPortionPct));
+  const annuityPortion = annuityPortionPct / 100;
   const annuityCorpus = corpus * annuityPortion;
   const lumpSum = corpus - annuityCorpus;
   const monthlyPension = (annuityCorpus * (input.annuityRatePct / 100)) / 12;
-  const annual80CCD1BBenefit = 50000 * (input.taxSlabPct / 100);
+  // 80CCD(1B), old regime only: the year's own contribution, capped at ₹50,000;
+  // the saving includes the 4% cess.
+  const annual80CCD1BBenefit =
+    Math.min(50000, Math.max(0, input.monthlyContribution) * 12) * (input.taxSlabPct / 100) * 1.04;
 
   return {
     years,
+    annuityPortionPct,
     corpus,
     totalContributed,
     lumpSum,
@@ -892,10 +931,14 @@ export function computeNps(input: NpsInput): NpsResult {
  * src/lib/calculators/goal-collision.ts).
  */
 
-/** Monthly SIP to reach `futureCost` in `years` at `ratePct` (begin mode). */
+/** A goal less than half a month away has no SIP horizon — it needs a lumpsum. */
+export const isDueNow = (years: number): boolean => Math.round(years * 12) <= 0;
+
+/** Monthly SIP to reach `futureCost` in `years` at `ratePct` (begin mode).
+ *  0 for a goal due now (see isDueNow) — never the whole cost as a "monthly" SIP. */
 export function requiredMonthlySip(futureCost: number, ratePct: number, years: number): number {
   const months = Math.max(0, Math.round(years * 12));
-  if (months <= 0) return futureCost;
+  if (months <= 0) return 0;
   const m = monthlyRate(ratePct);
   const factor = m === 0 ? months : ((Math.pow(1 + m, months) - 1) / m) * (1 + m);
   return factor > 0 ? futureCost / factor : 0;
@@ -977,8 +1020,11 @@ export function computeChildEducation(input: ChildEducationInput): ChildEducatio
 }
 
 /* ═══════════════════════ Reference cases (source provenance) ═══════════════════════
- * Each ported symbol with the source file it was copied from VERBATIM. No
- * fabricated expected numbers — verify against the web app at runtime.
+ * Each ported symbol with the source file it was copied from VERBATIM. Synced
+ * with the web's calculator-maths fix 1752943b (2026-11-02): retirement
+ * inflation, STP loss, rent-vs-buy owner savings, BTID after LTCG, EMI→SIP with
+ * no tenure, crash recovery on NAV, NPS 80CCD(1B), due-now goals.
+ * src/lib/__tests__/calcParity.test.ts pins the web's answers for each.
  *
  *   growingSipSchedule    ← src/lib/goal-planning/calc.ts  (effective monthly rate, annuity-due)
  *   costOfDelay           ← src/lib/goal-planning/calc.ts  (nominal r/12 via goals fvSip/fvLumpsum)
@@ -999,6 +1045,6 @@ export function computeChildEducation(input: ChildEducationInput): ChildEducatio
  *   computeCrashStress    ← src/lib/calculators/crash-stress.ts  (monthlyRate)
  *   computeFire           ← src/lib/calculators/fire.ts  (+ projectedCorpus / sustainabilityCheck, inline)
  *   computeNps            ← src/lib/calculators/nps.ts  (monthlyRate)
- *   computeChildEducation ← src/lib/calculators/child-education.ts  (+ requiredMonthlySip, inline from goal-collision.ts)
+ *   computeChildEducation ← src/lib/calculators/child-education.ts  (+ requiredMonthlySip / isDueNow, inline from goal-collision.ts)
  *   monthlyRate           ← src/lib/calculators/sip360.ts  (shared effective-monthly-rate helper)
  */

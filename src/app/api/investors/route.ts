@@ -3,6 +3,9 @@ import { handleApiError, isUniqueViolation } from "@/lib/api/error-handler";
  * Investors collection.
  *
  *   GET  /api/investors?q=&segment=&page=&limit=  — list with search + filter
+ *        &view=kanban — the Clients board: one window of 300, each row with
+ *        its onboarding stage (stageKey) and source lead (leadId), as the
+ *        web board reads them
  *   POST /api/investors                            — create new investor
  */
 
@@ -134,8 +137,9 @@ export async function GET(req: NextRequest) {
     url.searchParams.forEach((v, k) => {
       sp[k] = v;
     });
-    const page = Math.max(0, Number(url.searchParams.get("page") ?? "0"));
-    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? "50")));
+    const kanban = url.searchParams.get("view") === "kanban";
+    const page = kanban ? 0 : Math.max(0, Number(url.searchParams.get("page") ?? "0"));
+    const limit = kanban ? 300 : Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? "50")));
     const offset = page * limit;
 
     // Sort — mirrors InvestorSortSelect (aum / created / name / sip / health / review).
@@ -174,6 +178,28 @@ export async function GET(req: NextRequest) {
           .select({ c: sql<number>`count(*)::int` })
           .from(investors)
           .where(where as any);
+
+        if (kanban && rows.length > 0) {
+          // The same lookup as the web Clients board: the stage lives on the
+          // source lead's blueprint instance, carried through conversion. A
+          // client with no source lead reads as Active Client and can't move.
+          const stageRows = await tx.execute(sql`
+            SELECT l.id AS lead_id, l.converted_investor_id AS investor_id,
+                   lbi.current_stage_key AS stage_key
+            FROM leads l
+            INNER JOIN lead_blueprint_instances lbi ON lbi.lead_id = l.id
+            WHERE l.tenant_id = ${session.tenantId}
+              AND l.converted_investor_id IN (${sql.join(rows.map((r) => sql`${r.id}::uuid`), sql`, `)})
+          `);
+          const stageMap = new Map<string, { leadId: string; stageKey: string }>();
+          for (const row of stageRows.rows as any[]) stageMap.set(row.investor_id, { leadId: row.lead_id, stageKey: row.stage_key });
+          const withStage = rows.map((r) => ({
+            ...r,
+            leadId: stageMap.get(r.id)?.leadId ?? null,
+            stageKey: stageMap.get(r.id)?.stageKey ?? "add_in_review_sheet",
+          }));
+          return { rows: withStage, total: Number(countRes[0]?.c ?? 0), page, limit };
+        }
 
         return { rows, total: Number(countRes[0]?.c ?? 0), page, limit };
       },

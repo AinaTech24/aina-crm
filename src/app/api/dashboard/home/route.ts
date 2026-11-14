@@ -2,58 +2,61 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  * GET /api/dashboard/home
  *
- * The native mobile Home screen's data. The web role dashboards (OwnerCockpit,
- * RmDashboard, …) render server-side with no JSON API, so this endpoint exposes
- * the same headline numbers as a compact, mobile-friendly payload: a few KPI
- * cards + a "Today" worklist of actionable counts that deep-link into filtered
- * lists.
+ * The native mobile Home screen's data: a few headline figures + a "Today"
+ * worklist of actionable counts that deep-link into filtered lists.
  *
- * Scope mirrors the list endpoints: firm-wide for owner/back-office/ops/
- * compliance/branch-head; own-book (rm_id = me) for RMs. Each metric is computed
- * independently and fails soft to 0, so a schema difference never 500s Home.
+ * The headline figures are lib/metrics' — the same definitions as the role
+ * dashboards (AUM and active clients of LIVE clients, active = active or
+ * redemption risk; the SIP book from active SIPs, not the per-client cache;
+ * open leads and follow-ups due by lead stage) — over the app's scope
+ * (mobileMetricScope: firm / branch / own book), so Home never shows a number
+ * the CRM would contradict. "Meetings today" counts the meetings the viewer
+ * owns or attends. Days are India days. Each figure fails soft to 0, so a
+ * schema difference never 500s Home.
  */
 
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { mobileFirmAccess, mobileOwnerScope, mobileTaskScope } from "@/lib/mobile/access";
+import { mobileFirmAccess, mobileMeetingScope, mobileMetricScope, mobileTaskScope } from "@/lib/mobile/access";
 import { requireSession } from "@/lib/auth/session";
+import { getActiveClients, getAUM, getOpenLeads, getReviewsDue, getSipBook } from "@/lib/metrics";
 
 export const dynamic = "force-dynamic";
 
 const FIRM_WIDE = ["owner", "back_office", "ops", "compliance", "branch_head"];
+/** Today's India day as [start, end) instants — the database clock runs on UTC. */
+const IST_DAY_START = sql`((now() AT TIME ZONE 'Asia/Kolkata')::date::timestamp AT TIME ZONE 'Asia/Kolkata')`;
+const IST_DAY_END = sql`(${IST_DAY_START} + interval '1 day')`;
 
 export async function GET() {
   try {
     const session = await requireSession();
     const roles = session.roles ?? [];
     const seesAll = session.mobile ? mobileFirmAccess(session) : roles.some((r) => FIRM_WIDE.includes(r));
-    const mine = session.mobile ? sql` AND ${mobileOwnerScope(session, "rm_id")}` : seesAll ? sql`` : sql` AND rm_id = ${session.userId}`;
-    const mineOwner = session.mobile ? sql` AND ${mobileOwnerScope(session, "owner_id")}` : seesAll ? sql`` : sql` AND owner_id = ${session.userId}`;
+    const scope = seesAll ? { tenantId: session.tenantId } : mobileMetricScope(session);
+    const taskScope = session.mobile ? mobileTaskScope(session) : sql`(assignee_id = ${session.userId} OR ${seesAll})`;
+    const meetingScope = seesAll ? sql`TRUE` : mobileMeetingScope(session, "m");
 
     const data = await withTenant(session.tenantId, async (tx) => {
-      const one = async (query: any): Promise<number> => {
-        try {
-          const r = await tx.execute(query);
-          return Number((r.rows[0] as any)?.v ?? 0);
-        } catch {
-          return 0;
-        }
-      };
+      const soft = async <T,>(p: Promise<T>, fallback: T): Promise<T> => p.catch(() => fallback);
+      const count = (query: any) => soft(tx.execute(query).then((r) => Number((r.rows[0] as any)?.v ?? 0)), 0);
 
-      const [clients, aum, sipBook, leadsOpen, tasksOverdue, tasksToday, reviewsDue, followupsDue, meetingsToday] = await Promise.all([
-        one(sql`SELECT count(*)::int AS v FROM investors WHERE status = 'active' AND deleted_at IS NULL${mine}`),
-        one(sql`SELECT COALESCE(sum(aum),0)::float AS v FROM investors WHERE deleted_at IS NULL${mine}`),
-        one(sql`SELECT COALESCE(sum(active_sip_amount),0)::float AS v FROM investors WHERE status = 'active' AND deleted_at IS NULL${mine}`),
-        one(sql`SELECT count(*)::int AS v FROM leads WHERE converted_at IS NULL AND (stage IS NULL OR stage NOT IN ('lost','not_interested','not_qualified'))${mineOwner}`),
-        one(sql`SELECT count(*)::int AS v FROM tasks WHERE status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at < now() AND ${session.mobile ? mobileTaskScope(session) : sql`(assignee_id = ${session.userId} OR ${seesAll})`}`),
-        one(sql`SELECT count(*)::int AS v FROM tasks WHERE status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at >= date_trunc('day', now()) AND due_at < date_trunc('day', now()) + interval '1 day' AND ${session.mobile ? mobileTaskScope(session) : sql`(assignee_id = ${session.userId} OR ${seesAll})`}`),
-        one(sql`SELECT count(*)::int AS v FROM investors WHERE status = 'active' AND deleted_at IS NULL AND next_review_at IS NOT NULL AND next_review_at <= now()${mine}`),
-        one(sql`SELECT count(*)::int AS v FROM leads WHERE converted_at IS NULL AND next_follow_up_at IS NOT NULL AND next_follow_up_at <= now()${mineOwner}`),
-        one(sql`SELECT count(*)::int AS v FROM review_meetings WHERE status IN ('scheduled','confirmed') AND meeting_date >= date_trunc('day', now()) AND meeting_date < date_trunc('day', now()) + interval '1 day'${mine}`),
+      const [clients, aum, sip, leads, reviews, tasksOverdue, tasksToday, meetingsToday] = await Promise.all([
+        soft(getActiveClients(tx, scope), { clients: 0, active: 0, funded: 0 }),
+        soft(getAUM(tx, scope), { aum: 0, funded: 0 }),
+        soft(getSipBook(tx, scope), { monthly: 0, sips: 0, clients: 0, average: null }),
+        soft(getOpenLeads(tx, scope), { open: 0, followUpDue: 0 }),
+        soft(getReviewsDue(tx, scope, 0), { overdue: 0, dueThisMonth: 0, due30: 0, unscheduled: 0, rows: [] }),
+        count(sql`SELECT count(*)::int AS v FROM tasks WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at < now() AND ${taskScope}`),
+        count(sql`SELECT count(*)::int AS v FROM tasks WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at >= ${IST_DAY_START} AND due_at < ${IST_DAY_END} AND ${taskScope}`),
+        count(sql`SELECT count(*)::int AS v FROM review_meetings m WHERE m.tenant_id = ${session.tenantId}::uuid AND m.status IN ('scheduled','confirmed','in_progress') AND m.meeting_date >= ${IST_DAY_START} AND m.meeting_date < ${IST_DAY_END} AND ${meetingScope}`),
       ]);
 
-      return { clients, aum, sipBook, leadsOpen, tasksOverdue, tasksToday, reviewsDue, followupsDue, meetingsToday };
+      return {
+        clients: clients.active, aum: aum.aum, sipBook: sip.monthly, leadsOpen: leads.open,
+        followupsDue: leads.followUpDue, reviewsDue: reviews.overdue, tasksOverdue, tasksToday, meetingsToday,
+      };
     }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
     return NextResponse.json({

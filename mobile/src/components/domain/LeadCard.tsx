@@ -13,7 +13,7 @@ import { Text } from "../ui/Text";
 import { StatusPill } from "../ui/StatusPill";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
 import { inr, initials, titleCase, fmtDate } from "../../lib/format";
-import { stageMeta, type Lead } from "../../features/leads/api";
+import { stageMeta, stageDisplay, type Lead } from "../../features/leads/api";
 
 const BAND_TONE: Record<string, string> = { hot: palette.danger, warm: palette.warning, cold: palette.muted };
 
@@ -60,7 +60,7 @@ export function LeadCard({ lead, onPress, compact }: { lead: Lead; onPress: () =
             {titleCase(lead.source) || "—"}{lead.city ? ` · ${lead.city}` : ""}{lead.ownerName ? ` · RM ${lead.ownerName}` : ""}
           </Text>
           <View style={styles.badges}>
-            {meta ? <StatusPill label={meta.label} tone={meta.tone} size="sm" /> : null}
+            {meta ? <StatusPill label={stageDisplay(lead.stage)} tone={meta.tone} size="sm" /> : null}
             {overdue ? <StatusPill label="Overdue" tone="danger" size="sm" dot={false} /> : null}
           </View>
         </View>

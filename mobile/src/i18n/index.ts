@@ -42,7 +42,7 @@ export const resources = {
         missing: "Enter your email and password.",
       },
       tabs: { home: "Home", tasks: "Tasks", settings: "Settings", leads: "Leads", clients: "Clients", activities: "Activities", more: "More" },
-      home: { greeting: "Hi, {{name}}", planDay: "Plan your day", planDaySub: "Set today's focus & reflect" },
+      home: { greeting: "Hi, {{name}}" },
       settings: { title: "SETTINGS", signOut: "Sign out", signOutQ: "Sign out?", signOutMsg: "You'll need to log in again." },
       prefs: {
         title: "App preferences",
@@ -71,7 +71,7 @@ export const resources = {
         missing: "अपना ईमेल और पासवर्ड दर्ज करें।",
       },
       tabs: { home: "होम", tasks: "कार्य", settings: "सेटिंग्स", leads: "लीड्स", clients: "क्लाइंट", activities: "गतिविधियाँ", more: "और" },
-      home: { greeting: "नमस्ते, {{name}}", planDay: "अपना दिन प्लान करें", planDaySub: "आज का फ़ोकस तय करें और समीक्षा करें" },
+      home: { greeting: "नमस्ते, {{name}}" },
       settings: { title: "सेटिंग्स", signOut: "साइन आउट", signOutQ: "साइन आउट करें?", signOutMsg: "आपको फिर से लॉग इन करना होगा।" },
       prefs: {
         title: "ऐप प्राथमिकताएँ",
@@ -100,7 +100,7 @@ export const resources = {
         missing: "તમારો ઈમેલ અને પાસવર્ડ દાખલ કરો.",
       },
       tabs: { home: "હોમ", tasks: "કાર્યો", settings: "સેટિંગ્સ", leads: "લીડ્સ", clients: "ક્લાયન્ટ", activities: "પ્રવૃત્તિઓ", more: "વધુ" },
-      home: { greeting: "નમસ્તે, {{name}}", planDay: "તમારો દિવસ પ્લાન કરો", planDaySub: "આજનું ફોકસ નક્કી કરો અને સમીક્ષા કરો" },
+      home: { greeting: "નમસ્તે, {{name}}" },
       settings: { title: "સેટિંગ્સ", signOut: "સાઇન આઉટ", signOutQ: "સાઇન આઉટ કરવું છે?", signOutMsg: "તમારે ફરીથી લૉગ ઇન કરવું પડશે." },
       prefs: {
         title: "ઍપ પસંદગીઓ",

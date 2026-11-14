@@ -17,14 +17,17 @@ import { LookupField } from "./LookupField";
 import { TypeaheadField } from "./TypeaheadField";
 import { AudienceField } from "./AudienceField";
 import type { FieldSpec, Option } from "../../features/forms/types";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../../api/client";
 
 const TODAY = (() => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 })();
 
-function normOptions(opts?: Array<string | Option>): Option[] {
-  return (opts ?? []).map((o) => (typeof o === "string" ? { value: o, label: o || "Select" } : o));
+function normOptions(opts: FieldSpec["options"], form?: Record<string, any>): Option[] {
+  const list = typeof opts === "function" ? opts(form ?? {}) : opts;
+  return (list ?? []).map((o) => (typeof o === "string" ? { value: o, label: o || "Select" } : o));
 }
 
 export function FieldRenderer({
@@ -50,7 +53,7 @@ export function FieldRenderer({
         <SelectField
           label={field.label}
           value={value ?? ""}
-          options={normOptions(field.options)}
+          options={normOptions(field.options, form)}
           onChange={apply}
           placeholder={field.placeholder}
           required={field.required}
@@ -120,8 +123,10 @@ export function FieldRenderer({
     }
 
     case "multiselect": {
+      // Options from an endpoint (e.g. the team) — lookupEndpoint / lookupEnvelope / lookupLabel / lookupValue.
+      if (field.lookupEndpoint) return <MultiLookupField field={field} value={Array.isArray(value) ? value : []} onChange={onChange} form={form} />;
       const selected: string[] = Array.isArray(value) ? value : [];
-      const opts = normOptions(field.options).filter((o) => o.value !== "");
+      const opts = normOptions(field.options, form).filter((o) => o.value !== "");
       const toggle = (v: string) =>
         onChange(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v]);
       return (
@@ -243,6 +248,31 @@ function RepeaterField({
         onPress={addRow}
         icon={<Feather name="plus" size={16} color={palette.ink} />}
       />
+    </View>
+  );
+}
+
+/** A multi-select whose options come from an endpoint (cached), as chips. */
+function MultiLookupField({ field, value, onChange, form }: { field: FieldSpec; value: string[]; onChange: (v: string[]) => void; form?: Record<string, any> }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["multi-lookup", field.lookupEndpoint],
+    queryFn: () => api.get<any>(field.lookupEndpoint!),
+    staleTime: 5 * 60_000,
+  });
+  const rows: any[] = (data && data[field.lookupEnvelope ?? "rows"]) || [];
+  const opts = rows
+    .filter((r) => !field.lookupFilter || field.lookupFilter(r, form ?? {}))
+    .map((r) => ({ value: field.lookupValue ? field.lookupValue(r) : String(r.id), label: field.lookupLabel ? field.lookupLabel(r) : r.name ?? String(r.id) }));
+  const toggle = (v: string) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+  return (
+    <View style={{ marginBottom: spacing.lg }}>
+      <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>{field.label}</Text>
+      {isLoading ? <Text variant="caption" tone="muted">Loading…</Text> : (
+        <View style={styles.chips}>
+          {opts.map((o) => <Chip key={o.value} label={o.label} selected={value.includes(o.value)} onPress={() => toggle(o.value)} />)}
+        </View>
+      )}
+      {field.help ? <Text variant="caption" tone="muted" style={{ marginTop: 4 }}>{field.help}</Text> : null}
     </View>
   );
 }

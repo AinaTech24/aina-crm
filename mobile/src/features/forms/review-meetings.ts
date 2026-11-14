@@ -70,9 +70,14 @@ export const reviewMeetingForm: FormSpec = {
       locationOrLink: "",
       discussionPoints: "",
       rmId: "",
+      coAttendeeIds: [],
       status: "scheduled",
     };
   },
+
+  // Only the chosen subject's picker shows (web: Client / Lead / Family tabs);
+  // a family meeting is always a review.
+  derive: (v) => (v.subjectKind === "family" && v.category !== "review" ? { category: "review" } : null),
 
   validate: (v) => {
     const e: Record<string, string> = {};
@@ -106,8 +111,9 @@ export const reviewMeetingForm: FormSpec = {
           searchEndpoint: "/api/search",
           searchEnvelope: "investors",
           searchLabel: (i) => i.name,
-          searchSublabel: (i) => [i.pan, i.segment_tag].filter(Boolean).join(" · "),
+          searchSublabel: (i) => [i.pan_display, i.segment_tag].filter(Boolean).join(" · "),
           placeholder: "Search a client by name or PAN…",
+          visibleIf: (v) => v.subjectKind === "client",
         },
         {
           key: "leadId",
@@ -118,6 +124,7 @@ export const reviewMeetingForm: FormSpec = {
           searchLabel: (l) => l.name,
           searchSublabel: (l) => [l.phone, l.stage ? String(l.stage).replace(/_/g, " ") : ""].filter(Boolean).join(" · "),
           placeholder: "Search a lead by name or phone…",
+          visibleIf: (v) => v.subjectKind === "lead",
         },
         {
           key: "familyId",
@@ -130,11 +137,14 @@ export const reviewMeetingForm: FormSpec = {
           placeholder: "Search a family group…",
           clearable: true,
           help: "only families with a primary client can be met",
+          visibleIf: (v) => v.subjectKind === "family",
         },
         {
           key: "category",
           label: "Meeting type",
           type: "select",
+          // A family meeting is a review (web ScheduleMeetingForm).
+          visibleIf: (v) => v.subjectKind !== "family",
           options: [
             { value: "new", label: "New Meeting" },
             { value: "review", label: "Review Meeting" },
@@ -174,6 +184,18 @@ export const reviewMeetingForm: FormSpec = {
           placeholder: "Use the client's RM",
           clearable: true,
         },
+        {
+          // A joint meeting (CRM 2026-10-01): colleagues alongside the RM — each is
+          // saved as a team attendee and told; the meeting shows in their meetings.
+          key: "coAttendeeIds",
+          label: "Colleagues joining (optional)",
+          type: "multiselect",
+          lookupEndpoint: "/api/review-meetings/team",
+          lookupEnvelope: "team",
+          lookupLabel: (u) => u.name,
+          lookupFilter: (u, form) => u.id !== form.rmId,
+          help: "Up to 10.",
+        },
         { key: "locationOrLink", label: "Location / link" },
         { key: "discussionPoints", label: "Discussion points (agenda)", type: "textarea" },
       ],
@@ -191,6 +213,7 @@ export const reviewMeetingForm: FormSpec = {
       locationOrLink: form.locationOrLink || undefined,
       discussionPoints: form.discussionPoints || undefined,
       rmId: form.rmId || undefined,
+      coAttendeeIds: Array.isArray(form.coAttendeeIds) && form.coAttendeeIds.length ? form.coAttendeeIds.slice(0, 10) : undefined,
       status: form.status,
     };
     if (form.subjectKind === "client") body.investorId = form.investorId;

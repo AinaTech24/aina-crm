@@ -2,6 +2,11 @@
  * KYC & Profile tab — nominees, referrals, the full master record (identity /
  * contact / profile / compliance / second holder / bank groups), profile
  * completeness, captured KYC data, and risk-profile history.
+ *
+ * Each client type sees only its own fields (the CRM's rule of 2026-10-14):
+ * personal fields for a person or minor, adult fields for an individual, the
+ * type's own card (Guardian · Karta & coparceners · Entity · Overseas ·
+ * Business), and Nominees only where the type can nominate.
  */
 
 import React from "react";
@@ -10,6 +15,12 @@ import { Text } from "../../../components/ui/Text";
 import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
 import { inr, fmtDate, titleCase } from "../../../lib/format";
 import { Section, FieldRow, FieldGroup, Empty } from "./primitives";
+import {
+  canNominate, clientKind, clientTypeDef, clientTypeLabel, hasAdultDetails, hasPersonalDetails, majorityDate, ownPan,
+  GUARDIAN_RELATIONS, FATCA_ENTITY_CLASSES, NRI_ACCOUNT_TYPES,
+} from "../client-types";
+
+const optLabel = (list: { value: string; label: string }[], v?: string | null) => (v ? list.find((o) => o.value === v)?.label ?? v : null);
 
 export function ProfileTab({ d }: { d: any }) {
   const i = d.investor ?? {};
@@ -19,12 +30,22 @@ export function ProfileTab({ d }: { d: any }) {
   const banks: any[] = i.bankAccounts?.length ? i.bankAccounts : i.bankName ? [{ bankName: i.bankName, accountMasked: i.bankAccountNumberMasked, ifsc: i.bankIfsc }] : [];
   const kycData = i.kycData && typeof i.kycData === "object" ? Object.entries(i.kycData) : [];
   const comp = d.completeness ?? {};
+  const compScore = Math.max(0, Math.min(100, Number(comp.score ?? comp.pct ?? 0)));
+  const compColor = compScore >= 90 ? palette.success : compScore >= 70 ? palette.warning : palette.danger;
+  const compMissing: string[] = (comp.missing ?? []).map((m: any) => (typeof m === "string" ? m : m?.label ?? m?.key)).filter(Boolean);
+  const type = i.investorCategory as string | undefined;
+  const kind = clientKind(type);
+  const td = i.typeDetails ?? {};
+  const personal = hasPersonalDetails(type);
+  const adult = hasAdultDetails(type);
+  const keep = (rows: [string, any, boolean?][]) => rows.filter((r) => r[2] !== false).map(([l, v]) => [l, v] as [string, any]);
 
   return (
     <View>
-      {/* Nominees */}
+      {/* Nominees — only a type that can nominate (SEBI) */}
+      {canNominate(type) ? (
       <Section title="Nominees" icon="users">
-        {nominees.length === 0 ? <Empty text="No nominees on record." /> : nominees.map((n, idx) => (
+        {td.nominationOptOut && nominees.length === 0 ? <Empty text="The client chose not to nominate." /> : nominees.length === 0 ? <Empty text="No nominees on record." /> : nominees.map((n, idx) => (
           <View key={idx} style={idx > 0 ? styles.sep : undefined}>
             <FieldRow label="Name" value={n.name} />
             <FieldRow label="Relation" value={titleCase(n.relation)} />
@@ -35,6 +56,9 @@ export function ProfileTab({ d }: { d: any }) {
           </View>
         ))}
       </Section>
+      ) : null}
+
+      <TypeCard type={type} td={td} dob={i.dob} />
 
       {/* Referrals */}
       <Section title="Referrals" icon="share-2">
@@ -51,20 +75,22 @@ export function ProfileTab({ d }: { d: any }) {
 
       {/* Master record */}
       <Section title="Client details" icon="file-text">
-        <FieldGroup title="Identity" rows={[
+        <FieldGroup title="Identity" rows={keep([
           ["Client ID", String(i.id ?? "").slice(0, 8)],
-          ["PAN", i.pan],
+          ["Client type", clientTypeLabel(type)],
+          // The column may hold a registrar key (MINOR:… / NOPAN:…), never shown as a PAN.
+          ["PAN", ownPan(i.pan) || null],
           ["Name", i.name],
           ["Name as per PAN", i.nameAsPerPan],
-          ["Date of birth", fmtDate(i.dob)],
-          ["Gender", i.gender === "M" ? "Male" : i.gender === "F" ? "Female" : i.gender === "O" ? "Other" : "—"],
-          ["Marital status", titleCase(i.maritalStatus)],
-          ["Mother's name", i.motherName],
-          ["Place of birth", i.birthPlace],
-          ["Aadhaar (last 4)", i.aadhaarLast4],
+          ["Date of birth", fmtDate(i.dob), personal],
+          ["Gender", i.gender === "M" ? "Male" : i.gender === "F" ? "Female" : i.gender === "O" ? "Other" : "—", personal],
+          ["Marital status", titleCase(i.maritalStatus), adult],
+          ["Mother's name", i.motherName, personal],
+          ["Place of birth", i.birthPlace, personal],
+          ["Aadhaar (last 4)", i.aadhaarLast4, personal],
           ["Client since", fmtDate(i.onboardedAt)],
-          ["Anniversary", fmtDate(i.anniversaryDate)],
-        ]} />
+          ["Anniversary", fmtDate(i.anniversaryDate), adult],
+        ])} />
         <FieldGroup title="Contact" rows={[
           ["Mobile", i.phone],
           ["Mobile belongs to", i.mobileRelation],
@@ -74,12 +100,11 @@ export function ProfileTab({ d }: { d: any }) {
           ["WhatsApp", i.whatsappPhone],
           ["Address", [addr.line1, addr.city, addr.state, addr.pincode, addr.country].filter(Boolean).join(", ")],
         ]} />
-        <FieldGroup title="Profile" rows={[
-          ["Occupation", i.occupation],
-          ["Employer", i.employerName],
+        <FieldGroup title="Profile" rows={keep([
+          ["Occupation", i.occupation, adult],
+          ["Employer", i.employerName, adult],
           ["Income range", i.incomeRange],
-          ["Entity type", titleCase(i.investorCategory)],
-          ["Client type", i.segmentTag],
+          ["Segment", i.segmentTag],
           ["Client category", i.clientCategory],
           ["Mode of holding", i.modeOfHolding],
           ["Household type", i.householdType],
@@ -87,25 +112,23 @@ export function ProfileTab({ d }: { d: any }) {
           ["Referral client", i.referralClientName],
           ["Assigned RM", d.rm?.name],
           ["Family group", d.family?.familyName ?? d.family?.headName],
-        ]} />
-        <FieldGroup title="Compliance" rows={[
+        ])} />
+        <FieldGroup title="Compliance" rows={keep([
           ["KYC status", titleCase(i.kycStatus)],
           ["Residential status", titleCase(i.residencyStatus)],
           ["Tax status", i.taxStatus],
-          ["PAN–Aadhaar link", titleCase(i.panAadhaarLinkStatus)],
+          ["PAN–Aadhaar link", titleCase(i.panAadhaarLinkStatus), adult],
           ["CKYC number", i.ckycNumber],
-          ["CKYC expiry", fmtDate(i.ckycExpiryAt)],
           ["KYC validated", fmtDate(i.kycValidatedAt)],
           ["KRA", i.kraName],
           ["FATCA status", titleCase(i.fatcaStatus)],
-          ["FATCA expiry", fmtDate(i.fatcaExpiryAt)],
-          ["Risk profile", titleCase(i.riskProfile)],
+          ["Risk profile", kind === "minor" ? `${titleCase(i.riskProfile) || "—"} (the guardian's)` : titleCase(i.riskProfile)],
           ["BSE UCC", i.bseUccCode],
           ["NSE CAN", i.nseCanCode],
           ["Mandate status", titleCase(i.mandateStatus)],
           ["Mandate ref", i.mandateRefNo],
           ["Mandate amount", i.mandateAmount != null ? inr(i.mandateAmount) : null],
-        ]} />
+        ])} />
         {banks.length > 0 && (
           <FieldGroup title="Bank" rows={banks.flatMap((b, idx) => [
             [`Bank${banks.length > 1 ? ` ${idx + 1}` : ""}`, b.bankName],
@@ -132,12 +155,23 @@ export function ProfileTab({ d }: { d: any }) {
       </Section>
 
       {/* Completeness */}
+      {/* The CRM's completeness: score, filled of total, and the missing fields
+          (each { key, label } — they were printed as objects). */}
       <Section title="Profile completeness" icon="check-circle">
         <View style={styles.compHead}>
-          <Text style={{ fontSize: 22, fontWeight: fontWeight.bold }}>{comp.pct ?? comp.score ?? 0}%</Text>
-          <View style={styles.compTrack}><View style={[styles.compFill, { width: `${comp.pct ?? comp.score ?? 0}%` }]} /></View>
+          <Text style={{ fontSize: 22, fontWeight: fontWeight.bold, color: compColor }}>{compScore}%</Text>
+          <View style={styles.compTrack}><View style={[styles.compFill, { width: `${compScore}%`, backgroundColor: compColor }]} /></View>
         </View>
-        {(comp.missing ?? []).length > 0 ? <Text variant="caption" tone="muted">Missing: {(comp.missing ?? []).join(", ")}</Text> : <Text variant="caption" tone="muted">All key fields captured.</Text>}
+        <Text variant="caption" tone="muted" style={{ marginBottom: spacing.xs }}>
+          {compScore >= 90 ? "Complete" : compScore >= 70 ? "Mostly there" : "Incomplete"}{comp.total ? ` · ${comp.filled ?? 0} of ${comp.total} fields` : ""}
+        </Text>
+        {compMissing.length > 0 ? (
+          <View style={styles.missingWrap}>
+            {compMissing.map((m) => (
+              <View key={m} style={styles.missingChip}><Text variant="caption" style={{ color: palette.warning }}>{m}</Text></View>
+            ))}
+          </View>
+        ) : <Text variant="caption" tone="muted">All key fields captured.</Text>}
       </Section>
 
       {/* KYC data */}
@@ -163,7 +197,77 @@ export function ProfileTab({ d }: { d: any }) {
   );
 }
 
+/** The client type's own details — what the CRM's client page shows per type. */
+function TypeCard({ type, td, dob }: { type?: string; td: any; dob?: string | null }) {
+  const kind = clientKind(type);
+  const def = clientTypeDef(type);
+  if (kind === "minor") {
+    const g = td.guardian ?? {};
+    return (
+      <Section title="Guardian" icon="shield">
+        <FieldRow label="Name" value={g.name} />
+        <FieldRow label="Relationship" value={optLabel(GUARDIAN_RELATIONS, g.relation)} />
+        <FieldRow label="PAN" value={g.pan} />
+        <FieldRow label="Date of birth" value={fmtDate(g.dob)} />
+        <FieldRow label="Mobile" value={g.mobile} />
+        <FieldRow label="Email" value={g.email} />
+        <FieldRow label="Turns 18 on" value={fmtDate(majorityDate(dob))} />
+      </Section>
+    );
+  }
+  if (kind === "huf") {
+    const k = td.karta ?? {};
+    const cops: any[] = td.coparceners ?? [];
+    return (
+      <Section title="Karta & coparceners" icon="users">
+        <FieldRow label="Date formed" value={fmtDate(td.entity?.formedOn)} />
+        <FieldRow label="Karta" value={k.name} />
+        <FieldRow label="Karta's PAN" value={k.pan} />
+        <FieldRow label="Karta's mobile" value={k.mobile} />
+        <FieldRow label="Karta's email" value={k.email} />
+        {cops.map((c, idx) => <FieldRow key={idx} label={`Coparcener ${idx + 1}`} value={[c.name, c.relation].filter(Boolean).join(" · ")} />)}
+      </Section>
+    );
+  }
+  if (kind === "entity") {
+    const e = td.entity ?? {};
+    const sigs: any[] = td.signatories ?? [];
+    const ubos: any[] = td.ubos ?? [];
+    return (
+      <Section title="Entity" icon="briefcase">
+        <FieldRow label={def.formedLabel ?? "Date formed"} value={fmtDate(e.formedOn)} />
+        <FieldRow label={def.registrationLabel ?? "Registration no."} value={e.registrationNo} />
+        <FieldRow label="Place of incorporation" value={e.placeOfIncorporation} />
+        <FieldRow label="Nature of business" value={e.natureOfBusiness} />
+        <FieldRow label="Net worth" value={e.netWorth != null && e.netWorth !== "" ? `${inr(e.netWorth)}${e.netWorthAsOn ? ` (as on ${fmtDate(e.netWorthAsOn)})` : ""}` : null} />
+        <FieldRow label="FATCA / CRS" value={optLabel(FATCA_ENTITY_CLASSES, e.fatcaClass)} />
+        {e.giin ? <FieldRow label="GIIN" value={e.giin} /> : null}
+        {sigs.map((x, idx) => <FieldRow key={`s${idx}`} label={`Signatory ${idx + 1}`} value={[x.name, x.designation].filter(Boolean).join(" · ")} />)}
+        {ubos.map((x, idx) => <FieldRow key={`u${idx}`} label={`Beneficial owner ${idx + 1}`} value={[x.name, x.holdingPct != null && x.holdingPct !== "" ? `${x.holdingPct}%` : null].filter(Boolean).join(" · ")} />)}
+      </Section>
+    );
+  }
+  if (type === "nri") {
+    const n = td.nri ?? {};
+    return (
+      <Section title="Overseas details" icon="globe">
+        <FieldRow label="Country of residence" value={n.countryOfResidence} />
+        <FieldRow label="Overseas address" value={n.overseasAddress} />
+        <FieldRow label="Tax residency" value={n.taxResidencyCountry} />
+        <FieldRow label="Foreign TIN" value={n.foreignTin} />
+        <FieldRow label="Invests from" value={optLabel(NRI_ACCOUNT_TYPES, n.accountType)} />
+      </Section>
+    );
+  }
+  if (type === "sole_proprietor" && td.businessName) {
+    return <Section title="Business" icon="briefcase"><FieldRow label="Business name" value={td.businessName} /></Section>;
+  }
+  return null;
+}
+
 const styles = StyleSheet.create({
+  missingWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  missingChip: { borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2, backgroundColor: palette.warning + "14" },
   sep: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: palette.line },
   compHead: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.sm },
   compTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: palette.surfaceSunken, overflow: "hidden" },

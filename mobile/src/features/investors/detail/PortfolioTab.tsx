@@ -4,14 +4,34 @@
  */
 
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, Alert } from "react-native";
 import { Text } from "../../../components/ui/Text";
 import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
 import { inr, fmtDate, titleCase } from "../../../lib/format";
 import { Section, FieldRow, AllocBar, Badge, Empty } from "./primitives";
+import { ClientFixedDeposits } from "../../fixed-deposits/ClientFixedDeposits";
+import { api } from "../../../api/client";
+import { toast } from "../../../lib/toast";
 
 const churnTone = (b?: string) => (b === "high" ? palette.danger : b === "medium" ? palette.warning : palette.success);
 const num = (v: any) => (v == null ? 0 : Number(v));
+
+// A processed switch / STP / SWP can be confirmed to the client by email (web
+// TransactionLedger): POST record-email sends the vendor template about THIS
+// record — its scheme, amount, folio and date — through the comms pipeline.
+const EMAILABLE_TYPES = ["switch", "stp", "swp"];
+const EMAILABLE_STATUSES = ["processed", "successful"];
+function emailRecord(investorId: string, name: string, t: any) {
+  Alert.alert(`Email ${name} about this ${titleCase(t.type)}?`, `${t.schemeName ?? "Scheme"}${t.amount ? ` · ${inr(t.amount)}` : ""}`, [
+    { text: "Cancel", style: "cancel" },
+    {
+      text: "Send email",
+      onPress: () => api.post<{ email?: string }>(`/api/investors/${investorId}/record-email`, { kind: "transaction", recordId: t.id })
+        .then((r) => toast.success(r?.email ? `Emailed ${r.email}` : "Email sent"))
+        .catch((e: any) => toast.error(e?.message ?? "The email was not sent")),
+    },
+  ]);
+}
 
 export function PortfolioTab({ d }: { d: any }) {
   const v = d.valuation ?? {};
@@ -97,10 +117,15 @@ export function PortfolioTab({ d }: { d: any }) {
             <View style={{ alignItems: "flex-end" }}>
               <Text variant="caption" style={{ fontWeight: fontWeight.semibold }}>{inr(t.amount)}</Text>
               <Text variant="caption" tone="faint">{titleCase(t.status)}</Text>
+              {d.investor?.id && EMAILABLE_TYPES.includes(t.type) && EMAILABLE_STATUSES.includes(t.status) ? (
+                <Text variant="caption" tone="brand" onPress={() => emailRecord(d.investor.id, d.investor.name, t)}>Email client</Text>
+              ) : null}
             </View>
           </View>
         ))}
       </Section>
+
+      {d.investor?.id ? <ClientFixedDeposits investorId={d.investor.id} name={d.investor.name} /> : null}
 
       {/* Cross-sell */}
       <Section title="Cross-sell / holdings" icon="shopping-bag">

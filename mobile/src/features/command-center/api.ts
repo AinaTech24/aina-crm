@@ -115,10 +115,17 @@ export function toMobileRoute(href: string): string | null {
   const path = href.replace(/^\/dashboard\//, "").split("?")[0].replace(/\/+$/, "");
   const seg = path.split("/").filter(Boolean);
   if (seg.length === 0) return null;
-  // Web pages whose native screen lives at a different path. Without this the
-  // 6:30 pm "close your day" push (→ /dashboard/tasks/daily) opened
-  // /m/tasks/daily, which the task screen read as a task id.
-  const ALIASES: Record<string, string> = { "tasks/daily": "/m/daily" };
+  // Web pages whose native screen lives at a different path, and pages the CRM
+  // removed (it redirects them; older notifications still link to them). Without
+  // this /dashboard/tasks/daily opened /m/tasks/daily, read as a task id.
+  const ALIASES: Record<string, string> = {
+    "tasks/daily": "/tasks", "tasks/daily/team": "/tasks", "tasks/weekly-pack": "/tasks",
+    "my-day": "/home", "command-center": "/home", "next-best-action": "/home",
+    "pipeline-board": "/leads", lifecycle: "/leads", opportunities: "/m/opportunities",
+    // Removed from the CRM (it redirects them); older notifications still link here.
+    "compliance/command-center": "/home", "compliance/amfi-circulars": "/home", "content-library": "/home",
+    "complaints/disclosure": "/m/service-requests",
+  };
   if (ALIASES[seg.join("/")]) return ALIASES[seg.join("/")];
   return "/m/" + seg.join("/");
 }

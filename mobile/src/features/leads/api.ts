@@ -104,16 +104,7 @@ function invalidateLead(qc: ReturnType<typeof useQueryClient>, id: string) {
   qc.invalidateQueries({ queryKey: ["lead-full", id] });
   qc.invalidateQueries({ queryKey: ["lead", id] });
   qc.invalidateQueries({ queryKey: ["leads"] });
-}
-
-/** Change stage (legacy /stage — no blueprint-seed dependency). Optional lostReason. */
-export function useUpdateLeadStage(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (v: { stage: string; lostReason?: string }) =>
-      v.lostReason ? api.patch(`/api/leads/${id}`, { stage: v.stage, lostReason: v.lostReason }) : api.post(`/api/leads/${id}/stage`, { stage: v.stage }),
-    onSuccess: () => invalidateLead(qc, id),
-  });
+  qc.invalidateQueries({ queryKey: ["record-notes", "lead", id] });
 }
 
 export function useLogActivity(id: string) {
@@ -141,33 +132,49 @@ export function useDeleteLead() {
   });
 }
 
-// ── Stages (canonical 10 lead-phase blueprint stages, matching the web board) ──
-export const LEAD_STAGES: { key: string; label: string; tone: Tone }[] = [
-  { key: "new", label: "New", tone: "info" },
-  { key: "call_done", label: "Call Done", tone: "info" },
-  { key: "call_back_later", label: "Call Back Later", tone: "info" },
-  { key: "call_not_connected", label: "Not Connected", tone: "neutral" },
-  { key: "contact_in_future", label: "Contact in Future", tone: "neutral" },
-  { key: "meeting_scheduled", label: "Meeting Scheduled", tone: "warning" },
-  { key: "meeting_pending", label: "Meeting Pending", tone: "warning" },
-  { key: "meeting_done", label: "Meeting Done", tone: "violet" },
-  { key: "won_lead", label: "Won Lead", tone: "success" },
-  { key: "not_qualified", label: "Not Qualified", tone: "danger" },
+// ── Stages: the CRM's Leads pipeline (src/lib/leads/stages.ts LEAD_PIPELINE) ──
+// Seven columns. The call-loop stages (call back later / not connected / contact
+// in future) live in Contacted and show as a TAG, and a tentative meeting lives
+// in Meeting Scheduled — exactly as on the web board. Legacy values fold in.
+export interface LeadColumn { key: string; label: string; tone: Tone; members: readonly string[] }
+export const LEAD_STAGES: LeadColumn[] = [
+  { key: "new", label: "New", tone: "info", members: ["new"] },
+  { key: "call_done", label: "Contacted", tone: "info",
+    members: ["call_done", "call_back_later", "call_not_connected", "contact_in_future", "contacted", "first_call_pending", "follow_up"] },
+  { key: "meeting_scheduled", label: "Meeting Scheduled", tone: "warning",
+    members: ["meeting_scheduled", "meeting_pending", "appointment_scheduled", "qualified"] },
+  { key: "meeting_done", label: "Meeting Done", tone: "violet", members: ["meeting_done"] },
+  { key: "proposal_sent", label: "Proposal Sent", tone: "violet", members: ["proposal_sent"] },
+  { key: "won_lead", label: "Won", tone: "success", members: ["won_lead", "converted", "post_meeting_qualified"] },
+  { key: "not_qualified", label: "Lost", tone: "danger", members: ["not_qualified", "lost", "not_interested", "cold"] },
 ];
 
-/** Legacy stage aliases fold onto the canonical key (so historic leads bucket right). */
-const STAGE_ALIAS: Record<string, string> = {
-  contacted: "call_done", first_call_pending: "call_done", follow_up: "contact_in_future",
-  appointment_scheduled: "meeting_scheduled", qualified: "meeting_scheduled",
-  converted: "won_lead", post_meeting_qualified: "won_lead",
-  lost: "not_qualified", not_interested: "not_qualified", cold: "not_qualified",
+/** The outcome a loop stage stands for, shown as a tag (web LEAD_STAGE_TAG). */
+export const LEAD_STAGE_TAG: Record<string, string> = {
+  call_back_later: "Call back later",
+  call_not_connected: "Call not connected",
+  contact_in_future: "Contact in future",
+  follow_up: "Contact in future",
+  meeting_pending: "Meeting pending",
 };
-export const canonicalStage = (s?: string | null): string => (s ? STAGE_ALIAS[s] ?? s : "new");
+
+const COLUMN_OF = new Map<string, string>(LEAD_STAGES.flatMap((c) => c.members.map((m) => [m, c.key] as const)));
+/** The column a stored stage sits in ("new" when unset). */
+export const canonicalStage = (s?: string | null): string => (s ? COLUMN_OF.get(s) ?? s : "new");
 export const stageMeta = (s?: string | null) => LEAD_STAGES.find((x) => x.key === canonicalStage(s));
+/** "Contacted · Call back later" for a loop stage, the column name otherwise. */
+export function stageDisplay(s?: string | null): string {
+  const col = stageMeta(s);
+  const tag = s ? LEAD_STAGE_TAG[s] : undefined;
+  return col ? (tag ? `${col.label} · ${tag}` : col.label) : (s ?? "New").replace(/_/g, " ");
+}
+/** A column filter sends every stored value in the column (the API filters on raw stage). */
+export const stageFilterValues = (columnKeys: string[]): string[] =>
+  columnKeys.flatMap((k) => LEAD_STAGES.find((c) => c.key === k)?.members ?? [k]);
 
 const STAGE_INDEX = new Map(LEAD_STAGES.map((s, i) => [s.key, i]));
 
-/** Group leads into board columns in canonical stage order (all 10 shown). */
+/** Group leads into the board's seven columns, in pipeline order. */
 export function groupByStage(leads: Lead[]): { key: string; label: string; tone: Tone; leads: Lead[] }[] {
   const buckets = new Map<string, Lead[]>();
   for (const s of LEAD_STAGES) buckets.set(s.key, []);

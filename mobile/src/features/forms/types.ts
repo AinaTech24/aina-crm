@@ -5,6 +5,7 @@
  */
 
 import type { useRouter } from "expo-router";
+import type { ComponentType } from "react";
 
 export type FieldType =
   | "text"
@@ -31,8 +32,10 @@ export interface FieldSpec {
   key: string;
   label: string;
   type?: FieldType; // default "text"
-  /** For select — plain strings or { value, label } pairs (mirrors the web). */
-  options?: Array<string | Option>;
+  /** For select — plain strings or { value, label } pairs (mirrors the web);
+   *  or a function of the form (a repeater row inside a repeater), for a list
+   *  that depends on another field (e.g. tax status by client type). */
+  options?: Array<string | Option> | ((v: FormValues) => Array<string | Option>);
   required?: boolean;
   placeholder?: string;
   help?: string;
@@ -119,6 +122,9 @@ export interface FormSpec {
   derive?: (v: FormValues) => Partial<FormValues> | null;
   /** TanStack query keys to invalidate on success (for list freshness). */
   invalidate?: string[];
+  /** A live notice under the first section (e.g. the lead duplicate scan). It
+   *  only informs — it never blocks the submit or changes the body. */
+  notice?: ComponentType<{ form: FormValues; isEdit: boolean }>;
 
   // ── Edit mode (when the route has ?editId=<id>) ──
   /** Header title in edit mode (default "Edit"). */

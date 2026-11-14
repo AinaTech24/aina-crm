@@ -7,7 +7,8 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { View, ScrollView, Pressable, Image, Linking, RefreshControl, StyleSheet } from "react-native";
+import { View, ScrollView, Pressable, Image, Linking, RefreshControl, StyleSheet, Alert } from "react-native";
+import { toast } from "../../../../src/lib/toast";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
@@ -27,7 +28,7 @@ import { AiBriefSheet } from "../../../../src/features/investors/detail/AiBriefS
 import { QuickCommsSheet } from "../../../../src/features/investors/detail/QuickCommsSheet";
 import { OnboardingWizardSheet } from "../../../../src/features/investors/detail/OnboardingWizardSheet";
 import { avatarUri, useAvatarHeaders, useUploadAvatar } from "../../../../src/features/investors/detail/subfeatures";
-import { useInvestorFull, useVerifyContact, useSendStatement, useDeleteInvestor } from "../../../../src/features/investors/api";
+import { useInvestorFull, useVerifyContact, useSendStatement, useDeleteInvestor, useSetClientStatus } from "../../../../src/features/investors/api";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { inr, initials, fmtDate } from "../../../../src/lib/format";
 import { investorStatusBadge, kycBadge } from "../../../../src/lib/status";
@@ -36,6 +37,7 @@ import { startCall } from "../../../../src/features/activities/callAndLog";
 import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
 import { SendFormSheet } from "../../../../src/features/client-forms/SendFormSheet";
 import { AssignOpsSheet } from "../../../../src/features/tasks/AssignOpsSheet";
+import { ownPan } from "../../../../src/features/investors/client-types";
 import { useRecentlyViewed } from "../../../../src/state/recentlyViewed";
 import { useBrand } from "../../../../src/theme/brand";
 import { asIcon } from "../../../../src/lib/icons";
@@ -51,13 +53,16 @@ const HEALTH_DOT: Record<string, string> = { green: palette.success, amber: pale
 const waNumber = (p?: string | null) => (p ? p.replace(/[^\d]/g, "").replace(/^0+/, "") : "");
 
 export default function InvestorDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // ?opportunity=new&product= — "Start opportunity" from the New lead form's
+  // existing-client match opens New opportunity here (web #opportunities).
+  const { id, opportunity, product } = useLocalSearchParams<{ id: string; opportunity?: string; product?: string }>();
   const router = useRouter();
   const { brand } = useBrand();
   const { data: d, isLoading, isError, refetch, isRefetching } = useInvestorFull(id);
   const verify = useVerifyContact(id!);
   const statement = useSendStatement(id!);
   const del = useDeleteInvestor();
+  const exit = useSetClientStatus(id!);
   const avatar = useUploadAvatar(id!);
   const avatarHeaders = useAvatarHeaders();
   const [tab, setTab] = useState<Tab>("overview");
@@ -92,6 +97,42 @@ export default function InvestorDetail() {
   const email = i.email as string | null;
   const v = d.valuation ?? {};
 
+  const exited = i.status === "exited" || i.status === "closed";
+  const doExit = () => {
+    setActions(false);
+    Alert.alert(
+      exited ? `Reactivate ${i.name}?` : `Mark ${i.name} as exited?`,
+      exited
+        ? "The client goes back to Active, in the client list and the dashboards."
+        : "The client leaves the client list and the dashboard counts, but nothing is deleted — history, family, RM, notes and documents stay. When they invest again the CRM makes them Active by itself.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: exited ? "Reactivate" : "Mark as exited", onPress: () => exit.mutate(exited ? "active" : "exited", { onSuccess: () => toast.success(exited ? `${i.name} is Active again` : `${i.name} marked as exited`) }) },
+      ],
+    );
+  };
+  const inactive = i.status === "inactive";
+  const doInactive = () => {
+    setActions(false);
+    Alert.alert(
+      inactive ? `Mark ${i.name} as Active?` : `Mark ${i.name} as Inactive?`,
+      inactive
+        ? "The client goes back to Active. SIPs that were stopped stay stopped — a stopped SIP is restarted by a new registration."
+        : "Their active SIPs will be stopped and orders still pending will be cancelled in the CRM. Processed transactions are kept as history. Use this when the client has stopped investing or has passed away (record the date of death on their details).",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: inactive ? "Mark active" : "Mark inactive",
+          onPress: () => exit.mutate(inactive ? "active" : "inactive", {
+            onSuccess: (r: any) => {
+              const d = r?.demise;
+              toast.success(inactive ? `${i.name} is Active again` : `${i.name} marked Inactive${d ? ` — ${d.sipsStopped} SIP${d.sipsStopped === 1 ? "" : "s"} stopped, ${d.ordersCancelled} pending order${d.ordersCancelled === 1 ? "" : "s"} cancelled` : ""}`);
+            },
+          }),
+        },
+      ],
+    );
+  };
   const doDelete = () => {
     setActions(false);
     confirmDelete(
@@ -131,7 +172,7 @@ export default function InvestorDetail() {
               {i.healthBand ? <View style={[styles.dot, { backgroundColor: HEALTH_DOT[i.healthBand] ?? palette.faint }]} /> : null}
             </Pressable>
             <View style={{ flex: 1 }}>
-              <Text variant="caption" tone="muted">{i.pan ?? "PAN —"}</Text>
+              <Text variant="caption" tone="muted">{ownPan(i.pan) || "PAN —"}</Text>
               <View style={styles.badgeRow}>
                 {i.segmentTag ? <Badge label={i.segmentTag} tone={palette.violet} /> : null}
                 <Badge label={status.label} tone={status.tone === "success" ? palette.success : status.tone === "danger" ? palette.danger : palette.muted} />
@@ -157,12 +198,19 @@ export default function InvestorDetail() {
             <VerifyPill label="Phone" verified={!!i.phoneVerifiedAt} onPress={() => phone && verify.mutate({ channel: "phone", verified: !i.phoneVerifiedAt })} disabled={!phone || verify.isPending} />
           </View>
 
-          {/* Contact actions */}
-          <View style={styles.contactRow}>
-            <ContactBtn icon="phone" label="Call" disabled={!phone} onPress={() => phone && startCall({ subjectType: "investor", subjectId: i.id, name: i.name ?? "Client", phone })} />
-            <ContactBtn icon="message-circle" label="WhatsApp" disabled={!phone} onPress={() => phone && openWhatsApp({ phone, subjectType: "investor", subjectId: i.id, name: i.name })} />
-            <ContactBtn icon="mail" label="Email" disabled={!email} onPress={() => email && Linking.openURL(`mailto:${email}`)} />
-          </View>
+          {/* A recorded date of death: the client is Inactive and never contacted as if alive. */}
+          {i.dateOfDemise ? (
+            <View style={styles.deceased}>
+              <Text variant="caption" style={{ color: palette.danger, fontWeight: "700" }}>Deceased — {fmtDate(i.dateOfDemise)}.</Text>
+              <Text variant="caption" tone="muted">The client is Inactive; their SIPs were stopped and pending orders cancelled when the date was recorded.</Text>
+            </View>
+          ) : (
+            <View style={styles.contactRow}>
+              <ContactBtn icon="phone" label="Call" disabled={!phone} onPress={() => phone && startCall({ subjectType: "investor", subjectId: i.id, name: i.name ?? "Client", phone })} />
+              <ContactBtn icon="message-circle" label="WhatsApp" disabled={!phone} onPress={() => phone && openWhatsApp({ phone, subjectType: "investor", subjectId: i.id, name: i.name })} />
+              <ContactBtn icon="mail" label="Email" disabled={!email} onPress={() => email && Linking.openURL(`mailto:${email}`)} />
+            </View>
+          )}
         </View>
 
         {/* Sticky tab bar */}
@@ -171,7 +219,7 @@ export default function InvestorDetail() {
         </View>
 
         <Animated.View key={tab} entering={FadeIn.duration(220)}>
-          {tab === "overview" ? <OverviewTab d={d} id={id!} />
+          {tab === "overview" ? <OverviewTab d={d} id={id!} startOpportunity={opportunity === "new" ? product ?? "" : undefined} />
             : tab === "portfolio" ? <PortfolioTab d={d} />
             : tab === "profile" ? <ProfileTab d={d} />
             : <EngagementTab d={d} id={id!} />}
@@ -188,6 +236,8 @@ export default function InvestorDetail() {
         <Button label="Onboarding wizard" variant="secondary" full icon={<Feather name="check-square" size={15} color={palette.ink} />} onPress={() => { setActions(false); setOnboardOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Email statement" variant="secondary" full loading={statement.isPending} icon={<Feather name="file-text" size={15} color={palette.ink} />} onPress={() => sendStatement("email")} style={{ marginBottom: spacing.sm }} />
         <Button label="WhatsApp statement" variant="secondary" full loading={statement.isPending} icon={<Feather name="message-circle" size={15} color={palette.ink} />} onPress={() => sendStatement("whatsapp")} style={{ marginBottom: spacing.sm }} />
+        {!exited ? <Button label={inactive ? "Mark active" : "Mark inactive"} variant="secondary" full loading={exit.isPending} icon={<Feather name={inactive ? "user-check" : "user-x"} size={15} color={palette.ink} />} onPress={doInactive} style={{ marginBottom: spacing.sm }} /> : null}
+        <Button label={exited ? "Reactivate client" : "Mark as exited"} variant="secondary" full loading={exit.isPending} icon={<Feather name={exited ? "rotate-ccw" : "log-out"} size={15} color={palette.ink} />} onPress={doExit} style={{ marginBottom: spacing.sm }} />
         <Button label="Delete client" variant="danger" full loading={del.isPending} icon={<Feather name="trash-2" size={15} color="#fff" />} onPress={doDelete} />
       </BottomSheet>
 
@@ -224,6 +274,7 @@ function ContactBtn({ icon, label, onPress, disabled }: { icon: string; label: s
 }
 
 const styles = StyleSheet.create({
+  deceased: { marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: palette.danger + "4D", backgroundColor: palette.danger + "0D", gap: 2 },
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
   hero: { backgroundColor: palette.surface, borderWidth: 1, borderRadius: radius.lg, padding: spacing.lg, marginBottom: spacing.sm },
   heroTop: { flexDirection: "row", gap: spacing.md },

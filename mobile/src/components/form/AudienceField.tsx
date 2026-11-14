@@ -187,7 +187,7 @@ export function AudienceField({
                   }}
                 >
                   <Text variant="body">{r.name}</Text>
-                  <Text variant="caption" tone="muted">{[r.pan, r.phone].filter(Boolean).join(" · ")}</Text>
+                  <Text variant="caption" tone="muted">{[r.pan_display, r.phone].filter(Boolean).join(" · ")}</Text>
                 </Pressable>
               ))}
             </ScrollView>

@@ -15,6 +15,7 @@ import { activityForm } from "./activities";
 import { reviewMeetingForm } from "./review-meetings";
 import { goalForm } from "./goals";
 import { employeeForm } from "./employees";
+import { serviceRequestForm } from "./service-requests";
 
 export const FORMS: Record<string, FormSpec> = {
   investors: investorForm,
@@ -24,6 +25,7 @@ export const FORMS: Record<string, FormSpec> = {
   "review-meetings": reviewMeetingForm,
   goals: goalForm,
   employees: employeeForm, // team management via Settings
+  "service-requests": serviceRequestForm,
 };
 
 export function getForm(module: string): FormSpec | undefined {

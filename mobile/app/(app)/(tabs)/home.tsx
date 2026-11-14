@@ -89,7 +89,7 @@ export default function Home() {
   const day = useMyDay(selected);
   const perf = useMyPerformance();
   const cc = useCommandCenter();
-  const attendance = useAttendance();
+  const attendance = useAttendance({ employee: "me", date: attIsoDay(new Date()) });
   const todayAttendance = findDay(attendance.data, me.data?.user.id, attIsoDay(new Date()));
   const isToday = selected === today;
 
@@ -287,16 +287,6 @@ export default function Home() {
       )}
 
       </> : null}
-      {/* Plan-my-day banner — the morning ritual, one tap from Home */}
-      <Pressable style={styles.planBanner} onPress={() => router.push("/m/daily" as any)}>
-        <View style={styles.planIcon}><Feather name="sun" size={18} color={palette.brand} /></View>
-        <View style={{ flex: 1 }}>
-          <Text variant="body" style={{ fontWeight: fontWeight.semibold }}>{t("home.planDay")}</Text>
-          <Text variant="caption" tone="muted">{t("home.planDaySub")}</Text>
-        </View>
-        <Feather name="chevron-right" size={18} color={palette.faint} />
-      </Pressable>
-
       {/* MY NUMBERS — the "how am I doing" half of the day. Today's effort is the
           fast feedback; the month bars are what the RM is measured on. */}
       {perf.data?.me ? <MyNumbers p={perf.data} /> : null}
@@ -566,8 +556,6 @@ function PlanGroup({ title, children }: { title: string; children: React.ReactNo
 }
 
 const styles = StyleSheet.create({
-  planBanner: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.lg, backgroundColor: palette.brandLight, borderRadius: radius.md, padding: spacing.md },
-  planIcon: { width: 38, height: 38, borderRadius: radius.pill, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center" },
   clockBanner: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.sm, backgroundColor: palette.successBg, borderRadius: radius.md, padding: spacing.md },
   clockIcon: { width: 38, height: 38, borderRadius: radius.pill, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center" },
   quickRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg },

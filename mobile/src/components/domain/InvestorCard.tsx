@@ -5,6 +5,7 @@
  * long-press raises row actions (edit / delete).
  */
 
+import { ownPan } from "../../features/investors/client-types";
 import React from "react";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -47,7 +48,7 @@ export function InvestorCard({ investor, onPress, onLongPress }: { investor: Inv
         <View style={{ flex: 1, gap: 3 }}>
           <Text variant="subtitle" numberOfLines={1}>{investor.name}</Text>
           <Text variant="caption" tone="muted" numberOfLines={1}>
-            {investor.pan ? `••••••${investor.pan.slice(-4)}` : "PAN missing"}
+            {ownPan(investor.pan) ? `••••••${ownPan(investor.pan).slice(-4)}` : investor.pan?.includes("•") ? investor.pan : "PAN missing"}
             {investor.city ? ` · ${investor.city}` : ""}
           </Text>
           <View style={styles.badges}>

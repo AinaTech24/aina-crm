@@ -31,7 +31,7 @@ export const EMPTY_LEAD_FILTERS: UiLeadFilters = {
 };
 
 const SOURCES = [
-  { v: "referral", l: "Client Referral" }, { v: "existing_client", l: "Existing Client" }, { v: "website", l: "Website" },
+  { v: "referral", l: "Client Referral" }, { v: "website", l: "Website" },
   { v: "social_media", l: "Social Media" }, { v: "webinar", l: "Webinar" }, { v: "seminar", l: "Seminar" },
   { v: "walk_in", l: "Walk-in" }, { v: "google", l: "Google" }, { v: "cold_call", l: "Cold Call" },
   { v: "manual", l: "Manual" }, { v: "other", l: "Other" },

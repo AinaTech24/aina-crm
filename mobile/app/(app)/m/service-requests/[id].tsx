@@ -49,7 +49,10 @@ export default function ServiceRequestDetail() {
   const notesVal = notes ?? r.resolutionNotes ?? "";
 
   const setStatus = (status: SrStatus) => {
-    update.mutate({ status }, { onSuccess: () => { toast.success(`Marked ${srStatusMeta(status).label.toLowerCase()}`); setStatusOpen(false); } });
+    // Resolving or closing carries the resolution notes in the same save: the
+    // CRM refuses to close a complaint without them.
+    const closing = status === "resolved" || status === "closed";
+    update.mutate({ status, ...(closing && notesVal.trim() ? { resolutionNotes: notesVal } : {}) }, { onSuccess: () => { toast.success(`Marked ${srStatusMeta(status).label.toLowerCase()}`); setStatusOpen(false); } });
   };
   const saveNotes = () => {
     update.mutate({ resolutionNotes: notesVal }, { onSuccess: () => toast.success("Resolution saved") });

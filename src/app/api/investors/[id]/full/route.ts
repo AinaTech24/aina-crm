@@ -20,6 +20,7 @@ import { loadExposureBook } from "@/lib/investors/exposure-book";
 import { assetClassExposure } from "@/lib/investors/asset-class";
 import { assessSuitability } from "@/lib/investors/suitability";
 import { clientCompleteness } from "@/lib/investors/completeness";
+import { getClientHealth } from "@/lib/metrics/health";
 import { crossSellOpportunities } from "@/lib/investors/cross-sell";
 import {
   investors, folios, sips, goals, transactions, communications, tasks,
@@ -99,6 +100,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         // Same category fill as the client page and the suitability email.
         const exposure = assetClassExposure((await loadExposureBook(tx as any, session.tenantId, id, valuation)) as any);
         const completeness = clientCompleteness(inv as any);
+        // The client page's health card: the live score and each factor that cost
+        // points (getClientHealth keeps the stored score equal to it).
+        const health = await getClientHealth(tx as any, session.tenantId, id).catch(() => null);
         const suitability = assessSuitability((inv as any).riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
         const crossSell = crossSellOpportunities((inv as any).crossSell);
 
@@ -126,6 +130,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           exposure,
           suitability,
           completeness,
+          health,
           crossSell,
         };
       },

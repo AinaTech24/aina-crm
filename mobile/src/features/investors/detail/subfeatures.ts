@@ -24,16 +24,21 @@ export interface InvestorDoc {
   createdAt: string;
 }
 
-export function useDocuments(id: string) {
+/** Documents live on a client or — attachments the CRM moves to the client on
+ *  conversion — on a lead; the two APIs are the same shape. */
+export type DocSubject = "investor" | "lead";
+const docBase = (subject: DocSubject, id: string) => `/api/${subject === "lead" ? "leads" : "investors"}/${id}/documents`;
+
+export function useDocuments(id: string, subject: DocSubject = "investor") {
   return useQuery({
-    queryKey: ["investor-docs", id],
-    queryFn: () => api.get<{ documents: InvestorDoc[] }>(`/api/investors/${id}/documents`),
+    queryKey: [`${subject}-docs`, id],
+    queryFn: () => api.get<{ documents: InvestorDoc[] }>(docBase(subject, id)),
     staleTime: 30_000,
   });
 }
 
-/** 2-step upload: proxy the file to S3, then register it against the investor. */
-export function useUploadDocument(id: string) {
+/** 2-step upload: proxy the file to S3, then register it against the client / lead. */
+export function useUploadDocument(id: string, subject: DocSubject = "investor") {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { uri: string; name: string; mime: string; category: string; clientName?: string }) => {
@@ -43,28 +48,29 @@ export function useUploadDocument(id: string) {
       form.append("docType", "kyc");
       if (input.clientName) form.append("clientName", input.clientName);
       const up = await api.upload<{ key: string; contentType: string; sizeBytes: number }>("/api/compliance/upload", form);
-      return api.post<{ id: string }>(`/api/investors/${id}/documents`, {
+      return api.post<{ id: string }>(docBase(subject, id), {
         name: input.name,
-        category: input.category,
+        // A lead's document has no category (the lead API takes none).
+        ...(subject === "investor" ? { category: input.category } : {}),
         storageKey: up.key,
         mimeType: up.contentType,
         sizeBytes: up.sizeBytes,
       });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["investor-docs", id] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [`${subject}-docs`, id] }),
   });
 }
 
-export function useDeleteDocument(id: string) {
+export function useDeleteDocument(id: string, subject: DocSubject = "investor") {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (docId: string) => api.del(`/api/investors/${id}/documents?docId=${docId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["investor-docs", id] }),
+    mutationFn: (docId: string) => api.del(`${docBase(subject, id)}?docId=${docId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [`${subject}-docs`, id] }),
   });
 }
 
-export async function getDocumentUrl(id: string, docId: string, inline = true): Promise<string> {
-  const r = await api.get<{ url: string }>(`/api/investors/${id}/documents/download`, { docId, inline: inline ? "1" : "0" });
+export async function getDocumentUrl(id: string, docId: string, inline = true, subject: DocSubject = "investor"): Promise<string> {
+  const r = await api.get<{ url: string }>(`${docBase(subject, id)}/download`, { docId, inline: inline ? "1" : "0" });
   return r.url;
 }
 

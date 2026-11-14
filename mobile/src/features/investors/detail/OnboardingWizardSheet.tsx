@@ -13,6 +13,7 @@ import { Segmented } from "../../../components/ui/Segmented";
 import { BottomSheet } from "../../../components/ui/BottomSheet";
 import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
 import { useOnboardingStep } from "./subfeatures";
+import { canNominate, clientKind } from "../client-types";
 
 const KYC = [
   { key: "pending", label: "Pending" }, { key: "registered", label: "Registered" }, { key: "verified", label: "Verified" },
@@ -28,7 +29,7 @@ export function OnboardingWizardSheet({ id, visible, onClose, investor }: { id: 
   const set = (k: string, v: any) => setF((s) => ({ ...s, [k]: v }));
   const val = (k: string, fallback = "") => (f[k] !== undefined ? f[k] : investor?.[k] ?? fallback);
 
-  const STEPS = [
+  const ALL_STEPS = [
     {
       title: "Contact", patch: () => ({ email: val("email") || undefined, phone: val("phone") || undefined, whatsappPhone: val("whatsappPhone") || undefined }),
       body: (
@@ -82,6 +83,10 @@ export function OnboardingWizardSheet({ id, visible, onClose, investor }: { id: 
       ),
     },
   ];
+  // Only a type that can nominate gets the Nominee step; a minor's risk
+  // profile is the guardian's, so a minor has no Risk step.
+  const type = investor?.investorCategory;
+  const STEPS = ALL_STEPS.filter((st) => (st.title !== "Nominee" || canNominate(type)) && (st.title !== "Risk" || clientKind(type) !== "minor"));
 
   const last = step === STEPS.length - 1;
   const cur = STEPS[step];

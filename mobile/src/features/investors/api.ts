@@ -84,6 +84,52 @@ export function useInvestors(filters: InvestorFilters) {
   });
 }
 
+/**
+ * The Clients board (?view=kanban): one window of up to 300, each row carrying
+ * its onboarding stage and source lead. A server without the board support
+ * returns plain rows — they read as Active Client and can't move.
+ */
+export function useInvestorBoard(filters: InvestorFilters, enabled: boolean) {
+  return useQuery({
+    queryKey: ["investors", "board", filters],
+    enabled,
+    queryFn: () =>
+      api.get<ListResponse>("/api/investors", {
+        view: "kanban",
+        q: filters.q || undefined,
+        segment: filters.segment || undefined,
+        category: filters.category || undefined,
+        tier: filters.tier || undefined,
+        kyc: filters.kyc || undefined,
+        status: filters.status || undefined,
+        rm: filters.rm || undefined,
+        created_from: filters.created_from || undefined,
+        created_to: filters.created_to || undefined,
+        sort: filters.sort || undefined,
+        dir: filters.dir || undefined,
+        limit: 200,
+      }),
+  });
+}
+
+/** Move a converted client to another onboarding stage — the web board's drop. */
+export function useMoveClientStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ leadId, toStageKey }: { leadId: string; toStageKey: string }) =>
+      api.post(`/api/leads/${leadId}/blueprint/advance`, {
+        toStageKey,
+        remarks: "Manual stage change via the Clients board (mobile).",
+        // A board move is an explicit override, as on the web.
+        force: true,
+      }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["investors"] });
+      qc.invalidateQueries({ queryKey: ["lead-full"] });
+    },
+  });
+}
+
 /** Flatten infinite-query pages into one row array + the reported total. */
 export function flattenInvestors(data?: { pages: ListResponse[] }): { rows: Investor[]; total: number } {
   if (!data) return { rows: [], total: 0 };
@@ -196,6 +242,25 @@ export function useDispatchComm(id: string, subject: CommSubject = "investor") {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [subject === "lead" ? "lead-full" : "investor-full", id] });
       qc.invalidateQueries({ queryKey: ["activity-timeline"] });
+    },
+  });
+}
+
+/** A client's lifecycle status, as the CRM's client page sets it:
+ *  - Exited ("Mark as exited" / "Reactivate", 2026-10-15): no business, not
+ *    deleted — new money from the registrar makes them Active again.
+ *  - Inactive ("Mark inactive", 2026-10-19): live SIPs are stopped and pending
+ *    orders cancelled; the answer carries `demise: { sipsStopped, ordersCancelled }`.
+ *    Back to Active, the stopped SIPs stay stopped. */
+export function useSetClientStatus(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (status: "exited" | "inactive" | "active") => api.patch<any>(`/api/investors/${id}`, { status }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["investor-full", id] });
+      qc.invalidateQueries({ queryKey: ["investor", id] });
+      qc.invalidateQueries({ queryKey: ["investors"] });
+      qc.invalidateQueries({ queryKey: ["investor-kpis"] });
     },
   });
 }

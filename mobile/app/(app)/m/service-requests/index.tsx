@@ -1,7 +1,8 @@
 /**
  * Service Requests — the client-servicing queue. SLA breaches float to the top
  * with a red rail, because those are the ones a client is already unhappy about.
- * Filter chips: Breached / Open / Resolved / All.
+ * Filter chips: Breached / Open / Resolved / All. The FAB opens the web's New
+ * service request form (service_request.manage).
  */
 
 import React from "react";
@@ -15,6 +16,8 @@ import { Chip } from "../../../../src/components/ui/Chip";
 import { StatusPill } from "../../../../src/components/ui/StatusPill";
 import { Skeleton } from "../../../../src/components/ui/Skeleton";
 import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
+import { FAB } from "../../../../src/components/ui/FAB";
+import { useMe, hasCap } from "../../../../src/api/me";
 import {
   useServiceRequests, srStatusMeta, isSrOpen, isSlaBreached, PRIORITY_TONE, type ServiceRequest,
 } from "../../../../src/features/service-requests/api";
@@ -34,6 +37,7 @@ export default function ServiceRequestsList() {
   const router = useRouter();
   const { data, isLoading, isRefetching, refetch } = useServiceRequests();
   const [tab, setTab] = React.useState<Bucket>("breached");
+  const canCreate = hasCap(useMe().data?.capabilities, "service_request.manage");
 
   const all = data ?? [];
   const buckets: Record<Bucket, ServiceRequest[]> = {
@@ -83,6 +87,7 @@ export default function ServiceRequestsList() {
           renderItem={({ item }) => <SrRow r={item} onPress={() => router.push(`/m/service-requests/${item.id}` as any)} />}
         />
       )}
+      {canCreate ? <FAB label="New service request" onPress={() => router.push("/m/service-requests/new" as any)} /> : null}
     </View>
   );
 }

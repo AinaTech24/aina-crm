@@ -20,7 +20,7 @@ import { SkeletonList } from "../../../../src/components/ui/Skeleton";
 import { EmptyState, SearchEmptyState, ErrorState } from "../../../../src/components/states";
 import { LeadCard } from "../../../../src/components/domain/LeadCard";
 import { LeadFilters, EMPTY_LEAD_FILTERS, countLeadFilters, type UiLeadFilters } from "../../../../src/features/leads/LeadFilters";
-import { useLeads, useDeleteLead, filterLeads, groupByStage, type Lead } from "../../../../src/features/leads/api";
+import { useLeads, useDeleteLead, filterLeads, groupByStage, stageFilterValues, type Lead } from "../../../../src/features/leads/api";
 import { useTeam } from "../../../../src/features/team/api";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
@@ -44,7 +44,7 @@ export default function LeadsList() {
 
   const apiFilters = useMemo(() => ({
     q: debounced,
-    stage: filters.stage.join(","), source: filters.source.join(","), owner: filters.owner.join(","),
+    stage: stageFilterValues(filters.stage).join(","), source: filters.source.flatMap((v: string) => (v === "referral" ? ["referral", "existing_client"] : [v])).join(","), owner: filters.owner.join(","),
     created_from: filters.created_from, created_to: filters.created_to, sort: filters.sort, dir: filters.dir,
     ...Object.fromEntries(filters.quick.map((k) => [k, "1"])),
   }), [debounced, filters]);

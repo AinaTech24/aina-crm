@@ -8,8 +8,9 @@
  *  - The web avatar upload (Camera → /api/compliance/upload → avatarUrl) is a
  *    file-picker side effect with no FormSpec equivalent, so it is omitted;
  *    avatarUrl is simply never sent (web sends it as undefined when empty too).
- *  - The web live duplicate scan (/api/leads/check-duplicate) is a best-effort
- *    inline warning that never blocks or alters the payload — omitted here.
+ *  - The live duplicate scan (/api/leads/check-duplicate) is LeadDuplicateNotice:
+ *    an inline warning that never blocks or alters the payload. An existing
+ *    CLIENT is offered "Start opportunity" instead of a new lead.
  *  - The web referrer picker (InvestorLookup) is a typeahead over
  *    /api/search (envelope "investors") and returns BOTH id + name; the web
  *    POST sends referredByInvestorId + referredByName together. The mobile
@@ -20,6 +21,7 @@
  */
 
 import type { FormSpec } from "./types";
+import { LeadDuplicateNotice } from "../leads/LeadDuplicateNotice";
 
 export const leadForm: FormSpec = {
   title: "New lead",
@@ -33,6 +35,8 @@ export const leadForm: FormSpec = {
     phone: "",
     city: "",
     source: "manual",
+    /** "Other" source, in the lead's words — saved as source_campaign. */
+    sourceOther: "",
     referredByInvestorId: "",
     subDistributorId: "",
     ownerId: "",
@@ -91,7 +95,6 @@ export const leadForm: FormSpec = {
           type: "select",
           options: [
             { value: "referral", label: "Client Referral" },
-            { value: "existing_client", label: "Existing Client Reference" },
             { value: "website", label: "Website" },
             { value: "social_media", label: "Social Media" },
             { value: "webinar", label: "Webinar" },
@@ -103,6 +106,9 @@ export const leadForm: FormSpec = {
             { value: "manual", label: "Manual entry" },
           ],
         },
+        // An existing client who wants more is an opportunity, not a lead, so the
+        // CRM no longer offers "Existing Client Reference"; "Other" asks where from.
+        { key: "sourceOther", label: "Where did this lead come from?", visibleIf: (v) => v._edit !== "1" && v.source === "other" },
         { key: "sourceCampaign", label: "Source campaign", placeholder: "e.g. Diwali webinar", visibleIf: (v) => v._edit === "1" },
         {
           key: "referredByInvestorId",
@@ -111,7 +117,7 @@ export const leadForm: FormSpec = {
           searchEndpoint: "/api/search",
           searchEnvelope: "investors",
           searchLabel: (r) => r.name,
-          searchSublabel: (r) => [r.pan, r.phone].filter(Boolean).join(" · "),
+          searchSublabel: (r) => [r.pan_display, r.phone].filter(Boolean).join(" · "),
           placeholder: "Type the existing client's name, PAN, or mobile…",
           help: "Required for Client Referral / Existing Client Reference. Links the referring client so referral credit is tracked.",
           visibleIf: (v) => v._edit !== "1" && ["referral", "existing_client"].includes(v.source),
@@ -154,6 +160,7 @@ export const leadForm: FormSpec = {
             { value: "individual", label: "Individual" },
             { value: "hni", label: "HNI" },
             { value: "nri", label: "NRI" },
+            { value: "huf", label: "HUF" },
             { value: "corporate", label: "Corporate" },
             { value: "minor", label: "Minor" },
           ],
@@ -259,6 +266,7 @@ export const leadForm: FormSpec = {
       phone: form.phone || undefined,
       city: form.city || undefined,
       source: form.source,
+      sourceCampaign: form.source === "other" && form.sourceOther?.trim() ? form.sourceOther.trim() : undefined,
       notes: form.notes || undefined,
       leadType: form.leadType || undefined,
       aumPotential: form.aumPotential || undefined,
@@ -286,6 +294,8 @@ export const leadForm: FormSpec = {
 
   // Web redirects to the leads LIST (router.push("/dashboard/leads")).
   redirect: () => null,
+
+  notice: LeadDuplicateNotice,
 
   editTitle: "Edit lead",
   // GET /api/leads/[id] returns the lead object directly (no envelope).

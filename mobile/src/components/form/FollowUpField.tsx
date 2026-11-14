@@ -6,7 +6,7 @@ import { Text, TextField, BottomSheet, Button } from "../ui";
 import { spacing } from "../../theme/tokens";
 
 /** Local date/time input; conversion to an instant happens only on submission. */
-export function FollowUpField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+export function FollowUpField({ value, onChange, label = "Next follow-up (optional)" }: { value: string; onChange: (value: string) => void; label?: string }) {
   const [open, setOpen] = useState(false);
   const date = value.split("T")[0], time = value.split("T")[1]?.slice(0, 5) || "09:00";
   const chooseDay = (days: number) => {
@@ -21,7 +21,7 @@ export function FollowUpField({ value, onChange }: { value: string; onChange: (v
     <View style={{ flexDirection: "row", gap: spacing.lg }}>
       {[{ label: "Today", days: 0 }, { label: "Tomorrow", days: 1 }, { label: "Next week", days: 7 }].map(p => <Pressable key={p.label} accessibilityRole="button" style={{ minHeight: 48, justifyContent: "center" }} onPress={() => chooseDay(p.days)}><Text tone="brand">{p.label}</Text></Pressable>)}
     </View>
-    <DateField label="Next follow-up (optional)" value={date} onChange={day => onChange(day ? `${day}T${time}` : "")} />
+    <DateField label={label} value={date} onChange={day => onChange(day ? `${day}T${time}` : "")} />
     {date ? Platform.OS === "web" ? <TextField label="Time (HH:MM)" value={time} onChangeText={v => onChange(`${date}T${v}`)} /> : <Pressable accessibilityRole="button" style={{ minHeight: 48, justifyContent: "center" }} onPress={() => setOpen(true)}><Text tone="brand">Time: {time} · Change</Text></Pressable> : null}
     {open && Platform.OS === "android" ? picker : null}
     {Platform.OS === "ios" ? <BottomSheet visible={open} onClose={() => setOpen(false)} title="Follow-up time">{picker}<Button label="Done" onPress={() => setOpen(false)} /></BottomSheet> : null}

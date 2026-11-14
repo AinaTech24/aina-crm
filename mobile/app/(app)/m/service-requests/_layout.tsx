@@ -6,6 +6,7 @@ export default function ServiceRequestsLayout() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.surfaceAlt }, animation: "slide_from_right" }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="new" />
       <Stack.Screen name="[id]" />
     </Stack>
   );

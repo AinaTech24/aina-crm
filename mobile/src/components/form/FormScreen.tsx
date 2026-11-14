@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { View, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import { View, ScrollView, KeyboardAvoidingView, StyleSheet } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -63,7 +63,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
   const form = draft.value, setForm = draft.setValue;
   const online = useConnectivity(s => s.online);
   const [moreDetails, setMoreDetails] = useState(false);
-  const quickKeys = new Set(["name", "phone", "source", "referredByInvestorId", "followUpDate"]);
+  const quickKeys = new Set(["name", "phone", "email", "source", "sourceOther", "referredByInvestorId", "followUpDate"]);
   const quickLead = draftEnabled && !moreDetails;
   const showField = (f: { key: string; visibleIf?: (v: FormValues) => boolean }) => (!quickLead || quickKeys.has(f.key)) && (!f.visibleIf || f.visibleIf(form));
   const [hydrated, setHydrated] = useState(!isEdit);
@@ -230,7 +230,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
         </View>
       ) : null}
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }}
           keyboardShouldPersistTaps="handled"
@@ -255,6 +255,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
                     form={form}
                   />
                 ))}
+              {si === 0 && spec.notice ? <spec.notice form={form} isEdit={isEdit} /> : null}
             </View>
           ))}
 

@@ -3,6 +3,8 @@
  * inputs), and send via the comms pipeline. Parity with the web QuickCommsPanel.
  */
 
+import { dispatchFailureMessage } from "../../../lib/dispatch-messages";
+import { toast } from "../../../lib/toast";
 import React, { useMemo, useState } from "react";
 import { View, ScrollView, Pressable, Switch, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -42,7 +44,8 @@ export function QuickCommsSheet({
     [selected, vars]
   );
 
-  const close = () => { setSelected(null); setVars({}); onClose(); };
+  const [notSent, setNotSent] = useState<string | null>(null);
+  const close = () => { setSelected(null); setVars({}); setNotSent(null); onClose(); };
   const pick = (t: Template) => {
     setSelected(t);
     const init: Record<string, any> = {};
@@ -54,7 +57,18 @@ export function QuickCommsSheet({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     dispatch.mutate(
       { channel: selected.channel, templateKey: selected.key, variables: vars },
-      { onSuccess: close }
+      {
+        // A lead's send answers 200 even when the pipeline skipped or failed it
+        // (a client's answers 422): never report that as sent.
+        onSuccess: (r: any) => {
+          if (r?.status === "skipped" || r?.status === "failed") {
+            setNotSent(dispatchFailureMessage(r, selected.channel === "sms" ? "sms" : selected.channel === "whatsapp" ? "whatsapp" : "email"));
+            return;
+          }
+          toast.success("Sent");
+          close();
+        },
+      }
     );
   };
 
@@ -84,7 +98,7 @@ export function QuickCommsSheet({
             ))}
             <View style={{ height: spacing.md }} />
             <Button label={`Send ${titleCase(selected.channel)}`} full loading={dispatch.isPending} disabled={missingRequired} onPress={send} icon={<Feather name="send" size={15} color="#fff" />} />
-            {dispatch.isError ? <Text variant="caption" style={{ color: palette.danger, marginTop: spacing.sm }}>{(dispatch.error as any)?.message ?? "Send failed."}</Text> : null}
+            {dispatch.isError || notSent ? <Text variant="caption" style={{ color: palette.danger, marginTop: spacing.sm }}>{notSent ?? (dispatch.error as any)?.message ?? "Send failed."}</Text> : null}
           </View>
         )}
       </ScrollView>

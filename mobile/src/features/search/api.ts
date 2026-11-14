@@ -12,7 +12,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
 
-export interface SearchInvestor { id: string; name: string; pan: string | null; phone: string | null; email: string | null; segment_tag: string | null }
+/** `pan_display` is the client's own PAN masked (ABC••••4F), or null when the
+ *  column holds a registrar key; the raw PAN is never sent (web /api/search). */
+export interface SearchInvestor { id: string; name: string; pan_display: string | null; minor?: boolean; phone: string | null; email: string | null; segment_tag: string | null }
 export interface SearchLead { id: string; name: string; phone: string | null; email: string | null; stage: string | null; source: string | null }
 export interface SearchFolio { id: string; folio_number: string; amc_name: string | null; aum: string | number | null; investor_name: string | null; investor_id: string | null }
 export interface SearchSip { id: string; scheme_name: string | null; amount: string | number | null; status: string | null; investor_name: string | null; investor_id: string | null }

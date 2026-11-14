@@ -1,10 +1,12 @@
 /**
  * Screen wrapper — consistent safe-area + background for every screen. Set
  * `scroll` for a scrollable body, `padded` for standard horizontal gutters.
+ * A scrolling screen keeps its inputs and buttons above the keyboard (the app
+ * is edge to edge on Android, so the OS no longer resizes for it).
  */
 
 import React from "react";
-import { View, ScrollView, StyleSheet, type ViewStyle, RefreshControl } from "react-native";
+import { View, ScrollView, StyleSheet, type ViewStyle, RefreshControl, KeyboardAvoidingView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { palette, spacing } from "../../theme/tokens";
 
@@ -39,6 +41,7 @@ export function Screen({
 
   if (scroll) {
     return (
+      <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <ScrollView
         style={[styles.flex, { backgroundColor: background }]}
         contentContainerStyle={[pad, { flexGrow: 1 }, contentStyle]}
@@ -52,6 +55,7 @@ export function Screen({
       >
         {children}
       </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
