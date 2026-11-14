@@ -23,8 +23,9 @@ const TODAY = (() => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 })();
 
-function normOptions(opts?: Array<string | Option>): Option[] {
-  return (opts ?? []).map((o) => (typeof o === "string" ? { value: o, label: o || "Select" } : o));
+function normOptions(opts: FieldSpec["options"], form?: Record<string, any>): Option[] {
+  const list = typeof opts === "function" ? opts(form ?? {}) : opts;
+  return (list ?? []).map((o) => (typeof o === "string" ? { value: o, label: o || "Select" } : o));
 }
 
 export function FieldRenderer({
@@ -50,7 +51,7 @@ export function FieldRenderer({
         <SelectField
           label={field.label}
           value={value ?? ""}
-          options={normOptions(field.options)}
+          options={normOptions(field.options, form)}
           onChange={apply}
           placeholder={field.placeholder}
           required={field.required}
@@ -121,7 +122,7 @@ export function FieldRenderer({
 
     case "multiselect": {
       const selected: string[] = Array.isArray(value) ? value : [];
-      const opts = normOptions(field.options).filter((o) => o.value !== "");
+      const opts = normOptions(field.options, form).filter((o) => o.value !== "");
       const toggle = (v: string) =>
         onChange(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v]);
       return (

@@ -12,6 +12,7 @@ import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
 import { inr, fmtDate, titleCase, timeAgo } from "../../../lib/format";
 import { Section, FieldRow } from "./primitives";
 import { useSetReviewCadence } from "../api";
+import { canNominate, clientTypeLabel } from "../client-types";
 
 const healthTone = (n: number) => (n >= 70 ? palette.success : n >= 40 ? palette.warning : palette.danger);
 const CADENCE = [
@@ -51,8 +52,10 @@ export function OverviewTab({ d, id }: { d: any; id: string }) {
       <Section title="Risk / nominee / KYC / review" icon="grid">
         <View style={styles.grid}>
           <SummaryCard label="Risk profile" value={inv.riskProfile ? titleCase(inv.riskProfile) : "Not assessed"} sub={inv.riskProfileSignedAt ? `Signed ${fmtDate(inv.riskProfileSignedAt)}` : "Pending"} />
-          <SummaryCard label="Nominee" value={inv.nomineeName || "Not set"} sub={inv.nomineeRelation ? titleCase(inv.nomineeRelation) : "—"} />
-          <SummaryCard label="CKYC expiry" value={fmtDate(inv.ckycExpiryAt)} sub={inv.ckycNumber || "No CKYC"} />
+          {canNominate(inv.investorCategory)
+            ? <SummaryCard label="Nominee" value={inv.nomineeName || (inv.typeDetails?.nominationOptOut ? "Opted out" : "Not set")} sub={inv.nomineeRelation ? titleCase(inv.nomineeRelation) : "—"} />
+            : <SummaryCard label="Client type" value={clientTypeLabel(inv.investorCategory)} sub="No nomination" />}
+          <SummaryCard label="KYC" value={titleCase(inv.kycStatus) || "—"} sub={inv.ckycNumber || "No CKYC"} />
           <SummaryCard label="Last review" value={inv.lastReviewAt ? timeAgo(inv.lastReviewAt) : "Never"} sub={inv.nextReviewAt ? `Next ${fmtDate(inv.nextReviewAt)}` : "No next set"} />
         </View>
       </Section>
@@ -66,7 +69,6 @@ export function OverviewTab({ d, id }: { d: any; id: string }) {
         <FieldRow label="Lifetime inflow" value={inr(inv.lifetimeInflow)} />
         <FieldRow label="Lifetime outflow" value={inr(inv.lifetimeOutflow)} />
         <FieldRow label="Total lumpsum" value={inr(d.totalLumpsum)} />
-        <FieldRow label="Service tier" value={inv.serviceTier ? `Tier ${inv.serviceTier}` : "—"} />
       </Section>
     </View>
   );

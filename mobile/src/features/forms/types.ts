@@ -31,8 +31,10 @@ export interface FieldSpec {
   key: string;
   label: string;
   type?: FieldType; // default "text"
-  /** For select — plain strings or { value, label } pairs (mirrors the web). */
-  options?: Array<string | Option>;
+  /** For select — plain strings or { value, label } pairs (mirrors the web);
+   *  or a function of the form (a repeater row inside a repeater), for a list
+   *  that depends on another field (e.g. tax status by client type). */
+  options?: Array<string | Option> | ((v: FormValues) => Array<string | Option>);
   required?: boolean;
   placeholder?: string;
   help?: string;

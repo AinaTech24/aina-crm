@@ -36,6 +36,7 @@ import { startCall } from "../../../../src/features/activities/callAndLog";
 import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
 import { SendFormSheet } from "../../../../src/features/client-forms/SendFormSheet";
 import { AssignOpsSheet } from "../../../../src/features/tasks/AssignOpsSheet";
+import { ownPan } from "../../../../src/features/investors/client-types";
 import { useRecentlyViewed } from "../../../../src/state/recentlyViewed";
 import { useBrand } from "../../../../src/theme/brand";
 import { asIcon } from "../../../../src/lib/icons";
@@ -131,7 +132,7 @@ export default function InvestorDetail() {
               {i.healthBand ? <View style={[styles.dot, { backgroundColor: HEALTH_DOT[i.healthBand] ?? palette.faint }]} /> : null}
             </Pressable>
             <View style={{ flex: 1 }}>
-              <Text variant="caption" tone="muted">{i.pan ?? "PAN —"}</Text>
+              <Text variant="caption" tone="muted">{ownPan(i.pan) || "PAN —"}</Text>
               <View style={styles.badgeRow}>
                 {i.segmentTag ? <Badge label={i.segmentTag} tone={palette.violet} /> : null}
                 <Badge label={status.label} tone={status.tone === "success" ? palette.success : status.tone === "danger" ? palette.danger : palette.muted} />
