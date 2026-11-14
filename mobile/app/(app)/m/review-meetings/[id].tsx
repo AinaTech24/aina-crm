@@ -33,7 +33,7 @@ import {
   type MeetingActionItem, type MeetingAttendee,
 } from "../../../../src/features/meetings/api";
 import { AttendeePicker } from "../../../../src/features/meetings/AttendeePicker";
-import { ApiError } from "../../../../src/api/client";
+import { api, ApiError } from "../../../../src/api/client";
 import { meetingStatusBadge } from "../../../../src/lib/status";
 import { titleCase, inr } from "../../../../src/lib/format";
 import { palette, spacing, radius, fontWeight } from "../../../../src/theme/tokens";
@@ -87,6 +87,9 @@ export default function MeetingDetail() {
   const [discussion, setDiscussion] = useState("");
   const [items, setItems] = useState<MeetingActionItem[]>([]);
   const [atts, setAtts] = useState<Attachment[]>([]);
+  // Only a changed link list is sent: the PATCH replaces the whole list, so an
+  // untouched save would drop a file someone uploaded on the web meanwhile.
+  const [attsDirty, setAttsDirty] = useState(false);
   const [attendees, setAttendees] = useState<MeetingAttendee[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [nextReview, setNextReview] = useState("");
@@ -104,6 +107,7 @@ export default function MeetingDetail() {
     setDiscussion(m.discussion_points ?? "");
     setItems(Array.isArray(m.action_items) ? (m.action_items as MeetingActionItem[]) : []);
     setAtts(Array.isArray(m.attachments) ? (m.attachments as Attachment[]) : []);
+    setAttsDirty(false);
     setAttendees(Array.isArray(m.attendees) ? (m.attendees as MeetingAttendee[]) : []);
     setNextReview(m.next_review_date ? String(m.next_review_date).slice(0, 10) : "");
     setHydratedId(m.id);
@@ -129,7 +133,7 @@ export default function MeetingDetail() {
       actionItems: items
         .filter((i) => i.title.trim().length >= 2)
         .map((i) => ({ ...i, title: i.title.trim(), assigneeId: i.assigneeId || undefined, dueAt: i.dueAt || undefined })),
-      attachments: atts.filter((a) => a.fileId || (a.url ?? "").trim().length > 0),
+      ...(attsDirty ? { attachments: atts.filter((a) => a.fileId || (a.url ?? "").trim().length > 0) } : {}),
       attendees: attendees.filter((a) => a.name.trim().length > 0),
       nextReviewDate: nextReview || undefined,
       meetingMode: meetingMode || undefined,
@@ -148,12 +152,33 @@ export default function MeetingDetail() {
         setOk(`Marked completed.${also.length ? ` The review also covers ${also.join(", ")}.` : ""}`);
       } else setOk("Saved.");
       setRescheduleReason("");
+      // The server decides the stored status and date (a reschedule is stored
+      // as scheduled): take them back so the next save doesn't resend ours.
+      await refetch();
+      setHydratedId(null);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Could not save. Please try again.");
     }
   }
 
+  /** An uploaded file is deleted on the server, not just dropped from the list. */
+  const removeFile = (a: Attachment) => confirmDelete({ title: `Delete ${a.name}?`, message: "The file is removed from this meeting.", confirmLabel: "Delete" }, async () => {
+    try {
+      await api.del(`/api/review-meetings/${id}/files/${a.fileId}`);
+      setAtts((s) => s.filter((x) => x.fileId !== a.fileId));
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Could not delete the file.");
+    }
+  });
+  /** A meeting entered by mistake (not completed, nothing recorded) is deleted outright. */
+  const doPurge = () => confirmDelete(
+    { title: "Delete this meeting?", message: "Only for a meeting entered by mistake — it is removed completely.", confirmLabel: "Delete" },
+    async () => {
+      try { await api.del(`/api/review-meetings/${id}/purge`); router.back(); }
+      catch (e) { setErr(e instanceof ApiError ? e.message : "Could not delete the meeting."); }
+    },
+  );
   const doCancel = () => confirmDelete(
     { title: "Cancel this meeting?", message: "It's marked cancelled and the reminder task is cleared.", confirmLabel: "Cancel meeting" },
     () => cancel.mutate(undefined, { onSuccess: () => router.back() })
@@ -284,7 +309,7 @@ export default function MeetingDetail() {
           <Card style={{ marginTop: spacing.lg }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
               <Text variant="subtitle">Attachments ({atts.length})</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Add attachment" onPress={() => setAtts((s) => [...s, { name: "", url: "" }])} hitSlop={8}><Feather name="plus" size={18} color={palette.brand} /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Add attachment" onPress={() => { setAttsDirty(true); setAtts((s) => [...s, { name: "", url: "" }]); }} hitSlop={8}><Feather name="plus" size={18} color={palette.brand} /></Pressable>
             </View>
             {atts.length === 0 ? (
               <Text variant="caption" tone="muted">Paste a link to a presentation, report, or signed document.</Text>
@@ -292,15 +317,15 @@ export default function MeetingDetail() {
               <View key={a.fileId} style={styles.rowItem}>
                 <Feather name="paperclip" size={14} color={palette.muted} />
                 <Text variant="body" style={{ flex: 1 }} numberOfLines={1}>{a.name}</Text>
-                <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${a.name}`} onPress={() => setAtts((s) => s.filter((_, idx) => idx !== i))} hitSlop={8}><Feather name="x" size={16} color={palette.muted} /></Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${a.name}`} onPress={() => removeFile(a)} hitSlop={8}><Feather name="x" size={16} color={palette.muted} /></Pressable>
               </View>
             ) : (
               <View key={i} style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
                 <View style={{ flex: 1 }}>
-                  <TextField label={`Name ${i + 1}`} value={a.name} onChangeText={(v) => setAtts((s) => s.map((x, idx) => idx === i ? { ...x, name: v } : x))} placeholder="Display name" />
-                  <TextField label="URL" value={a.url} onChangeText={(v) => setAtts((s) => s.map((x, idx) => idx === i ? { ...x, url: v } : x))} placeholder="https://…" autoCapitalize="none" />
+                  <TextField label={`Name ${i + 1}`} value={a.name} onChangeText={(v) => { setAttsDirty(true); setAtts((s) => s.map((x, idx) => idx === i ? { ...x, name: v } : x)); }} placeholder="Display name" />
+                  <TextField label="URL" value={a.url} onChangeText={(v) => { setAttsDirty(true); setAtts((s) => s.map((x, idx) => idx === i ? { ...x, url: v } : x)); }} placeholder="https://…" autoCapitalize="none" />
                 </View>
-                <Pressable accessibilityRole="button" accessibilityLabel="Remove attachment" onPress={() => setAtts((s) => s.filter((_, idx) => idx !== i))} hitSlop={8} style={{ paddingTop: 30 }}><Feather name="trash-2" size={16} color={palette.danger} /></Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Remove attachment" onPress={() => { setAttsDirty(true); setAtts((s) => s.filter((_, idx) => idx !== i)); }} hitSlop={8} style={{ paddingTop: 30 }}><Feather name="trash-2" size={16} color={palette.danger} /></Pressable>
               </View>
             ))}
           </Card>
@@ -313,6 +338,9 @@ export default function MeetingDetail() {
           {/* Cancel */}
           {status !== "cancelled" ? (
             <Button label="Cancel meeting" variant="danger" loading={cancel.isPending} onPress={doCancel} icon={<Feather name="x-circle" size={15} color="#fff" />} style={{ marginTop: spacing.lg }} />
+          ) : null}
+          {m.status !== "completed" ? (
+            <Button label="Delete — entered by mistake" variant="ghost" onPress={doPurge} style={{ marginTop: spacing.sm }} />
           ) : null}
         </Animated.View>
       </ScrollView>
