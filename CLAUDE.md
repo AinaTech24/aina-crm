@@ -297,8 +297,9 @@ NPS or an FD is an **opportunity** on their client record (`client_opportunities
 migration 0224) — never a new lead, which would duplicate the person and fail
 at conversion on the PAN. Code: `src/lib/opportunities/` (products · stages ·
 journey · access), APIs under `/api/investors/[id]/opportunities` and
-`/api/opportunities/[id]` (+ `/advance`, `/sync`), UI `OpportunitiesPanel` on
-the client page's Overview tab.
+`/api/opportunities/[id]` (+ `/advance`, `/sync`, `/step`, `/later`,
+`/transaction-review`, `/manage`), UI `OpportunitiesPanel` on the client
+page's Overview tab.
 
 - **One open row per (client, product)**; several products can be open at
   once. Products are the Cross-sell vocabulary plus "other"; creating one marks
@@ -306,28 +307,56 @@ the client page's Overview tab.
   us", and the owner gets a follow-up task (closed with the opportunity).
 - **The journey is a blueprint** (subject_type `opportunity`, module
   `opportunities`): identified → discussion → suitability → proposal → accepted
-  → the product branch (MF: transaction → review → RTA data check; insurance: proposal form →
-  underwriting → issued; general: executed) → won. Lost from any open stage,
-  with a reason and an optional revisit task. **KYC, UCC and mandate are not
+  → the product branch (MF: Transaction placed → Approve / reject transaction
+  → RTA data check; insurance: proposal form → underwriting → issued; general,
+  which has no suitability step: executed) → won. Lost from any open stage,
+  with a reason and an optional revisit task (its date must be after today). **KYC, UCC and mandate are not
   steps** (removed at the firm's request 2026-10-17, migration 0251 — they are
   client onboarding); do not put them back. They remain a gate on
   Transaction placed.
 - **Skips**: a stage the client already satisfies (a current risk profile or
-  needs analysis, a sent / accepted proposal, a recorded transaction or
-  policy) is passed automatically with a history remark. The
+  needs analysis, a sent / accepted proposal, a recorded acceptance, the MF
+  business, a policy of the opportunity's line, an FD) is passed automatically
+  with a history remark. The
   people steps (identified, discussion) are never skipped — except when a
   proposal has been shared, which proves they happened.
+- **What counts as evidence** (`loadFacts`, 2026-11 journey audit): MF
+  "Transaction placed" — the order number recorded at "Order placed" first,
+  else a purchase or a NEW SIP (a `sips` row registered since the opportunity
+  opened, or the first debit of a scheme with no SIP and no SIP debit before
+  it); an instalment of a SIP the client already had never counts. Insurance —
+  only a policy of the opportunity's LINE (`insuranceLineOf` in products.ts,
+  the split `lib/metrics/opportunities.ts` uses), recorded after it opened. FD —
+  a deposit recorded after it opened, or one that became active in this write
+  (`syncFdAutomations` `previousStatus`). A proposal — one linked to it, or an
+  unlinked one only when exactly ONE open opportunity of the client could be
+  it (`onProposalEvent` then links it); a mixed proposal with two candidates
+  moves neither.
+- **"Client accepted"**: with a CRM proposal the client approves it there and
+  the journey moves on by itself. With none — NPS, PMS, demat, loan, other, or
+  a quote shared outside the CRM — the RM records the acceptance
+  (`record_acceptance`: the date and how — in person / call / email / WhatsApp
+  / signed form; audited `opportunity.acceptance_recorded`), and that is the
+  evidence the next step's gate reads (`Prerequisite.byAction`). "Create
+  proposal" is offered at Proposal and Client accepted for every product. A
+  declined proposal takes a journey at Client accepted back to Proposal; the
+  board's column for that step is "Awaiting acceptance".
 - **Gates, never bypassed**: an MF proposal needs a client-CONFIRMED risk
   profile signed in the last 12 months (a provisional, age-suggested one does
   not count) — **except for a MINOR** (2026-10-30, `isMinorClient` in
   `lib/investors/type-rules.ts`; `Facts.riskExempt`, `ProposalSnapshot.riskExempt`):
   a minor goes to the proposal without a profile of their own, in the journey
   and in the proposal send route, and no other client type is let off; an insurance quote needs a recorded needs analysis; an MF
-  transaction needs KYC, a UCC and, for a SIP, a mandate covering it.
+  transaction needs KYC, a UCC and, for a SIP, a mandate covering it. At MF
+  Suitability the card offers "Send risk-profile link" (the client's
+  share-token link, `SendRiskProfileLinkButton`).
 - **Entry points**: "New opportunity" on the client page, the Cross-sell
   card's opportunity chips, and the new-lead form — `check-duplicate` also
   matches existing clients and offers "Start opportunity" (a client outside the
-  viewer's book is reported only as "already a client", no name or RM).
+  viewer's book is reported only as "already a client", no name or RM); it
+  records source `lead_match` (`&leadId=` also records `source_lead_id`). The
+  client's RM is notified when someone else opens one for their client, and no
+  opportunity can be opened for a client who is closed, merged or trashed.
 - **Proposals**: `proposals.opportunity_id` links a proposal to the
   opportunity it answers; the proposals module calls
   `onProposalEvent(tx, tenantId, proposalId, "sent" | "accepted" | "declined")`.
@@ -350,12 +379,16 @@ the client page's Overview tab.
   The step after "Client accepted" is gated on the client having APPROVED the
   proposal (`AFTER_ACCEPTED` in stages.ts); until then the journey waits, and
   `onProposalEvent("accepted")` moves it on by itself. An MF journey now ends
-  Transaction placed → **Approve / reject transaction** (`txn_review`) → Won,
-  and is never skipped or advanced generically: `decideTransaction` /
-  `POST /api/opportunities/[id]/transaction-review`. Approve wins the client and
-  creates a "client won" task (`meta.wonOpportunityId`, so closing does not
-  complete it); reject needs a reason, returns to Transaction placed with a fix
-  task, and the rejected transaction no longer counts in `loadFacts`.
+  Transaction placed → **Approve / reject transaction** (`txn_review`) → RTA
+  data check → Won, and the review is never skipped or advanced generically:
+  `decideTransaction` / `POST /api/opportunities/[id]/transaction-review`.
+  Approve moves to the RTA data check (below); reject needs a reason, returns
+  to Transaction placed with a fix task, and the rejected transaction no
+  longer counts in `loadFacts`.
+- **Four eyes** (2026-11): approving / rejecting the transaction and the RTA
+  data check need the capability `opportunity.review_transaction` (back office
+  / ops; the firm owner implicitly; grantable) and are never done by the
+  opportunity's own owner.
 - **Each step asks for what it needs** (2026-10-17, migration 0250,
   `lib/opportunities/steps.ts`, `POST /api/opportunities/[id]/step`,
   `StepActions.tsx`): Need identified → Log call (no answer stays, with a
@@ -370,19 +403,44 @@ the client page's Overview tab.
 - **RTA data check** (2026-10-19, migration 0240). Approving an MF transaction
   no longer wins the client: it moves to `rta_check` and creates a high-priority
   task (`meta.opportunityId` + `rtaCheck: true`) to check the transaction against
-  the RTA data, assigned to whoever the approver picks in the Approve dialog
-  (default the opportunity's owner; the assignee is notified) and due the day they
-  choose (default tomorrow). **Won** is gated on that task being completed (`gateFor("won")`);
-  the "client won" task is created at that point (`createWonTask`). The gate's link opens that
-  task itself (`/dashboard/tasks/<id>`), and at the RTA data check step the card offers
-  **Complete RTA data check** (`Prerequisite.completeTaskId`), which completes the task through
-  the ordinary `PATCH /api/tasks/[id]` so it reads completed in the Tasks module too.
+  the RTA data, assigned to someone in operations the approver picks (default
+  the approver; never the opportunity's owner; the assignee is notified) and
+  due the day they choose (default tomorrow). **Completing that task wins the
+  opportunity**: `onOpportunityTaskCompleted`, called by `PATCH /api/tasks/[id]`
+  and the bulk route, refuses (403, rolled back) anyone without the capability
+  or the owner, and otherwise advances to Won, which creates the "client won"
+  task (`createWonTask`, `meta.wonOpportunityId`). The card offers **Complete
+  RTA data check** (`Prerequisite.completeTaskId`) to operations; "Mark won" is
+  only the fallback once the task is done.
+- **Undo** (capability `opportunity.reopen`: branch heads, the owner
+  implicitly; grantable): "Move back one step" on an open journey and
+  "Reopen" on a won / lost one (at the step it closed from; refused while
+  another is open for the product, or the client is gone),
+  `POST /api/opportunities/[id]/manage`, audited `opportunity.moved_back` /
+  `opportunity.reopened` with the reason. Going back to or before Client
+  accepted forgets a recorded acceptance; leaving the RTA check cancels its task.
+- **Closing** CANCELS (never completes) the opportunity's open tasks, detaches
+  any inflow it waited for (the reminder becomes the inflow's own again), and on
+  a LOSS writes the Cross-sell card back to what it said before the opportunity
+  (`step_details._crossSell.before`), else "Not held" — only while the card
+  still says "Interested". The Cross-sell card re-syncs from the page and saves
+  only the keys changed (`PATCH /api/investors/[id]/cross-sell`, merged and
+  audited); its badge reads "N not held with us".
+- **Live clients only**: the board, its list and tiles count a client by
+  `aliveClient`, as the dashboard cards do. A client closed / exited / merged
+  away / trashed takes their open opportunities with them
+  (`closeOpportunitiesOfGoneClients`: the bulk client actions, `syncOpportunity`
+  and the nightly ops scan). A merge keeps the survivor's open opportunity for
+  a product and closes the loser's (`resolveMergeOpportunityCollisions`).
+- **A policy recorded** in the Insurance register (create / edit) runs
+  `onPolicyRecorded`: in force → the open opportunity of that line is won,
+  else the journey catches up. The register's bulk import does not.
 - **Follow-ups ARE tasks.** An opportunity's next follow-up is its earliest
   open task with `meta.opportunityId` — there is no column. The follow-up date
   chosen at creation is the first task's due date (10:00 IST; default two
-  days), and `setFollowUp` (PATCH `followUpOn`) moves the open one or creates
-  one. Completing the task clears it; an open opportunity with none reads
-  "No follow-up set".
+  days), and `setFollowUp` (PATCH `followUpOn`) moves the OWNER's open one
+  (never operations' RTA data check) or creates one. Completing the task
+  clears it; an open opportunity with none reads "No follow-up set".
 - **"Later" — the client wants it, but not yet** (2026-10-07, migration 0231,
   `lib/opportunities/later.ts` + `later-core.ts`). "After Diwali", "in three
   months", "when my FD matures": the opportunity is PARKED — still open (one
@@ -392,7 +450,12 @@ the client page's Overview tab.
   revisit date for MF / other, 15 for insurance. Waiting for MONEY records an
   expected inflow (`expected_inflow_id`) whose own reminder task is that
   reminder — never two. A reminder 3 days overdue notifies the client's branch
-  head once (task reminder scanner, `escalateOverdueRevisits`). Resume, moving
+  head once — the owner's reporting manager when the owner IS that branch head
+  (task reminder scanner, `escalateOverdueRevisits`). The awaited money marked
+  invested / lapsed / cancelled / deleted resumes it with a follow-up saying so
+  (`onInflowChanged`, from the expected-inflow API); once it is no longer
+  waiting, an inflow edit never revives its reminder as a revisit. Inflow
+  reminders fall due 09:00 IST. Resume, moving
   the journey on, or a proposal being shared brings it back; the Opportunities
   board has a "Later" column and tile. Started from the card ("Client wants it
   later") or the New opportunity dialog (Now / Later). Diwali dates are a

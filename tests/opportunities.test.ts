@@ -171,3 +171,49 @@ describe("skips", () => {
     expect(skipReason("ins_underwriting", ins, proposed)).toBeNull();
   });
 });
+
+describe("journey fixes (2026-11 audit)", () => {
+  it("O1: with no CRM proposal, the RM's recorded acceptance satisfies the step after Client accepted", async () => {
+    const { gateFor: g } = await import("@/lib/opportunities/journey");
+    const nps = opp({ product: "nps", pipeline: "general", investmentMode: null });
+    const before = g("gen_executed", nps, facts());
+    expect(before[0].satisfied).toBe(false);
+    expect(before[0].byAction).toBe("record_acceptance");
+    const acceptance = { by: "u", at: "2026-11-01", on: "2026-11-01", how: "phone" };
+    expect(g("gen_executed", nps, facts({ acceptance })).every((p) => p.satisfied)).toBe(true);
+    // A pending CRM proposal is approved there — a recorded yes does not replace it.
+    const pending = facts({ acceptance, proposal: { id: "p", status: "sent", type: "mixed" } });
+    expect(g("gen_executed", nps, pending).some((p) => !p.satisfied)).toBe(true);
+    expect(skipReason("accepted", nps, facts({ acceptance }))?.reason).toMatch(/acceptance recorded/);
+  });
+
+  it("O3: a policy's line follows the same split as the Cross-sell metrics", async () => {
+    const { insuranceLineOf } = await import("@/lib/opportunities/products");
+    expect(insuranceLineOf("health")).toBe("health_insurance");
+    expect(insuranceLineOf("critical_illness")).toBe("health_insurance");
+    expect(insuranceLineOf("term")).toBe("life_insurance");
+    expect(insuranceLineOf("motor")).toBe("general_insurance");
+    expect(insuranceLineOf(null)).toBe("general_insurance");
+  });
+
+  it("O8: a loss writes back the card's earlier status, else Not held", async () => {
+    const { crossSellAfterLoss } = await import("@/lib/opportunities/journey");
+    expect(crossSellAfterLoss("held_elsewhere")).toBe("held_elsewhere");
+    expect(crossSellAfterLoss("not_applicable")).toBe("not_applicable");
+    expect(crossSellAfterLoss("interested")).toBe("not_held");
+    expect(crossSellAfterLoss(null)).toBe("not_held");
+  });
+
+  it("O9: Move back goes to the previous step of the product's path", async () => {
+    const { previousStage } = await import("@/lib/opportunities/journey");
+    expect(previousStage("mf", "rta_check")).toBe("txn_review");
+    expect(previousStage("general", "gen_executed")).toBe("accepted");
+    expect(previousStage("general", "proposal")).toBe("discussion");
+    expect(previousStage("mf", "identified")).toBeNull();
+  });
+
+  it("O14: the board column holding Client-accepted opportunities says they await acceptance", async () => {
+    const { BOARD_COLUMNS } = await import("@/lib/opportunities/board-columns");
+    expect(BOARD_COLUMNS.find((c) => c.key === "accepted")?.label).toBe("Awaiting acceptance");
+  });
+});

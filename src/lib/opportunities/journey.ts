@@ -761,6 +761,14 @@ export async function decideTransaction(
     return { ok: true, stage: "mf_transaction" };
   }
 
+  // Checked before anything moves: a refused assignee leaves the journey where it was.
+  const assignee = input.assigneeId || actor.userId;
+  if (assignee === opp.ownerId) {
+    return { ok: false, error: "The RTA data check can't go to the opportunity's owner — pick someone in operations.", status: 400 };
+  }
+  if (!(await mayReviewTransactions(tx, opp.tenantId, assignee))) {
+    return { ok: false, error: "The RTA data check goes to someone in operations (back office).", status: 400 };
+  }
   const r = await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, "rta_check", {
     actorUserId: actor.userId, remarks: remarks ? `Transaction approved — ${remarks}` : "Transaction approved",
     finalStatus: "in_progress",
@@ -769,13 +777,6 @@ export async function decideTransaction(
   // The task that gates "won": it carries opportunityId so it shows on the
   // opportunity. It is OPERATIONS' check: assigned to whoever the approver
   // picked from operations (default: the approver), never to the owner.
-  const assignee = input.assigneeId || actor.userId;
-  if (assignee === opp.ownerId) {
-    return { ok: false, error: "The RTA data check can't go to the opportunity's owner — pick someone in operations.", status: 400 };
-  }
-  if (!(await mayReviewTransactions(tx, opp.tenantId, assignee))) {
-    return { ok: false, error: "The RTA data check goes to someone in operations (back office).", status: 400 };
-  }
   const dueAt = input.dueOn ? followUpDue(input.dueOn) : new Date(Date.now() + 864e5);
   await tx.insert(tasks).values({
     ...base, assigneeId: assignee, title: `RTA data check — ${clientName}, ${product}: confirm the transaction in the RTA data`,
