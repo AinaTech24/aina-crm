@@ -19,11 +19,14 @@ function inr(n: number | null | undefined): string {
   return "₹" + Math.round(Number(n)).toLocaleString("en-IN");
 }
 
-/** Reminder date = expectedOn - remindDaysBefore, never in the past. */
+/**
+ * Reminder = 09:00 India time, remindDaysBefore days ahead of expectedOn —
+ * never in the past. India time whatever the server's zone: a bare
+ * "T09:00:00" is the HOST's 9am, which on a UTC server is 14:30 in India.
+ */
 export function reminderDateFor(expectedOn: string, remindDaysBefore: number): Date {
-  const due = new Date(`${expectedOn}T09:00:00`);
-  const d = new Date(due);
-  d.setDate(d.getDate() - Math.max(0, remindDaysBefore || 0));
+  const d = new Date(`${expectedOn}T09:00:00+05:30`);
+  d.setTime(d.getTime() - Math.max(0, remindDaysBefore || 0) * 864e5);
   const now = new Date();
   return d.getTime() < now.getTime() ? now : d;
 }
@@ -71,8 +74,8 @@ export async function syncInflowReminder(
 
   const label = INFLOW_SOURCE_LABELS[inflow.sourceType] ?? "Expected inflow";
   const amount = inr(inflow.expectedAmount as any);
-  const when = new Date(`${inflow.expectedOn}T00:00:00`).toLocaleDateString("en-IN", {
-    day: "numeric", month: "short", year: "numeric",
+  const when = new Date(`${inflow.expectedOn}T12:00:00+05:30`).toLocaleDateString("en-IN", {
+    day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata",
   });
   const title = `${label}${amount ? ` ${amount}` : ""} — ${client?.name ?? "client"} (${when})`;
   const description =

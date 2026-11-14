@@ -24,7 +24,8 @@ import { formatDate } from "@/lib/format";
 import { productLabel } from "@/lib/opportunities/products";
 import { canWorkOpportunities } from "@/lib/opportunities/access";
 
-export type Assignee = { id: string; name: string; insurance: boolean };
+/** `ops`: holds opportunity.review_transaction — may take an RTA data check. */
+export type Assignee = { id: string; name: string; insurance: boolean; ops: boolean };
 
 type UserRow = { id: string; name: string; roles: string[] | null; permissions: string[] | null; branch_id: string | null };
 type ClientRow = { rm_id: string | null; branch_id: string | null };
@@ -75,7 +76,10 @@ export async function opportunityAssignees(tx: Tx, session: SessionUser, investo
   `)).rows as UserRow[];
   return users
     .filter((u) => eligible(session, u, client, firmWall))
-    .map((u) => ({ id: u.id, name: cleanName(u.name), insurance: (u.roles ?? []).includes("insurance_team") }));
+    .map((u) => ({
+      id: u.id, name: cleanName(u.name), insurance: (u.roles ?? []).includes("insurance_team"),
+      ops: can(u.roles ?? [], "opportunity.review_transaction", u.permissions),
+    }));
 }
 
 /** 400 unless `userId` is someone `session` may assign this client's opportunity to. */

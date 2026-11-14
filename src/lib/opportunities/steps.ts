@@ -14,7 +14,10 @@
  *   discussion        meeting_done (completes the linked meeting), reschedule
  *                     (the meeting is moved by the Meetings API), log_call
  *   proposal          quote_shared (a quote given outside the CRM)
- *   accepted          record_acceptance
+ *   accepted          record_acceptance (no CRM proposal applies: the RM
+ *                     records the client's yes — when, how; audited as
+ *                     opportunity.acceptance_recorded — and that is the
+ *                     evidence the next step's gate reads)
  *   mf_transaction    order_placed        (amount, date, order number) → review
  *   ins_*             form_submitted · underwriting_cleared · policy_issued
  *   gen_executed      executed
@@ -34,7 +37,7 @@ import { recordAudit } from "@/lib/audit";
 import { formatDate, formatMoney } from "@/lib/format";
 import { productLabel } from "./products";
 import { stageName } from "./stages";
-import { advanceOpportunity, setFollowUp, type Actor, type Prerequisite } from "./journey";
+import { advanceOpportunity, loadFacts, setFollowUp, type Actor, type Prerequisite } from "./journey";
 
 export const STEP_ACTIONS = [
   "log_call", "schedule_meeting", "reschedule_meeting", "meeting_done", "quote_shared", "record_acceptance",
@@ -55,8 +58,17 @@ export type StepInput = {
   orderNo?: string | null;
   formNo?: string | null;
   policyNo?: string | null;
+  /** record_acceptance: how the client confirmed (ACCEPTANCE_HOW). */
+  how?: AcceptanceHow | null;
   /** YYYY-MM-DD — the next follow-up, when the opportunity stays open. */
   followUpOn?: string | null;
+};
+
+/** How a client's acceptance reached the RM — recorded with it (no free-text box). */
+export const ACCEPTANCE_HOW = ["in_person", "phone", "email", "whatsapp", "signed_form"] as const;
+export type AcceptanceHow = (typeof ACCEPTANCE_HOW)[number];
+export const ACCEPTANCE_HOW_LABEL: Record<AcceptanceHow, string> = {
+  in_person: "in person", phone: "on a call", email: "by email", whatsapp: "on WhatsApp", signed_form: "on a signed form",
 };
 
 export type StepResult =
@@ -210,8 +222,24 @@ export async function runStepAction(tx: Tx, actor: Actor, id: string, input: Ste
     case "quote_shared":
       return move(`Quote shared with the client on ${formatDate(on)}, outside the CRM`);
 
-    case "record_acceptance":
-      return move(`Client accepted on ${formatDate(on)}`);
+    case "record_acceptance": {
+      // With a CRM proposal, the client approves THAT (proposals module) —
+      // an RM's word does not replace it. Without one, the RM's record is the
+      // evidence: who, when and how, on the history and in the audit log.
+      const facts = await loadFacts(tx, opp);
+      if (facts.proposal && !["accepted", "partially_approved", "executed"].includes(facts.proposal.status)) {
+        return fail("This opportunity has a proposal in the CRM — the client approves it there, and the journey moves on by itself.", 409);
+      }
+      if (facts.proposal) return move(`Client accepted the proposal (${formatDate(on)})`);
+      if (!input.how) return fail("Say how the client confirmed.");
+      await recordAudit(tx, {
+        tenantId: opp.tenantId, actorUserId: actor.userId, action: "opportunity.acceptance_recorded",
+        entityType: "opportunity", entityId: opp.id,
+        after: { stage, acceptedOn: on, how: input.how, recordedBy: actor.userId, product: opp.product },
+      } as any);
+      return move(`Client accepted on ${formatDate(on)}, ${ACCEPTANCE_HOW_LABEL[input.how]} — recorded by the RM (no CRM proposal)`,
+        { how: input.how });
+    }
 
     case "assign_ops": {
       if (!input.assigneeId) return fail("Pick who does it.");

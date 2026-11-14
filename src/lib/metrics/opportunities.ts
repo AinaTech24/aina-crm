@@ -15,14 +15,17 @@
  *   byProduct       open opportunities per product
  *
  * Opportunities follow their CLIENT (rm / branch / client filters), like every
- * other client fact on the dashboards.
+ * other client fact on the dashboards — and only a LIVE client's count
+ * (aliveClient, through clientWhere), the same rule as the Opportunities
+ * board and its tiles (lib/opportunities/board.ts).
  */
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { clientWhere, type MetricPeriod, type MetricScope } from "./scope";
+import { clientWhere, textList, type MetricPeriod, type MetricScope } from "./scope";
 import { CROSS_SELL_PRODUCT_KEYS } from "@/lib/investors/cross-sell";
 import { columnOf } from "@/lib/opportunities/board-columns";
+import { HEALTH_POLICY_TYPES, LIFE_POLICY_TYPES } from "@/lib/opportunities/products";
 
 export type OpportunityMetrics = {
   open: number;
@@ -77,8 +80,8 @@ export async function getOpportunityMetrics(tx: Tx, scope: MetricScope, period: 
       SELECT i.id, 'mutual_funds' FROM investors i WHERE ${where} AND COALESCE(i.aum, 0) > 0
       UNION
       SELECT i.id,
-             CASE WHEN p.policy_type IN ('health', 'critical_illness', 'group_health') THEN 'health_insurance'
-                  WHEN p.policy_type IN ('term', 'ulip', 'endowment', 'money_back', 'life_other') THEN 'life_insurance'
+             CASE WHEN p.policy_type IN (${textList([...HEALTH_POLICY_TYPES])}) THEN 'health_insurance'
+                  WHEN p.policy_type IN (${textList([...LIFE_POLICY_TYPES])}) THEN 'life_insurance'
                   ELSE 'general_insurance' END
         FROM investors i JOIN insurance_policies p ON p.investor_id = i.id AND p.tenant_id = i.tenant_id
        WHERE ${where} AND p.status IN ('active', 'claim_filed', 'claim_settled')

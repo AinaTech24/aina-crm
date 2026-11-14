@@ -5,7 +5,10 @@
  *                                         for assigneeId (default the opportunity's owner), due dueOn (YYYY-MM-DD)
  *   { decision: "reject", remarks }     → back to "Transaction placed"; reason required
  *
- * Only valid while the opportunity stands at "Approve / reject transaction".
+ * Only valid while the opportunity stands at "Approve / reject transaction",
+ * and only for operations — the opportunity.review_transaction capability
+ * (back office / ops; the firm owner implicitly), never the opportunity's own
+ * owner. The RTA data check goes to someone who holds the same capability.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,7 +18,8 @@ import { requireSession } from "@/lib/auth/session";
 import { handleApiError } from "@/lib/api/error-handler";
 import { assertAssignable } from "@/lib/opportunities/assignees";
 import { loadViewableOpportunity, requireWorkOpportunities } from "@/lib/opportunities/access";
-import { decideTransaction, listOpportunities } from "@/lib/opportunities/journey";
+import { decideTransaction, listOpportunities, REVIEW_CAP } from "@/lib/opportunities/journey";
+import { can } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +34,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     requireWorkOpportunities(session);
+    if (!can(session.roles, REVIEW_CAP, session.permissions)) {
+      return NextResponse.json({ error: "Only operations (back office) can approve or reject an opportunity's transaction." }, { status: 403 });
+    }
     const { id } = await params;
     if (!z.string().uuid().safeParse(id).success) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const parsed = Body.safeParse(await req.json().catch(() => ({})));

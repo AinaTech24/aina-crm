@@ -108,6 +108,12 @@ export type Capability =
   | "lead.view.assigned"
   | "lead.edit.all"
   | "lead.edit.assigned"
+  // Opportunities (an existing client's next product, lib/opportunities).
+  // Approving / rejecting an opportunity's transaction and its RTA data check
+  // are operations' — never the opportunity's owner (journey.ts).
+  | "opportunity.review_transaction"
+  // Moving a journey back a step, or reopening a closed one.
+  | "opportunity.reopen"
   // Transactions / SIPs / Mandates
   | "transactions.view"
   | "transactions.execute"
@@ -238,6 +244,10 @@ const MATRIX: Record<Capability, Role[]> = {
   "lead.view.assigned": ["rm"],
   "lead.edit.all": ["marketing", "branch_head", "back_office", "ops"],
   "lead.edit.assigned": ["rm"],
+
+  // Opportunities — operations reviews the transaction; a supervisor undoes a step.
+  "opportunity.review_transaction": ["back_office", "ops"],
+  "opportunity.reopen": ["branch_head"],
 
   // Transactions — execute by back_office + RM; everyone in ops/compliance views.
   "transactions.view": ["back_office", "ops", "rm", "branch_head", "compliance", "service_team"],

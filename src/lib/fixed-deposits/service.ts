@@ -147,7 +147,7 @@ export async function updateFd(tx: Tx, session: SessionUser, id: string, patch: 
   if ((patch.holding ?? before.holding) === "single") set.jointHolders = null;
 
   const [fd] = await tx.update(fixedDeposits).set(set as any).where(eq(fixedDeposits.id, id)).returning();
-  await syncFdAutomations(tx, session, fd);
+  await syncFdAutomations(tx, session, fd, { previousStatus: before.status });
   await recordAudit(tx, {
     tenantId: session.tenantId, actorUserId: session.userId, action: "fixed_deposit.update",
     entityType: "fixed_deposit", entityId: id,

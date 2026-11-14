@@ -13,10 +13,16 @@
  *   resumeOpportunity  back to work now: the reminder ends, a follow-up task
  *                      takes its place. Moving the journey on by hand, or a
  *                      proposal being shared, resumes it too (journey.ts).
+ *   onInflowChanged    the money it waited for was marked invested (or
+ *                      lapsed / cancelled / deleted): the opportunity comes
+ *                      back with a follow-up task saying so. An inflow edit
+ *                      never revives the reminder of an opportunity that is
+ *                      no longer waiting for it (detachInflow).
  *   escalateOverdueRevisits
  *                      a reminder ESCALATE_AFTER_DAYS overdue is sent to the
- *                      client's branch head (else the owner's manager) once.
- *                      Run by the task reminder scanner.
+ *                      client's branch head — or, when the owner IS that
+ *                      branch head (or there is none), the owner's reporting
+ *                      manager — once. Run by the task reminder scanner.
  *
  * Every reminder task carries meta.opportunityId — "follow-ups ARE tasks"
  * (journey.ts) — so the board's follow-up dates and overdue counts include it.
@@ -168,10 +174,15 @@ export async function parkOpportunity(tx: Tx, actor: Actor, opp: ClientOpportuni
  * (the journey moved on by itself; its next step is already the next action).
  */
 export async function resumeOpportunity(
-  tx: Tx, actor: Actor, opp: ClientOpportunity, opts: { followUpOn?: string | null; quiet?: boolean } = {},
+  tx: Tx, actor: Actor, opp: ClientOpportunity,
+  opts: { followUpOn?: string | null; quiet?: boolean; why?: string | null } = {},
 ) {
   if (!opp.parkedAt) return;
   await cancelOpenTasks(tx, opp, true);
+  // The reminder of the money it waited for (cancelled above) stops being the
+  // opportunity's — so a later edit of that inflow can never reopen it as a
+  // "revisit"; it comes back, if at all, as the inflow's own reminder.
+  if (opp.expectedInflowId) await untagInflowReminder(tx, opp);
   await tx.update(clientOpportunities).set({
     parkedAt: null, revisitOn: null, parkedReason: null, updatedAt: new Date(),
   } as any).where(eq(clientOpportunities.id, opp.id));
@@ -181,7 +192,7 @@ export async function resumeOpportunity(
     await tx.insert(tasks).values({
       tenantId: opp.tenantId, subjectType: "investor", subjectId: opp.investorId, relatedInvestorId: opp.investorId,
       type: "follow_up", title: `${productLabel(opp.product)} — talk to ${name} (back from Later)`,
-      description: opp.parkedReason ? `They had asked to wait: "${opp.parkedReason}".` : null,
+      description: [opts.why, opp.parkedReason ? `They had asked to wait: "${opp.parkedReason}".` : null].filter(Boolean).join("\n\n") || null,
       priority: "normal", status: "open", assigneeId: opp.ownerId ?? actor.userId,
       dueAt: new Date(`${day}T10:00:00+05:30`), createdById: actor.userId,
       meta: { opportunityId: opp.id },
@@ -194,9 +205,75 @@ export async function resumeOpportunity(
   } as any);
 }
 
+/** The inflow's reminder task, without the opportunity's tags (it stays the inflow's own). */
+async function untagInflowReminder(tx: Tx, opp: ClientOpportunity) {
+  await tx.execute(sql`
+    UPDATE tasks t SET meta = COALESCE(t.meta, '{}'::jsonb) - 'opportunityId' - 'revisit', updated_at = now()
+      FROM expected_inflows e
+     WHERE e.id = ${opp.expectedInflowId}::uuid AND e.tenant_id = ${opp.tenantId}::uuid
+       AND t.id = e.reminder_task_id AND t.meta ->> 'opportunityId' = ${opp.id}
+  `);
+}
+
+/**
+ * The opportunity is closing: the money it waited for is no longer its
+ * business. The reminder goes back to being the inflow's own — untagged, and
+ * re-written by the inflow machinery (title, date, open while money is
+ * expected) — and the opportunity's task clean-up then leaves it alone.
+ */
+export async function detachInflow(tx: Tx, actor: Actor, opp: ClientOpportunity) {
+  if (!opp.expectedInflowId) return;
+  await untagInflowReminder(tx, opp);
+  const [row] = await tx.select().from(expectedInflows).where(eq(expectedInflows.id, opp.expectedInflowId)).limit(1);
+  if (!row || !row.reminderTaskId) return;
+  await syncInflowReminder(tx, opp.tenantId, actor.userId || opp.ownerId || opp.createdBy || "", {
+    id: row.id, investorId: row.investorId, ownerId: row.ownerId, sourceType: row.sourceType as InflowSourceType,
+    expectedAmount: row.expectedAmount, expectedOn: row.expectedOn, remindDaysBefore: row.remindDaysBefore,
+    reminderTaskId: row.reminderTaskId, status: row.status,
+  });
+}
+
+const MONEY_DONE: Record<string, string> = {
+  invested: "The money it was waiting for has come in and been invested",
+  partially_invested: "The money it was waiting for has come in (partly invested)",
+  lapsed: "The money it was waiting for did not come — the inflow lapsed",
+  cancelled: "The money it was waiting for is no longer expected — the inflow was cancelled",
+  deleted: "The expected money it was waiting for was deleted",
+};
+
+/**
+ * An expected inflow changed (PATCH / DELETE /api/expected-inflows/[id]) —
+ * call after the inflow's own reminder is synced. A parked opportunity that
+ * waits for this money comes back when the money is settled one way or the
+ * other (a follow-up task for the owner, saying which); an opportunity that
+ * is not waiting for it any more never gets its reminder back.
+ */
+export async function onInflowChanged(tx: Tx, actor: Actor, inflowId: string, status: string | "deleted") {
+  const rows = await tx.select().from(clientOpportunities).where(sql`
+    ${clientOpportunities.tenantId} = ${actor.tenantId}::uuid AND ${clientOpportunities.expectedInflowId} = ${inflowId}::uuid
+  `);
+  for (const opp of rows) {
+    const waiting = opp.status === "open" && !!opp.parkedAt;
+    if (waiting && MONEY_DONE[status]) {
+      if (status === "deleted") {
+        await tx.update(clientOpportunities).set({ expectedInflowId: null } as any).where(eq(clientOpportunities.id, opp.id));
+        await resumeOpportunity(tx, actor, { ...opp, expectedInflowId: null }, { why: MONEY_DONE[status] });
+      } else {
+        await resumeOpportunity(tx, actor, opp, { why: MONEY_DONE[status] });
+      }
+      continue;
+    }
+    if (!waiting) {
+      // Edited after the opportunity stopped waiting: the reminder is the inflow's, never a revisit.
+      await untagInflowReminder(tx, opp);
+    }
+  }
+}
+
 /**
  * Reminders of parked opportunities more than ESCALATE_AFTER_DAYS overdue:
- * tell the client's branch head (else the owner's reporting manager) once.
+ * tell the client's branch head (else, or when the owner is the branch head,
+ * the owner's reporting manager) once.
  * Returns how many were escalated.
  */
 export async function escalateOverdueRevisits(tx: Tx, tenantId: string): Promise<number> {
@@ -227,7 +304,11 @@ export async function escalateOverdueRevisits(tx: Tx, tenantId: string): Promise
              AND roles @> ARRAY['branch_head']::text[]
         `)).rows as Array<{ id: string }>).map((u) => u.id)
       : [];
-    const to = [...new Set((heads.length ? heads : [r.reporting_manager_id]).filter((u): u is string => !!u && u !== r.assignee_id))];
+    // The branch head — unless the owner IS the branch head (or there is
+    // none): then the owner's reporting manager, so it never escalates to
+    // the person who let it slip.
+    const others = heads.filter((u) => u !== r.assignee_id);
+    const to = [...new Set((others.length ? others : [r.reporting_manager_id]).filter((u): u is string => !!u && u !== r.assignee_id))];
     for (const userId of to) {
       await createNotification(tx, {
         tenantId, userId, kind: "opportunity.revisit_overdue", severity: "warning",
