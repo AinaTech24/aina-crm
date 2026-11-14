@@ -38,6 +38,8 @@ import { cleanUccCodes } from "@/lib/investors/ucc";
 import { CustomFieldsSection, missingRequired, type CustomFieldDef } from "@/components/common/CustomFieldInputs";
 import { FormActions } from "@/components/ui/FormActions";
 import { Button, buttonClass } from "@/components/ui/Button";
+import { usePincodeAutofill } from "@/components/investors/usePincodeAutofill";
+import { PincodeHint } from "@/components/investors/PincodeHint";
 
 function NewInvestorPageInner() {
   const router = useRouter();
@@ -168,6 +170,11 @@ function NewInvestorPageInner() {
   function set(k: string, v: string) {
     setForm((s) => ({ ...s, [k]: v }));
   }
+  // Pincode → blank city / state / country (never over what was typed).
+  const pin = usePincodeAutofill(
+    { pincode: form.pincode, city: form.city, state: form.state, country: form.country },
+    (fill) => setForm((s) => ({ ...s, ...fill })),
+  );
   // A new client type brings its own tax status and household type.
   function setType(type: string) {
     setForm((s) => ({
@@ -410,6 +417,7 @@ function NewInvestorPageInner() {
             <Field label="Pincode" value={form.pincode} onChange={(v) => set("pincode", v.replace(/\D/g, "").slice(0, 6))} />
             <SelectField label="Country" value={canonicalCountry(form.country) ?? form.country} onChange={(v) => set("country", v)} options={["", ...withCurrent(COUNTRIES, canonicalCountry(form.country) ?? form.country)]} searchable />
           </div>
+          <PincodeHint status={pin.status} suggestState={pin.suggestState} onUseState={pin.acceptState} />
           </>)}
         </Section>
 

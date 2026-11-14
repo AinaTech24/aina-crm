@@ -37,6 +37,8 @@ import { DateField } from "@/components/ui/DateField";
 import { Field, FieldSection } from "@/components/ui/Field";
 import { FormActions } from "@/components/ui/FormActions";
 import { Button } from "@/components/ui/Button";
+import { usePincodeAutofill } from "@/components/investors/usePincodeAutofill";
+import { PincodeHint } from "@/components/investors/PincodeHint";
 import { notify } from "@/components/ui/Toast";
 import { ClientTypeSections, type GuardianLink } from "@/components/investors/ClientTypeSections";
 import { UccCodesField } from "@/components/investors/UccCodesField";
@@ -197,6 +199,12 @@ export function ClientDetailsForm({
   function set<K extends keyof typeof f>(k: K, v: (typeof f)[K]) {
     setF((s) => ({ ...s, [k]: v }));
   }
+  // Pincode → blank city / state / country (never over what was typed); the
+  // pincode already on file when the form opens is not looked up.
+  const pin = usePincodeAutofill(
+    { pincode: f.pincode, city: f.city, state: f.state, country: f.country },
+    (fill) => setF((s) => ({ ...s, ...fill })),
+  );
 
   // A new client type brings its own tax status and household type.
   function setType(type: string) {
@@ -512,6 +520,9 @@ export function ClientDetailsForm({
                   </SelectField>
                 )}
               </Field>
+              <div className="sm:col-span-2">
+                <PincodeHint status={pin.status} suggestState={pin.suggestState} onUseState={pin.acceptState} />
+              </div>
               {family?.isHead && (
                 <p className="sm:col-span-2 text-xs text-muted-foreground">The family&rsquo;s members take this address.</p>
               )}

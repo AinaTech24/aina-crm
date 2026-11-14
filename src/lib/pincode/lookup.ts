@@ -3,8 +3,9 @@
  * (api.postalpincode.in), asked by the server and remembered in memory, so a
  * pincode is looked up once per process. A slow or failed lookup answers
  * null, and so does an answer that is not a real place ("NA", a number).
- * Used only to complete registrar rows (lib/pincode/fill.ts); the client
- * forms never fill from it.
+ * Used to complete registrar rows (lib/pincode/fill.ts) and, through
+ * GET /api/pincode/[pin], the client forms' address auto-fill, which fills
+ * only blank fields (lib/pincode/autofill.ts).
  */
 
 import { canonicalState } from "@/lib/geo/places";
