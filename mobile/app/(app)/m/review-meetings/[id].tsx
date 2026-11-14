@@ -3,8 +3,12 @@
  *
  * Header (subject / type / who / when / RM) · prep brief (upcoming investor
  * meetings) · status + Mark completed + Save · schedule/reschedule · attendees ·
- * discussion · notes (+ AI summarise) · outcome · action items · attachments ·
- * next review date · cancel.
+ * discussion · action items · attachments · next review date · cancel.
+ *
+ * The CRM's rules (2026-10-01): attendees are looked up — team, clients, leads —
+ * or added as a guest; an action item has an owner and a due date and IS a
+ * task (the server creates it on the first save and returns its id, kept here
+ * so the next save edits it). The meeting has no notes box and no Outcome card.
  */
 
 import React, { useEffect, useState } from "react";
@@ -24,17 +28,18 @@ import { DateField } from "../../../../src/components/form/DateField";
 import { LoadingState, ErrorState } from "../../../../src/components/states";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import {
-  useMeeting, useUpdateMeeting, useCancelMeeting,
-  MEETING_STATUSES, MEETING_MODES, MEETING_OUTCOMES, ATTENDEE_ROLES, isExternalRole, OUTCOME_TONE,
+  useMeeting, useUpdateMeeting, useCancelMeeting, useMeetingTeam,
+  MEETING_STATUSES, MEETING_MODES, ATTENDEE_ROLES, ATTENDEE_KIND_LABEL,
+  type MeetingActionItem, type MeetingAttendee,
 } from "../../../../src/features/meetings/api";
-import { api, ApiError } from "../../../../src/api/client";
+import { AttendeePicker } from "../../../../src/features/meetings/AttendeePicker";
+import { ApiError } from "../../../../src/api/client";
 import { meetingStatusBadge } from "../../../../src/lib/status";
 import { titleCase, inr } from "../../../../src/lib/format";
 import { palette, spacing, radius, fontWeight } from "../../../../src/theme/tokens";
 
-type ActionItem = { title: string; dueAt?: string; taskId?: string };
-type Attachment = { name: string; url: string };
-type Attendee = { name: string; role: string; isExternal: boolean; notes?: string };
+/** An uploaded file has no URL — it is kept by its fileId. */
+type Attachment = { name: string; url: string; fileId?: string; size?: number; uploadedAt?: string };
 
 // 15-minute time slots, 12-hour labels (mirrors the web TIME_SLOTS).
 const TIME_SLOTS = (() => {
@@ -54,10 +59,6 @@ function splitLocal(v: any): { day: string; time: string } {
   const p = (n: number) => String(n).padStart(2, "0");
   return { day: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, time: `${p(d.getHours())}:${p(d.getMinutes())}` };
 }
-function defaultNextReview(): string {
-  const d = new Date(); d.setMonth(d.getMonth() + 6);
-  return d.toISOString().slice(0, 10);
-}
 function fmtWhen(iso?: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -70,6 +71,7 @@ export default function MeetingDetail() {
   const { data: m, isLoading, isError, error, refetch } = useMeeting(id);
   const update = useUpdateMeeting(id);
   const cancel = useCancelMeeting(id);
+  const team = useMeetingTeam();
 
   // ── Editor state (hydrated once the meeting loads) ──
   const [hydratedId, setHydratedId] = useState<string | null>(null);
@@ -83,17 +85,13 @@ export default function MeetingDetail() {
   const [location, setLocation] = useState("");
   const [rescheduleReason, setRescheduleReason] = useState("");
   const [discussion, setDiscussion] = useState("");
-  const [notes, setNotes] = useState("");
-  const [outcome, setOutcome] = useState("");
-  const [outcomeNotes, setOutcomeNotes] = useState("");
-  const [items, setItems] = useState<ActionItem[]>([]);
+  const [items, setItems] = useState<MeetingActionItem[]>([]);
   const [atts, setAtts] = useState<Attachment[]>([]);
-  const [attendees, setAttendees] = useState<Attendee[]>([]);
-  const [newAtt, setNewAtt] = useState<Attendee>({ name: "", role: "investor", isExternal: true });
-  const [nextReview, setNextReview] = useState(defaultNextReview());
+  const [attendees, setAttendees] = useState<MeetingAttendee[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [nextReview, setNextReview] = useState("");
   const [ok, setOk] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [aiBusy, setAiBusy] = useState(false);
 
   useEffect(() => {
     if (!m || hydratedId === m.id) return;
@@ -104,13 +102,10 @@ export default function MeetingDetail() {
     setMeetingMode(m.meeting_mode ?? "office");
     setLocation(m.location_or_link ?? "");
     setDiscussion(m.discussion_points ?? "");
-    setNotes(m.meeting_notes ?? "");
-    setOutcome(m.outcome ?? "");
-    setOutcomeNotes(m.outcome_notes ?? "");
-    setItems(Array.isArray(m.action_items) ? (m.action_items as ActionItem[]) : []);
+    setItems(Array.isArray(m.action_items) ? (m.action_items as MeetingActionItem[]) : []);
     setAtts(Array.isArray(m.attachments) ? (m.attachments as Attachment[]) : []);
-    setAttendees(Array.isArray(m.attendees) ? (m.attendees as Attendee[]) : []);
-    setNextReview(m.next_review_date ? String(m.next_review_date).slice(0, 10) : defaultNextReview());
+    setAttendees(Array.isArray(m.attendees) ? (m.attendees as MeetingAttendee[]) : []);
+    setNextReview(m.next_review_date ? String(m.next_review_date).slice(0, 10) : "");
     setHydratedId(m.id);
   }, [m, hydratedId]);
 
@@ -130,50 +125,33 @@ export default function MeetingDetail() {
       status: overrideStatus ?? status,
       subject: subject || undefined,
       discussionPoints: discussion || undefined,
-      meetingNotes: notes || undefined,
-      actionItems: items.filter((i) => i.title.trim().length > 0),
-      attachments: atts.filter((a) => a.url.trim().length > 0),
+      // A title under 2 characters is not a task yet; it stays off the save.
+      actionItems: items
+        .filter((i) => i.title.trim().length >= 2)
+        .map((i) => ({ ...i, title: i.title.trim(), assigneeId: i.assigneeId || undefined, dueAt: i.dueAt || undefined })),
+      attachments: atts.filter((a) => a.fileId || (a.url ?? "").trim().length > 0),
       attendees: attendees.filter((a) => a.name.trim().length > 0),
       nextReviewDate: nextReview || undefined,
-      outcome: outcome || undefined,
-      outcomeNotes: outcomeNotes || undefined,
       meetingMode: meetingMode || undefined,
       locationOrLink: location || undefined,
       ...(dateMoved ? { meetingDate: new Date(`${meetingDay}T${meetingTime || "11:00"}:00`).toISOString(), rescheduleReason: rescheduleReason || undefined } : {}),
     };
     try {
       const res = await update.mutateAsync(payload);
+      // Keep what the server stored: every action item now carries its task,
+      // so the next save edits those tasks instead of creating new ones.
+      if (Array.isArray(res?.actionItems)) setItems(res.actionItems);
+      if (Array.isArray(res?.attendees)) setAttendees(res.attendees);
       if (overrideStatus === "completed" || res?.completed) {
         setStatus("completed");
-        setOk(`Marked completed · action items became tasks · next review set to ${nextReview}.`);
+        const also = Array.isArray(res?.familyMembers) ? res.familyMembers : [];
+        setOk(`Marked completed.${also.length ? ` The review also covers ${also.join(", ")}.` : ""}`);
       } else setOk("Saved.");
       setRescheduleReason("");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Could not save. Please try again.");
     }
-  }
-
-  async function runAiSummary() {
-    if (notes.trim().length < 20) { setErr("Write at least 20 characters of notes first."); return; }
-    setAiBusy(true); setErr(null);
-    try {
-      const j: any = await api.post("/api/ai/meeting-summary", {
-        notes, agenda: discussion || undefined, meetingType: m!.meeting_type,
-        durationMinutes: m!.duration_minutes ? Number(m!.duration_minutes) : undefined, clientName: who,
-      });
-      const block = [
-        j.summary,
-        j.keyPoints?.length ? "\n\nKey points:\n" + j.keyPoints.map((p: string) => `  • ${p}`).join("\n") : "",
-        j.decisions?.length ? "\n\nDecisions:\n" + j.decisions.map((p: string) => `  • ${p}`).join("\n") : "",
-        j.nextSteps?.length ? "\n\nNext steps:\n" + j.nextSteps.map((p: string) => `  • ${p}`).join("\n") : "",
-      ].filter(Boolean).join("").trim();
-      setNotes((prev) => (prev.trim() ? `${prev.trim()}\n\n— AI summary —\n${block}` : block));
-      if (j.actionItems?.length) setItems((prev) => [...prev, ...j.actionItems.map((a: any) => ({ title: a.title }))]);
-      setOk("AI summary applied — review + Save when ready.");
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "AI request failed.");
-    } finally { setAiBusy(false); }
   }
 
   const doCancel = () => confirmDelete(
@@ -195,7 +173,6 @@ export default function MeetingDetail() {
             <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>{fmtWhen(m.meeting_date)} · {titleCase(m.meeting_mode)}{m.rm_name ? ` · RM: ${m.rm_name}` : ""}</Text>
             <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, flexWrap: "wrap" }}>
               <StatusPill label={st.label} tone={st.tone} />
-              {outcome ? <StatusPill label={titleCase(outcome)} tone={OUTCOME_TONE[outcome] ?? "neutral"} dot={false} /> : null}
               {Number(m.reschedule_count ?? 0) > 0 ? <StatusPill label={`rescheduled ${m.reschedule_count}×`} tone="warning" dot={false} /> : null}
             </View>
           </Card>
@@ -258,23 +235,20 @@ export default function MeetingDetail() {
             ) : null}
           </Card>
 
-          {/* Attendees */}
+          {/* Attendees — looked up from team, clients and leads */}
           <Card style={{ marginTop: spacing.lg }}>
             <Text variant="subtitle" style={{ marginBottom: spacing.sm }}>Attendees ({attendees.length})</Text>
-            {attendees.length === 0 ? (
-              <Text variant="caption" tone="muted">Add who was in the room — spouse, family CA, AMC RM, etc.</Text>
-            ) : attendees.map((a, i) => (
-              <View key={i} style={styles.rowItem}>
-                <StatusPill label={ATTENDEE_ROLES.find((r) => r.value === a.role)?.label ?? a.role} tone={a.isExternal ? "violet" : "info"} size="sm" dot={false} />
-                <Text variant="body" style={{ flex: 1 }} numberOfLines={1}>{a.name}{a.notes ? ` · ${a.notes}` : ""}</Text>
-                <Pressable accessibilityRole="button" accessibilityLabel="Remove attendee" onPress={() => setAttendees((p) => p.filter((_, idx) => idx !== i))} hitSlop={8}><Feather name="x" size={16} color={palette.danger} /></Pressable>
-              </View>
-            ))}
-            <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
-              <TextField label="Add attendee" value={newAtt.name} onChangeText={(v) => setNewAtt((p) => ({ ...p, name: v }))} placeholder="Name" />
-              <SelectField label="Role" value={newAtt.role} options={ATTENDEE_ROLES} onChange={(v) => setNewAtt((p) => ({ ...p, role: v, isExternal: isExternalRole(v) }))} />
-              <Button label="Add attendee" variant="secondary" icon={<Feather name="plus" size={15} color={palette.ink} />} onPress={() => { if (!newAtt.name.trim()) return; setAttendees((p) => [...p, { ...newAtt }]); setNewAtt({ name: "", role: "investor", isExternal: true }); }} />
-            </View>
+            {attendees.map((a, i) => {
+              const href = a.kind === "client" && a.refId ? `/m/investors/${a.refId}` : a.kind === "lead" && a.refId ? `/m/leads/${a.refId}` : null;
+              return (
+                <View key={`${a.kind ?? "x"}:${a.refId ?? a.name}:${i}`} style={styles.rowItem}>
+                  <StatusPill label={a.kind ? ATTENDEE_KIND_LABEL[a.kind] : ATTENDEE_ROLES.find((r) => r.value === a.role)?.label ?? a.role} tone={a.kind === "user" ? "info" : "neutral"} size="sm" dot={false} />
+                  <Text variant="body" style={[{ flex: 1 }, href ? { color: palette.brand } : null]} numberOfLines={1} onPress={href ? () => router.push(href as any) : undefined}>{a.name}</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${a.name}`} onPress={() => setAttendees((p) => p.filter((_, idx) => idx !== i))} hitSlop={8}><Feather name="x" size={16} color={palette.muted} /></Pressable>
+                </View>
+              );
+            })}
+            <Button label="Add attendee" variant="secondary" icon={<Feather name="user-plus" size={15} color={palette.ink} />} onPress={() => setPickerOpen(true)} style={{ marginTop: spacing.sm }} />
           </Card>
 
           {/* Discussion */}
@@ -282,44 +256,28 @@ export default function MeetingDetail() {
             <TextField label="Discussion points (agenda)" value={discussion} onChangeText={setDiscussion} placeholder="What you plan to cover with the client…" multiline />
           </Card>
 
-          {/* Notes + AI */}
-          <Card style={{ marginTop: spacing.lg }}>
-            <TextField label="Meeting notes" value={notes} onChangeText={setNotes} placeholder="What was discussed, decisions, mood, follow-up needed…" multiline />
-            <Button label="AI summarise" variant="secondary" loading={aiBusy} onPress={runAiSummary} icon={<Feather name="zap" size={15} color={palette.violet} />} />
-            <Text variant="caption" tone="muted" style={{ marginTop: spacing.sm }}>Completing without notes auto-creates a 24-hour "write up your notes" task.</Text>
-          </Card>
-
-          {/* Outcome */}
-          <Card style={{ marginTop: spacing.lg }}>
-            <Text variant="subtitle" style={{ marginBottom: spacing.md }}>Outcome</Text>
-            <SelectField label="Result" value={outcome} options={[{ value: "", label: "— Not captured —" }, ...MEETING_OUTCOMES]} onChange={setOutcome} placeholder="— Not captured —" />
-            <TextField label="Outcome notes" value={outcomeNotes} onChangeText={setOutcomeNotes} placeholder="Optional context" />
-            <Text variant="caption" tone="muted">For lead meetings the outcome moves the journey: Ready → won, Not interested → closed, Wants more info / Not ready → re-nurture in 7 days.</Text>
-          </Card>
-
-          {/* Action items */}
+          {/* Action items — each one is a task for the person it is given to */}
           <Card style={{ marginTop: spacing.lg }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
               <Text variant="subtitle">Action items ({items.length})</Text>
               <Pressable accessibilityRole="button" accessibilityLabel="Add action item" onPress={() => setItems((s) => [...s, { title: "" }])} hitSlop={8}><Feather name="plus" size={18} color={palette.brand} /></Pressable>
             </View>
             {items.length === 0 ? (
-              <Text variant="caption" tone="muted">Each item becomes an RM task when this meeting is marked completed.</Text>
+              <Text variant="caption" tone="muted">None yet.</Text>
             ) : items.map((it, i) => (
-              <View key={i} style={{ marginBottom: spacing.md }}>
+              <View key={it.taskId ?? `new-${i}`} style={styles.item}>
                 <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
                   <View style={{ flex: 1 }}>
-                    <TextField label={`Item ${i + 1}`} value={it.title} onChangeText={(v) => setItems((s) => s.map((x, idx) => idx === i ? { ...x, title: v } : x))} placeholder="e.g. Send tax-saving fund note by Tue" />
+                    <TextField label={`Item ${i + 1}`} value={it.title} onChangeText={(v) => setItems((s) => s.map((x, idx) => idx === i ? { ...x, title: v } : x))} placeholder="e.g. Send tax-saving fund recommendation" />
                   </View>
-                  {it.taskId ? (
-                    <View style={{ paddingTop: 26 }}><StatusPill label="task ✓" tone="success" size="sm" dot={false} /></View>
-                  ) : (
-                    <Pressable accessibilityRole="button" accessibilityLabel="Remove action item" onPress={() => setItems((s) => s.filter((_, idx) => idx !== i))} hitSlop={8} style={{ paddingTop: 30 }}><Feather name="trash-2" size={16} color={palette.danger} /></Pressable>
-                  )}
+                  <Pressable accessibilityRole="button" accessibilityLabel={it.taskId ? "Remove (cancels its task on save)" : "Remove action item"} onPress={() => setItems((s) => s.filter((_, idx) => idx !== i))} hitSlop={8} style={{ paddingTop: 30 }}><Feather name="trash-2" size={16} color={palette.danger} /></Pressable>
                 </View>
-                <DateField label="Due" value={it.dueAt ?? ""} onChange={(v) => setItems((s) => s.map((x, idx) => idx === i ? { ...x, dueAt: v } : x))} />
+                <SelectField label="Assigned to" value={it.assigneeId ?? null} placeholder="Assign to…" options={(team.data?.team ?? []).map((u) => ({ value: u.id, label: u.name }))} onChange={(v) => setItems((s) => s.map((x, idx) => idx === i ? { ...x, assigneeId: v } : x))} />
+                <DateField label="Due" value={it.dueAt ? String(it.dueAt).slice(0, 10) : ""} onChange={(v) => setItems((s) => s.map((x, idx) => idx === i ? { ...x, dueAt: v } : x))} />
+                {it.taskId ? <Text variant="caption" tone="brand" onPress={() => router.push(`/m/tasks/${it.taskId}` as any)}>Open task →</Text> : null}
               </View>
             ))}
+            {items.length > 0 ? <Text variant="caption" tone="muted">No due date means a week from today.</Text> : null}
           </Card>
 
           {/* Attachments */}
@@ -330,7 +288,13 @@ export default function MeetingDetail() {
             </View>
             {atts.length === 0 ? (
               <Text variant="caption" tone="muted">Paste a link to a presentation, report, or signed document.</Text>
-            ) : atts.map((a, i) => (
+            ) : atts.map((a, i) => a.fileId ? (
+              <View key={a.fileId} style={styles.rowItem}>
+                <Feather name="paperclip" size={14} color={palette.muted} />
+                <Text variant="body" style={{ flex: 1 }} numberOfLines={1}>{a.name}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${a.name}`} onPress={() => setAtts((s) => s.filter((_, idx) => idx !== i))} hitSlop={8}><Feather name="x" size={16} color={palette.muted} /></Pressable>
+              </View>
+            ) : (
               <View key={i} style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
                 <View style={{ flex: 1 }}>
                   <TextField label={`Name ${i + 1}`} value={a.name} onChangeText={(v) => setAtts((s) => s.map((x, idx) => idx === i ? { ...x, name: v } : x))} placeholder="Display name" />
@@ -343,7 +307,7 @@ export default function MeetingDetail() {
 
           {/* Next review */}
           <Card style={{ marginTop: spacing.lg }}>
-            <DateField label="Next review date" value={nextReview} onChange={setNextReview} help="On completion, the client's next review is set to this date." />
+            <DateField label="Next review date" value={nextReview} onChange={setNextReview} help="On completion, the client's next review is set to this date — or, left blank, from the client's review cadence." />
           </Card>
 
           {/* Cancel */}
@@ -352,6 +316,8 @@ export default function MeetingDetail() {
           ) : null}
         </Animated.View>
       </ScrollView>
+      <AttendeePicker visible={pickerOpen} onClose={() => setPickerOpen(false)} taken={attendees}
+        onPick={(a) => { setAttendees((p) => [...p, a]); setPickerOpen(false); }} />
     </View>
   );
 }
@@ -379,5 +345,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
   prepGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   prepCell: { width: "31%", backgroundColor: palette.surfaceSunken, borderRadius: radius.sm, padding: spacing.sm, gap: 2 },
+  item: { marginBottom: spacing.md, paddingBottom: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
   rowItem: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
 });

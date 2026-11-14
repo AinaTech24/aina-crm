@@ -3,7 +3,7 @@
  *
  *   GET   /api/review-meetings            → { meetings[], stats }
  *   GET   /api/review-meetings/[id]       → meeting bundle (+ prep brief)
- *   PATCH /api/review-meetings/[id]       → status / notes / action items / reschedule
+ *   PATCH /api/review-meetings/[id]       → status / attendees / action items / reschedule
  *   DELETE/api/review-meetings/[id]       → cancel (status='cancelled')
  *
  * The list GET returns snake_case (raw SQL), so the Meeting interface is
@@ -109,7 +109,7 @@ function invalidateMeeting(qc: ReturnType<typeof useQueryClient>, id: string) {
 export function useUpdateMeeting(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Record<string, any>) => api.patch<{ ok: boolean; completed?: boolean }>(`/api/review-meetings/${id}`, body),
+    mutationFn: (body: Record<string, any>) => api.patch<{ ok: boolean; completed?: boolean; actionItems?: MeetingActionItem[]; attendees?: MeetingAttendee[]; familyMembers?: string[] }>(`/api/review-meetings/${id}`, body),
     onSuccess: () => invalidateMeeting(qc, id),
   });
 }
@@ -134,20 +134,13 @@ export const MEETING_CATEGORIES: { value: string; label: string }[] = [
   { value: "follow_up", label: "Follow-up Meeting" },
 ];
 
-export const MEETING_OUTCOMES: { value: string; label: string }[] = [
-  { value: "ready", label: "Ready to proceed" },
-  { value: "more_info", label: "Wants more info" },
-  { value: "not_ready", label: "Not ready right now" },
-  { value: "not_interested", label: "Not interested" },
-  { value: "no_show", label: "No-show" },
-];
-
 export const MEETING_TYPES = [
   "portfolio_review", "goal_review", "service_discussion", "family_review", "complaint_discussion",
   "discovery_call", "new_client_kickoff", "new_investment_discussion", "product_demo", "sales_pitch",
   "follow_up_call", "follow_up_visit", "other",
 ];
 
+/** Rows saved before the attendee lookup carry only a role. */
 export const ATTENDEE_ROLES: { value: string; label: string }[] = [
   { value: "rm", label: "RM (firm)" },
   { value: "investor", label: "Investor" },
@@ -161,8 +154,41 @@ export const ATTENDEE_ROLES: { value: string; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
-/** External unless the role is firm-internal (mirrors the web toggle). */
-export const isExternalRole = (role: string) => !["rm", "back_office", "compliance"].includes(role);
+// ── Attendees and action items (CRM rules of 2026-10-01) ──
+// An attendee is looked up — a team member, client or lead — or typed as a
+// guest (lib/review-meetings/attendee-kinds.ts). `kind` + `refId` is what
+// shows the meeting to that person. An action item IS a task: it has an owner
+// and a due date, and the server creates / edits / cancels its task on save.
+
+export type AttendeeKind = "client" | "lead" | "user" | "guest";
+export interface MeetingAttendee { name: string; role: string; isExternal: boolean; notes?: string; kind?: AttendeeKind; refId?: string }
+export interface AttendeeHit { kind: "client" | "lead" | "user"; id: string; name: string; detail: string | null }
+export interface MeetingActionItem { title: string; assigneeId?: string; dueAt?: string; taskId?: string }
+
+export const ATTENDEE_KIND_LABEL: Record<AttendeeKind, string> = { user: "Team", client: "Client", lead: "Lead", guest: "Guest" };
+
+/** The stored role for a looked-up attendee (web roleForKind). */
+export const roleForKind = (kind: AttendeeKind) => (kind === "user" ? "rm" : kind === "client" ? "investor" : "other");
+
+export function useAttendeeSearch(q: string) {
+  const term = q.trim();
+  return useQuery({
+    queryKey: ["attendee-search", term],
+    queryFn: () => api.get<{ hits: AttendeeHit[] }>("/api/review-meetings/attendee-search", { q: term }).then((r) => r.hits ?? []),
+    enabled: term.length >= 2,
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** Active team members — who an action item can be given to. */
+export function useMeetingTeam() {
+  return useQuery({
+    queryKey: ["meeting-team"],
+    queryFn: () => api.get<{ team: { id: string; name: string }[]; me: string }>("/api/review-meetings/team"),
+    staleTime: 5 * 60_000,
+  });
+}
 
 export const OUTCOME_TONE: Record<string, Tone> = {
   ready: "success", more_info: "warning", not_ready: "neutral", not_interested: "danger", no_show: "danger",
