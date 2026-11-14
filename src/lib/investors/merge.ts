@@ -25,7 +25,6 @@
  * would be impossible to un-merge with the same code.
  */
 
-import { resolveMergeOpportunityCollisions } from "@/lib/opportunities/journey";
 import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
@@ -289,11 +288,6 @@ export async function mergeInvestors(tx: Tx, input: MergeInput): Promise<MergeRe
   const movedCounts: Record<string, number> = {};
   let movedIdTotal = 0;
   let reversible = true;
-
-  // Both records with an open opportunity for the same product: the
-  // survivor's continues, the loser's is closed with a remark — otherwise the
-  // one-open-per-product index would stop the loser's opportunities moving.
-  await resolveMergeOpportunityCollisions(tx, { tenantId, userId: byUserId ?? "" }, loserId, survivorId);
 
   for (const tbl of moveTables) {
     // Per-table SAVEPOINT: a uniqueness collision skips THAT table (its rows

@@ -41,6 +41,8 @@ import { getClientHealth } from "@/lib/metrics/health";
 import { setFamilyRmFromClient } from "@/lib/families/head-rm";
 import { applyDemise, applyInactive, clearDemise, demiseDateError, indiaToday, type DemiseEffects } from "@/lib/investors/demise";
 import { clientsHoldingMoney, holdersMessage } from "@/lib/investors/holds-money";
+import { closeOpportunitiesOfGoneClients } from "@/lib/opportunities/journey";
+import { cancelJourneyTasks } from "@/lib/blueprints/journey-task";
 import {
   investors,
   folios,
@@ -775,6 +777,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         await clearDemise(tx, { tenantId: session.tenantId, investorId: id, actorUserId: session.userId });
       }
 
+      // Closed / exited: the client's open opportunities and onboarding step
+      // tasks end now, not at the nightly scan.
+      const gone = (s: string | null | undefined) => s === "closed" || s === "exited";
+      if (gone(parse.data.status) && !gone(before.status)) {
+        await closeOpportunitiesOfGoneClients(tx, { tenantId: session.tenantId, userId: session.userId }, [id]);
+        await cancelJourneyTasks(tx, { tenantId: session.tenantId, investorId: id, reason: `Client marked ${parse.data.status}` });
+      }
+
       return demise ? { ...after[0], demise } : after[0];
     });
 
@@ -850,6 +860,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           entityId: id,
           before: { name: inv.name, pan: inv.pan } as any,
         } as any);
+        await closeOpportunitiesOfGoneClients(tx, { tenantId: session.tenantId, userId: session.userId }, [id]);
+        await cancelJourneyTasks(tx, { tenantId: session.tenantId, investorId: id, reason: "Client moved to the Trash" });
         return "trashed" as const;
       }
 

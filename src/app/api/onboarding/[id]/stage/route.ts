@@ -194,7 +194,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             kind: "onboarding.documents.pending",
             title: `Documents pending — ${investorName}`,
             body: `${pendingDocs.length} document${pendingDocs.length === 1 ? "" : "s"} pending: ${pendingDocs.slice(0, 3).join(", ")}${pendingDocs.length > 3 ? "…" : ""}`,
-            linkUrl: `/dashboard/onboarding/${id}`,
+            linkUrl: `/dashboard/investors/${pipe.investorId}`,
             severity: "warning",
             meta: { pipeline_id: id, investor_id: pipe.investorId, pending_docs: pendingDocs } as any,
           } as any);
@@ -214,7 +214,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           kind: "onboarding.first_investment",
           title: `🎉 First investment booked — ${investor?.name ?? "investor"}`,
           body: `Welcome comm queued. Next stage: Welcome Kit.`,
-          linkUrl: `/dashboard/onboarding/${id}`,
+          linkUrl: `/dashboard/investors/${pipe.investorId}`,
           severity: "success",
           meta: { pipeline_id: id } as any,
         } as any);

@@ -911,9 +911,9 @@ export async function moveOpportunityBack(tx: Tx, actor: Actor, id: string, reas
 
 /**
  * Reopen a won or lost opportunity at the step it closed from — closed by
- * mistake, or the client came back. Refused while the client has another open
- * opportunity for the product (one open row per product) or is no longer a
- * live client. The owner gets a follow-up for tomorrow; audited
+ * mistake, or the client came back. Refused when the client is no longer a
+ * live client (a second open one for the same product is allowed since 0259).
+ * The owner gets a follow-up for tomorrow; audited
  * (opportunity.reopened).
  */
 export async function reopenOpportunity(tx: Tx, actor: Actor, id: string, reason: string): Promise<ManageResult> {
@@ -927,11 +927,6 @@ export async function reopenOpportunity(tx: Tx, actor: Actor, id: string, reason
       FROM investors WHERE id = ${opp.investorId}::uuid AND tenant_id = ${opp.tenantId}::uuid
   `)).rows[0] as { alive: boolean } | undefined;
   if (!alive?.alive) return { ok: false, error: "The client is closed, merged or in the Trash — it can't be reopened.", status: 409 };
-  const [other] = await tx.select({ id: clientOpportunities.id }).from(clientOpportunities).where(and(
-    eq(clientOpportunities.tenantId, opp.tenantId), eq(clientOpportunities.investorId, opp.investorId),
-    eq(clientOpportunities.product, opp.product), eq(clientOpportunities.status, "open"),
-  )).limit(1);
-  if (other) return { ok: false, error: `The client already has an open ${productLabel(opp.product)} opportunity.`, status: 409 };
 
   const inst = await ensureInstanceFor(tx, actor.tenantId, "opportunity", opp.id);
   // The step it closed FROM: the last step it stood at before Won / Lost.
@@ -1005,34 +1000,6 @@ export async function closeOpportunitiesOfGoneClients(tx: Tx, actor: Actor, inve
     n++;
   }
   return n;
-}
-
-/**
- * Merging two client records (lib/investors/merge.ts): where BOTH have an open
- * opportunity for the same product, the survivor's continues and the other is
- * closed as lost with a remark — otherwise the one-open-per-product rule would
- * stop the loser's opportunities moving at all. Call before the reassignment.
- */
-export async function resolveMergeOpportunityCollisions(
-  tx: Tx, actor: Actor, loserId: string, survivorId: string,
-): Promise<number> {
-  const rows = (await tx.execute(sql`
-    SELECT l.id FROM client_opportunities l
-      JOIN client_opportunities s ON s.tenant_id = l.tenant_id AND s.investor_id = ${survivorId}::uuid
-                                 AND s.product = l.product AND s.status = 'open'
-     WHERE l.tenant_id = ${actor.tenantId}::uuid AND l.investor_id = ${loserId}::uuid AND l.status = 'open'
-  `)).rows as Array<{ id: string }>;
-  for (const r of rows) {
-    const opp = await loadOpp(tx, actor.tenantId, r.id);
-    if (!opp) continue;
-    const reason = "Client records merged — the surviving record's opportunity for this product continues";
-    await ensureInstanceFor(tx, actor.tenantId, "opportunity", opp.id);
-    await transitionPoly(tx, actor.tenantId, "opportunity", opp.id, "lost", {
-      actorUserId: actor.userId || undefined, remarks: reason, systemBypass: true, finalStatus: "lost",
-    });
-    await closeOpportunity(tx, actor, opp, "lost", { lostReason: reason });
-  }
-  return rows.length;
 }
 
 /**

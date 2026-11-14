@@ -422,7 +422,7 @@ page's Overview tab.
 - **Undo** (capability `opportunity.reopen`: branch heads, the owner
   implicitly; grantable): "Move back one step" on an open journey and
   "Reopen" on a won / lost one (at the step it closed from; refused while
-  another is open for the product, or the client is gone),
+  the client is gone),
   `POST /api/opportunities/[id]/manage`, audited `opportunity.moved_back` /
   `opportunity.reopened` with the reason. Going back to or before Client
   accepted forgets a recorded acceptance; leaving the RTA check cancels its task.
@@ -436,9 +436,10 @@ page's Overview tab.
 - **Live clients only**: the board, its list and tiles count a client by
   `aliveClient`, as the dashboard cards do. A client closed / exited / merged
   away / trashed takes their open opportunities with them
-  (`closeOpportunitiesOfGoneClients`: the bulk client actions, `syncOpportunity`
-  and the nightly ops scan). A merge keeps the survivor's open opportunity for
-  a product and closes the loser's (`resolveMergeOpportunityCollisions`).
+  (`closeOpportunitiesOfGoneClients`: the bulk client actions, the client
+  edit / delete route, `syncOpportunity` and the nightly ops scan). A merge
+  moves every open opportunity to the survivor first — a client may hold two
+  for the same product since 0259 — so nothing is closed by a merge.
 - **A policy recorded** in the Insurance register (create / edit) runs
   `onPolicyRecorded`: in force → the open opportunity of that line is won,
   else the journey catches up. The register's bulk import does not.

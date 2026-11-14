@@ -38,7 +38,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
 import { parseUccCell } from "@/lib/investors/ucc";
 import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
-import { applyRiskCategory, normalizeRiskCategory } from "@/lib/risk-profile/apply";
+import { applyRiskCategory, normalizeRiskCategory, STAFF_ENTRY } from "@/lib/risk-profile/apply";
 import { investors } from "@/db/schema";
 import { CLIENT_TYPE_KEYS, clientTypeFromTaxStatus } from "@/lib/investors/client-types";
 
@@ -261,7 +261,7 @@ export async function POST(req: NextRequest) {
               // Risk category → new risk_profile_responses record when it changed.
               const rowRisk = reverse.riskProfile ? normalizeRiskCategory(pick(row, reverse.riskProfile)) : null;
               if (rowRisk) {
-                await applyRiskCategory({ tx: sp as any, tenantId: session.tenantId, investorId: existing.id, category: rowRisk, currentCategory: existing.riskProfile, createdById: session.userId });
+                await applyRiskCategory({ tx: sp as any, tenantId: session.tenantId, investorId: existing.id, category: rowRisk, currentCategory: existing.riskProfile, createdById: session.userId, ...STAFF_ENTRY });
               }
             });
             updated++;
@@ -413,7 +413,7 @@ export async function POST(req: NextRequest) {
             } as any);
             // Risk category → create a risk_profile_responses record + cache it.
             if (rowRisk) {
-              await applyRiskCategory({ tx: sp as any, tenantId: session.tenantId, investorId: newId, category: rowRisk, currentCategory: null, createdById: session.userId, signedByName: core.name });
+              await applyRiskCategory({ tx: sp as any, tenantId: session.tenantId, investorId: newId, category: rowRisk, currentCategory: null, createdById: session.userId, ...STAFF_ENTRY });
             }
           });
           inserted++;

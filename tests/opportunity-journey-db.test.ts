@@ -242,19 +242,12 @@ describe.skipIf(!TEST_DB)("opportunity journey (DB)", () => {
     expect(await tx((t) => J.onProductBooked(t, actor(u.rm), c, "fd_bonds_ncd", "new FD", { bookedAt: new Date() }))).toBe(o.id);
   });
 
-  it("O11: a closed client's open opportunities close; a merge keeps the survivor's", async () => {
+  it("O11: a closed client's open opportunities close", async () => {
     const c = await client();
     const o = await open(c, "nps");
     await q(sql`UPDATE investors SET status = 'closed' WHERE id = ${c}::uuid`);
     expect(await tx((t) => J.closeOpportunitiesOfGoneClients(t, actor(""), [c]))).toBe(1);
     expect((await row(o.id)).status).toBe("lost");
-    const keep = await client();
-    const lose = await client();
-    const ok = await open(keep, "pms");
-    const ol = await open(lose, "pms");
-    expect(await tx((t) => J.resolveMergeOpportunityCollisions(t, actor(u.owner), lose, keep))).toBe(1);
-    expect((await row(ol.id)).status).toBe("lost");
-    expect((await row(ok.id)).status).toBe("open");
   });
 
   it("O12: the money coming in brings a parked opportunity back with a follow-up", async () => {
