@@ -347,7 +347,9 @@ export function RtaMailbackCard() {
             <span>
               Enter the ZIP password you set with each RTA when subscribing to their mailback — stored encrypted. If your
               firm runs <strong>more than one ARN</strong>, each mailback subscription can have its own password: add every
-              one below and we try them all on each incoming file, so nothing from your own ARNs gets missed.
+              one below and we try them all on each incoming file, so nothing from your own ARNs gets missed.{" "}
+              <strong>CAMS and KFintech let a password be typed on every report request</strong> — a file whose request used a
+              password saved here opens by itself, any other is refused. Typing the same password every time keeps this list short.
             </span>
           </p>
           <PasswordManager

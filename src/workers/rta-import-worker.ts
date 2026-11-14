@@ -37,7 +37,7 @@ import { Q, RTA_BACKGROUND_PRIORITY } from "./queues";
 import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { RICH_KINDS, classifyMailback } from "@/lib/rta/classify-mailback";
-import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
+import { appendMailbackPassword, getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
 import { retireEmptyPlaceholdersAfterImport } from "@/lib/rta/placeholder-sweep";
 import { restoreTrashedHoldersAfterImport } from "@/lib/investors/holds-money";
@@ -57,6 +57,8 @@ export type RtaImportJob = {
   password?: string;
   /** Every saved password for this source, tried in order until one opens the archive. */
   passwords?: string[];
+  /** A person typed `password` for this upload and asked for it to be kept when it proves right. */
+  rememberPassword?: boolean;
   userId: string;
   branchId?: string | null;
   roles: string[];
@@ -158,7 +160,7 @@ async function openWithAnyPassword(
   buf: Buffer,
   passwords: string[]
 ): Promise<
-  | { ok: true; data: Uint8Array; filename: string; others: Array<{ filename: string; data: Uint8Array }> }
+  | { ok: true; data: Uint8Array; filename: string; others: Array<{ filename: string; data: Uint8Array }>; usedPassword?: string }
   | { ok: false; error: any; triedCount: number }
 > {
   const tryList = passwords.length ? passwords : [undefined];
@@ -167,7 +169,7 @@ async function openWithAnyPassword(
   for (const pw of tryList) {
     try {
       const r = await extractRtaFileFromZip(new Uint8Array(buf), pw);
-      return { ok: true, data: r.data, filename: r.filename, others: r.others };
+      return { ok: true, data: r.data, filename: r.filename, others: r.others, usedPassword: pw };
     } catch (e: any) {
       lastErr = e;
       if (!isWrongPasswordError(e?.message)) lastNonPasswordErr = e;
@@ -189,6 +191,33 @@ function classifyUnzipFailure(error: any, triedCount: number, hadAnyPassword: bo
     };
   }
   return { rejected: false, message: `Could not open the zip — ${error?.message ?? "unsupported archive"}.` };
+}
+
+/**
+ * A person typed a ZIP password in the upload dialog and the archive opened with
+ * it: keep it with the firm's saved ones, so the NEXT file with that password
+ * (an automatic mailback, a re-import) opens by itself instead of being
+ * rejected — the same typing used to be forgotten the moment the job ended.
+ * Only when they asked ("Remember this password"), only a password that proved
+ * right, only one not already saved. Other locked files then get another try.
+ */
+async function rememberTypedPassword(
+  job: { tenantId?: string; password?: string; passwords?: string[]; rememberPassword?: boolean },
+  source: string | undefined,
+  used: string | undefined,
+): Promise<void> {
+  if (!job.rememberPassword || !job.password || !job.tenantId || used !== job.password) return;
+  if ((job.passwords ?? []).includes(job.password)) return;
+  if (source !== "cams" && source !== "kfintech") return;
+  const tenantId = job.tenantId;
+  try {
+    await withTenant(tenantId, async (tx) => {
+      await appendMailbackPassword(tx, tenantId, source, { label: "Remembered from an upload", password: job.password! });
+    });
+    await enqueueRejectedRescan(tenantId, source);
+  } catch (e) {
+    captureError("[rta-import] could not remember the typed ZIP password", e, { tenantId });
+  }
 }
 
 async function markRejected(job: RtaImportJob, reason: string, extra?: { checksum?: string; sizeBytes?: number }) {
@@ -319,6 +348,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
       else await markFailed(job, verdict.message, extra);
       return;
     }
+    await rememberTypedPassword(job, (job as any).source, opened.usedPassword);
     dataBuf = Buffer.from(opened.data);
     innerName = opened.filename;
     if (opened.others.length) {
@@ -690,6 +720,8 @@ export type RichImportJob = {
   password?: string;
   /** Every saved password for this source, tried in order until one opens the archive. */
   passwords?: string[];
+  /** A person typed `password` for this upload and asked for it to be kept when it proves right. */
+  rememberPassword?: boolean;
   rta: string;
   reportType: string;
   dryRun: boolean;
@@ -740,6 +772,7 @@ async function computeRichImport(
       const verdict = classifyUnzipFailure(opened.error, opened.triedCount, passwords.length > 0);
       return { ok: false, notOurs: verdict.rejected, error: verdict.message };
     }
+    await rememberTypedPassword(job, (job as any).rta, opened.usedPassword);
     data = opened.data;
     innerName = opened.filename;
   }

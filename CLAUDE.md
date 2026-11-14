@@ -1169,6 +1169,20 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   `{ password, save }` tries it first, `appendMailbackPassword`s it when asked and
   rescans the firm's other rejected files. The audit row records only that a
   password was typed, never the password.
+- **Review of "why do files keep being rejected"** (2026-11-14). Three causes, all
+  fixed: (1) a password typed in the upload dialog opened the file and was then
+  FORGOTTEN (it rode in the Redis job only), so every automatic file with that
+  password was refused again — the dialog now has "Remember this password" (on by
+  default): the worker (`rememberTypedPassword`) keeps it, encrypted, only when it
+  actually opened the archive and was not already saved, then rescans the rejected
+  files; (2) a refused file was shown only as a grey row, and the nightly alert
+  fired only when a registrar had not imported for 3 days — a firm whose CAMS AUM
+  file imported while its CAMS transaction file was refused was never told. Now
+  `rta.password_rejected` (`feed-health.ts`) tells the owners the day any file is
+  refused, again each day until fixed, and the RTA File Imports page shows a banner;
+  (3) the cause (a password set per request) was not said anywhere — the RTA
+  Mailback card and the banner now say it. Not fixable in code: the registrar's form
+  asks for the password on every request.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.

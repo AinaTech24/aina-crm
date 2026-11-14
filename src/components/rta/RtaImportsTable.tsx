@@ -190,6 +190,21 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
           </button>
         </div>
 
+        {tab === "recent" && recent.some((r) => r.status === "rejected") && (
+          <div className="text-xs text-amber-900 border border-amber-200 rounded-md px-3 py-2 bg-amber-50 space-y-1">
+            <div className="font-medium">
+              {recent.filter((r) => r.status === "rejected").length} file(s) could not be opened — no saved password fits.
+            </div>
+            <div>
+              A registrar lets a different ZIP password be set on every request, so a file can be refused while others from the same
+              registrar import. Save that password under{" "}
+              <Link href="/dashboard/settings/integrations" className="underline">Settings → Integrations → RTA Mailback</Link> and the
+              waiting files import on their own — or press the key button on a row to open just that file. Using the same password on
+              every request avoids this.
+            </div>
+          </div>
+        )}
+
         {reimportMsg && (
           <div className="text-2xs text-muted-foreground border rounded-md px-2.5 py-1.5 bg-secondary/40">
             {reimportMsg}

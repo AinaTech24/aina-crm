@@ -36,6 +36,8 @@ const BodySchema = z.object({
   key: z.string().min(1).max(500),
   filename: z.string().min(1).max(300),
   password: z.string().max(200).optional(),
+  /** Keep the typed password with the firm's saved ones once it opens the file. */
+  rememberPassword: z.boolean().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -52,7 +54,7 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  const { source, kind, key, filename: fileName, password } = parsed.data;
+  const { source, kind, key, filename: fileName, password, rememberPassword } = parsed.data;
 
   // SECURITY: the `key` is supplied by the client (it came from
   // /api/rta-imports/upload-url, which builds keys as `tenants/<tenantId>/rta/...`).
@@ -174,6 +176,7 @@ export async function POST(req: NextRequest) {
           key,
           filename: fileName,
           password: password || undefined,
+          rememberPassword: rememberPassword === true && !!password,
           passwords: savedPasswords,
           rta: source,
           reportType: "",
@@ -191,6 +194,7 @@ export async function POST(req: NextRequest) {
           key,
           filename: fileName,
           password: password || undefined,
+          rememberPassword: rememberPassword === true && !!password,
           passwords: savedPasswords,
           userId: session.userId,
           branchId: session.branchId,

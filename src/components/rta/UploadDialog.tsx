@@ -74,6 +74,8 @@ export function UploadDialog({
   const [kind, setKind] = useState<string>(defaultKind ?? "daily_transaction_feed");
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
+  // A password that proves right is kept for the automatic imports (the usual wish).
+  const [rememberPassword, setRememberPassword] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -131,7 +133,7 @@ export function UploadDialog({
       const res = await fetch("/api/rta-imports/upload", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source, kind, key: pres.key, filename: file.name, password: password || undefined }),
+        body: JSON.stringify({ source, kind, key: pres.key, filename: file.name, password: password || undefined, rememberPassword: password ? rememberPassword : undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -357,6 +359,15 @@ export function UploadDialog({
                   autoComplete="off"
                   className="w-full border rounded-lg px-3 py-2 text-sm bg-background mt-2"
                 />
+                {password && (
+                  <label className="mt-2 flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+                    <input type="checkbox" checked={rememberPassword} onChange={(e) => setRememberPassword(e.target.checked)} className="mt-0.5" />
+                    <span>
+                      Remember this password for the automatic imports — kept encrypted, and only if it opens this file. Files
+                      from the registrar with the same password then import on their own.
+                    </span>
+                  </label>
+                )}
               </div>
 
               {/* Submit */}
