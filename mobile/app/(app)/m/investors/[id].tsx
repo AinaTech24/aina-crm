@@ -53,7 +53,9 @@ const HEALTH_DOT: Record<string, string> = { green: palette.success, amber: pale
 const waNumber = (p?: string | null) => (p ? p.replace(/[^\d]/g, "").replace(/^0+/, "") : "");
 
 export default function InvestorDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // ?opportunity=new&product= — "Start opportunity" from the New lead form's
+  // existing-client match opens New opportunity here (web #opportunities).
+  const { id, opportunity, product } = useLocalSearchParams<{ id: string; opportunity?: string; product?: string }>();
   const router = useRouter();
   const { brand } = useBrand();
   const { data: d, isLoading, isError, refetch, isRefetching } = useInvestorFull(id);
@@ -188,7 +190,7 @@ export default function InvestorDetail() {
         </View>
 
         <Animated.View key={tab} entering={FadeIn.duration(220)}>
-          {tab === "overview" ? <OverviewTab d={d} id={id!} />
+          {tab === "overview" ? <OverviewTab d={d} id={id!} startOpportunity={opportunity === "new" ? product ?? "" : undefined} />
             : tab === "portfolio" ? <PortfolioTab d={d} />
             : tab === "profile" ? <ProfileTab d={d} />
             : <EngagementTab d={d} id={id!} />}

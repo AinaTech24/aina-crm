@@ -23,7 +23,7 @@ const CADENCE = [
   { key: "annual", label: "Annual" },
 ];
 
-export function OverviewTab({ d, id }: { d: any; id: string }) {
+export function OverviewTab({ d, id, startOpportunity }: { d: any; id: string; startOpportunity?: string }) {
   const inv = d.investor ?? {};
   const score = inv.healthScore != null ? Number(inv.healthScore) : null;
   const missing: string[] = d.completeness?.missing ?? [];
@@ -61,7 +61,7 @@ export function OverviewTab({ d, id }: { d: any; id: string }) {
         </View>
       </Section>
 
-      <ClientOpportunities investorId={id} />
+      <ClientOpportunities investorId={id} startWith={startOpportunity} />
 
       <ReviewCadence id={id} current={inv.reviewFrequency} />
 

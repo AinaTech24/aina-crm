@@ -5,7 +5,7 @@
  * product already open answers with that one instead.
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Pressable, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { Text } from "../../components/ui/Text";
@@ -22,9 +22,17 @@ import { palette, spacing } from "../../theme/tokens";
 import { OpportunityCard } from "./OpportunityCard";
 import { useClientOpportunities, useCreateOpportunity, assigneeList, istDay, OPPORTUNITY_PRODUCTS, type Staff } from "./api";
 
-export function ClientOpportunities({ investorId }: { investorId: string }) {
+export function ClientOpportunities({ investorId, startWith }: {
+  investorId: string;
+  /** Open New opportunity at once ("" = no product chosen yet). */
+  startWith?: string;
+}) {
   const q = useClientOpportunities(investorId);
   const [creating, setCreating] = useState(false);
+  const started = useRef(false);
+  useEffect(() => {
+    if (startWith !== undefined && q.data?.canWork && !started.current) { started.current = true; setCreating(true); }
+  }, [startWith, q.data?.canWork]);
   const [showClosed, setShowClosed] = useState(false);
   const items = q.data?.items ?? [];
   const openOnes = items.filter((o) => o.status === "open");
@@ -48,7 +56,7 @@ export function ClientOpportunities({ investorId }: { investorId: string }) {
       ) : null}
       {showClosed ? closed.map((o) => <OpportunityCard key={o.id} o={o} canWork={false} staff={staff} />) : null}
       {canWork ? (
-        <NewOpportunitySheet investorId={investorId} visible={creating} onClose={() => setCreating(false)}
+        <NewOpportunitySheet investorId={investorId} visible={creating} onClose={() => setCreating(false)} initialProduct={startWith || undefined}
           assignees={assigneeList(q.data?.assignees)} me={q.data?.me} />
       ) : null}
     </Section>
@@ -57,16 +65,18 @@ export function ClientOpportunities({ investorId }: { investorId: string }) {
 
 /** Start an opportunity: the product, roughly how much, who owns it, and
  *  Now (the first follow-up date) or Later (the client wants it, not yet). */
-export function NewOpportunitySheet({ investorId, visible, onClose, assignees, me, onCreated }: {
+export function NewOpportunitySheet({ investorId, visible, onClose, assignees, me, onCreated, initialProduct }: {
   investorId: string;
   visible: boolean;
   onClose: () => void;
   assignees: Staff[];
   me?: string;
   onCreated?: (id: string) => void;
+  initialProduct?: string;
 }) {
   const create = useCreateOpportunity(investorId);
-  const [product, setProduct] = useState<string | null>(null);
+  const [product, setProduct] = useState<string | null>(initialProduct ?? null);
+  useEffect(() => { if (visible && initialProduct) setProduct(initialProduct); }, [visible, initialProduct]);
   const [value, setValue] = useState("");
   const [mode, setMode] = useState<"sip" | "lumpsum">("sip");
   const [ownerId, setOwnerId] = useState<string | null>(null);

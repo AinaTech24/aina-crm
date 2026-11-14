@@ -63,7 +63,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
   const form = draft.value, setForm = draft.setValue;
   const online = useConnectivity(s => s.online);
   const [moreDetails, setMoreDetails] = useState(false);
-  const quickKeys = new Set(["name", "phone", "source", "referredByInvestorId", "followUpDate"]);
+  const quickKeys = new Set(["name", "phone", "email", "source", "sourceOther", "referredByInvestorId", "followUpDate"]);
   const quickLead = draftEnabled && !moreDetails;
   const showField = (f: { key: string; visibleIf?: (v: FormValues) => boolean }) => (!quickLead || quickKeys.has(f.key)) && (!f.visibleIf || f.visibleIf(form));
   const [hydrated, setHydrated] = useState(!isEdit);
@@ -255,6 +255,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
                     form={form}
                   />
                 ))}
+              {si === 0 && spec.notice ? <spec.notice form={form} isEdit={isEdit} /> : null}
             </View>
           ))}
 

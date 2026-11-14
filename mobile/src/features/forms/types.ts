@@ -5,6 +5,7 @@
  */
 
 import type { useRouter } from "expo-router";
+import type { ComponentType } from "react";
 
 export type FieldType =
   | "text"
@@ -121,6 +122,9 @@ export interface FormSpec {
   derive?: (v: FormValues) => Partial<FormValues> | null;
   /** TanStack query keys to invalidate on success (for list freshness). */
   invalidate?: string[];
+  /** A live notice under the first section (e.g. the lead duplicate scan). It
+   *  only informs — it never blocks the submit or changes the body. */
+  notice?: ComponentType<{ form: FormValues; isEdit: boolean }>;
 
   // ── Edit mode (when the route has ?editId=<id>) ──
   /** Header title in edit mode (default "Edit"). */
