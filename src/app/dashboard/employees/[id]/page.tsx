@@ -6,6 +6,7 @@ import { ChevronLeft, UserCog, Briefcase, Users, IndianRupee, CheckCircle2, Aler
 import { withTenant } from "@/db/client";
 import { users, complianceDocuments, tasks, reviewMeetings } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { tenantAccessibleNavKeys } from "@/config/nav-access";
 import { formatINR, formatDate } from "@/lib/utils";
@@ -249,6 +250,11 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
 
       {/* Edit form */}
       <EmployeeEditForm
+        // Changing a profile (roles above all) is `settings.users` — the same rule
+        // the save route enforces. Without it the form is read-only instead of
+        // letting someone fill it in and meet a "forbidden" on Save.
+        canManage={can(session.roles, "settings.users", session.permissions)}
+        isSelf={session.userId === emp.id}
         employee={{
           id: emp.id,
           name: emp.name,

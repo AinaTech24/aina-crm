@@ -2286,6 +2286,11 @@ These have clear hooks in the schema and architecture; pick them up in roadmap o
 - **Team management** — email invites with set-password-on-accept, role
   assignment, seat limit (`packages.maxUsers`) enforced at invite, offboarding
   with client redistribution. `platform_admin` is never tenant-assignable.
+  An employee's profile (`/dashboard/employees/[id]`) is editable only with
+  `settings.users` — the save route's own rule, passed to the form as `canManage`
+  (a viewer without it sees it read-only with a note, never a "forbidden" on Save).
+  Taking Owner / Admin off YOUR OWN profile asks first: you cannot give it back to
+  yourself afterwards, another owner has to.
 - **Billing** — Razorpay recurring auto-debit, HMAC-verified webhook, full
   subscription lifecycle, license gate restricting lapsed tenants to billing +
   support. Client-count quota (`packages.maxInvestors`) enforced on investor

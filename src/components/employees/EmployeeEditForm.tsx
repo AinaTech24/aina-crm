@@ -109,7 +109,13 @@ export function EmployeeEditForm({
   meetings = [],
   stats = {},
   tenantNavKeys = [],
+  canManage = true,
+  isSelf = false,
 }: {
+  /** The viewer may change profiles (`settings.users`); false = read-only. */
+  canManage?: boolean;
+  /** This is the viewer's own profile. */
+  isSelf?: boolean;
   employee: EmployeeFormValues;
   teammates: { id: string; name: string; email: string | null }[];
   /** Sidebar item hrefs the firm can open (the pool an owner can grant). */
@@ -133,7 +139,19 @@ export function EmployeeEditForm({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  function toggleRole(k: string) {
+  async function toggleRole(k: string) {
+    // Taking Owner / Admin off your OWN profile ends your right to change roles:
+    // you cannot give it back to yourself, another owner has to.
+    if (isSelf && k === "owner" && v.roles.includes("owner")) {
+      const ok = await confirmDialog({
+        title: "Remove your own Owner / Admin role?",
+        message:
+          "Once saved you can no longer change roles or permissions, and you cannot give Owner / Admin back to yourself. Another Owner of the firm would have to restore it.",
+        confirmLabel: "Remove my Owner role",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
     setV((p) => ({ ...p, roles: p.roles.includes(k) ? p.roles.filter((r) => r !== k) : [...p.roles, k] }));
   }
   
@@ -353,7 +371,10 @@ export function EmployeeEditForm({
               .filter(Boolean)
               .join(", ")
           : "";
-        const base = data?.error ?? `Save failed (HTTP ${r.status})`;
+        const base =
+          r.status === 403
+            ? "You do not have permission to change this profile. Only an Owner / Admin can — ask one to make the change."
+            : (data?.error ?? `Save failed (HTTP ${r.status})`);
         throw new Error(fields ? `${base} — check: ${fields}` : base);
       }
       setSaved(true);
@@ -420,6 +441,17 @@ export function EmployeeEditForm({
         <form onSubmit={submit} className="card-surface p-5 space-y-5">
           <h3 className="font-semibold text-sm">Employee details</h3>
 
+          {!canManage && (
+            <div className="text-xs text-amber-800 bg-amber-50 rounded-md p-2 flex items-start gap-2">
+              <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
+              <span>
+                {isSelf
+                  ? "You can see your profile but not change it — your role no longer includes managing the team. An Owner / Admin of the firm can change your roles."
+                  : "You can see this profile but not change it. Only an Owner / Admin can."}
+              </span>
+            </div>
+          )}
+
           {error && (
             <div className="text-xs text-rose-700 bg-rose-50 rounded-md p-2 flex items-start gap-2">
               <AlertCircle className="size-3.5 mt-0.5" /> {error}
@@ -427,6 +459,7 @@ export function EmployeeEditForm({
           )}
           {saved && <div className="text-xs text-emerald-700 bg-emerald-50 rounded-md p-2">✓ Saved</div>}
 
+          <fieldset disabled={!canManage} className="space-y-5 min-w-0 border-0 p-0 m-0">
           {/* Identity row */}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Employee Name *">
@@ -1021,11 +1054,15 @@ export function EmployeeEditForm({
             />
           </Field>
 
-          <div className="flex justify-end pt-3 border-t">
-            <button type="submit" disabled={busy} className="btn-primary text-sm">
-              <Save className="size-4" /> {busy ? "Saving…" : "Save changes"}
-            </button>
-          </div>
+          </fieldset>
+
+          {canManage && (
+            <div className="flex justify-end pt-3 border-t">
+              <button type="submit" disabled={busy} className="btn-primary text-sm">
+                <Save className="size-4" /> {busy ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          )}
         </form>
       )}
 
