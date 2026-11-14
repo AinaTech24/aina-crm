@@ -14,6 +14,7 @@ import { Section, FieldRow } from "./primitives";
 import { useSetReviewCadence } from "../api";
 import { canNominate, clientTypeLabel } from "../client-types";
 import { ClientOpportunities } from "../../opportunities/ClientOpportunities";
+import { RecordNotes } from "../../notes/RecordNotes";
 
 const healthTone = (n: number) => (n >= 70 ? palette.success : n >= 40 ? palette.warning : palette.danger);
 const CADENCE = [
@@ -62,6 +63,8 @@ export function OverviewTab({ d, id, startOpportunity }: { d: any; id: string; s
       </Section>
 
       <ClientOpportunities investorId={id} startWith={startOpportunity} />
+
+      <RecordNotes type="investor" id={id} limit={5} />
 
       <ReviewCadence id={id} current={inv.reviewFrequency} family={d.family?.reviewFrequency ? (d.family.familyName ?? "the family") : null} />
 

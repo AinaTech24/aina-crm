@@ -104,6 +104,7 @@ function invalidateLead(qc: ReturnType<typeof useQueryClient>, id: string) {
   qc.invalidateQueries({ queryKey: ["lead-full", id] });
   qc.invalidateQueries({ queryKey: ["lead", id] });
   qc.invalidateQueries({ queryKey: ["leads"] });
+  qc.invalidateQueries({ queryKey: ["record-notes", "lead", id] });
 }
 
 export function useLogActivity(id: string) {

@@ -411,7 +411,8 @@ export const investorForm: FormSpec = {
       title: "Status & lifecycle",
       visibleIf: (v) => v._edit === "1",
       fields: [
-        { key: "status", label: "Client status", type: "select", options: [{ value: "active", label: "Active" }, { value: "dormant", label: "Dormant" }, { value: "inactive", label: "Inactive" }, { value: "redemption_risk", label: "Redemption risk" }, { value: "closed", label: "Closed" }, { value: "exited", label: "Exited" }] },
+        { key: "dateOfDemise", label: "Date of death (demise)", type: "date", maxToday: true, help: "Recording it makes the client Inactive: live SIPs are stopped and pending orders cancelled." },
+        { key: "status", label: "Client status", type: "select", help: "Inactive stops all live SIPs and cancels pending orders.", options: [{ value: "active", label: "Active" }, { value: "dormant", label: "Dormant" }, { value: "inactive", label: "Inactive" }, { value: "redemption_risk", label: "Redemption risk" }, { value: "closed", label: "Closed" }, { value: "exited", label: "Exited" }] },
         // A minor's risk profile IS the guardian's (kept equal by the database).
         { key: "riskProfile", label: "Risk profile", type: "select", visibleIf: (v) => !kindIs("minor")(v), options: RISK_OPTIONS },
         { key: "_minorRisk", label: "Risk profile", type: "readonly", visibleIf: kindIs("minor"), format: () => "Same as the guardian" },
@@ -541,6 +542,8 @@ export const investorForm: FormSpec = {
       // Edit-only fields — empty (hence undefined) on create, so they're omitted.
       alternatePhone: u(form.alternatePhone),
       status: form.status || undefined,
+      // Clearing a recorded date sends null (the client becomes Active again; stopped SIPs stay stopped).
+      dateOfDemise: form.dateOfDemise ? form.dateOfDemise : form._demiseWas ? null : undefined,
       // A minor's risk profile is the guardian's — never sent for a minor.
       riskProfile: minor ? undefined : form.riskProfile || undefined,
       mandateStatus: form.mandateStatus || undefined,
@@ -616,6 +619,8 @@ export const investorForm: FormSpec = {
       ckycNumber: rec.ckycNumber ?? "",
       kycValidatedAt: dstr(rec.kycValidatedAt),
       status: rec.status ?? "active",
+      dateOfDemise: rec.dateOfDemise ? String(rec.dateOfDemise).slice(0, 10) : "",
+      _demiseWas: rec.dateOfDemise ? "1" : "",
       riskProfile: rec.riskProfile ?? "",
       mandateStatus: rec.mandateStatus ?? "",
       mandateRefNo: rec.mandateRefNo ?? "",

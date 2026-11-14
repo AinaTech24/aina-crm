@@ -200,13 +200,16 @@ export function useDispatchComm(id: string, subject: CommSubject = "investor") {
   });
 }
 
-/** "Mark as exited" / "Reactivate client" (the CRM's rule of 2026-10-15): a
- *  client with no business is EXITED, not deleted — history, family, RM, notes
- *  and documents stay, and new money from the registrar makes them Active. */
-export function useSetClientExited(id: string) {
+/** A client's lifecycle status, as the CRM's client page sets it:
+ *  - Exited ("Mark as exited" / "Reactivate", 2026-10-15): no business, not
+ *    deleted — new money from the registrar makes them Active again.
+ *  - Inactive ("Mark inactive", 2026-10-19): live SIPs are stopped and pending
+ *    orders cancelled; the answer carries `demise: { sipsStopped, ordersCancelled }`.
+ *    Back to Active, the stopped SIPs stay stopped. */
+export function useSetClientStatus(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (exit: boolean) => api.patch(`/api/investors/${id}`, { status: exit ? "exited" : "active" }),
+    mutationFn: (status: "exited" | "inactive" | "active") => api.patch<any>(`/api/investors/${id}`, { status }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["investor-full", id] });
       qc.invalidateQueries({ queryKey: ["investor", id] });

@@ -26,6 +26,7 @@ import { LoadingState, ErrorState } from "../../../../src/components/states";
 import { Section, FieldRow, Empty } from "../../../../src/features/investors/detail/primitives";
 import { useLeadFull, useLogActivity, useConvertLead, useDeleteLead, LEAD_STAGES, stageMeta, stageDisplay, canonicalStage } from "../../../../src/features/leads/api";
 import { JourneyPanel } from "../../../../src/features/leads/JourneyPanel";
+import { RecordNotes } from "../../../../src/features/notes/RecordNotes";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { startCall } from "../../../../src/features/activities/callAndLog";
 import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
@@ -237,19 +238,13 @@ function Details({ l, owner }: { l: any; owner: any }) {
 }
 
 function Activity({ d }: { d: any }) {
-  const entries = parseFollowUpNotes(d.lead.followUpNotes);
   const tasks: any[] = d.tasks ?? [];
   const comms: any[] = d.communications ?? [];
   return (
     <View>
-      <Section title="Activity log" icon="clock">
-        {entries.length === 0 ? <Empty text="No activity logged yet." /> : entries.map((e, i) => (
-          <View key={i} style={styles.logRow}>
-            <Text variant="caption" tone="faint">{e.header}</Text>
-            <Text variant="caption">{e.body}</Text>
-          </View>
-        ))}
-      </Section>
+      {/* The CRM's Notes feed: calls, visits and notes logged anywhere (the app's
+          call log included) plus the lead's older follow-up notes. */}
+      <RecordNotes type="lead" id={d.lead.id} />
       <Section title="Tasks" icon="check-square" right={<Text variant="caption" tone="faint">{tasks.length}</Text>}>
         {tasks.length === 0 ? <Empty text="No tasks." /> : tasks.slice(0, 15).map((t) => (
           <View key={t.id} style={styles.row}>
@@ -270,14 +265,6 @@ function Activity({ d }: { d: any }) {
       </Section>
     </View>
   );
-}
-
-function parseFollowUpNotes(raw?: string | null): { header: string; body: string }[] {
-  if (!raw) return [];
-  return raw.split("\n\n---\n\n").map((block) => {
-    const m = block.match(/^\s*\[(.+?)\]\s*([\s\S]*)$/);
-    return m ? { header: m[1], body: m[2].trim() } : { header: "", body: block.trim() };
-  }).filter((e) => e.body || e.header);
 }
 
 // ── Action sheets ─────────────────────────────────────────────────────────────
@@ -350,7 +337,6 @@ const styles = StyleSheet.create({
   node: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: "center", justifyContent: "center" },
   stepLabel: { textAlign: "center", fontSize: 10 },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.lineSoft },
-  logRow: { paddingVertical: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.lineSoft, gap: 2 },
   tags: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   tag: { backgroundColor: palette.brandLight, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 3 },
 });
