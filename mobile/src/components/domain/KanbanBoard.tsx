@@ -4,6 +4,8 @@
  * card to open it, long-press (or its ⋯) to move it to another column — the
  * same change the web makes on a drop. Columns marked `noDrop` (e.g. a
  * reschedule, which needs a new date) are never offered as a destination.
+ * A moved card shows in its new column at once and goes back if the move
+ * fails (onMove rejects or the refreshed data disagrees).
  */
 
 import React, { useState } from "react";
@@ -23,24 +25,37 @@ export function KanbanBoard<T>({ columns, items, columnOf, keyOf, renderCard, on
   keyOf: (item: T) => string;
   renderCard: (item: T) => React.ReactNode;
   onOpen: (item: T) => void;
-  /** Move a card; omit to make the board read-only. */
-  onMove?: (item: T, toColumn: string) => void;
+  /** Move a card; omit to make the board read-only. Settle once the data is refreshed. */
+  onMove?: (item: T, toColumn: string) => void | Promise<unknown>;
   canMove?: (item: T) => boolean;
   emptyText?: string;
 }) {
   const [moving, setMoving] = useState<T | null>(null);
+  // Cards moved but not yet confirmed by fresh data: key → column.
+  const [pending, setPending] = useState<Record<string, string>>({});
   // Each column scrolls on its own, so it needs a real height: the board's,
   // less the room kept clear for the FAB.
   const [boardH, setBoardH] = useState(0);
   const byColumn = new Map<string, T[]>(columns.map((c) => [c.key, []]));
-  for (const it of items) byColumn.get(columnOf(it))?.push(it);
+  const colOf = (it: T) => pending[keyOf(it)] ?? columnOf(it);
+  for (const it of items) byColumn.get(colOf(it))?.push(it);
   const movable = (it: T) => !!onMove && (canMove ? canMove(it) : true);
   const startMove = (it: T) => {
     if (!movable(it)) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setMoving(it);
   };
-  const from = moving ? columnOf(moving) : null;
+  const from = moving ? colOf(moving) : null;
+  const move = (it: T, to: string) => {
+    const k = keyOf(it);
+    setPending((p) => ({ ...p, [k]: to }));
+    Promise.resolve(onMove?.(it, to)).catch(() => {}).finally(() =>
+      setPending((p) => {
+        const { [k]: _, ...rest } = p;
+        return rest;
+      }),
+    );
+  };
 
   return (
     <>
@@ -56,7 +71,16 @@ export function KanbanBoard<T>({ columns, items, columnOf, keyOf, renderCard, on
               </View>
               <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled>
                 {list.length === 0 ? <Text variant="caption" tone="faint" style={styles.empty}>{emptyText}</Text> : list.map((it) => (
-                  <Pressable key={keyOf(it)} onPress={() => onOpen(it)} onLongPress={() => startMove(it)} delayLongPress={300} accessibilityRole="button" accessibilityHint={movable(it) ? "Long-press to move" : undefined}>
+                  <Pressable
+                    key={keyOf(it)}
+                    onPress={() => onOpen(it)}
+                    onLongPress={() => startMove(it)}
+                    delayLongPress={300}
+                    accessibilityRole="button"
+                    accessibilityHint={movable(it) ? "Long-press to move" : undefined}
+                    accessibilityActions={movable(it) ? [{ name: "move", label: "Move" }] : undefined}
+                    onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === "move") startMove(it); }}
+                  >
                     <View style={styles.card}>
                       <View style={{ flex: 1 }}>{renderCard(it)}</View>
                       {movable(it) ? (
@@ -74,7 +98,7 @@ export function KanbanBoard<T>({ columns, items, columnOf, keyOf, renderCard, on
       </ScrollView>
       <BottomSheet visible={!!moving} onClose={() => setMoving(null)} title="Move to">
         {columns.filter((c) => c.key !== from && !c.noDrop).map((c) => (
-          <Pressable key={c.key} style={styles.option} onPress={() => { const it = moving!; setMoving(null); onMove?.(it, c.key); }} accessibilityRole="button">
+          <Pressable key={c.key} style={styles.option} onPress={() => { const it = moving!; setMoving(null); move(it, c.key); }} accessibilityRole="button">
             <View style={[styles.colDot, { backgroundColor: c.color }]} />
             <Text style={{ flex: 1, fontWeight: fontWeight.medium }}>{c.label}</Text>
             <Feather name="chevron-right" size={16} color={palette.faint} />

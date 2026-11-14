@@ -79,12 +79,11 @@ export default function InvestorsList() {
   const { rows, total } = flattenInvestors(query.data);
   const board = useInvestorBoard(apiFilters, isKanban);
   const boardRows = board.data?.rows ?? [];
-  const moveClient = (inv: Investor, toStageKey: string) => {
+  const moveClient = async (inv: Investor, toStageKey: string) => {
     if (!inv.leadId) return;
-    moveStage.mutate(
-      { leadId: inv.leadId, toStageKey },
-      { onSuccess: () => toast.success(`Moved to ${CLIENT_PHASE_STAGES.find((s) => s.key === toStageKey)?.label ?? toStageKey}`) },
-    );
+    await moveStage.mutateAsync({ leadId: inv.leadId, toStageKey });
+    toast.success(`Moved to ${CLIENT_PHASE_STAGES.find((s) => s.key === toStageKey)?.label ?? toStageKey}`);
+    await board.refetch();
   };
   const activeCount = countActive(filters);
 

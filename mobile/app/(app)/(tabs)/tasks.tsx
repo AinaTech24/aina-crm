@@ -73,8 +73,8 @@ export default function TasksTab() {
     } catch (e: any) {
       toast.error(e?.message ?? "Couldn't move the task");
     } finally {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      qc.invalidateQueries({ queryKey: ["task-kpis"] });
+      // Awaited, so the board keeps the card where it was dropped until the fresh list lands.
+      await Promise.all([qc.invalidateQueries({ queryKey: ["tasks"] }), qc.invalidateQueries({ queryKey: ["task-kpis"] })]);
     }
   };
 

@@ -144,8 +144,8 @@ export default function MeetingsList({ embedded = false }: { embedded?: boolean 
     } catch (e: any) {
       toast.error(e?.message ?? "Couldn't move the meeting");
     } finally {
-      qc.invalidateQueries({ queryKey: ["meetings"] });
-      qc.invalidateQueries({ queryKey: ["meeting", m.id] });
+      // Awaited, so the board keeps the card where it was dropped until the fresh list lands.
+      await Promise.all([qc.invalidateQueries({ queryKey: ["meetings"] }), qc.invalidateQueries({ queryKey: ["meeting", m.id] })]);
     }
   };
   const doCancel = (m: Meeting) => {
