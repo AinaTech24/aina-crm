@@ -47,7 +47,8 @@ export default function NewProposal() {
 
   // ?leadId= / ?investorId= — opened from a lead's journey ("Create Proposal")
   // or a client: start with that recipient chosen, as the web builder does.
-  const params = useLocalSearchParams<{ leadId?: string; investorId?: string }>();
+  // ?opportunityId= links the proposal to the opportunity it answers.
+  const params = useLocalSearchParams<{ leadId?: string; investorId?: string; opportunityId?: string }>();
   React.useEffect(() => {
     let alive = true;
     const load = params.leadId
@@ -75,6 +76,7 @@ export default function NewProposal() {
         recipientName: recipient.name, recipientEmail: recipient.email ?? undefined, recipientPhone: recipient.phone ?? undefined,
         type: proposalType, title: title.trim(), riskRating: risk, coverLetter: coverLetter.trim() || undefined,
         products, validUntil,
+        ...(params.opportunityId && recipient.type === "investor" ? { opportunityId: params.opportunityId } : {}),
       },
       {
         onSuccess: (r) => { toast.success("Proposal created"); router.replace(`/m/proposals/${r.id}` as any); },

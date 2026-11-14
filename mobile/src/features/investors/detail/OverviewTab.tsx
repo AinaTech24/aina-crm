@@ -13,6 +13,7 @@ import { inr, fmtDate, titleCase, timeAgo } from "../../../lib/format";
 import { Section, FieldRow } from "./primitives";
 import { useSetReviewCadence } from "../api";
 import { canNominate, clientTypeLabel } from "../client-types";
+import { ClientOpportunities } from "../../opportunities/ClientOpportunities";
 
 const healthTone = (n: number) => (n >= 70 ? palette.success : n >= 40 ? palette.warning : palette.danger);
 const CADENCE = [
@@ -59,6 +60,8 @@ export function OverviewTab({ d, id }: { d: any; id: string }) {
           <SummaryCard label="Last review" value={inv.lastReviewAt ? timeAgo(inv.lastReviewAt) : "Never"} sub={inv.nextReviewAt ? `Next ${fmtDate(inv.nextReviewAt)}` : "No next set"} />
         </View>
       </Section>
+
+      <ClientOpportunities investorId={id} />
 
       <ReviewCadence id={id} current={inv.reviewFrequency} />
 

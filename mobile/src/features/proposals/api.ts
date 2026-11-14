@@ -50,6 +50,8 @@ export interface Proposal {
 }
 
 export interface CreateProposalBody {
+  /** The opportunity this proposal answers (proposals.opportunity_id). */
+  opportunityId?: string;
   recipientType: RecipientType;
   investorId?: string;
   leadId?: string;
