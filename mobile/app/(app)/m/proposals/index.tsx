@@ -1,120 +1,259 @@
 /**
- * Proposals list — the RM's outgoing investment proposals. Status filter chips +
- * a count ribbon; tap a row to open, FAB to create. Newest first.
+ * Proposals — the live CRM's list (web dashboard/proposals).
+ *
+ *  - List or Pipeline. The list has the web's status tabs, with counts under
+ *    the search: Draft (default) · Sent · Accepted · Rejected · Expired. A
+ *    draft or sent proposal past its valid-till date (on the IST calendar) is
+ *    Expired whatever its stored status says, and Renew gives it 30 days.
+ *  - A superseded proposal is an older VERSION of one that is listed — it is
+ *    reached from that proposal's versions, never counted twice.
+ *  - Each row opens the proposal; the PDF button downloads the document the
+ *    client receives.
  */
 
 import React from "react";
-import { View, Pressable, StyleSheet } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { FlashList } from "@shopify/flash-list";
 import { Feather } from "@expo/vector-icons";
-import { Screen } from "../../../../src/components/ui/Screen";
 import { Card } from "../../../../src/components/ui/Card";
 import { Text } from "../../../../src/components/ui/Text";
 import { StatusPill } from "../../../../src/components/ui/StatusPill";
 import { Skeleton } from "../../../../src/components/ui/Skeleton";
 import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
+import { Segmented } from "../../../../src/components/ui/Segmented";
+import { SearchBar } from "../../../../src/components/ui/SearchBar";
+import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
 import { FAB } from "../../../../src/components/ui/FAB";
-import { useProposals, num, isDraft, isCancelled, pastValidity, STATUS_LABEL, type Proposal, type ProposalStatus } from "../../../../src/features/proposals/api";
+import { ErrorState } from "../../../../src/components/states";
+import { useMe, hasCap } from "../../../../src/api/me";
+import { api } from "../../../../src/api/client";
+import { useTeam } from "../../../../src/features/team/api";
+import { useProposals, useRefreshProposals, num, STATUS_LABEL, STATUS_TONE, TYPE_LABEL, RECIPIENT_LABEL, type Proposal } from "../../../../src/features/proposals/api";
+import { ProposalsBoard, boardTotals, lakhs } from "../../../../src/features/proposals/Board";
+import { downloadProposalPdf } from "../../../../src/features/proposals/pdf";
+import { toast } from "../../../../src/lib/toast";
 import { inr, fmtDate, titleCase } from "../../../../src/lib/format";
 import { spacing, palette, radius, fontWeight } from "../../../../src/theme/tokens";
-import { toneColors, type Tone } from "../../../../src/theme";
 
-const STATUS_TONE: Record<ProposalStatus, Tone> = {
-  draft: "neutral", ready: "info", sent: "info", viewed: "brand", changes_requested: "warning", accepted: "success",
-  partially_approved: "success", executed: "success", rejected: "danger", expired: "warning", superseded: "neutral",
-};
-const open = (p: Proposal) => !["accepted", "partially_approved", "executed", "rejected", "superseded"].includes(p.status);
-// The web's tabs (dashboard/proposals): an open proposal past its validity reads as expired.
-const FILTERS: { key: string; label: string; match: (p: Proposal) => boolean }[] = [
-  { key: "all", label: "All", match: () => true },
-  { key: "draft", label: "Drafts", match: (p) => isDraft(p.status) && !pastValidity(p) },
-  { key: "sent", label: "Sent", match: (p) => ["sent", "viewed", "changes_requested"].includes(p.status) && !pastValidity(p) },
+/** The IST calendar day of a moment, YYYY-MM-DD. */
+const istDay = (d: string | number | Date) => new Date(new Date(d).getTime() + 5.5 * 3600e3).toISOString().slice(0, 10);
+/** Past its valid-till date on the IST calendar: valid till the 25th is valid all of the 25th. */
+const past = (p: Proposal) => !!p.validUntil && istDay(p.validUntil) < istDay(Date.now());
+const OPEN = ["draft", "ready", "sent", "viewed", "changes_requested"];
+
+const TABS: Array<{ key: string; label: string; match: (p: Proposal) => boolean }> = [
+  { key: "draft", label: "Draft", match: (p) => ["draft", "ready"].includes(p.status) && !past(p) },
+  { key: "sent", label: "Sent", match: (p) => ["sent", "viewed", "changes_requested"].includes(p.status) && !past(p) },
   { key: "accepted", label: "Accepted", match: (p) => ["accepted", "partially_approved", "executed"].includes(p.status) },
-  { key: "expired", label: "Expired", match: (p) => p.status === "expired" || (open(p) && pastValidity(p)) },
+  { key: "rejected", label: "Rejected", match: (p) => p.status === "rejected" },
+  { key: "expired", label: "Expired", match: (p) => p.status === "expired" || (OPEN.includes(p.status) && past(p)) },
 ];
+const isExpired = (p: Proposal) => p.status === "expired" || (OPEN.includes(p.status) && past(p));
+
+const SORTS = [
+  { key: "created_desc", label: "Newest first" },
+  { key: "created_asc", label: "Oldest first" },
+  { key: "invest_desc", label: "Investment ₹ — high to low" },
+  { key: "invest_asc", label: "Investment ₹ — low to high" },
+] as const;
+type SortKey = (typeof SORTS)[number]["key"];
+
+/** The validity a new proposal gets, so a renewal matches it. */
+const RENEW_DAYS = 30;
+const WEEK_MS = 7 * 864e5;
+
+/** Within a week either side, how long; further out, the valid-till date itself. */
+function validTill(p: Proposal): string {
+  if (!p.validUntil) return "—";
+  // The moment it stops being valid: midnight IST after its last valid day.
+  const lapses = new Date(`${istDay(p.validUntil)}T00:00:00+05:30`).getTime() + 864e5;
+  const diff = lapses - Date.now();
+  if (Math.abs(diff) >= WEEK_MS) return `Valid till ${fmtDate(p.validUntil)}`;
+  const d = Math.floor(Math.abs(diff) / 864e5), h = Math.floor(Math.abs(diff) / 3600e3);
+  const span = d >= 1 ? `${d}d` : `${Math.max(1, h)}h`;
+  return diff > 0 ? `Lapses in ${span}` : `Lapsed ${span} ago`;
+}
 
 export default function ProposalsList() {
   const router = useRouter();
-  const { data, isLoading, isRefetching, refetch } = useProposals();
-  const [filter, setFilter] = React.useState("all");
+  const { data, isLoading, isError, isRefetching, refetch } = useProposals();
+  const { data: me } = useMe();
+  const team = useTeam();
+  const refresh = useRefreshProposals();
+  const [view, setView] = React.useState<"list" | "board">("list");
+  const [tab, setTab] = React.useState("draft");
+  const [q, setQ] = React.useState("");
+  const [sort, setSort] = React.useState<SortKey>("created_desc");
+  const [sortOpen, setSortOpen] = React.useState(false);
+  const [pdfFor, setPdfFor] = React.useState<string | null>(null);
+  const canRenew = hasCap(me?.capabilities, "proposal.write");
+  const canCreate = canRenew;
 
-  // Superseded versions and cancelled proposals are not the RM's work (web list).
-  const all = (data ?? []).filter((p) => p.status !== "superseded" && !isCancelled(p));
-  const active = FILTERS.find((f) => f.key === filter)!;
-  const rows = all.filter((p) => active.match(p));
+  const names = React.useMemo(() => new Map((team.data?.rows ?? []).map((u) => [u.id, u.name ?? ""])), [team.data]);
+  const preparedBy = (id: string | null) => (id ? names.get(id) || null : null);
 
-  const header = (
-    <View>
-      <View style={styles.ribbon}>
-        <Metric label="Total" value={String(all.length)} />
-        <View style={styles.vline} />
-        <Metric label="With client" value={String(all.filter((p) => ["sent", "viewed", "changes_requested"].includes(p.status)).length)} />
-        <View style={styles.vline} />
-        <Metric label="Accepted" value={String(all.filter((p) => ["accepted", "partially_approved", "executed"].includes(p.status)).length)} />
-      </View>
-      <View style={styles.chips}>
-        {FILTERS.map((f) => (
-          <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[styles.chip, filter === f.key && styles.chipOn]}>
-            <Text variant="caption" style={{ color: filter === f.key ? palette.white : palette.muted, fontWeight: fontWeight.semibold }}>{f.label}</Text>
+  const term = q.trim().toLowerCase();
+  const current = (data ?? []).filter((p) => p.status !== "superseded")
+    .filter((p) => !term || [p.proposalNumber, p.title, p.recipientName].some((s) => String(s ?? "").toLowerCase().includes(term)));
+  const counts = Object.fromEntries(TABS.map((t) => [t.key, current.filter(t.match).length])) as Record<string, number>;
+  const active = TABS.find((t) => t.key === tab)!;
+  const rows = current.filter(active.match).sort((a, b) =>
+    sort === "created_asc" ? +new Date(a.createdAt) - +new Date(b.createdAt)
+      : sort === "invest_desc" ? num(b.totalInvestment) - num(a.totalInvestment)
+        : sort === "invest_asc" ? num(a.totalInvestment) - num(b.totalInvestment)
+          : +new Date(b.createdAt) - +new Date(a.createdAt));
+  const boardRows = current.filter((p) => !["rejected", "expired"].includes(p.status));
+  const bt = boardTotals(boardRows);
+  const anyProposal = (data ?? []).some((p) => p.status !== "superseded");
+
+  const renew = (p: Proposal) => {
+    const d = new Date(Date.now() + RENEW_DAYS * 864e5);
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    // The expiry job stored "expired"; give it back the state it lapsed from.
+    const back = p.status === "expired" ? (p.viewedAt ? "viewed" : p.sentAt ? "sent" : "ready") : null;
+    Alert.alert("Renew this proposal?", `${p.proposalNumber} will be valid till ${fmtDate(day)}, ${RENEW_DAYS} days from today.${p.sentAt ? " The copy the client has still shows the old date; send it again from the proposal if they need the new one." : ""}`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Renew",
+        onPress: () => api.patch(`/api/proposals/${p.id}`, { validUntil: new Date(`${day}T23:59:59+05:30`).toISOString(), ...(back ? { status: back } : {}) })
+          .then(() => { toast.success(`${p.proposalNumber} is valid till ${fmtDate(day)}.`); refresh(); })
+          .catch((e: any) => toast.error(e?.message ?? "Could not renew the proposal.")),
+      },
+    ]);
+  };
+  const pdf = async (p: Proposal) => {
+    setPdfFor(p.id);
+    try { await downloadProposalPdf(p.id, p.proposalNumber); } catch (e: any) { toast.error(e?.message ?? "Couldn't download the PDF"); } finally { setPdfFor(null); }
+  };
+  const open = (p: Proposal) => router.push(`/m/proposals/${p.id}` as any);
+
+  const controls = (
+    <View style={{ gap: spacing.md, marginBottom: spacing.md }}>
+      <Segmented options={[{ key: "list", label: "List" }, { key: "board", label: "Pipeline" }]} value={view} onChange={(v) => setView(v as "list" | "board")} />
+      <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
+        <View style={{ flex: 1 }}><SearchBar value={q} onChangeText={setQ} placeholder="Search by number, title, recipient…" /></View>
+        {view === "list" ? (
+          <Pressable onPress={() => setSortOpen(true)} style={styles.sortBtn} accessibilityRole="button" accessibilityLabel={`Sort: ${SORTS.find((s) => s.key === sort)!.label}`}>
+            <Feather name="bar-chart-2" size={18} color={sort === "created_desc" ? palette.muted : palette.brand} style={{ transform: [{ rotate: "90deg" }] }} />
           </Pressable>
-        ))}
+        ) : null}
       </View>
+      {view === "list" ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+          {TABS.map((t) => {
+            const on = tab === t.key;
+            const n = counts[t.key] ?? 0;
+            return (
+              <Pressable key={t.key} onPress={() => setTab(t.key)} style={[styles.tab, on && styles.tabOn]} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+                <Text variant="label" style={{ color: on ? palette.white : palette.ink70, fontWeight: fontWeight.semibold }}>{t.label}</Text>
+                <Text variant="label" style={{ color: on ? palette.white : t.key === "expired" && n > 0 ? palette.danger : palette.muted, fontWeight: t.key === "expired" && n > 0 ? fontWeight.bold : fontWeight.medium }}>{n}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : (
+        <Text variant="caption" tone="muted">
+          {bt.count} proposal{bt.count === 1 ? "" : "s"} sent · {bt.proposed > 0 ? lakhs(bt.proposed) : "₹0"} proposed · <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold }}>{bt.executed > 0 ? lakhs(bt.executed) : "₹0"} executed</Text> (first-year values: a year of SIPs plus one-time money)
+        </Text>
+      )}
     </View>
+  );
+
+  const empty = !anyProposal ? (
+    <View style={{ alignItems: "center", marginTop: spacing["2xl"], paddingHorizontal: spacing.lg }}>
+      <Feather name="file-text" size={28} color={palette.faint} />
+      <Text variant="body" style={{ marginTop: spacing.sm, fontWeight: fontWeight.semibold, color: palette.ink }}>No proposals yet.</Text>
+      {canCreate ? <Text variant="caption" tone="muted" center style={{ marginTop: spacing.xs }}>Tap New proposal to build a branded MF / Insurance / PMS / AIF proposal you can download as a PDF and send to a client.</Text> : null}
+    </View>
+  ) : (
+    <Text variant="body" tone="muted" center style={{ marginTop: spacing["2xl"] }}>No {active.label.toLowerCase()} proposals{term ? " match this search" : ""}.</Text>
   );
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
-      <ScreenHeader title="Proposals" subtitle={`${all.length} total`} />
+      <ScreenHeader title="Proposals" />
       {isLoading ? (
-        <View style={{ padding: spacing.lg }}>{header}<Skeleton width="100%" height={72} style={{ marginTop: spacing.md }} /><Skeleton width="100%" height={72} style={{ marginTop: spacing.sm }} /></View>
+        <View style={{ padding: spacing.lg }}>{controls}<Skeleton width="100%" height={88} /><Skeleton width="100%" height={88} style={{ marginTop: spacing.sm }} /></View>
+      ) : isError ? (
+        <ErrorState message="Couldn't load proposals." onRetry={() => refetch()} />
+      ) : view === "board" ? (
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120 }}>
+          {controls}
+          <ProposalsBoard rows={boardRows} preparedBy={preparedBy} onOpen={open} />
+        </ScrollView>
       ) : (
         <FlashList
           data={rows}
           keyExtractor={(p) => p.id}
-          ListHeaderComponent={header}
+          ListHeaderComponent={controls}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120 }}
           onRefresh={refetch}
           refreshing={isRefetching}
-          ListEmptyComponent={<Text variant="body" tone="muted" style={{ textAlign: "center", marginTop: spacing["2xl"] }}>No proposals here yet.</Text>}
-          renderItem={({ item }) => <Row p={item} onPress={() => router.push(`/m/proposals/${item.id}` as any)} />}
+          ListEmptyComponent={empty}
+          renderItem={({ item }) => (
+            <Row p={item} by={preparedBy(item.preparedByUserId)} canRenew={canRenew} pdfBusy={pdfFor === item.id}
+              onPress={() => open(item)} onPdf={() => pdf(item)} onRenew={() => renew(item)} />
+          )}
         />
       )}
-      <FAB icon="plus" label="New proposal" onPress={() => router.push("/m/proposals/new" as any)} />
+      {canCreate ? <FAB icon="plus" label="New proposal" onPress={() => router.push("/m/proposals/new" as any)} /> : null}
+
+      <BottomSheet visible={sortOpen} onClose={() => setSortOpen(false)} title="Sort">
+        {SORTS.map((s) => (
+          <Pressable key={s.key} style={styles.sortRow} onPress={() => { setSort(s.key); setSortOpen(false); }} accessibilityRole="button" accessibilityState={{ selected: sort === s.key }}>
+            <Text variant="body" style={{ color: sort === s.key ? palette.brandDark : palette.ink }}>{s.label}</Text>
+            {sort === s.key ? <Feather name="check" size={18} color={palette.brand} /> : null}
+          </Pressable>
+        ))}
+      </BottomSheet>
     </View>
   );
 }
 
-function Row({ p, onPress }: { p: Proposal; onPress: () => void }) {
+function Row({ p, by, canRenew, pdfBusy, onPress, onPdf, onRenew }: {
+  p: Proposal; by: string | null; canRenew: boolean; pdfBusy: boolean; onPress: () => void; onPdf: () => void; onRenew: () => void;
+}) {
   const invest = num(p.totalInvestment);
+  const corpus = num(p.expectedCorpus);
+  const expired = isExpired(p);
   return (
-    <Pressable onPress={onPress}>
-      <Card style={{ marginBottom: spacing.sm }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <Text variant="body" style={{ flex: 1, fontWeight: fontWeight.semibold }} numberOfLines={1}>{p.title}</Text>
-          <StatusPill label={STATUS_LABEL[p.status] ?? titleCase(p.status)} tone={STATUS_TONE[p.status] ?? "neutral"} size="sm" />
-        </View>
-        <Text variant="caption" tone="muted" numberOfLines={1} style={{ marginTop: 2 }}>
-          {p.proposalNumber} · {p.recipientName}
-        </Text>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: spacing.sm }}>
-          <Text variant="caption" tone="faint">{titleCase(p.type.replace(/_/g, " "))}</Text>
-          {invest > 0 ? <Text variant="caption" style={{ fontWeight: fontWeight.semibold, color: palette.ink }}>{inr(invest)}</Text> : null}
-          <Text variant="caption" tone="faint">{fmtDate(p.createdAt)}</Text>
-        </View>
-      </Card>
-    </Pressable>
+    <Card onPress={onPress} style={{ marginBottom: spacing.sm }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+        <Text variant="label" style={{ flex: 1, color: palette.brandDark, fontWeight: fontWeight.bold }} numberOfLines={1}>{p.proposalNumber}{(p.version ?? 1) > 1 ? ` · v${p.version}` : ""}</Text>
+        {expired ? <StatusPill label="Expired" tone="danger" size="sm" /> : <StatusPill label={STATUS_LABEL[p.status] ?? titleCase(p.status)} tone={STATUS_TONE[p.status] ?? "neutral"} size="sm" />}
+        <Pressable onPress={onPdf} hitSlop={8} style={styles.pdf} accessibilityRole="button" accessibilityLabel={`Download ${p.proposalNumber} PDF`} disabled={pdfBusy}>
+          {pdfBusy ? <ActivityIndicator size="small" color={palette.muted} /> : <Feather name="download" size={17} color={palette.muted} />}
+        </Pressable>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 4 }}>
+        <Text variant="body" style={{ color: palette.ink, fontWeight: fontWeight.semibold, flexShrink: 1 }} numberOfLines={1}>{p.recipientName}</Text>
+        <View style={styles.kind}><Text variant="caption" style={{ fontSize: 11, color: palette.ink70 }}>{RECIPIENT_LABEL[p.recipientType] ?? "Client"}</Text></View>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.sm }}>
+        <Text variant="caption" tone="muted" style={{ flex: 1 }} numberOfLines={1}>{TYPE_LABEL[p.type] ?? titleCase(p.type)}</Text>
+        <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold }}>{invest > 0 ? inr(invest) : "—"}</Text>
+        {corpus > 0 ? <Text variant="caption" style={{ color: palette.success, fontWeight: fontWeight.semibold }}>→ {inr(corpus)}</Text> : null}
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 4 }}>
+        <Text variant="caption" tone={expired ? "danger" : "faint"} style={{ flex: 1 }} numberOfLines={1}>{[validTill(p), by ? `by ${by}` : null].filter(Boolean).join(" · ")}</Text>
+        {expired && canRenew ? (
+          <Pressable onPress={onRenew} hitSlop={8} style={styles.renew} accessibilityRole="button" accessibilityLabel={`Renew ${p.proposalNumber}`}>
+            <Feather name="rotate-ccw" size={13} color={palette.brandDark} />
+            <Text variant="caption" style={{ color: palette.brandDark, fontWeight: fontWeight.semibold }}>Renew</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </Card>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return <View style={{ flex: 1, alignItems: "center" }}><Text style={{ fontSize: 18, fontWeight: fontWeight.bold }}>{value}</Text><Text variant="caption" tone="muted">{label}</Text></View>;
-}
-
 const styles = StyleSheet.create({
-  ribbon: { flexDirection: "row", alignItems: "center", backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, paddingVertical: spacing.md, marginBottom: spacing.md },
-  vline: { width: StyleSheet.hairlineWidth, height: 26, backgroundColor: palette.line },
-  chips: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md },
-  chip: { paddingHorizontal: spacing.lg, paddingVertical: 7, borderRadius: radius.pill, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line },
-  chipOn: { backgroundColor: palette.brand, borderColor: palette.brand },
+  tab: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.lg, minHeight: 36, borderRadius: radius.pill, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line },
+  tabOn: { backgroundColor: palette.brand, borderColor: palette.brand },
+  sortBtn: { width: 44, height: 44, borderRadius: radius.md, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center" },
+  sortRow: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.sm },
+  kind: { backgroundColor: palette.surfaceSunken, borderRadius: radius.sm, paddingHorizontal: 6, paddingVertical: 1 },
+  pdf: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  renew: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 28, paddingHorizontal: 4 },
 });

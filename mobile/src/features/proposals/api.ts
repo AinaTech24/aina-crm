@@ -11,9 +11,13 @@
  *   DELETE /api/proposals/[id]                cancel (status rejected, reason "deleted")
  *   POST   /api/proposals/[id]/send           { channel: email|whatsapp|link, preview? }
  *   POST   /api/proposals/[id]/revise         a sent one → a new draft version { id, version }
- *   GET    /api/proposals/snapshot            the recipient's risk profile (the send gate)
+ *   GET    /api/proposals/snapshot            what the CRM knows about the recipient: risk profile
+ *                                              (the send gate), holdings, equity vs the band, goals
+ *   GET    /api/proposals/[id]/pdf?download=1 the PDF the client receives (pdf.ts)
+ *   POST   /api/proposals/preview-pdf         the PDF rendered from the builder, nothing saved (pdf.ts)
  *   GET    /api/mf/schemes?plan=regular       the firm's Scheme Master, Regular plans only
  *   GET    /api/mf/amcs                       the Scheme Master's AMCs
+ *   GET    /api/families?q= · /[id]/full      the builder's family recipient + its members
  *
  * The firm's rules: a proposal is sent only when the RM taps Send; once sent
  * its content is frozen (a change is a new version); every MF scheme and AMC
@@ -94,6 +98,15 @@ export interface Proposal {
   lastViewedAt: string | null;
   preparedByUserId: string | null;
   createdAt: string;
+  // The life of it — the timeline reads these (web ProposalTimeline).
+  preparedAt?: string | null;
+  viewedAt?: string | null;
+  acceptedAt?: string | null;
+  rejectedAt?: string | null;
+  changeRequestedAt?: string | null;
+  executedAt?: string | null;
+  executedAmount?: string | number | null;
+  updatedAt?: string | null;
 }
 
 export interface CreateProposalBody {
@@ -106,6 +119,8 @@ export interface CreateProposalBody {
   type?: ProposalType;
   title: string;
   coverLetter?: string;
+  disclaimer?: string;
+  suitabilityNote?: string;
   products: ProposalLine[];
   riskRating?: RiskRating;
   validUntil?: string;
@@ -137,6 +152,17 @@ export function useProposal(id: string) {
     enabled: !!id,
   });
 }
+
+/** Refresh everything a proposal change shows up in (lists, the page, a lead's journey, opportunities). */
+export function useRefreshProposals(id?: string) {
+  return useRefresh(id);
+}
+
+/** An email preview's HTML as readable text (the phone has no sandboxed iframe for it). */
+export const stripHtml = (h?: string) =>
+  (h ?? "").replace(/<head[\s\S]*?<\/head>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<br\s*\/?>|<\/p>|<\/div>|<\/tr>|<\/h\d>|<\/li>/gi, "\n").replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;|&rsquo;/g, "’").replace(/&quot;/g, '"')
+    .replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 
 function useRefresh(id?: string) {
   const qc = useQueryClient();
@@ -199,21 +225,76 @@ export function useSendProposal(id: string) {
   };
 }
 
-/** What the CRM knows about the recipient — the risk profile decides the send gate. */
-export interface RecipientSnapshot {
+/**
+ * What the CRM knows about the recipient (web lib/proposals/snapshot
+ * ProposalSnapshot) — the risk profile decides the send gate; holdings, the
+ * profile's equity band and goals feed the builder's fit checks.
+ */
+export interface ProposalSnapshot {
   kind: "investor" | "lead";
+  /** The record the numbers are about (for a family: the member or the head). */
   subjectId: string;
+  name: string;
+  family: string | null;
+  rm: string | null;
   hasEmail: boolean;
   hasPhone: boolean;
+  /** A minor needs no risk profile (the firm's rule of 2026-10-30). */
   riskExempt: boolean;
+  /** status: Completed / Provisional / Due for review / Not completed. */
   risk: { category: string | null; score: number | null; signedAt: string | null; status: string };
+  /** Null for a lead — no holdings is not ₹0 of holdings. */
+  holdings: null | { aum: number; sipBook: number; equityPct: number | null; equityValue: number };
+  band: { floor: number; ceiling: number } | null;
+  goals: Array<{ name: string; targetYear: number | null }>;
+  stage: string | null;
 }
+export type RecipientSnapshot = ProposalSnapshot;
 export function useRecipientSnapshot(who: { investorId?: string | null; leadId?: string | null; familyId?: string | null } | null) {
   const params = who ? { investorId: who.investorId || undefined, leadId: who.leadId || undefined, familyId: who.familyId || undefined } : null;
   return useQuery({
     queryKey: ["proposal-snapshot", params],
     enabled: !!params && !!(params.investorId || params.leadId || params.familyId),
-    queryFn: () => api.get<RecipientSnapshot>("/api/proposals/snapshot", params!),
+    queryFn: () => api.get<ProposalSnapshot>("/api/proposals/snapshot", params!),
+    staleTime: 60_000,
+  });
+}
+
+// ── A family recipient (web RecipientPicker) ──
+export interface FamilyHit { id: string; name: string; head: string | null }
+/** Families in the viewer's scope, searched by family / head / member name. */
+export function useFamilySearch(q: string, enabled: boolean) {
+  const term = q.trim();
+  return useQuery({
+    queryKey: ["proposal-families", term],
+    enabled,
+    queryFn: () =>
+      api.get<{ families: any[] }>("/api/families", { q: term || undefined, limit: 30 }).then((r) =>
+        (r.families ?? []).map((f): FamilyHit => {
+          const head = f.head_name ?? f.headName ?? null;
+          return { id: f.id, name: f.family_name ?? f.familyName ?? (head ? `${head} Family` : "Family"), head };
+        })
+      ),
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
+  });
+}
+export interface FamilyMember { id: string; name: string; familyRole: string | null }
+/** A picked family's members, for the optional "address proposal to". */
+export function useFamilyMembers(familyId: string | null) {
+  return useQuery({
+    queryKey: ["proposal-family-members", familyId],
+    enabled: !!familyId,
+    queryFn: () =>
+      api.get<any>(`/api/families/${familyId}/full`).then((j) => {
+        const f = j?.family ?? {};
+        const head = f.headName ?? f.head_name ?? null;
+        return {
+          name: (f.familyName ?? f.family_name ?? (head ? `${head} Family` : "Family")) as string,
+          primaryId: (j?.primary?.id ?? null) as string | null,
+          members: (j?.members ?? []) as FamilyMember[],
+        };
+      }),
     staleTime: 60_000,
   });
 }
@@ -267,13 +348,39 @@ export function lineTitle(l: ProposalLine): string {
   }
 }
 
-/** The proposal type follows its products (web ProposalBuilder): one kind → its type, several or Other → mixed. */
+/** The proposal type follows its products (web ProposalBuilder typeFor): one kind → its type, several or Other → mixed. */
 export function proposalTypeFor(lines: ProposalLine[]): ProposalType {
   const kinds = new Set(lines.map((l) => l.kind));
-  if (kinds.size !== 1) return "mixed";
+  if (kinds.size === 0 || kinds.size > 1) return kinds.size > 1 ? "mixed" : "mutual_fund";
   const only = [...kinds][0];
   return only === "mf" ? "mutual_fund" : only === "other" ? "mixed" : only;
 }
+
+export const TYPE_LABEL: Record<ProposalType, string> = {
+  comprehensive: "Comprehensive", mutual_fund: "Mutual Fund", insurance: "Insurance", pms: "PMS", aif: "AIF", mixed: "Mixed",
+};
+export const RECIPIENT_LABEL: Record<RecipientType, string> = { investor: "Client", lead: "Lead", family: "Family" };
+/** Risk profile words (web PROFILE_LABEL). */
+export const PROFILE_LABEL: Record<string, string> = {
+  conservative: "Conservative", moderate: "Moderate", aggressive: "Aggressive", very_aggressive: "Very aggressive",
+};
+
+/** WhatsApp can use an Indian mobile, or a foreign number written with its +code (web proposal page). */
+export function indianMobile10(raw?: string | null): string | null {
+  if (!raw) return null;
+  let d = String(raw).replace(/\D/g, "");
+  if (d.length === 12 && d.startsWith("91")) d = d.slice(2);
+  else if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
+  return /^[6-9]\d{9}$/.test(d) ? d : null;
+}
+export const phoneOk = (raw?: string | null) => {
+  const p = String(raw ?? "").trim();
+  return !p || !!indianMobile10(p) || /^\+\d[\d\s()-]{6,18}$/.test(p);
+};
+export const formatPhone = (raw?: string | null) => {
+  const m = indianMobile10(raw);
+  return m ? `+91 ${m.slice(0, 5)} ${m.slice(5)}` : String(raw ?? "").trim();
+};
 
 /** The overall risk rating starts at the client's profile (very aggressive reads as aggressive). */
 export function ratingFromProfile(category?: string | null): RiskRating | null {
@@ -286,10 +393,15 @@ export const LINE_KIND_LABEL: Record<LineKind, string> = {
   mf: "Mutual Fund", insurance: "Insurance", pms: "PMS", aif: "AIF", other: "Other",
 };
 
+/** The web list's words and tones (ProposalsBulkTable STATUS). */
 export const STATUS_LABEL: Record<ProposalStatus, string> = {
   draft: "Draft", ready: "Ready", sent: "Sent", viewed: "Viewed", changes_requested: "Changes requested",
-  accepted: "Accepted", partially_approved: "Partly accepted", executed: "Executed", rejected: "Declined",
+  accepted: "Accepted", partially_approved: "Partially approved", executed: "Executed", rejected: "Rejected",
   expired: "Expired", superseded: "Superseded",
+};
+export const STATUS_TONE: Record<ProposalStatus, "neutral" | "info" | "warning" | "success" | "danger"> = {
+  draft: "neutral", ready: "info", sent: "warning", viewed: "info", changes_requested: "warning", accepted: "success",
+  partially_approved: "warning", executed: "success", rejected: "danger", expired: "danger", superseded: "neutral",
 };
 
 /** The insurers the web builder lists (lib/insurance/insurers); anything else is typed as "Other". */
