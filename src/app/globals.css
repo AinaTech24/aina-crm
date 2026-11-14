@@ -1242,6 +1242,10 @@ a:hover > .dash-tile {
   border-radius: 9999px;
   background: linear-gradient(90deg, hsl(var(--primary) / 0.75), hsl(var(--primary)));
 }
+/* A bar inside a table cell, under the figure. */
+.dash-bar-thin {
+  height: 0.25rem;
+}
 
 /* Section icon, as a quiet brand chip beside the title. A section that draws
    its own heading puts a bare icon first in it; that icon gets the same chip,

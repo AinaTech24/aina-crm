@@ -1415,8 +1415,10 @@ dashboard filters, each only narrowing). Client facts follow
   `src/components/dashboards/system/widgets/*`, wired in `registry.ts`. To add
   one: a catalog row + a `{ key, render, csv? }` implementation
   (`tests/dashboard-platform.test.ts` checks every key has one). A card with
-  no data returns `body: null` and is not rendered, and the half-width card
-  it was paired with takes the full row (`system/sizes.ts` `effectiveSizes`).
+  no data returns `body: null` and is not rendered. Consecutive half-width
+  cards stand in two columns at their own height (`CardFlow`, `flowSegments`
+  — no card stretches to a taller neighbour); one left alone takes the full
+  row (`system/sizes.ts` `effectiveSizes`).
   `EmbeddedWidgets` places library cards inside a centre (the Operations
   Dashboard's Compliance tab), on the same implementations.
 - **Filters** live in the URL (`system/filters.ts`): `period` (+`from`/`to`,
@@ -1451,7 +1453,7 @@ action today, the team, then the analysis and the reviews.
 
 | Dashboard | Default for | What it is | Was |
 |---|---|---|---|
-| **Owner Dashboard** | owner, compliance, marketing | widgets: KPI row (AUM, SIP book, net business, net SIP added, new clients vs target, clients, insurance premium) · needs attention · lead pipeline · team · branches · business trend · money movement · SIP health · AUM mix · client mix · top clients · brokerage · premium book · compliance gaps · expiries · automation | `?scope=firm`, Practice Overview, Reports › Practice health |
+| **Owner Dashboard** | owner, compliance, marketing | widgets: KPI row (AUM, SIP book, net business, net SIP added, new clients vs target, clients, insurance premium) · needs attention · client activity · lead pipeline · team · branches · business trend · money movement · SIP health · AUM mix · client mix · top clients · brokerage · premium book · compliance gaps · expiries · automation | `?scope=firm`, Practice Overview, Reports › Practice health |
 | **Branch Head Dashboard** | branch head | `BranchCommandCentre` (19 sections) | `?scope=branch`, Reports › Branch review |
 | **Relationship Manager Dashboard** | RM, team member | `MyBusinessDashboard` (40 sections) | `?scope=mine`, Reports › My desk |
 | **Operations Dashboard** | ops, back office, service team | `OperationsControlTower` (50 sections; tabs Queue · SLA & escalations · Team load · Rejections · Compliance) | `?scope=ops`, `/dashboard/operations` |
@@ -1477,6 +1479,13 @@ action today, the team, then the analysis and the reviews.
   recomputed), `getSipHealth`, `getAumMix`, `getClientMix`, `getBrokerage`
   (firm-wide only: a brokerage statement is the ARN's) and
   `getAutomationMonth`.
+- **Client activity** (Owner Dashboard, `lib/metrics/client-activity.ts`,
+  2026-11-14) lists only what a client did THEMSELVES, from where the CRM
+  already records it: proposals viewed / accepted / declined / sent back,
+  risk profiles they signed (client_otp / client_link), messages they opened,
+  clicked or sent, requests raised and services rated through a form, and
+  share links used (documents, fact-find, portfolio). Each source is narrowed
+  to the viewer's clients before its cut, so an RM never sees another book.
 
 **What "mine" means is defined once** (the Relationship Manager and Branch
 Head dashboards), in
@@ -1548,7 +1557,9 @@ the rest of the CRM keeps its flat look. Three things it encodes:
   severity (`border-destructive/30 bg-destructive/5`, `border-warning/50
   bg-warning/5`).
 - **One headline tile anatomy**: label, icon chip in the metric's hue
-  (`dash-kpi-chip` + `--c`), the figure, then the facts under a hairline. The
+  (`dash-kpi-chip` + `--c`), the figure with its change beside it (wrapping
+  under it on a narrow tile), what the change is against, the trend as a
+  full-width strip (`Sparkline wide`), then the facts under a hairline. The
   Owner row is `KpiTile` (business.tsx), RM and Branch `MyKpiStrip`, Insurance
   and Claims their own `Kpi`. A short last row shares the width — never one
   tile alone.

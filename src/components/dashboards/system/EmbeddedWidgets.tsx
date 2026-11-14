@@ -24,6 +24,7 @@ import { InlineEmpty } from "@/components/common/EmptyState";
 import { WidgetCard } from "./WidgetCard";
 import { widgetRegistry } from "./registry";
 import { effectiveSizes } from "./sizes";
+import { CardFlow } from "./CardFlow";
 import type { WidgetCtx, WidgetResult } from "./types";
 import { inOrder } from "@/lib/metrics/in-order";
 
@@ -88,8 +89,8 @@ export async function EmbeddedWidgets({
   // A card whose partner had nothing to show takes the full row.
   const sizes = effectiveSizes(shown.map((r) => r.it.size));
   return (
-    <div className="grid grid-cols-12 gap-4">
-      {shown.map(({ it, meta, result, error }, i) => {
+    <CardFlow
+      items={shown.map(({ it, meta, result, error }, i) => {
         return (
           <WidgetCard
             key={it.key}
@@ -103,7 +104,7 @@ export async function EmbeddedWidgets({
             {error ? <p className="text-sm text-muted-foreground">This card could not be loaded. Refresh to try again.</p> : result?.body}
           </WidgetCard>
         );
-      })}
-    </div>
+      }).map((node, i) => ({ key: shown[i].it.key, size: sizes[i], node }))}
+    />
   );
 }

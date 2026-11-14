@@ -91,6 +91,7 @@ function Delta({ kpi }: { kpi: MyKpi }) {
 function Tile({ kpi, className, spark }: { kpi: MyKpi; className?: string; spark?: number[] }) {
   const unknown = kpi.value == null;
   const zero = kpi.value === 0;
+  const showDelta = !!kpi.compare && !(zero && kpi.compare.abs === 0);
   const notes = kpi.notes.filter((n) => n.label);
 
   return (
@@ -116,33 +117,25 @@ function Tile({ kpi, className, spark }: { kpi: MyKpi; className?: string; spark
         </span>
       </div>
 
-      <div
-        className={cn(
-          // Two tiles to a row on a phone: one size down so "₹2.46 Lakh" keeps to one line.
-          "mt-2.5 text-xl leading-tight tabular-nums tracking-tight sm:text-2xl",
-          unknown || zero ? "font-medium text-muted-foreground/60" : "font-semibold text-foreground",
-        )}
-        title={unknown ? "Data unavailable — nothing has been recorded against this yet." : undefined}
-      >
-        {fmt(kpi, kpi.value)}
-      </div>
-
-      {(kpi.compare && !(zero && kpi.compare.abs === 0)) || (spark && spark.length >= 3) ? (
-        <div className="mt-2.5 flex items-end justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-2xs">
-            {kpi.compare && !(zero && kpi.compare.abs === 0) && (
-              <>
-                <Delta kpi={kpi} />
-                <span className="text-muted-foreground">{kpi.compareLabel}</span>
-              </>
-            )}
-          </div>
-          {/* This FY's months so far: the shape, not the values. */}
-          {spark && spark.length >= 3 && (
-            <Sparkline values={spark} width={60} height={22} className="shrink-0" style={{ color: "var(--c)" }} />
+      {/* The change sits beside the figure and wraps under it on a narrow tile. */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span
+          className={cn(
+            // Two tiles to a row on a phone: one size down so "₹2.46 Lakh" keeps to one line.
+            "whitespace-nowrap text-xl leading-tight tabular-nums tracking-tight sm:text-2xl",
+            unknown || zero ? "font-medium text-muted-foreground/60" : "font-semibold text-foreground",
           )}
-        </div>
-      ) : null}
+          title={unknown ? "Data unavailable — nothing has been recorded against this yet." : undefined}
+        >
+          {fmt(kpi, kpi.value)}
+        </span>
+        {showDelta && <span className="text-2xs"><Delta kpi={kpi} /></span>}
+      </div>
+      {showDelta && <div className="mt-1 text-2xs text-muted-foreground">{kpi.compareLabel}</div>}
+      {/* This FY's months so far: the shape, not the values. */}
+      {spark && spark.length >= 3 && (
+        <Sparkline values={spark} width={200} height={26} wide className="mt-2 block" style={{ color: "var(--c)" }} />
+      )}
 
       <div className="mt-auto space-y-1 border-t border-border/60 pt-2.5 text-2xs">
         {kpi.fytd != null && (

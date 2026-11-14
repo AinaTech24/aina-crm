@@ -33,12 +33,13 @@ function leadScope(ctx: WidgetCtx) {
 /** Every stage still in play — the card's "open" (not Won, not Lost). */
 // The Lost column's key is "not_qualified" (lib/leads/stages.ts).
 const OPEN_STAGES = LEAD_PIPELINE.filter((col) => !["won_lead", "not_qualified", "lost"].includes(col.key)).map((col) => col.key);
+/** The journey in order, New to Won — every column but Lost. */
+const JOURNEY = LEAD_PIPELINE.filter((col) => col.key !== "not_qualified");
 
 async function leadPipeline(tx: Tx, ctx: WidgetCtx) {
   const s = leadScope(ctx);
   const [c, open] = await inOrder(() => getLeadStageCounts(tx, s, ctx.period), () => getOpenLeads(tx, s));
   if (c.total === 0 && open.open === 0) return { body: null };
-  const max = Math.max(...LEAD_PIPELINE.map((col) => c.byStage[col.key] ?? 0), 1);
   if (c.total === 0) {
     // No leads created in the period: say so once instead of a column of zeros.
     return {
@@ -65,22 +66,35 @@ async function leadPipeline(tx: Tx, ctx: WidgetCtx) {
   return {
     body: (
       <div className="space-y-3">
+        {/* How far the period's leads got: each step counts the leads at that
+            stage or a later one, as a share of every lead created. Only the
+            current stage is recorded, so a lost lead counts in the first row
+            and in Lost, never in a step it may have passed. */}
         <ul className="space-y-0.5">
-          {LEAD_PIPELINE.map((col) => {
-            const n = c.byStage[col.key] ?? 0;
-            // Won is the good end of the funnel and Lost the leak; the other
-            // stages share the brand colour. Colour marks outcome, not stage.
-            const fill = col.key === "won_lead" ? "bg-success" : col.key === "lost" ? "bg-muted-foreground/40" : "";
+          {[{ key: "all", label: "Leads", stages: null as string[] | null }, ...JOURNEY.slice(1).map((col, i) => ({
+            key: col.key,
+            label: col.label,
+            stages: JOURNEY.slice(i + 1).map((j) => j.key),
+          })), { key: "not_qualified", label: "Lost", stages: ["not_qualified"] }].map((row) => {
+            const n = row.stages ? row.stages.reduce((t, k) => t + (c.byStage[k] ?? 0), 0) : c.total;
+            const share = n / c.total;
+            const here = row.stages ? c.byStage[row.key] ?? 0 : null;
+            // Won is the good end of the funnel and Lost the leak; the steps
+            // between share the brand colour. Colour marks outcome, not stage.
+            const fill = row.key === "won_lead" ? "bg-success" : row.key === "not_qualified" ? "bg-muted-foreground/40" : "";
+            const withWon = !row.stages || row.stages.includes("won_lead");
             return (
-              <li key={col.key}>
+              <li key={row.key} className={row.key === "not_qualified" ? "mt-1.5 border-t border-border/60 pt-1.5" : undefined}>
                 <Link
-                  href={leadsHref(ctx, { stage: col.key, ...(col.key === "won_lead" ? { include_won: "1" } : {}) })}
+                  href={leadsHref(ctx, { ...(row.stages ? { stage: row.stages } : {}), ...(withWon ? { include_won: "1" } : {}) })}
                   className="dash-row text-sm"
+                  title={here != null && row.key !== "not_qualified" ? `${formatCount(here)} at this stage now` : undefined}
                 >
-                  <span className="w-32 shrink-0 truncate text-foreground sm:w-36">{col.label}</span>
+                  <span className="w-32 shrink-0 truncate text-foreground sm:w-36">{row.label}</span>
                   <span className="dash-bar flex-1" aria-hidden>
-                    <span className={fill} style={{ width: `${n ? Math.max(3, (n / max) * 100) : 0}%` }} />
+                    <span className={fill} style={{ width: `${n ? Math.max(3, share * 100) : 0}%` }} />
                   </span>
+                  <span className={`w-12 shrink-0 text-right text-xs tabular-nums ${n === 0 ? "text-muted-foreground/60" : "text-muted-foreground"}`}>{pct(share)}</span>
                   <span className={`dash-count ${n === 0 ? "dash-count-zero" : ""}`}>{formatCount(n)}</span>
                 </Link>
               </li>
@@ -107,7 +121,7 @@ async function leadPipeline(tx: Tx, ctx: WidgetCtx) {
       </div>
     ),
     subtitle: `${formatCount(c.total)} leads created`,
-    info: "Leads created in the period, by the stage they are in now. Conversion is Won ÷ all of them.",
+    info: "How far the leads created in the period have got. Each step counts the leads at that stage or a later one, as a share of all of them; hover a step for how many are at it now. Only a lead's current stage is recorded, so a lost lead counts in Leads and Lost only. Conversion is Won ÷ all leads.",
     // Won includes converted and onboarding leads, which the list hides unless asked.
     href: leadsHref(ctx, { include_won: "1" }),
     hrefLabel: "All leads",

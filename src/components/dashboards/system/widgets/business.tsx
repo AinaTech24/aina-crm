@@ -117,9 +117,14 @@ function KpiTile({
   const body = (
     <>
       {head}
-      <div className="dash-kpi-value mt-3 whitespace-nowrap">
-        {value}
-        {unit && <span className="dash-kpi-unit">{unit}</span>}
+      {/* The change sits beside the figure; it wraps under it on a narrow tile
+          rather than breaking "₹16.23 Cr" across two lines. */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="dash-kpi-value whitespace-nowrap">
+          {value}
+          {unit && <span className="dash-kpi-unit">{unit}</span>}
+        </span>
+        {compare?.node}
       </div>
       {progress != null && (
         <div className="relative mt-2.5" title={expected != null ? `${Math.round(progress * 100)}% reached · ${Math.round(expected * 100)}% expected by today` : undefined}>
@@ -131,17 +136,14 @@ function KpiTile({
           )}
         </div>
       )}
-      {(compare || footer || showSpark) && (
-        <div className="mt-auto flex items-end justify-between gap-3 pt-2.5">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            {compare && <>{compare.node}<span>{compare.label}</span></>}
-            {footer && <span className={compare ? "basis-full" : ""}>{footer}</span>}
-          </div>
-          {/* Beside the comparison, not the figure: next to the figure it
-              pushed "₹16.23 Cr" onto two lines on a narrow tile. */}
-          {showSpark && <Sparkline values={spark!} width={64} height={22} className="shrink-0" style={{ color: "var(--c)" }} />}
+      {(compare || footer) && (
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          {compare && <span>{compare.label}</span>}
+          {footer && <span className={compare ? "basis-full" : ""}>{footer}</span>}
         </div>
       )}
+      {/* The recorded month-ends as a strip along the bottom of the tile. */}
+      {showSpark && <Sparkline values={spark!} width={240} height={30} wide className="mt-auto block pt-2.5" style={{ color: "var(--c)" }} />}
     </>
   );
   return href
@@ -356,6 +358,14 @@ function TeamTable({ rows, head, hasLedger }: { rows: TeamRow[]; head: string; h
   const td = "px-3 py-2 text-right tabular-nums whitespace-nowrap";
   const pct = (r: TeamRow) =>
     r.targetPct != null ? `${Math.round(r.targetPct * 100)}%` : r.target == null ? "No target" : "—";
+  // A slim bar under AUM (each row's share of the table) and Target % (how much
+  // of it is reached), so the strongest and the furthest behind show at a glance.
+  const aumTotal = rows.reduce((t, r) => t + Math.max(0, r.aum), 0);
+  const bar = (share: number, title: string) => (
+    <div className="dash-bar dash-bar-thin ml-auto mt-1 w-20" title={title} aria-hidden>
+      <span style={{ width: `${Math.max(2, Math.min(100, share * 100))}%` }} />
+    </div>
+  );
   return (
     <>
       <div className="hidden md:block">
@@ -382,12 +392,18 @@ function TeamTable({ rows, head, hasLedger }: { rows: TeamRow[]; head: string; h
                   </span>
                 </td>
                 <td className={td}><Drill href={r.links?.clients}>{formatCount(r.clients)}</Drill></td>
-                <td className={td}><Drill href={r.links?.aum}>{formatMoney(r.aum, { scale: aumScale })}</Drill></td>
+                <td className={td}>
+                  <Drill href={r.links?.aum}>{formatMoney(r.aum, { scale: aumScale })}</Drill>
+                  {aumTotal > 0 && r.aum > 0 && bar(r.aum / aumTotal, `${Math.round((r.aum / aumTotal) * 100)}% of the AUM in this table`)}
+                </td>
                 <td className={td}><Drill href={r.links?.sip}>{formatMoney(r.sip, { scale: sipScale })}</Drill></td>
                 <td className={td}>{hasLedger && r.net != null ? <Drill href={r.links?.net}>{formatMoney(r.net, { scale: netScale })}</Drill> : "—"}</td>
                 <td className={td}><Drill href={r.newClients ? r.links?.newClients : null}>{formatCount(r.newClients)}</Drill></td>
                 <td className={`${td} ${r.overdue ? "text-rose-700 font-medium" : ""}`}>{r.overdue == null ? "—" : <Drill href={r.overdue ? r.links?.overdue : null}>{formatCount(r.overdue)}</Drill>}</td>
-                <td className={td}>{pct(r)}</td>
+                <td className={td}>
+                  {pct(r)}
+                  {r.targetPct != null && bar(r.targetPct, `${Math.round(r.targetPct * 100)}% of the FY target`)}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -230,6 +230,11 @@ export const SYSTEM_WIDGETS: SystemWidgetMeta[] = [
     description: "Could the firm run a month without you? Clients, open tasks, positions and processes that rest on the owner alone. Firm-wide only.",
     supports: [],
   },
+  {
+    key: "client_activity", title: "Client activity", category: "Clients", defaultSize: "M", sizes: ["M", "L"],
+    description: "What clients did lately: proposals viewed or accepted, risk profiles completed, messages opened, requests raised.",
+    supports: ["period", ...CLIENT],
+  },
 ];
 
 export const SYSTEM_WIDGETS_BY_KEY: Record<string, SystemWidgetMeta> = Object.fromEntries(

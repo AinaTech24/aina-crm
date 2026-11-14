@@ -68,3 +68,4 @@ export * from "./work-summary";
 export * from "./insurance-mix";
 export * from "./opportunities";
 export * from "./owner-dependency";
+export * from "./client-activity";

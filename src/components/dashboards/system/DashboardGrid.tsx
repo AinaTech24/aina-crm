@@ -8,9 +8,10 @@
  * and one render never holds more than four pooled connections.
  *
  * A card whose loader returns no body is not rendered at all (D6: hide empty
- * cards). If every card is empty the page says so once. A half-width card
- * left without its partner (the card beside it hid itself) takes the full
- * row, so a hidden card never leaves a hole.
+ * cards). If every card is empty the page says so once. Half-width cards
+ * stand in two columns at their own height (CardFlow); one left alone (the
+ * cards beside it hid themselves) takes the full row, so a hidden card never
+ * leaves a hole.
  */
 
 import { withTenant } from "@/db/client";
@@ -24,6 +25,7 @@ import { widgetRegistry } from "./registry";
 import { notAppliedFor, widgetCtx, type PreparedDashboard } from "./prepare";
 import type { WidgetResult } from "./types";
 import { effectiveSizes } from "./sizes";
+import { CardFlow } from "./CardFlow";
 
 export async function DashboardGrid({ p }: { p: PreparedDashboard }) {
   const registry = widgetRegistry(`/dashboard/${p.id}`);
@@ -60,8 +62,8 @@ export async function DashboardGrid({ p }: { p: PreparedDashboard }) {
   const sizes = effectiveSizes(shown.map((r) => (r.item.widgetKey === "kpi_row" ? "L" : r.item.size)));
 
   return (
-    <div className="grid grid-cols-12 gap-4">
-      {shown.map(({ item, meta, result, error, card }, i) => {
+    <CardFlow
+      items={shown.map(({ item, meta, result, error, card }, i) => {
         const impl = registry[item.widgetKey];
         const title = item.title ?? meta!.title;
         const bare = item.widgetKey === "kpi_row";
@@ -104,7 +106,7 @@ export async function DashboardGrid({ p }: { p: PreparedDashboard }) {
             {error ? <p className="text-sm text-muted-foreground">This card could not be loaded. Refresh to try again.</p> : result?.body}
           </WidgetCard>
         );
-      })}
-    </div>
+      }).map((node, i) => ({ key: shown[i].item.id, size: sizes[i], node }))}
+    />
   );
 }

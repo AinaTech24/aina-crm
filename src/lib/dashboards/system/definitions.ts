@@ -73,6 +73,7 @@ export const SYSTEM_DASHBOARDS: SystemDashboard[] = [
       // Today's actions
       item("needs_attention", "M"),
       item("reviews_due", "M"),
+      item("client_activity", "M"),
       // Business
       item("business_entries", "L"),
       item("sip_flow", "M"),

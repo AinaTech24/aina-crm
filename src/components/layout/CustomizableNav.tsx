@@ -33,6 +33,8 @@ import {
   LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
   LifeBuoy, MessageSquareWarning, Zap, GraduationCap,
   CopyCheck, Settings, Trash2, Landmark, Crosshair,
+  // ── group heading icons (GROUP_ICON) ──
+  House, SquareCheckBig, Contact, Compass, BriefcaseBusiness, Lightbulb, UsersRound, Building, Database, Folder,
   type LucideIcon,
 } from "lucide-react";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
@@ -96,6 +98,26 @@ const VERSION = 4;
 
 /** Pinned favourites are shortcuts, not a second sidebar. */
 const MAX_PINNED = 6;
+
+/** Each built-in group's heading icon, by group id (the slug of its default
+ *  title; "advice" is Planning Tools in a layout saved before the rename). A
+ *  group the user made gets a plain folder. */
+const GROUP_ICON: Record<string, LucideIcon> = {
+  home: House,
+  work: SquareCheckBig,
+  clients: Contact,
+  "planning-tools": Compass,
+  advice: Compass,
+  business: BriefcaseBusiness,
+  insights: Lightbulb,
+  compliance: ShieldCheck,
+  team: UsersRound,
+  practice: Building,
+  "data-admin": Database,
+};
+
+/** A named dashboard and its pages (/dashboard/<id>, /manage, /new) are the Dashboard item's. */
+const DASHBOARD_PAGE = /^\/dashboard\/(manage|new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/|$)/;
 
 /** The red action-count pill, shared by an item and by its collapsed group. */
 const COUNT_PILL = "rounded-full bg-rose-500 px-1.5 min-w-[1.1rem] text-center text-2xs font-semibold leading-[1.1rem] text-white";
@@ -283,7 +305,7 @@ export function CustomizableNav({
 
   // Whether a pathname falls under an href (exact, or a "/"-bounded sub-route).
   const matchesPath = (h: string) =>
-    h === "/dashboard" ? pathname === "/dashboard" : pathname === h || pathname.startsWith(h + "/");
+    h === "/dashboard" ? pathname === "/dashboard" || DASHBOARD_PAGE.test(pathname) : pathname === h || pathname.startsWith(h + "/");
   // Most-specific match wins: a link is active only if NO other nav item has a
   // longer href that also matches. Fixes "/dashboard/sips" (SIP Tracker) lighting
   // up on "/dashboard/sips/at-risk" (SIP At-Risk).
@@ -555,10 +577,13 @@ export function CustomizableNav({
                     aria-expanded={!isCollapsed}
                     className="sidebar-section-title group/sec w-full px-3 py-2.5 flex items-center gap-2 text-left rounded-md hover:bg-secondary transition-colors"
                   >
-                    {/* Reference group labels are bare uppercase text — no
-                        folder glyph. The collapse chevron shows on hover so
-                        the affordance survives without cluttering the rail. */}
-                    <span className="flex-1 truncate text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    {/* An icon and the group's name; the group you are in is
+                        marked in the brand colour. */}
+                    {(() => {
+                      const Icon = GROUP_ICON[g.id] ?? Folder;
+                      return <Icon className={`size-4 shrink-0 ${groupActive ? "text-primary" : "text-muted-foreground"}`} aria-hidden />;
+                    })()}
+                    <span className={`flex-1 truncate text-sm font-medium ${groupActive ? "text-primary" : "text-foreground/80"}`}>
                       {g.title}
                     </span>
                     {groupBadge > 0 && (

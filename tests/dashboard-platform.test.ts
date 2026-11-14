@@ -16,7 +16,7 @@ import {
   SYSTEM_WIDGETS, SYSTEM_WIDGETS_BY_KEY, MAX_WIDGETS, sanitizeLayoutItems, duplicateWidgets, migrateLegacyLayout,
 } from "@/lib/dashboards/system/catalog";
 import { SYSTEM_DASHBOARDS, ROLE_DEFAULTS } from "@/lib/dashboards/system/definitions";
-import { effectiveSizes } from "@/components/dashboards/system/sizes";
+import { effectiveSizes, flowSegments } from "@/components/dashboards/system/sizes";
 import { canEdit, canShare, canShareOrDelete, canView, shareReaches, type ShareRow, type ViewerFacts } from "@/lib/dashboards/platform";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -296,10 +296,22 @@ describe("System dashboards and the widget library", () => {
     expect(migrateLegacyLayout(old).map((i) => i.widgetKey)).toEqual(["kpi_row", "team_table"]);
   });
 
-  it("give a half-width card whose partner hid itself the whole row", () => {
+  it("give a half-width card left alone the whole row", () => {
     expect(effectiveSizes(["L", "M", "M", "L"])).toEqual(["L", "M", "M", "L"]);
     expect(effectiveSizes(["L", "M", "L", "M", "M"])).toEqual(["L", "L", "L", "M", "M"]);
-    expect(effectiveSizes(["M", "M", "M"])).toEqual(["M", "M", "L"]);
+    // Three in a run stand in two columns (flowSegments), so none widens.
+    expect(effectiveSizes(["M", "M", "M"])).toEqual(["M", "M", "M"]);
     expect(effectiveSizes(["S", "M"])).toEqual(["S", "L"]);
+  });
+
+  it("stand runs of half-width cards in two columns, each card at its own height", () => {
+    expect(flowSegments(["L", "M", "M", "M", "M", "L"])).toEqual([
+      { kind: "one", index: 0 },
+      { kind: "columns", left: [1, 3], right: [2, 4] },
+      { kind: "one", index: 5 },
+    ]);
+    expect(flowSegments(["M", "M"])).toEqual([{ kind: "columns", left: [0], right: [1] }]);
+    expect(flowSegments(["M", "M", "M"])).toEqual([{ kind: "columns", left: [0, 2], right: [1] }]);
+    expect(flowSegments(["S", "M", "L"])).toEqual([{ kind: "one", index: 0 }, { kind: "one", index: 1 }, { kind: "one", index: 2 }]);
   });
 });
