@@ -6,6 +6,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { LEAD_PIPELINE_STAGE_VALUES } from "@/lib/leads/stages";
 import { v4 as uuid } from "uuid";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -73,14 +74,10 @@ const CreateBody = z.object({
   customFields: z.record(z.string(), z.any()).optional(),
 });
 
-// Lead-phase blueprint stages (mirror of the web list page) — leads live here
-// until Convert-to-Client. Excludes converted (converted_investor_id) + archived.
-const LEAD_PHASE_STAGES = [
-  "new", "call_done", "contacted", "first_call_pending", "call_back_later", "call_not_connected",
-  "contact_in_future", "follow_up", "meeting_scheduled", "appointment_scheduled", "qualified",
-  "meeting_pending", "meeting_done", "won_lead", "converted", "post_meeting_qualified",
-  "not_qualified", "lost", "not_interested", "cold",
-];
+// Lead-phase stages — the Leads board's columns, every member and legacy
+// alias (lib/leads/stages.ts), so Proposal Sent and anything else the board
+// shows is listed here too (audit L7). Excludes converted + archived below.
+const LEAD_PHASE_STAGES = LEAD_PIPELINE_STAGE_VALUES;
 
 export async function GET(req: NextRequest) {
   try {

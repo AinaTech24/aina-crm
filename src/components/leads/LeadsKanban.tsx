@@ -260,7 +260,9 @@ export function LeadsKanban({
       const res = await fetch(`/api/leads/${leadId}/convert`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ pan, segmentTag }),
+        // Dropping on Won and confirming the dialog IS marking it Won — the
+        // convert API wins the lead first (it refuses an un-won lead otherwise).
+        body: JSON.stringify({ pan, segmentTag, confirmWon: true }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {

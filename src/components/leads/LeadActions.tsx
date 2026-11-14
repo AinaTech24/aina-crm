@@ -16,6 +16,7 @@ import { RmSelector } from "@/components/common/RmSelector";
 import { ProductInterestDialog } from "@/components/leads/ProductInterestDialog";
 import { DateTimeField } from "@/components/ui/DateTimeField";
 import { buttonClass } from "@/components/ui/button-class";
+import { notify } from "@/components/ui/Toast";
 
 type Props = {
   leadId: string;
@@ -24,6 +25,11 @@ type Props = {
   leadPhone?: string | null;
   currentStage: string;
   alreadyConvertedInvestorId?: string | null;
+  /** The lead's PAN — the convert dialog starts with it. */
+  leadPan?: string | null;
+  /** Won (or already in onboarding) AND the viewer may create clients. The
+   *  server enforces the same rule (POST /api/leads/[id]/convert). */
+  canConvert?: boolean;
 };
 
 const ACTIVITY_TYPES = [
@@ -116,9 +122,11 @@ export function LeadActions(props: Props) {
           <button type="button" onClick={() => setDialog("schedule_meeting")} className={buttonClass("secondary", "md")}>
             <CalendarPlus className="size-4" /> Schedule meeting
           </button>
-          <button type="button" onClick={() => setDialog("convert")} className={buttonClass("primary", "md")}>
-            <ArrowRight className="size-4" /> Convert to client
-          </button>
+          {props.canConvert && (
+            <button type="button" onClick={() => setDialog("convert")} className={buttonClass("primary", "md")}>
+              <ArrowRight className="size-4" /> Convert to client
+            </button>
+          )}
         </>
       )}
 
@@ -201,8 +209,12 @@ export function LeadActions(props: Props) {
         <ConvertDialog
           leadId={props.leadId}
           leadName={props.leadName}
+          leadPan={props.leadPan ?? ""}
           onClose={() => setDialog(null)}
-          onDone={(investorId) => router.push(`/dashboard/investors/${investorId}`)}
+          onDone={(investorId, warnings) => {
+            for (const w of warnings) notify.warning(w, "Converted — check the client record");
+            router.push(`/dashboard/investors/${investorId}`);
+          }}
         />
       )}
     </>
@@ -653,36 +665,51 @@ export function ScheduleMeetingDialog({
 function ConvertDialog({
   leadId,
   leadName,
+  leadPan,
   onClose,
   onDone,
 }: {
   leadId: string;
   leadName: string;
+  leadPan: string;
   onClose: () => void;
-  onDone: (investorId: string) => void;
+  onDone: (investorId: string, warnings: string[]) => void;
 }) {
-  const [pan, setPan] = useState("");
-  const [segmentTag, setSegmentTag] = useState("Retail");
-  const [investorCategory, setInvestorCategory] = useState("individual");
+  const [pan, setPan] = useState(leadPan.toUpperCase());
+  // "" = take it from the lead's type (HNI / NRI / HUF / corporate / minor).
+  const [segmentTag, setSegmentTag] = useState("");
+  const [investorCategory, setInvestorCategory] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // The client may already be on file (409 existing_client).
+  const [existing, setExisting] = useState<
+    | { id: string | null; name: string | null; state: string; matchedOn: string[]; outsideBook?: boolean; canOverride: boolean }
+    | null
+  >(null);
 
-  async function submit() {
+  async function submit(confirmNotDuplicate = false) {
     setBusy(true);
     setErr(null);
     try {
       const res = await fetch(`/api/leads/${leadId}/convert`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ pan: pan.toUpperCase().trim(), segmentTag, investorCategory, notes }),
+        body: JSON.stringify({
+          pan: pan.toUpperCase().trim(),
+          segmentTag: segmentTag || undefined,
+          investorCategory: investorCategory || undefined,
+          notes,
+          confirmNotDuplicate,
+        }),
       });
       const j = await res.json();
       if (!res.ok) {
+        if (j.code === "existing_client" && j.existing) setExisting({ ...j.existing, canOverride: !!j.canOverride });
         setErr(j.error ?? "Conversion failed");
         return;
       }
-      onDone(j.investorId);
+      onDone(j.investorId, Array.isArray(j.warnings) ? j.warnings : []);
     } finally {
       setBusy(false);
     }
@@ -698,7 +725,7 @@ function ConvertDialog({
         <label className="block">
           <div className="text-xs font-medium mb-1">
             PAN
-            <span className="ml-1 text-2xs text-muted-foreground font-normal">· optional — add it later after KYC docs</span>
+            <span className="ml-1 text-2xs text-muted-foreground font-normal">· from the lead; optional — add it later after KYC docs</span>
           </div>
           <input
             value={pan}
@@ -718,6 +745,7 @@ function ConvertDialog({
               onChange={(e) => setSegmentTag(e.target.value)}
               className="w-full border rounded-md px-3 py-2 text-sm bg-background"
             >
+              <option value="">From the lead</option>
               <option value="HNI">HNI</option>
               <option value="Affluent">Affluent</option>
               <option value="Retail">Retail</option>
@@ -732,6 +760,7 @@ function ConvertDialog({
               onChange={(e) => setInvestorCategory(e.target.value)}
               className="w-full border rounded-md px-3 py-2 text-sm bg-background"
             >
+              <option value="">From the lead</option>
               <option value="individual">Individual</option>
               <option value="huf">HUF</option>
               <option value="corporate">Corporate</option>
@@ -752,12 +781,36 @@ function ConvertDialog({
           />
         </label>
         {err && <div className="text-sm text-rose-600">{err}</div>}
+        {existing && (
+          <div className="rounded-md border border-warning/50 bg-warning/5 p-3 space-y-2 text-sm">
+            <div>
+              {existing.id
+                ? <>Already a client: <span className="font-medium">{existing.name}</span> (same {existing.matchedOn.join(" and ")}).</>
+                : <>Already a client of the firm (same {existing.matchedOn.join(" and ")}) — outside your book.</>}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {existing.id && (
+                <>
+                  <a href={`/dashboard/investors/${existing.id}`} className={buttonClass("secondary", "sm")}>Open client</a>
+                  <a href={`/dashboard/investors/${existing.id}?opportunity=new#opportunities`} className={buttonClass("secondary", "sm")}>
+                    Start opportunity
+                  </a>
+                </>
+              )}
+              {existing.canOverride && (
+                <button type="button" disabled={busy} onClick={() => submit(true)} className={buttonClass("ghost", "sm")}>
+                  Different person — convert anyway
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
       <ModalFooter
         onClose={onClose}
         submit={
           <button
-            onClick={submit}
+            onClick={() => submit(false)}
             // PAN is optional — allow convert with no PAN. Only block if a PAN
             // was typed but is malformed.
             disabled={busy || (pan.trim() !== "" && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan.toUpperCase()))}

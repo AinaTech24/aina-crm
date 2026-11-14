@@ -38,6 +38,11 @@ export async function POST(req: NextRequest) {
           AND lbi.is_delayed = false
           AND bs.sla_days IS NOT NULL
           AND lbi.stage_entered_at + (bs.sla_days || ' days')::interval < now()
+          -- A deleted or lost lead's journey is over: no SLA (audit L20).
+          AND NOT EXISTS (
+            SELECT 1 FROM leads ld WHERE ld.id = lbi.lead_id
+               AND (ld.lost_reason = '__deleted__' OR ld.stage = 'not_qualified')
+          )
       )
       UPDATE lead_blueprint_instances l
         SET is_delayed = true,

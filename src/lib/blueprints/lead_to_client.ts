@@ -548,6 +548,19 @@ export function routeOfStage(stageKey: string): OnboardingRoute | null {
   return null;
 }
 
+/**
+ * General products (NPS, PMS / AIF, FD / bonds, other — leads.pipeline
+ * "general") walk a SHORT branch of MF onboarding: documents → KYC →
+ * "Product Executed" (the Transaction Successful step, relabelled) → family →
+ * update → Active Client. The exchange / mandate / RTA-form steps do not apply.
+ */
+export const GENERAL_EXECUTED_STAGE = "transaction_successful";
+export const GENERAL_HIDDEN_KEYS = [
+  "ucc_create", "ucc_activated", "mandate_create", "mandate_activated", "mandate_reject",
+  "make_transaction", "transaction_failed",
+  "rta_forms_ready", "rta_client_signed", "rta_submitted", "rta_processed", "rta_rejected",
+] as const;
+
 export const INSURANCE_ONBOARDING_KEYS = [
   "insurance_needs_analysis", "insurance_quote", "insurance_proposal",
   "insurance_underwriting", "insurance_policy_issued", "insurance_lost",
@@ -659,6 +672,15 @@ export const LEAD_TO_CLIENT_TRANSITIONS: Array<{
   { from: "proposal_sent", to: "won_lead", name: "Proposal Accepted" },
   { from: "proposal_sent", to: "not_qualified", name: "Proposal Declined" },
   { from: "proposal_sent", to: "meeting_scheduled", name: "Schedule Follow-up Meeting" },
+
+  // ─── Lost from every open lead stage (audit L16) ───────────────
+  // Firms seeded before this rule get it from the engine (transitionTo).
+  { from: "new", to: "not_qualified", name: "Not Qualified" },
+  { from: "call_back_later", to: "not_qualified", name: "Not Qualified" },
+  { from: "call_not_connected", to: "not_qualified", name: "Not Qualified" },
+  { from: "meeting_scheduled", to: "not_qualified", name: "Not Qualified" },
+  { from: "meeting_pending", to: "not_qualified", name: "Not Qualified" },
+  { from: "won_lead", to: "not_qualified", name: "Not Qualified" },
 
   // ─── Not Qualified reopen (rare) ───────────────────────────────
   { from: "not_qualified", to: "call_done", name: "Reopen Lead" },

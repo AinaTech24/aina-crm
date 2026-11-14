@@ -27,7 +27,7 @@ import { requireSession } from "@/lib/auth/session";
 import { checkPrerequisites } from "@/lib/blueprints/prerequisites";
 import { leadBlueprintInstances, blueprintStages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { loadViewableLead } from "@/lib/leads/access";
+import { loadJourneyLeadForView } from "@/lib/blueprints/journey-access";
 import { normalizeLeadStage } from "@/lib/leads/normalize";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
     const targetStage = normalizeLeadStage(target);
     const data = await withTenant(session.tenantId, async (tx) => {
-      const lead = await loadViewableLead(tx, session, id);
+      const lead = await loadJourneyLeadForView(tx, session, id);
       if (!lead) throw Object.assign(new Error("Lead not found"), { status: 404 });
       const prereqs = await checkPrerequisites(tx, session.tenantId, id, targetStage);
 

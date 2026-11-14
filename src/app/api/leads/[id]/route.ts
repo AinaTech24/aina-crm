@@ -8,7 +8,9 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { writeStageThroughJourney } from "@/lib/blueprints/journey-access";
+import { cancelJourneyTasks } from "@/lib/blueprints/journey-task";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -99,9 +101,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (Object.prototype.hasOwnProperty.call(patch, "source")) {
         patch.source = normalizeLeadSource(patch.source);
       }
+      // A stage edit goes through the journey (below), never a bare
+      // leads.stage write — the board and the stepper must agree (audit L9).
+      let stageMove: string | null = null;
       if (Object.prototype.hasOwnProperty.call(patch, "stage")) {
-        patch.stage = normalizeLeadStage(patch.stage);
-        patch.stageChangedAt = new Date();
+        const next = normalizeLeadStage(patch.stage);
+        if (next !== normalizeLeadStage(before.stage)) stageMove = next;
+        delete patch.stage;
       }
       if (Object.prototype.hasOwnProperty.call(patch, "nextFollowUpAt")) {
         patch.nextFollowUpAt = patch.nextFollowUpAt ? new Date(patch.nextFollowUpAt) : null;
@@ -123,11 +129,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         pan: merged.pan,
         interestProducts: merged.interestProducts,
       });
-      const after = await tx
+      let after = await tx
         .update(leads)
         .set({ ...patch, ...scored, updatedAt: new Date() } as any)
         .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)))
         .returning();
+      if (stageMove) {
+        const moved = await writeStageThroughJourney(tx, session, id, stageMove, {
+          remarks: "Stage changed on the lead record.",
+          ...clientMeta,
+        });
+        if (!moved.ok) throw Object.assign(new Error(moved.reason ?? "This stage move is not allowed."), { status: 409 });
+        after = await tx.select().from(leads).where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)));
+      }
 
       // Emit lead.updated (before/after) so the workflow-rules engine can react
       // to a lead edit — e.g. a stage change made from the edit panel. (Only the
@@ -149,7 +163,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         entityType: "lead",
         entityId: id,
         before: { name: before.name, stage: before.stage } as any,
-        after: patch as any,
+        after: { ...patch, ...(stageMove ? { stage: stageMove } : {}) } as any,
         ...clientMeta,
       });
       return after[0];
@@ -185,6 +199,16 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           updatedAt: new Date(),
         } as any)
         .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)));
+      // The journey ends with the lead: no SLA alerts, no automatic moves.
+      await tx.execute(sql`
+        UPDATE lead_blueprint_instances SET status = 'lost', is_delayed = false, delayed_since = NULL, updated_at = now()
+         WHERE lead_id = ${id}::uuid AND tenant_id = ${session.tenantId}::uuid AND status = 'in_progress'
+      `);
+      // …and its onboarding step tasks with it (a converted lead's belong to
+      // the client and stay).
+      if (!before.convertedInvestorId) {
+        await cancelJourneyTasks(tx, { tenantId: session.tenantId, leadId: id, reason: "Lead deleted — onboarding step no longer needed." });
+      }
       await tx.insert(eventsOutbox).values({
         tenantId: session.tenantId,
         kind: "lead.deleted",

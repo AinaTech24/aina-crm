@@ -30,7 +30,7 @@ import {
   scoreAnswersAgainst,
   type RiskTemplate,
 } from "@/lib/risk-profile/template";
-import { transitionTo } from "@/lib/blueprints/engine";
+import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { enforce, enforceLinkToken, PUBLIC_LINK_IP_CEILING } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -273,29 +273,13 @@ export async function POST(req: NextRequest) {
             .where(eq(investors.id, tk.subjectId));
         }
       } else {
-        // Lead — bump stage to risk_profiled
-        const [ld] = await tx.select().from(leads).where(eq(leads.id, tk.subjectId));
-        if (ld) {
-          await tx
-            .update(leads)
-            .set({
-              stage: "risk_profiled" as any,
-              stageChangedAt: now,
-              updatedAt: now,
-            } as any)
-            .where(eq(leads.id, tk.subjectId));
-        }
-        // Advance the blueprint instance — use systemBypass so we can jump
-        // from any prior stage (typically risk_profile_sent or earlier).
-        try {
-          await transitionTo(tx, tk.tenantId!, tk.subjectId, "risk_profiled", {
-            systemBypass: true,
-            remarks: `Risk profile submitted by client via secure link. Score ${total} — ${band.label}.`,
-          });
-        } catch (e) {
-          // Don't block the form submission if blueprint advance fails.
-          console.error("[risk-profile/submit] blueprint advance failed:", e);
-        }
+        // Lead — through the journey's event map (auto-advance.ts), never a
+        // direct leads.stage write. The SOP has no risk-profile stage and an
+        // answered risk profile does not make a lead Won, so today this moves
+        // nothing; the outbox event below lets a firm's workflow react.
+        await autoAdvance(tx, tk.tenantId!, tk.subjectId!, "risk_profile.submitted", {
+          remarks: `Risk profile submitted by client via secure link. Score ${total} — ${band.label}.`,
+        });
       }
 
       // Outbox event for workflows

@@ -15,7 +15,7 @@ import { v4 as uuid } from "uuid";
 import { eq, and, sql } from "drizzle-orm";
 import { propagateReviewToFamily, stampFamilyReview, type FamilyPropagationResult } from "@/lib/reviews/family-propagation";
 import { recomputeFamilyHealth } from "@/lib/families/health-persist";
-import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
+import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { computeNextReview } from "@/lib/investors/review-cadence";
 import { formatDate } from "@/lib/format";
 import { onOpportunityMeetingCompleted } from "@/lib/opportunities/steps";
@@ -105,22 +105,15 @@ export async function applyMeetingCompleted(tx: Tx, args: {
   }
 
   // ─── Smart blueprint advance — meeting completed ──────────────
-  // For lead-side meetings, push the blueprint to `meeting_done` so
-  // the user sees their journey progress without a manual click.
+  // For lead-side meetings, push the blueprint to `meeting_done` so the user
+  // sees their journey progress without a manual click. The move is automatic,
+  // so forward-only: a converted lead / a client mid-onboarding stays where it
+  // is (lib/blueprints/journey-rules.ts). A CLIENT's meeting (investor-side)
+  // never moves the onboarding journey — Meeting Done is a lead stage.
   if (before.leadId) {
     await autoAdvance(tx, tenantId, before.leadId, "meeting.completed", {
       remarks: `Auto: meeting marked completed on ${formatDate(new Date())}.`,
     });
-  } else if (before.investorId) {
-    // Client-side meeting completion → if the client was converted
-    // from a lead, advance the source lead's blueprint too (covers
-    // post-conversion review meetings).
-    const leadId = await resolveLeadIdForInvestor(tx, before.investorId);
-    if (leadId) {
-      await autoAdvance(tx, tenantId, leadId, "meeting.completed", {
-        remarks: "Auto: client review meeting completed.",
-      });
-    }
   }
 
   // An opportunity whose meeting this is moves past "Discussion / meeting"

@@ -39,6 +39,7 @@ export async function onClientFamilyMapped(tx: Tx, tenantId: string, investorId:
       if (!MAP_FAMILY_STEPS.includes((r.rows[0] as { current_stage_key?: string } | undefined)?.current_stage_key ?? "")) return;
       await transitionTo(t, tenantId, leadId, FAMILY_MAPPED, {
         systemBypass: true,
+        automatic: true,
         remarks: "Auto: client mapped to a family.",
       });
     });

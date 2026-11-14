@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { createNotification } from "@/lib/notifications/create";
+import { ensureInstance } from "@/lib/blueprints/engine";
+import { isClientPhaseStage } from "@/lib/blueprints/journey-rules";
 
 /**
  * Sweeps active Lead and Polymorphic Blueprint instances,
@@ -12,7 +14,28 @@ export async function checkBlueprintSLADelays(): Promise<{
   polyDelayed: number;
 }> {
   return await withSystem(async (tx) => {
-    // 1. Sweep lead_blueprint_instances (Leads)
+    // 0. A lead nobody has opened has no journey yet (instances were created
+    //    on first touch), so an untouched lead never breached anything and
+    //    never escalated (audit L5). Open the journey for every lead still at
+    //    New past its first-response day, dated from when the lead arrived.
+    const untouched = await tx.execute(sql`
+      SELECT l.id, l.tenant_id, l.created_at FROM leads l
+       WHERE l.stage = 'new' AND l.converted_investor_id IS NULL AND l.lost_reason IS NULL
+         AND l.created_at < now() - interval '1 day'
+         AND NOT EXISTS (SELECT 1 FROM lead_blueprint_instances b WHERE b.lead_id = l.id AND b.tenant_id = l.tenant_id)
+       ORDER BY l.created_at
+       LIMIT 500
+    `);
+    for (const l of untouched.rows as Array<{ id: string; tenant_id: string; created_at: string | Date }>) {
+      try {
+        await tx.transaction((sp) => ensureInstance(sp as any, l.tenant_id, l.id, { enteredAt: new Date(l.created_at) }));
+      } catch {
+        // A firm with no blueprint yet is seeded on first use; skip, retry next sweep.
+      }
+    }
+
+    // 1. Sweep lead_blueprint_instances (Leads). A deleted or lost lead's
+    //    journey is over — no SLA, no alert (audit L20).
     const newlyDelayedLeads = await tx.execute(sql`
       WITH due AS (
         SELECT lbi.id AS instance_id, lbi.tenant_id, lbi.lead_id, lbi.current_stage_key,
@@ -25,6 +48,10 @@ export async function checkBlueprintSLADelays(): Promise<{
           AND lbi.is_delayed = false
           AND bs.sla_days IS NOT NULL
           AND lbi.stage_entered_at + (bs.sla_days || ' days')::interval < now()
+          AND NOT EXISTS (
+            SELECT 1 FROM leads ld WHERE ld.id = lbi.lead_id
+               AND (ld.lost_reason = '__deleted__' OR ld.stage = 'not_qualified')
+          )
       )
       UPDATE lead_blueprint_instances l
         SET is_delayed = true,
@@ -54,41 +81,7 @@ export async function checkBlueprintSLADelays(): Promise<{
       `);
 
       try {
-        const lr = await tx.execute(
-          sql`SELECT owner_id, name, lead_score, score_band FROM leads WHERE id = ${r.lead_id}::uuid AND tenant_id = ${r.tenant_id}::uuid LIMIT 1`
-        );
-        const lead = lr.rows[0] as { owner_id?: string; name?: string; lead_score?: number; score_band?: string } | undefined;
-        const untouched = r.current_stage_key === "new"; // never first-contacted
-        // Hot lead = a high deterministic score / "hot" band. An untouched HOT
-        // lead is the costliest miss, so it escalates harder (critical + 🔥).
-        const hot = (lead?.score_band === "hot") || Number(lead?.lead_score ?? 0) >= 70;
-        const recipients = new Set<string>();
-        if (lead?.owner_id) recipients.add(lead.owner_id);
-        // Untouched leads past their first-response SLA are the highest-risk —
-        // escalate to the firm's managers so it's not just on the owner.
-        if (untouched) {
-          const mgrs = await tx.execute(
-            sql`SELECT id FROM users WHERE tenant_id = ${r.tenant_id}::uuid AND roles && ARRAY['owner','branch_head']::text[]`
-          );
-          for (const m of mgrs.rows as any[]) recipients.add(m.id as string);
-        }
-        const name = lead?.name ?? "lead";
-        const title = untouched
-          ? `${hot ? "🔥 Hot lead untouched" : "Untouched lead"}: ${name}`
-          : `Lead overdue: ${name}`;
-        const severity = untouched ? (hot ? "critical" : "warning") : "info";
-        for (const userId of recipients) {
-          await createNotification(tx, {
-            tenantId: r.tenant_id,
-            userId,
-            kind: "blueprint.stage.delayed",
-            title,
-            body: `Stuck in "${r.stage_name}" past the ${r.sla_days}-day SLA — follow up to keep it moving.`,
-            linkUrl: `/dashboard/leads/${r.lead_id}`,
-            severity,
-            meta: { lead_id: r.lead_id, stage: r.current_stage_key, sla_days: r.sla_days, hot, source: "sla_worker" },
-          });
-        }
+        await notifyDelayed(tx, r);
       } catch {
         // Notification is best-effort — never fail the SLA sweep over a notify.
       }
@@ -167,4 +160,106 @@ export function startBlueprintSLAWorker(): () => void {
   const handle = setInterval(tick, interval);
   console.log(`[blueprint-sla-worker] started (interval=${interval}ms)`);
   return () => clearInterval(handle);
+}
+
+type DelayedRow = { tenant_id: string; lead_id: string; current_stage_key: string; stage_name: string; sla_days: number };
+
+/**
+ * Who hears about a step past its SLA.
+ *
+ *  - An untouched lead (still New): its owner, the firm's owners and the
+ *    branch head(s) of the LEAD's branch — not every branch head in the firm.
+ *  - Client onboarding: the person who holds the step's open task and the
+ *    client's CURRENT RM, worded as onboarding (audit C13).
+ *  - Any other lead step: the lead's owner.
+ */
+async function notifyDelayed(tx: any, r: DelayedRow): Promise<void> {
+  const lr = await tx.execute(sql`
+    SELECT l.owner_id, l.name, l.lead_score, l.score_band, l.branch_id, l.converted_investor_id,
+           i.rm_id AS client_rm_id, i.name AS client_name
+      FROM leads l LEFT JOIN investors i ON i.id = l.converted_investor_id
+     WHERE l.id = ${r.lead_id}::uuid AND l.tenant_id = ${r.tenant_id}::uuid LIMIT 1
+  `);
+  const lead = lr.rows[0] as
+    | { owner_id?: string; name?: string; lead_score?: number; score_band?: string; branch_id?: string | null;
+        converted_investor_id?: string | null; client_rm_id?: string | null; client_name?: string | null }
+    | undefined;
+  // A journey whose subject is a client directly (no lead row).
+  const inv = lead
+    ? null
+    : ((await tx.execute(sql`
+        SELECT id, name, rm_id FROM investors WHERE id = ${r.lead_id}::uuid AND tenant_id = ${r.tenant_id}::uuid LIMIT 1
+      `)).rows[0] as { id: string; name: string; rm_id: string | null } | undefined);
+
+  const recipients = new Set<string>();
+  const onboarding = isClientPhaseStage(r.current_stage_key);
+  if (onboarding) {
+    const owner = await tx.execute(sql`
+      SELECT assignee_id FROM tasks
+       WHERE tenant_id = ${r.tenant_id}::uuid AND deleted_at IS NULL AND status NOT IN ('completed', 'cancelled')
+         AND meta->>'journeyLeadId' = ${r.lead_id} AND meta->>'journeyStageKey' = ${r.current_stage_key}
+         AND assignee_id IS NOT NULL
+       LIMIT 1
+    `);
+    const stepOwner = (owner.rows[0] as { assignee_id?: string } | undefined)?.assignee_id;
+    if (stepOwner) recipients.add(stepOwner);
+    const rm = lead?.client_rm_id ?? inv?.rm_id ?? (lead && !lead.converted_investor_id ? lead.owner_id : null);
+    if (rm) recipients.add(rm);
+    const clientId = lead?.converted_investor_id ?? inv?.id ?? null;
+    const name = lead?.client_name ?? inv?.name ?? lead?.name ?? "client";
+    for (const userId of await activeOnly(tx, r.tenant_id, recipients)) {
+      await createNotification(tx, {
+        tenantId: r.tenant_id,
+        userId,
+        kind: "blueprint.stage.delayed",
+        title: `Onboarding overdue: ${name}`,
+        body: `The "${r.stage_name}" onboarding step is past its ${r.sla_days}-day SLA — move it on or update the client.`,
+        linkUrl: clientId ? `/dashboard/investors/${clientId}` : `/dashboard/leads/${r.lead_id}`,
+        severity: "warning",
+        meta: { lead_id: r.lead_id, investor_id: clientId, stage: r.current_stage_key, sla_days: r.sla_days, source: "sla_worker" },
+      });
+    }
+    return;
+  }
+
+  if (!lead) return;
+  const untouched = r.current_stage_key === "new"; // never first-contacted
+  // Hot lead = a high deterministic score / "hot" band. An untouched HOT
+  // lead is the costliest miss, so it escalates harder (critical + 🔥).
+  const hot = lead.score_band === "hot" || Number(lead.lead_score ?? 0) >= 70;
+  if (lead.owner_id) recipients.add(lead.owner_id);
+  if (untouched) {
+    const mgrs = await tx.execute(sql`
+      SELECT id FROM users
+       WHERE tenant_id = ${r.tenant_id}::uuid AND status = 'active'
+         AND ('owner' = ANY(roles)
+              OR ('branch_head' = ANY(roles) AND ${lead.branch_id ?? null}::uuid IS NOT NULL AND branch_id = ${lead.branch_id ?? null}::uuid))
+    `);
+    for (const m of mgrs.rows as Array<{ id: string }>) recipients.add(m.id);
+  }
+  const name = lead.name ?? "lead";
+  const title = untouched ? `${hot ? "🔥 Hot lead untouched" : "Untouched lead"}: ${name}` : `Lead overdue: ${name}`;
+  const severity = untouched ? (hot ? "critical" : "warning") : "info";
+  for (const userId of await activeOnly(tx, r.tenant_id, recipients)) {
+    await createNotification(tx, {
+      tenantId: r.tenant_id,
+      userId,
+      kind: "blueprint.stage.delayed",
+      title,
+      body: `Stuck in "${r.stage_name}" past the ${r.sla_days}-day SLA — follow up to keep it moving.`,
+      linkUrl: `/dashboard/leads/${r.lead_id}`,
+      severity,
+      meta: { lead_id: r.lead_id, stage: r.current_stage_key, sla_days: r.sla_days, hot, source: "sla_worker" },
+    });
+  }
+}
+
+async function activeOnly(tx: any, tenantId: string, ids: Set<string>): Promise<string[]> {
+  if (!ids.size) return [];
+  const r = await tx.execute(sql`
+    SELECT id::text AS id FROM users
+     WHERE tenant_id = ${tenantId}::uuid AND status = 'active'
+       AND id IN (${sql.join([...ids].map((x) => sql`${x}::uuid`), sql`, `)})
+  `);
+  return (r.rows as Array<{ id: string }>).map((x) => x.id);
 }

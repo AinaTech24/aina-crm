@@ -13,6 +13,8 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { scoreFields } from "@/lib/leads/score";
+import { LEAD_PHASE_STAGES, normalizeLeadStage } from "@/lib/leads/normalize";
+import { startJourneyAt } from "@/lib/blueprints/journey-access";
 import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +27,6 @@ const Body = z.object({
   rows: z.array(z.record(z.string(), z.any())).max(10000),
 });
 
-const VALID_STAGES = new Set(["new", "contacted", "qualified", "proposal_sent", "converted", "lost", "cold"]);
 const VALID_SOURCES = new Set([
   "website", "referral", "meta_ads", "google_ads", "linkedin", "youtube",
   "webinar", "event", "walk_in", "manual", "other",
@@ -96,8 +97,11 @@ export async function POST(req: NextRequest) {
         }
         const sourceRaw = pick(row, reverse.source).toLowerCase().replace(/\s+/g, "_");
         const source = VALID_SOURCES.has(sourceRaw) ? sourceRaw : "manual";
-        const stageRaw = pick(row, reverse.stage).toLowerCase().replace(/\s+/g, "_");
-        const stage = VALID_STAGES.has(stageRaw) ? stageRaw : "new";
+        // The SOP's own lead stage (legacy names folded onto it); a client
+        // stage or "converted" is not something a spreadsheet can make a lead.
+        const stageRaw = pick(row, reverse.stage);
+        const folded = stageRaw ? normalizeLeadStage(stageRaw) : "new";
+        const stage = (LEAD_PHASE_STAGES as readonly string[]).includes(folded) && folded !== "won_lead" ? folded : "new";
 
         const emailVal = pick(row, reverse.email) || null;
         const phoneVal = pick(row, reverse.phone) || null;
@@ -127,6 +131,7 @@ export async function POST(req: NextRequest) {
         });
 
         try {
+          const leadId = uuid();
           await tx.execute(sql`
             INSERT INTO leads (
               id, tenant_id, branch_id, name, email, phone, alt_phone, alt_email, pan, city, pincode,
@@ -137,7 +142,7 @@ export async function POST(req: NextRequest) {
               owner_id, notes, custom_fields, created_at, updated_at
             )
             VALUES (
-              ${uuid()}, ${session.tenantId}, ${session.branchId ?? null},
+              ${leadId}, ${session.tenantId}, ${session.branchId ?? null},
               ${name},
               ${emailVal},
               ${phoneVal},
@@ -164,6 +169,11 @@ export async function POST(req: NextRequest) {
               now(), now()
             )
           `);
+          // A row imported past "New" starts its journey at that stage, so
+          // the board and the stepper agree (audit L9).
+          if (stage !== "new") {
+            await tx.transaction((sp) => startJourneyAt(sp as any, session.tenantId, leadId, stage, session.userId));
+          }
           inserted++;
         } catch (err: any) {
           errors.push({ rowIndex: i, error: String(err.message ?? "insert failed") });
