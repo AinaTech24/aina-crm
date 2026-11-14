@@ -23,6 +23,7 @@ import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { requireSession } from "@/lib/auth/session";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { leads, eventsOutbox, activities, type ActivityKind } from "@/db/schema";
+import { touchClientContact } from "@/lib/leads/open-tasks";
 import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { loadEditableLead, loadViewableLead } from "@/lib/leads/access";
 import { loadRecordNotes } from "@/lib/notes/record-notes";
@@ -121,12 +122,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         meta: { userId: session.userId, source: "note" } as any,
       } as any);
 
+      // A conversation with a converted lead is a conversation with the
+      // client: their record's last contact moves too.
+      if (lead.convertedInvestorId && ["call", "meeting", "email", "whatsapp"].includes(parse.data.activityType)) {
+        await touchClientContact(tx, session.tenantId, lead.convertedInvestorId, ts);
+      }
+
       // ─── Smart blueprint advance — activity logged ────────────────
       // The activity type determines which stage the lead jumps to:
       //   - call    → call_done   (stage 2 of the SOP)
       //   - meeting → meeting_done (stage 8) — RM logged a past meeting
       // Other types (email, whatsapp, note) just refresh the lastContactAt
-      // without moving the funnel.
+      // without moving the funnel. Automatic moves are forward-only: a call
+      // logged on a converted lead never pulls the client back into the lead
+      // phase (lib/blueprints/journey-rules.ts).
       if (parse.data.activityType === "call") {
         await autoAdvance(tx, session.tenantId, id, "call.logged", {
           remarks: `Auto: call logged on ${formatDate(ts)} — "${parse.data.note.slice(0, 60)}".`,

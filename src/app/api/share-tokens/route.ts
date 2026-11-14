@@ -5,8 +5,10 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   Returns: { token, url, expiresAt }   ← token is plaintext, ONE TIME.
  *
  * RM uses this to mint risk-profile / docs / proposal-approval / onboarding-progress public links.
- * Also advances the lead's blueprint stage so the progress bar reflects that
- * the form has been sent (risk_profile_sent / docs_requested / proposal_sent).
+ * Also moves the journey forward where the link means a real step: a
+ * document link → Documents Pending, a proposal link → Proposal Sent. A risk
+ * profile link moves nothing (the SOP has no such stage). Automatic, so
+ * forward-only (lib/blueprints/journey-rules.ts).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,7 +17,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { createShareToken } from "@/lib/share-tokens";
-import { transitionTo } from "@/lib/blueprints/engine";
+import { autoAdvance, resolveLeadIdForInvestor, type BlueprintEvent } from "@/lib/blueprints/auto-advance";
 import { eq } from "drizzle-orm";
 import { proposals } from "@/db/schema";
 
@@ -29,11 +31,12 @@ const Body = z.object({
   expiresInDays: z.number().int().min(1).max(30).optional(),
 });
 
-/** Map share-token kind → blueprint stage_key to advance the lead to. */
-const KIND_TO_LEAD_STAGE: Record<string, string> = {
-  risk_profile: "risk_profile_sent",
-  document_collection: "docs_requested",
-  proposal_approval: "proposal_sent",
+/** Share-token kind → the journey event it is. Every key is a real SOP stage
+ *  through EVENT_TO_STAGE (tests/journey-forward-only.test.ts). */
+const KIND_TO_EVENT: Record<string, BlueprintEvent> = {
+  risk_profile: "risk_profile.sent",
+  document_collection: "docs.requested",
+  proposal_approval: "proposal.sent",
 };
 
 export async function POST(req: NextRequest) {
@@ -55,32 +58,25 @@ export async function POST(req: NextRequest) {
       createdBy: session.userId,
     });
 
-    // Advance the lead's blueprint to the matching "sent" stage so the
-    // progress bar moves the moment the RM shares a link.
-    const targetStage = KIND_TO_LEAD_STAGE[parsed.data.kind];
-    if (targetStage) {
+    // Move the journey for the link just shared — to the lead's own journey,
+    // or the journey of the lead a client was converted from.
+    const event = KIND_TO_EVENT[parsed.data.kind];
+    if (event) {
       await withTenant(session.tenantId, async (tx) => {
-        // For proposal_approval the subjectId is the proposal id, not the
-        // lead id. Look up the underlying lead.
         let leadId: string | null = null;
         if (parsed.data.subjectType === "lead") {
           leadId = parsed.data.subjectId;
+        } else if (parsed.data.subjectType === "investor") {
+          leadId = await resolveLeadIdForInvestor(tx, parsed.data.subjectId);
         } else if (parsed.data.subjectType === "proposal") {
+          // For proposal_approval the subjectId is the proposal id.
           const [p] = await tx.select().from(proposals).where(eq(proposals.id, parsed.data.subjectId));
-          leadId = (p as any)?.leadId ?? null;
+          leadId = (p as any)?.leadId ?? ((p as any)?.investorId ? await resolveLeadIdForInvestor(tx, (p as any).investorId) : null);
         }
         if (!leadId) return;
-        try {
-          await transitionTo(tx, session.tenantId, leadId, targetStage, {
-            actorUserId: session.userId,
-            actorRoles: session.roles ?? [],
-            systemBypass: true,
-            remarks: `Shared ${parsed.data.kind.replace(/_/g, " ")} link with client.`,
-          });
-        } catch (e) {
-          // Don't fail the token creation if blueprint advance fails.
-          console.error("[share-tokens] blueprint advance failed:", e);
-        }
+        await autoAdvance(tx, session.tenantId, leadId, event, {
+          remarks: `Shared ${parsed.data.kind.replace(/_/g, " ")} link with client.`,
+        });
       });
     }
 

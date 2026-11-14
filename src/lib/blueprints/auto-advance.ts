@@ -20,18 +20,18 @@
  *   - a mutual-fund Business entry booked / confirmed  → make_transaction /
  *     transaction_successful (lib/business/journey.ts)
  *
- * Direction: `autoAdvance` always calls `transitionTo` with systemBypass, and
- * systemBypass permits ANY jump — including backwards. Most events are
- * naturally forward, and some legitimately loop (a follow-up meeting after a
- * proposal takes a lead from Proposal Sent back through Meeting Done). Proposal
- * events are different: they fire on leads at every point in the journey,
- * including clients already mid-onboarding, so they pass `forwardOnly` and
- * never pull a journey back. Failures are silently swallowed so a blueprint
- * hiccup doesn't break the main flow (proposal save, meeting schedule, etc.).
+ * Direction: every move made here is AUTOMATIC (`transitionTo` with
+ * `automatic: true`), so it is forward-only, never puts a converted lead / a
+ * client-phase journey back into a lead stage (Lost included), never changes
+ * onboarding branch or route, and never touches a deleted lead — the rules in
+ * journey-rules.ts, enforced by the engine. A refused move is a silent no-op.
+ * Failures are swallowed so a blueprint hiccup doesn't break the main flow
+ * (proposal save, meeting schedule, etc.).
  */
 
 import { sql } from "drizzle-orm";
 import { transitionTo } from "@/lib/blueprints/engine";
+import { INSURANCE_ENTRY_STAGE } from "@/lib/blueprints/lead_to_client";
 import type { Tx } from "@/db/client";
 
 export type BlueprintEvent =
@@ -92,9 +92,12 @@ const EVENT_TO_STAGE: Record<BlueprintEvent, string | null> = {
   "proposal.created": null,
   "proposal.sent": "proposal_sent",
   "proposal.accepted": "won_lead",
-  // ── Legacy back-compat (mapped to closest new SOP stage) ──
-  "risk_profile.sent": "won_lead",
-  "risk_profile.submitted": "won_lead",
+  // ── Legacy back-compat ──
+  // The SOP has no risk-profile stage, and sending or answering a risk
+  // profile does not make a lead Won (only the client's acceptance does), so
+  // these move nothing.
+  "risk_profile.sent": null,
+  "risk_profile.submitted": null,
   "call.completed.positive": "call_done",
 };
 
@@ -112,16 +115,17 @@ export async function autoAdvance(
   event: BlueprintEvent,
   opts: {
     remarks?: string;
-    /** Skip the move when the journey is already at or past the target.
-     *  See the header: required for events that fire on clients already
-     *  further along, or a fresh proposal drags an onboarding client back. */
+    /** @deprecated Every automatic move is forward-only now; kept so older
+     *  callers compile. */
     forwardOnly?: boolean;
   } = {}
-): Promise<void> {
-  const targetStage = EVENT_TO_STAGE[event];
-  if (!targetStage) return;
+): Promise<{ moved: boolean; toStage: string | null; reason?: string }> {
+  let targetStage = EVENT_TO_STAGE[event];
+  if (!targetStage) return { moved: false, toStage: null };
   try {
-    if (opts.forwardOnly && !(await isAheadOf(tx, leadId, targetStage))) return;
+    // A converted lead starts the onboarding of its product: insurance clients
+    // the insurance branch, everyone else MF / general onboarding.
+    if (event === "client.converted") targetStage = await conversionEntryStage(tx, tenantId, leadId);
     // Run inside a SAVEPOINT (Drizzle nested transaction) so a DB-level error
     // — deadlock, constraint, statement timeout — rolls back ONLY the blueprint
     // advance, not the parent transaction. Without this, a thrown SQL error
@@ -129,14 +133,16 @@ export async function autoAdvance(
     // error but the parent's COMMIT would then fail and roll back EVERYTHING
     // (e.g. the entire lead → client conversion). The savepoint keeps the
     // "additive, never fails the parent" promise true even for DB errors.
-    await tx.transaction(async (sp) => {
-      await transitionTo(sp as unknown as Tx, tenantId, leadId, targetStage, {
+    const res = await tx.transaction(async (sp) =>
+      transitionTo(sp as unknown as Tx, tenantId, leadId, targetStage!, {
         systemBypass: true,
+        automatic: true,
         remarks:
           opts.remarks ??
           `Auto-advanced by CRM after ${event.replace(/\./g, " ")} event.`,
-      });
-    });
+      })
+    );
+    return { moved: !!res.ok && res.fromStage !== res.toStage, toStage: targetStage, reason: res.reason };
   } catch (err) {
     // Blueprint advance is *additive* — never fail the parent transaction
     // because the smart progression couldn't compute a path. The audit log
@@ -146,31 +152,17 @@ export async function autoAdvance(
       `[autoAdvance] failed to advance lead ${leadId} on ${event}:`,
       (err as Error)?.message
     );
+    return { moved: false, toStage: targetStage, reason: (err as Error)?.message };
   }
 }
 
-/**
- * True when moving to `targetStage` is forward progress for this lead's
- * journey — or when there is no journey yet (the transition creates one).
- *
- * Compares the blueprint's own stage ORDER (per firm, so a firm that reordered
- * its stages in the designer is respected). A lead sitting in a dead end — the
- * terminal-failure stage, i.e. Lost — counts as "before" everything: a lost
- * lead who comes back and accepts a proposal should become Won.
- */
-async function isAheadOf(tx: Tx, leadId: string, targetStage: string): Promise<boolean> {
+/** First onboarding stage for a converted lead, by its product pipeline. */
+export async function conversionEntryStage(tx: Tx, tenantId: string, leadId: string): Promise<string> {
   const r = await tx.execute(sql`
-    SELECT cur.stage_order AS cur_order, tgt.stage_order AS tgt_order, i.current_stage_key AS cur_key
-      FROM lead_blueprint_instances i
-      JOIN blueprint_stages cur ON cur.blueprint_id = i.blueprint_id AND cur.stage_key = i.current_stage_key
-      JOIN blueprint_stages tgt ON tgt.blueprint_id = i.blueprint_id AND tgt.stage_key = ${targetStage}
-     WHERE i.lead_id = ${leadId}::uuid
-     LIMIT 1
+    SELECT pipeline FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1
   `);
-  const row = r.rows[0] as { cur_order: number; tgt_order: number; cur_key: string } | undefined;
-  if (!row) return true;
-  if (row.cur_key === "not_qualified") return true;
-  return Number(row.tgt_order) > Number(row.cur_order);
+  const pipeline = (r.rows[0] as { pipeline?: string } | undefined)?.pipeline;
+  return pipeline === "insurance" ? INSURANCE_ENTRY_STAGE : "request_documents";
 }
 
 /**
@@ -188,7 +180,8 @@ export async function resolveLeadIdForInvestor(
   investorId: string
 ): Promise<string | null> {
   const r = await tx.execute(sql`
-    SELECT id FROM leads WHERE converted_investor_id = ${investorId}::uuid LIMIT 1
+    SELECT id FROM leads WHERE converted_investor_id = ${investorId}::uuid
+    ORDER BY converted_at DESC NULLS LAST LIMIT 1
   `);
   return ((r.rows[0] as any)?.id as string | undefined) ?? null;
 }

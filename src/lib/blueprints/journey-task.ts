@@ -18,6 +18,7 @@ import { tasks } from "@/db/schema";
 import { v4 as uuid } from "uuid";
 import { createNotification } from "@/lib/notifications/create";
 import { LEAD_PHASE_LAST_ORDER, LEAD_TO_CLIENT_STAGES } from "./lead_to_client";
+import { journeyRank } from "./journey-rules";
 
 const CODE_ORDER = new Map(LEAD_TO_CLIENT_STAGES.map((s) => [s.key, s.order] as const));
 
@@ -92,18 +93,27 @@ export async function createJourneyTask(
   }
 
   // Assignee: the one chosen in the pop-up; else the step's owning role (the
-  // active person with the fewest open tasks); else the lead's owner; else
-  // whoever moved the step.
+  // active person with the fewest open tasks); else the client's CURRENT RM
+  // (the lead's owner only while there is no client); else whoever moved it.
   let assigneeId = p.input?.assigneeId ?? null;
-  if (!assigneeId && p.ownerRole && p.ownerRole !== "sales") {
+  const roles = rolesForOwnerRole(p.ownerRole);
+  if (!assigneeId && roles.length) {
     const r = await tx.execute(sql`
       SELECT u.id FROM users u
-      WHERE u.tenant_id = ${p.tenantId}::uuid AND u.status = 'active' AND u.roles && ARRAY[${p.ownerRole}]::text[]
+      WHERE u.tenant_id = ${p.tenantId}::uuid AND u.status = 'active'
+        AND u.roles && ARRAY[${sql.join(roles.map((x) => sql`${x}`), sql`, `)}]::text[]
       ORDER BY (SELECT count(*) FROM tasks t WHERE t.assignee_id = u.id AND t.deleted_at IS NULL
                   AND t.status NOT IN ('completed', 'cancelled')) ASC, u.created_at ASC
       LIMIT 1
     `);
     assigneeId = (r.rows[0] as { id?: string } | undefined)?.id ?? null;
+  }
+  if (!assigneeId && investorId) {
+    const rm = await tx.execute(sql`
+      SELECT i.rm_id FROM investors i JOIN users u ON u.id = i.rm_id AND u.status = 'active'
+      WHERE i.id = ${investorId}::uuid AND i.tenant_id = ${p.tenantId}::uuid LIMIT 1
+    `);
+    assigneeId = (rm.rows[0] as { rm_id?: string } | undefined)?.rm_id ?? null;
   }
   assigneeId = assigneeId ?? lead?.owner_id ?? p.actorUserId ?? null;
   if (!assigneeId) return { status: "skipped", reason: "no one to assign it to" }; // never block the step
@@ -147,4 +157,70 @@ export async function createJourneyTask(
   }
 
   return { status: "created", id: taskId, title, assigneeName: assignee?.name ?? null };
+}
+
+/**
+ * The users a step's owner role means. The SOP names "operations" and
+ * "back_office" for its steps; the CRM's roles are `ops` and `back_office`
+ * (one desk, two names), so either finds both. "sales" is the client's RM —
+ * no role lookup.
+ */
+export function rolesForOwnerRole(ownerRole: string | null | undefined): string[] {
+  if (!ownerRole || ownerRole === "sales") return [];
+  if (ownerRole === "operations" || ownerRole === "back_office" || ownerRole === "ops") return ["ops", "back_office"];
+  return [ownerRole];
+}
+
+/**
+ * The journey reached `stageKey` on its own (an automatic move): the open
+ * step tasks of the steps BEHIND it are done — close them, with the reason.
+ * Tasks of the step itself and of steps ahead stay.
+ */
+export async function closeJourneyTasksBehind(
+  tx: Tx,
+  p: { tenantId: string; leadId: string; stageKey: string; reason: string | null },
+): Promise<number> {
+  const open = (await tx.execute(sql`
+    SELECT id, meta->>'journeyStageKey' AS stage_key FROM tasks
+    WHERE tenant_id = ${p.tenantId}::uuid AND deleted_at IS NULL
+      AND status NOT IN ('completed', 'cancelled')
+      AND meta->>'journeyLeadId' = ${p.leadId}
+  `)).rows as Array<{ id: string; stage_key: string | null }>;
+  const target = journeyRank(p.stageKey);
+  const ids = open.filter((t) => t.stage_key && t.stage_key !== p.stageKey && journeyRank(t.stage_key) < target).map((t) => t.id);
+  if (!ids.length) return 0;
+  const note = `Done automatically — the journey reached this step's next stage${p.reason ? ` (${p.reason})` : ""}.`;
+  await tx.execute(sql`
+    UPDATE tasks SET status = 'completed', updated_at = now(),
+           remarks = CASE WHEN remarks IS NULL OR remarks = '' THEN ${note} ELSE ${note} || E'\n' || remarks END
+    WHERE tenant_id = ${p.tenantId}::uuid AND id IN (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
+  `);
+  return ids.length;
+}
+
+/**
+ * A client left (Exited / Closed) or went to the Trash: their open onboarding
+ * step tasks are cancelled. For the client-master write paths to call; also
+ * used when a lead is deleted.
+ */
+export async function cancelJourneyTasks(
+  tx: Tx,
+  p: { tenantId: string; leadId?: string | null; investorId?: string | null; reason: string },
+): Promise<number> {
+  if (!p.leadId && !p.investorId) return 0;
+  const byLead = p.leadId ? sql`meta->>'journeyLeadId' = ${p.leadId}` : sql`FALSE`;
+  const byInvestor = p.investorId
+    ? sql`(meta->>'journeyLeadId' IN (SELECT id::text FROM leads WHERE converted_investor_id = ${p.investorId}::uuid AND tenant_id = ${p.tenantId}::uuid)
+           OR meta->>'journeyLeadId' = ${p.investorId})`
+    : sql`FALSE`;
+  const r = await tx.execute(sql`
+    UPDATE tasks SET status = 'cancelled', updated_at = now(),
+           remarks = CASE WHEN remarks IS NULL OR remarks = '' THEN ${p.reason} ELSE ${p.reason} || E'\n' || remarks END
+    WHERE tenant_id = ${p.tenantId}::uuid AND deleted_at IS NULL
+      AND status NOT IN ('completed', 'cancelled')
+      AND meta ? 'journeyStageKey'
+      AND (${byLead} OR ${byInvestor})
+    RETURNING id
+  `);
+  return r.rows.length;
 }

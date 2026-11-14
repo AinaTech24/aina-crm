@@ -254,6 +254,9 @@ const PREREQ_RULES_BY_TARGET: Record<string, RuleFn[]> = {
   meeting_scheduled: [hasScheduledMeeting],
   // Meeting must be completed before Meeting Done.
   meeting_done: [hasCompletedMeeting],
+  // A proposal really went out before Proposal Sent (sending one moves the
+  // journey there by itself — lib/proposals/journey.ts).
+  proposal_sent: [hasProposalSent],
   // First-call outcome / qualification captured before Won Lead.
   won_lead: [hasCallOutcome],
   // Documents on file before Documents Received.
@@ -263,4 +266,4 @@ const PREREQ_RULES_BY_TARGET: Record<string, RuleFn[]> = {
 // Retained for future SOP variants that re-introduce a risk-profile / proposal
 // gate; referenced here so they aren't flagged unused while the current 30-stage
 // graph collapses those steps into Won Lead.
-void [hasRiskProfileLinkSent, hasRiskProfileResponse, hasProposalDraft, hasProposalSent, hasProposalApproval, hasDocChecklistSent];
+void [hasRiskProfileLinkSent, hasRiskProfileResponse, hasProposalDraft, hasProposalApproval, hasDocChecklistSent];

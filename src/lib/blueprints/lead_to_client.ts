@@ -660,6 +660,15 @@ export const LEAD_TO_CLIENT_TRANSITIONS: Array<{
   { from: "proposal_sent", to: "not_qualified", name: "Proposal Declined" },
   { from: "proposal_sent", to: "meeting_scheduled", name: "Schedule Follow-up Meeting" },
 
+  // ─── Lost from every open lead stage (audit L16) ───────────────
+  // Firms seeded before this rule get it from the engine (transitionTo).
+  { from: "new", to: "not_qualified", name: "Not Qualified" },
+  { from: "call_back_later", to: "not_qualified", name: "Not Qualified" },
+  { from: "call_not_connected", to: "not_qualified", name: "Not Qualified" },
+  { from: "meeting_scheduled", to: "not_qualified", name: "Not Qualified" },
+  { from: "meeting_pending", to: "not_qualified", name: "Not Qualified" },
+  { from: "won_lead", to: "not_qualified", name: "Not Qualified" },
+
   // ─── Not Qualified reopen (rare) ───────────────────────────────
   { from: "not_qualified", to: "call_done", name: "Reopen Lead" },
 

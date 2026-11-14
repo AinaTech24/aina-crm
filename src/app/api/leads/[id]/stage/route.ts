@@ -3,7 +3,10 @@ import { handleApiError } from "@/lib/api/error-handler";
  * POST /api/leads/[id]/stage
  * Body: { stage: 'new'|'contacted'|'qualified'|'proposal_sent'|'converted'|'lost'|'cold' }
  *
- * Updates the lead's stage and emits a stage-change event so workflows can react.
+ * Moves the lead's journey to the stage (legacy names are folded onto the SOP
+ * stage) through the journey engine — never a bare leads.stage write, so the
+ * board and the stepper agree (audit L9) — and emits a stage-change event so
+ * workflows can react.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,7 +19,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { leads, eventsOutbox } from "@/db/schema";
 import { loadEditableLead } from "@/lib/leads/access";
 import { CANONICAL_LEAD_STAGES, normalizeLeadStage } from "@/lib/leads/normalize";
-import { scoreFields } from "@/lib/leads/score";
+import { writeStageThroughJourney } from "@/lib/blueprints/journey-access";
 
 export const dynamic = "force-dynamic";
 
@@ -40,18 +43,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (!CANONICAL_LEAD_STAGES.includes(nextStage)) {
         return null;
       }
-      const stageChangedAt = new Date();
-      // Re-score on every stage change — the stage is the strongest funnel
-      // signal, so the persisted score must move with it.
-      const scored = scoreFields(
-        { ...(before as any), stage: nextStage, stageChangedAt },
-        stageChangedAt.getTime()
-      );
-      const after = await tx
-        .update(leads)
-        .set({ stage: nextStage, stageChangedAt, updatedAt: new Date(), ...scored } as any)
-        .where(eq(leads.id, id))
-        .returning();
+      const moved = await writeStageThroughJourney(tx, session, id, nextStage, {
+        remarks: "Stage set from the lead record.",
+        ...clientMeta,
+      });
+      if (!moved.ok) throw Object.assign(new Error(moved.reason ?? "This stage move is not allowed."), { status: 409 });
+      const after = await tx.select().from(leads).where(eq(leads.id, id)).limit(1);
       await tx.insert(eventsOutbox).values([
         {
           tenantId: session.tenantId,

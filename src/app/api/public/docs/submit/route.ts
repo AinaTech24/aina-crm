@@ -24,7 +24,7 @@ import { claimShareToken, releaseShareToken, finalizeShareToken } from "@/lib/sh
 import { putObject, getObjectBytes, deleteObject, vaultKey } from "@/lib/storage/s3";
 import { isAllowedDocType } from "@/lib/storage/file-sniff";
 import { firmFolderName } from "@/lib/storage/firm-folder";
-import { transitionTo } from "@/lib/blueprints/engine";
+import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { mapKycFieldsToInvestorUpdate } from "@/lib/onboarding/kyc-fields";
 import { enforce, enforceLinkToken, PUBLIC_LINK_IP_CEILING } from "@/lib/rate-limit";
 import { claimDocumentUpload } from "@/lib/storage/document-upload-grants";
@@ -278,19 +278,18 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Advance lead stage
-        if (tk.subjectType === "lead") {
-          await tx
-            .update(leads)
-            .set({ stage: "docs_received" as any, stageChangedAt: new Date(), updatedAt: new Date() } as any)
-            .where(eq(leads.id, tk.subjectId));
-          try {
-            await transitionTo(tx, tk.tenantId!, tk.subjectId, "docs_received", {
-              systemBypass: true,
+        // The documents are in: move the journey to Documents Received — the
+        // lead's own journey, or the one a client was converted from. Through
+        // the engine only (it mirrors leads.stage), automatic and forward-only.
+        {
+          const journeyLeadId =
+            tk.subjectType === "lead" ? tk.subjectId
+              : tk.subjectType === "investor" ? await resolveLeadIdForInvestor(tx, tk.subjectId!)
+                : null;
+          if (journeyLeadId) {
+            await autoAdvance(tx, tk.tenantId!, journeyLeadId, "docs.received", {
               remarks: `Client uploaded ${uploaded.length} document(s) via secure link.`,
             });
-          } catch (e) {
-            console.error("[docs/submit] blueprint advance failed:", e);
           }
         }
 

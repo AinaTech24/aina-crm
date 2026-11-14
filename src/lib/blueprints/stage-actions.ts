@@ -95,6 +95,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       hint: "Long-term nurture — resurface in 30 / 60 / 90 days.",
       behaviour: { kind: "advance_only" },
     },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
+      behaviour: { kind: "advance_only" },
+    },
   ],
 
   // 2. Call Done ("Contacted") — schedule a meeting, propose straight from the
@@ -162,6 +170,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       hint: "Park for 30+ days.",
       behaviour: { kind: "advance_only" },
     },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
+      behaviour: { kind: "advance_only" },
+    },
   ],
 
   // 4. Call Not Connected — same loop, different defaults
@@ -188,6 +204,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "secondary",
       targetStage: "contact_in_future",
       hint: "Move to drip campaign.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
       behaviour: { kind: "advance_only" },
     },
   ],
@@ -246,6 +270,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       hint: "Client didn't turn up — move to nurture and set a re-engage reminder.",
       behaviour: { kind: "advance_only" },
     },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
+      behaviour: { kind: "advance_only" },
+    },
   ],
 
   // 7. Meeting Pending
@@ -272,6 +304,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "danger",
       targetStage: "contact_in_future",
       hint: "Client didn't turn up — move to nurture and set a re-engage reminder.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
       behaviour: { kind: "advance_only" },
     },
   ],
@@ -378,6 +418,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       hint: "Begin the protection journey: needs analysis → quote → proposal → underwriting → policy.",
       behaviour: { kind: "advance_only" },
       pipelines: ["insurance"],
+    },
+    {
+      key: "mark_lost",
+      label: "Mark Lost",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Not interested, not reachable or not a fit — close the lead with a reason.",
+      behaviour: { kind: "advance_only" },
     },
   ],
 

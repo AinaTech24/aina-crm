@@ -331,8 +331,9 @@ export async function POST(req: NextRequest) {
 
       // ─── Smart blueprint advance ───────────────────────────────────
       // If this meeting was scheduled against a lead, push the lead's
-      // blueprint to `appointment_scheduled` so the user doesn't have to
-      // hop to the lead detail page and click Advance.
+      // blueprint to Meeting Scheduled so the user doesn't have to hop to the
+      // lead detail page and click Advance. Automatic, so forward-only: a lead
+      // already past it (a proposal out, Won, converted) stays where it is.
       if (body.leadId) {
         await autoAdvance(tx, session.tenantId, body.leadId, "meeting.scheduled.lead", {
           remarks: `Auto: ${labelForType(body.meetingType)} scheduled for ${formatDate(meetingDate)}.`,
