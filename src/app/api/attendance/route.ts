@@ -2,7 +2,12 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Attendance — manager upsert.
  *
- *   GET   /api/attendance   — list (RLS-scoped)
+ *   GET   /api/attendance   — list (RLS-scoped). Optional ?employee=<uuid|me>,
+ *                             ?date=YYYY-MM-DD, ?from=YYYY-MM-DD narrow it (the
+ *                             app's own month and its team-today list); each
+ *                             row carries its day's last punch (last_punch_kind,
+ *                             last_punch_at) — someone back in after a clock-out
+ *                             is working again, and the clock needs to know.
  *   POST  /api/attendance   — upsert a row by (employee, date): set status/note.
  *                             Managers only (owner / branch_head). A manager's
  *                             correction needs a reason; the audit row keeps
@@ -38,11 +43,25 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit")) || 100));
     const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+    const DAY = /^\d{4}-\d{2}-\d{2}$/;
+    const UUID = /^[0-9a-f-]{36}$/i;
+    const employeeParam = url.searchParams.get("employee");
+    const employee = employeeParam === "me" ? session.userId : employeeParam && UUID.test(employeeParam) ? employeeParam : null;
+    const date = url.searchParams.get("date");
+    const from = url.searchParams.get("from");
     const rows = await withTenant(session.tenantId, async (tx) => {
       const r = await tx.execute(sql`
-        SELECT a.*, u.name AS employee_name
+        SELECT a.*, u.name AS employee_name, lp.kind AS last_punch_kind, lp.at AS last_punch_at
         FROM attendance a LEFT JOIN users u ON u.id = a.employee_user_id
+        LEFT JOIN LATERAL (
+          SELECT p.kind, p.at FROM attendance_punches p
+           WHERE p.tenant_id = a.tenant_id AND p.employee_user_id = a.employee_user_id AND p.attendance_date = a.attendance_date
+           ORDER BY p.at DESC LIMIT 1
+        ) lp ON TRUE
         WHERE a.tenant_id = ${session.tenantId}::uuid
+          ${employee ? sql`AND a.employee_user_id = ${employee}::uuid` : sql``}
+          ${date && DAY.test(date) ? sql`AND a.attendance_date = ${date}::date` : sql``}
+          ${from && DAY.test(from) ? sql`AND a.attendance_date >= ${from}::date` : sql``}
         ORDER BY a.attendance_date DESC LIMIT ${limit} OFFSET ${offset}
       `);
       return r.rows;

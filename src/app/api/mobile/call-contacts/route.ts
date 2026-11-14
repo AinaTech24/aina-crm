@@ -17,7 +17,9 @@ export async function GET() {
         : sql`${sql.raw(owner)} = ${s.userId}::uuid`;
       const result = await tx.execute(sql`
         SELECT id, name, phone, 'investor' AS "subjectType" FROM investors
-        WHERE tenant_id = ${s.tenantId}::uuid AND phone IS NOT NULL AND deleted_at IS NULL AND ${scope("rm_id")}
+        WHERE tenant_id = ${s.tenantId}::uuid AND phone IS NOT NULL AND deleted_at IS NULL
+          -- A client merged into another keeps the phone; only the survivor may match a call.
+          AND merged_into_id IS NULL AND ${scope("rm_id")}
         UNION ALL
         SELECT id, name, phone, 'lead' AS "subjectType" FROM leads
         WHERE tenant_id = ${s.tenantId}::uuid AND phone IS NOT NULL AND converted_investor_id IS NULL

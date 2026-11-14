@@ -89,7 +89,7 @@ export default function Home() {
   const day = useMyDay(selected);
   const perf = useMyPerformance();
   const cc = useCommandCenter();
-  const attendance = useAttendance();
+  const attendance = useAttendance({ employee: "me", date: attIsoDay(new Date()) });
   const todayAttendance = findDay(attendance.data, me.data?.user.id, attIsoDay(new Date()));
   const isToday = selected === today;
 

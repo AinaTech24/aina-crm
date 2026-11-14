@@ -1,8 +1,13 @@
 /**
  * Attendance — clock in / out of the work day, with a live running timer, a
  * GPS stamp (a field team never sees an office, so "where" is the honest part of
- * "when"), a month summary and recent history. Managers get a Team tab, since
- * the list endpoint returns the whole firm.
+ * "when"), a month summary and recent history. Managers get a Team tab.
+ *
+ * As the CRM keeps it: a day holds several sessions (out for a client meeting,
+ * back in), so the timer is the closed sessions plus the one running since the
+ * last clock-in; the seed's "absent" reads "Not clocked in" until the work day
+ * ends; my own rows and the team's today are fetched as such (the whole-firm
+ * list ran out after a few days in a firm of 20+).
  */
 
 import React from "react";
@@ -17,8 +22,8 @@ import { StatusPill } from "../../../../src/components/ui/StatusPill";
 import { Skeleton } from "../../../../src/components/ui/Skeleton";
 import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
 import {
-  useAttendance, useClock, findDay, myRows, isoDay, durationLabel, timeLabel,
-  totalMinutes, STATUS_TONE, type AttendanceRow,
+  useAttendance, useAttendanceSettings, useClock, findDay, isoDay, durationLabel, timeLabel,
+  totalMinutes, isClockedIn, notClockedInYet, statusLabel, type AttendanceRow,
 } from "../../../../src/features/attendance/api";
 import { getCheckinLocation } from "../../../../src/features/activities/checkin";
 import { useMe } from "../../../../src/api/me";
@@ -31,7 +36,13 @@ const MANAGER_ROLES = ["owner", "branch_head"];
 
 export default function Attendance() {
   const me = useMe();
-  const { data, isLoading, isRefetching, refetch } = useAttendance();
+  const isManagerRole = (me.data?.user.roles ?? []).some((r) => MANAGER_ROLES.includes(r));
+  const today = isoDay(new Date());
+  const from = isoDay(new Date(Date.now() - 62 * 864e5));
+  const { data: mineData, isLoading, isRefetching, refetch } = useAttendance({ employee: "me", from });
+  const team = useAttendance({ date: today, limit: 500 }, isManagerRole);
+  const settings = useAttendanceSettings();
+  const workEnd = settings.data?.workEnd;
   const clock = useClock();
   const router = useRouter();
   const [tab, setTab] = React.useState<"me" | "team">("me");
@@ -45,13 +56,14 @@ export default function Attendance() {
   }, []);
 
   const userId = me.data?.user.id;
-  const isManager = (me.data?.user.roles ?? []).some((r) => MANAGER_ROLES.includes(r));
-  const today = isoDay(new Date());
-  const todayRow = findDay(data, userId, today);
-  const mine = myRows(data, userId);
+  const isManager = isManagerRole;
+  const todayRow = findDay(mineData, userId, today);
+  const mine = mineData ?? [];
 
-  const clockedIn = !!todayRow?.clock_in_at && !todayRow?.clock_out_at;
-  const doneForDay = !!todayRow?.clock_in_at && !!todayRow?.clock_out_at;
+  const clockedIn = isClockedIn(todayRow);
+  const doneForDay = !!todayRow?.clock_in_at && !clockedIn;
+  const backIn = clockedIn && todayRow?.last_punch_kind === "in" && !!todayRow?.last_punch_at && todayRow.last_punch_at !== todayRow.clock_in_at;
+  const todayStatus = todayRow ? statusLabel(todayRow, workEnd) : null;
 
   const punch = async (action: "in" | "out") => {
     setBusy(true);
@@ -76,13 +88,15 @@ export default function Attendance() {
   const daysPresent = monthRows.filter((r) => r.status === "present").length;
   const monthMins = totalMinutes(monthRows);
 
-  // Team today (managers).
-  const teamToday = (data ?? []).filter((r) => String(r.attendance_date).slice(0, 10) === today);
+  // Team today (managers): who is in, and who has not clocked in yet.
+  const teamRows = team.data ?? [];
+  const teamIn = teamRows.filter((r) => !!r.clock_in_at);
+  const teamNotIn = teamRows.filter((r) => !r.clock_in_at && (notClockedInYet(r, workEnd) || r.status === "absent"));
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       <ScreenHeader title="Attendance" subtitle={fmtDate(today)} />
-      <Screen scroll padded onRefresh={refetch} refreshing={isRefetching} contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
+      <Screen scroll padded onRefresh={() => { refetch(); team.refetch(); }} refreshing={isRefetching} contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
         {isLoading || me.isLoading ? (
           <Card><Skeleton width="50%" height={18} /><Skeleton width="100%" height={56} style={{ marginTop: 12 }} /></Card>
         ) : (
@@ -91,12 +105,14 @@ export default function Attendance() {
             <Card>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <Text variant="caption" tone="faint">TODAY</Text>
-                {todayRow?.status ? <StatusPill label={titleCase(todayRow.status)} tone={STATUS_TONE[todayRow.status] ?? "neutral"} size="sm" /> : null}
+                {todayStatus ? <StatusPill label={todayStatus.label} tone={todayStatus.tone} size="sm" /> : null}
               </View>
 
               <Text style={styles.timer}>{clockedIn || doneForDay ? durationLabel(todayRow) : "Not started"}</Text>
               <Text variant="caption" tone="muted">
-                {clockedIn ? "Working since " + timeLabel(todayRow?.clock_in_at) : doneForDay ? `${timeLabel(todayRow?.clock_in_at)} → ${timeLabel(todayRow?.clock_out_at)}` : "Clock in to start your day"}
+                {clockedIn
+                  ? backIn ? `Back in since ${timeLabel(todayRow?.last_punch_at)} · first in ${timeLabel(todayRow?.clock_in_at)}` : "Working since " + timeLabel(todayRow?.clock_in_at)
+                  : doneForDay ? `${timeLabel(todayRow?.clock_in_at)} → ${timeLabel(todayRow?.clock_out_at)}` : "Clock in to start your day"}
               </Text>
 
               {/* The button. Clocking out is not the end of the day: someone back
@@ -150,7 +166,7 @@ export default function Attendance() {
             {isManager ? (
               <View style={styles.chips}>
                 <Chip label="My history" selected={tab === "me"} onPress={() => setTab("me")} />
-                <Chip label={`Team today (${teamToday.length})`} selected={tab === "team"} onPress={() => setTab("team")} />
+                <Chip label={`Team today (${teamIn.length})`} selected={tab === "team"} onPress={() => setTab("team")} />
               </View>
             ) : null}
 
@@ -158,20 +174,28 @@ export default function Attendance() {
               <>
                 <SectionLabel icon="users" text="WHO'S IN TODAY" />
                 <Card flat style={{ padding: 0, overflow: "hidden" }}>
-                  {teamToday.length === 0 ? (
+                  {teamIn.length === 0 ? (
                     <View style={{ padding: spacing.lg }}><Text variant="body" tone="muted">Nobody has clocked in yet today.</Text></View>
                   ) : (
-                    teamToday.map((r, i) => (
-                      <View key={r.id} style={[styles.row, i < teamToday.length - 1 && styles.divider]}>
+                    teamIn.map((r, i) => (
+                      <View key={r.id} style={[styles.row, i < teamIn.length - 1 && styles.divider]}>
                         <View style={{ flex: 1 }}>
                           <Text variant="body" numberOfLines={1}>{r.employee_name ?? "—"}</Text>
-                          <Text variant="caption" tone="muted">{timeLabel(r.clock_in_at)}{r.clock_out_at ? ` → ${timeLabel(r.clock_out_at)}` : " · still in"}</Text>
+                          <Text variant="caption" tone="muted">{timeLabel(r.clock_in_at)}{isClockedIn(r) ? " · in now" : r.clock_out_at ? ` → ${timeLabel(r.clock_out_at)}` : ""}</Text>
                         </View>
                         <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold }}>{durationLabel(r)}</Text>
                       </View>
                     ))
                   )}
                 </Card>
+                {teamNotIn.length ? (
+                  <>
+                    <SectionLabel icon="user-x" text={`NOT CLOCKED IN (${teamNotIn.length})`} />
+                    <Card flat>
+                      <Text variant="body" tone="muted">{teamNotIn.map((r) => r.employee_name ?? "—").join(", ")}</Text>
+                    </Card>
+                  </>
+                ) : null}
               </>
             ) : (
               <>
@@ -180,7 +204,7 @@ export default function Attendance() {
                   {mine.length === 0 ? (
                     <View style={{ padding: spacing.lg }}><Text variant="body" tone="muted">No attendance recorded yet — clock in above.</Text></View>
                   ) : (
-                    mine.slice(0, 20).map((r, i, arr) => <DayRow key={r.id} r={r} last={i === arr.length - 1} />)
+                    mine.slice(0, 20).map((r, i, arr) => <DayRow key={r.id} r={r} last={i === arr.length - 1} workEnd={workEnd} />)
                   )}
                 </Card>
               </>
@@ -192,7 +216,8 @@ export default function Attendance() {
   );
 }
 
-function DayRow({ r, last }: { r: AttendanceRow; last: boolean }) {
+function DayRow({ r, last, workEnd }: { r: AttendanceRow; last: boolean; workEnd?: string }) {
+  const st = statusLabel(r, workEnd);
   return (
     <View style={[styles.row, !last && styles.divider]}>
       <View style={{ flex: 1 }}>
@@ -201,7 +226,7 @@ function DayRow({ r, last }: { r: AttendanceRow; last: boolean }) {
           {r.clock_in_at ? `${timeLabel(r.clock_in_at)}${r.clock_out_at ? ` → ${timeLabel(r.clock_out_at)}` : " · no clock-out"}` : "—"}
         </Text>
       </View>
-      {r.status ? <StatusPill label={titleCase(r.status)} tone={STATUS_TONE[r.status] ?? "neutral"} size="sm" dot={false} /> : null}
+      {st ? <StatusPill label={st.label} tone={st.tone} size="sm" dot={false} /> : null}
       <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold, minWidth: 52, textAlign: "right" }}>{durationLabel(r)}</Text>
     </View>
   );

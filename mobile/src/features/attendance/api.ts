@@ -7,7 +7,13 @@
  * GPS stamp — which matters for a field team who never see an office.
  *
  * POST /api/attendance/clock { action: "in" | "out", lat?, lng? }
- * GET  /api/attendance?limit=  → { attendance: rows }  (whole firm, RLS-scoped)
+ * GET  /api/attendance?employee=me|&date=|&from=  → { attendance: rows }
+ * GET  /api/attendance/settings  → { settings: { workStart, workEnd, … } }
+ *
+ * A day can hold several sessions (clock out for a client meeting, clock in
+ * again): `total_minutes` is the closed sessions, and the row's last punch says
+ * whether the person is in now and since when. The daily seed marks everyone
+ * absent (source auto) — until the work day ends that reads "Not clocked in".
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -29,15 +35,51 @@ export interface AttendanceRow {
   source: string | null;
   clock_in_lat: string | number | null;
   clock_in_lng: string | number | null;
+  /** The day's last punch — "in" means working now, since last_punch_at. */
+  last_punch_kind?: "in" | "out" | null;
+  last_punch_at?: string | null;
   [k: string]: any;
 }
 
-export function useAttendance(limit = 120) {
+export function useAttendance(params: { employee?: string; date?: string; from?: string; limit?: number } = {}, enabled = true) {
   return useQuery({
-    queryKey: ["attendance", limit],
-    queryFn: () => api.get<{ attendance: AttendanceRow[] }>("/api/attendance", { limit: String(limit) }).then((r) => r.attendance),
+    queryKey: ["attendance", params],
+    enabled,
+    queryFn: () => api.get<{ attendance: AttendanceRow[] }>("/api/attendance", {
+      limit: String(params.limit ?? 120), employee: params.employee, date: params.date, from: params.from,
+    }).then((r) => r.attendance),
     staleTime: 30_000,
   });
+}
+
+export function useAttendanceSettings() {
+  return useQuery({
+    queryKey: ["attendance-settings"],
+    queryFn: () => api.get<{ settings: { workStart?: string; workEnd?: string } }>("/api/attendance/settings").then((r) => r.settings),
+    staleTime: 10 * 60_000,
+  });
+}
+
+/** Working right now: the last punch is a clock-in (older rows: in, not out). */
+export function isClockedIn(row?: AttendanceRow): boolean {
+  if (!row) return false;
+  if (row.last_punch_kind) return row.last_punch_kind === "in";
+  return !!row.clock_in_at && !row.clock_out_at;
+}
+
+/** The seed's "absent" before the work day is over is "Not clocked in" (web rule). */
+export function notClockedInYet(row: AttendanceRow, workEnd: string | undefined, now = new Date()): boolean {
+  if (row.status !== "absent" || row.source !== "auto" || row.clock_in_at) return false;
+  const ist = new Date(now.getTime() + 330 * 60_000);
+  const hhmm = `${String(ist.getUTCHours()).padStart(2, "0")}:${String(ist.getUTCMinutes()).padStart(2, "0")}`;
+  const today = ist.toISOString().slice(0, 10);
+  return String(row.attendance_date).slice(0, 10) === today && hhmm < (workEnd ?? "19:00");
+}
+
+export function statusLabel(row: AttendanceRow, workEnd?: string): { label: string; tone: Tone } | null {
+  if (!row.status) return null;
+  if (notClockedInYet(row, workEnd)) return { label: "Not clocked in", tone: "neutral" };
+  return { label: row.status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), tone: STATUS_TONE[row.status] ?? "neutral" };
 }
 
 export interface ClockResult { ok?: boolean; clock_in_at?: string | null; clock_out_at?: string | null; total_minutes?: number | null; status?: string | null; error?: string }
@@ -75,10 +117,12 @@ export function myRows(rows: AttendanceRow[] | undefined, userId: string | undef
 /** "7h 24m" from minutes, or from a live clock-in when still running. */
 export function durationLabel(row: AttendanceRow | undefined, now = Date.now()): string {
   if (!row) return "—";
+  // Closed sessions, plus the one running now (from the last clock-in).
   let mins = row.total_minutes ?? 0;
-  if ((!mins || mins <= 0) && row.clock_in_at && !row.clock_out_at) {
-    const started = new Date(row.clock_in_at).getTime();
-    if (isFinite(started)) mins = Math.max(0, Math.round((now - started) / 60000));
+  if (isClockedIn(row)) {
+    const since = row.last_punch_kind === "in" && row.last_punch_at ? row.last_punch_at : row.clock_in_at;
+    const started = since ? new Date(since).getTime() : NaN;
+    if (isFinite(started)) mins += Math.max(0, Math.round((now - started) / 60000));
   }
   if (!mins) return "—";
   const h = Math.floor(mins / 60);

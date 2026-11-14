@@ -22,7 +22,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { mobileFirmAccess, mobileOwnerScope, mobileTaskScope } from "@/lib/mobile/access";
+import { mobileFirmAccess, mobileOwnerScope, mobileTaskScope, mobileMeetingScope } from "@/lib/mobile/access";
 import { can } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +47,8 @@ export async function GET(req: NextRequest) {
         const rows = async (q: any): Promise<any[]> => {
           try { return (await tx.execute(q)).rows as any[]; } catch { return []; }
         };
-        const rmScope = session.mobile ? sql` AND ${mobileOwnerScope(session, "m.rm_id")}` : seesAll ? sql`` : sql` AND m.rm_id = ${uid}::uuid`;
+        // A meeting is on my plan when I own it or attend it (CRM rule of 2026-10-01).
+        const rmScope = seesAll ? sql`` : sql` AND ${mobileMeetingScope(session, "m")}`;
         const ownerScope = session.mobile ? sql` AND ${mobileOwnerScope(session, "l.owner_id")}` : seesAll ? sql`` : sql` AND l.owner_id = ${uid}::uuid`;
         const invScope = (a: string) => session.mobile ? sql` AND ${mobileOwnerScope(session, `${a}.rm_id`)}` : seesAll ? sql`` : sql` AND ${sql.raw(a)}.rm_id = ${uid}::uuid`;
 
