@@ -20,7 +20,7 @@ import { Field } from "@/components/ui/Field";
 import { SelectField } from "@/components/ui/SelectField";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { notify } from "@/components/ui/Toast";
-import { OpportunityCard, type Staff } from "@/components/opportunities/OpportunitiesPanel";
+import { OpportunityCard, type OpportunityPerms, type Staff } from "@/components/opportunities/OpportunitiesPanel";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { OpportunityView } from "@/lib/opportunities/journey";
 
@@ -29,7 +29,11 @@ const SOURCE_LABEL: Record<string, string> = {
   review: "A review meeting", automation: "An automation",
 };
 
-export function OpportunityJourney({ o, canWork, staff }: { o: OpportunityView; canWork: boolean; staff: Staff[] }) {
+export function OpportunityJourney({ o, canWork, staff, perms }: {
+  o: OpportunityView; canWork: boolean; staff: Staff[];
+  /** Operations' review and a supervisor's move back / reopen (journey.ts). */
+  perms?: OpportunityPerms;
+}) {
   const router = useRouter();
   const synced = useRef(false);
   // Something outside the journey may already have done the current step (a
@@ -45,6 +49,7 @@ export function OpportunityJourney({ o, canWork, staff }: { o: OpportunityView; 
       o={o}
       canWork={canWork && o.status === "open"}
       staff={staff}
+      perms={perms}
       onChange={() => router.refresh()}
       onReload={async () => router.refresh()}
     />
