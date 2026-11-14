@@ -16,6 +16,7 @@ import { insuranceClientScopeSql } from "@/lib/insurance/register-access";
 import { loadViewableInvestor } from "@/lib/investors/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { onPolicyRecorded } from "@/lib/opportunities/journey";
 import {
   insurancePolicies,
   POLICY_TYPES,
@@ -165,6 +166,11 @@ export async function POST(req: NextRequest) {
           sumAssured: body.sumAssured,
         },
         ...clientMeta,
+      });
+      // The client's open opportunity for this line (health / life / general) moves on, or is won.
+      await onPolicyRecorded(tx, { tenantId: session.tenantId, userId: session.userId }, {
+        id, investorId: body.investorId, policyType: body.policyType, status: body.status ?? "active",
+        createdAt: new Date(), planName: body.planName, insurer: body.insurer,
       });
     });
 

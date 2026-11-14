@@ -286,7 +286,7 @@ export default function NewLeadPage() {
             </div>
             <p className="text-2xs text-muted-foreground">
               If they want another product — insurance, a new SIP, NPS — start an opportunity on their client record
-              instead of a new lead. KYC, UCC and mandate already on file are skipped.
+              instead of a new lead. What their record already shows (a current risk profile, a shared proposal) is not asked again.
             </p>
             <ul className="space-y-1">
               {clientMatches.map((m, i) =>
@@ -305,7 +305,7 @@ export default function NewLeadPage() {
                       </div>
                     </div>
                     <Link
-                      href={`/dashboard/investors/${m.id}?opportunity=new${form.interestProducts[0] ? `&product=${fromLeadProduct(form.interestProducts[0])}` : ""}#opportunities`}
+                      href={`/dashboard/investors/${m.id}?opportunity=new&source=lead_match${form.interestProducts[0] ? `&product=${fromLeadProduct(form.interestProducts[0])}` : ""}#opportunities`}
                       className="btn-primary !px-2.5 !py-1 text-xs whitespace-nowrap"
                     >
                       Start opportunity

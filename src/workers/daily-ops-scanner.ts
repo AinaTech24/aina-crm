@@ -50,6 +50,7 @@ import { runRetentionPolicy } from "@/lib/privacy/retention";
 import { eq, sql } from "drizzle-orm";
 import { riskExpiresOnSql } from "@/lib/risk-profile/expiry";
 import { withSystem, withTenant } from "@/db/client";
+import { closeOpportunitiesOfGoneClients } from "@/lib/opportunities/journey";
 import { readSoftDeleteRetentionDays } from "@/lib/platform/retention";
 import { recomputeAllHealth } from "@/lib/investors/health-persist";
 import { refreshActiveSipAmount } from "@/lib/metrics/sip";
@@ -1282,6 +1283,15 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     result.retentionErased = r.leads + r.clients;
   } catch (e) {
     console.error("[daily-ops] retention policy failed for", tenantId, (e as Error)?.message);
+  }
+
+  // ── Opportunities of clients who are no longer live (closed / exited,
+  // merged, in the Trash) close as lost — a catch-all for every path that
+  // changes a client's status (lib/opportunities/journey.ts).
+  try {
+    await withTenant(tenantId, (tx) => closeOpportunitiesOfGoneClients(tx, { tenantId, userId: "" }), { roles: ["system"] });
+  } catch (e) {
+    console.error("[daily-ops] closing gone clients' opportunities failed for", tenantId, (e as Error)?.message);
   }
 
   // ── Physical route: forms with the RTA settle from the feed (lib/blueprints/rta-route.ts).

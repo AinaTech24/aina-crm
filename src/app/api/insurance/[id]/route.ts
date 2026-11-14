@@ -15,6 +15,7 @@ import { require as requireCap, can } from "@/lib/auth/rbac";
 import { loadViewablePolicy } from "@/lib/insurance/register-access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { onPolicyRecorded } from "@/lib/opportunities/journey";
 import {
   insurancePolicies,
   investors,
@@ -140,6 +141,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         after: parse.data as any,
         ...clientMeta,
       });
+      // Issued / moved through underwriting: the open opportunity for its line follows.
+      if (r[0]) {
+        await onPolicyRecorded(tx, { tenantId: session.tenantId, userId: session.userId }, {
+          id, investorId: r[0].investorId, policyType: r[0].policyType, status: r[0].status,
+          createdAt: r[0].createdAt, planName: r[0].planName, insurer: r[0].insurer,
+        });
+      }
       return r[0];
     });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });

@@ -13,7 +13,8 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireInvestorView } from "@/lib/investors/access";
 import { canWorkOpportunities, loadViewableOpportunity } from "@/lib/opportunities/access";
-import { listOpportunities } from "@/lib/opportunities/journey";
+import { listOpportunities, REOPEN_CAP, REVIEW_CAP } from "@/lib/opportunities/journey";
+import { can } from "@/lib/auth/rbac";
 import { opportunityAssignees } from "@/lib/opportunities/assignees";
 import { stageName } from "@/lib/opportunities/stages";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
@@ -92,7 +93,11 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="min-w-0 space-y-5 lg:col-span-2">
-          <OpportunityJourney o={o} canWork={canWork} staff={staff} />
+          <OpportunityJourney o={o} canWork={canWork} staff={staff} perms={{
+            review: can(session.roles, REVIEW_CAP, session.permissions),
+            reopen: can(session.roles, REOPEN_CAP, session.permissions),
+            me: session.userId,
+          }} />
 
           <section className="card-surface p-5">
             <h2 className="section-title">History</h2>

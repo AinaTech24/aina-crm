@@ -29,7 +29,12 @@ type Action =
   | "assign_ops" | "order_placed"
   | "form_submitted" | "underwriting_cleared" | "policy_issued" | "executed" | "move";
 
-type FieldKey = "on" | "outcome" | "meeting" | "assignee" | "amount" | "orderNo" | "formNo" | "policyNo";
+type FieldKey = "on" | "outcome" | "meeting" | "assignee" | "amount" | "orderNo" | "formNo" | "policyNo" | "how";
+
+/** How the client said yes (steps.ts ACCEPTANCE_HOW) — a pick, not a notes box. */
+const HOW: Array<[string, string]> = [
+  ["in_person", "In person"], ["phone", "On a call"], ["email", "By email"], ["whatsapp", "On WhatsApp"], ["signed_form", "Signed form"],
+];
 
 type Spec = {
   action: Action;
@@ -82,8 +87,14 @@ function specsFor(o: OpportunityView): Spec[] {
           ];
     case "proposal":
       return [{ action: "quote_shared", label: "Quote shared outside the CRM", title: "Quote shared", moves: true, fields: ["on"], onLabel: "Shared on", followUp: true }];
-    case "accepted":
-      return [{ action: "record_acceptance", label: "Client accepted", title: "Client accepted", icon: <CheckCircle2 className="size-4" />, primary: true, moves: true, fields: ["on"], onLabel: "Accepted on", followUp: true }];
+    case "accepted": {
+      // With a CRM proposal the client approves it there (the journey moves
+      // on by itself); with none, the RM records the yes — when and how.
+      const recordable = o.gate.some((g) => g.byAction === "record_acceptance");
+      if (!recordable && o.gate.some((g) => !g.satisfied)) return [];
+      return [{ action: "record_acceptance", label: "Client accepted", title: "Record the client's acceptance", icon: <CheckCircle2 className="size-4" />, primary: true, moves: true,
+        fields: recordable ? ["how", "on"] : ["on"], onLabel: "Accepted on", followUp: true }];
+    }
     case "mf_transaction":
       return [{ action: "order_placed", label: "Order placed", title: "Order placed", icon: <CheckCircle2 className="size-4" />, primary: true, moves: true, fields: ["amount", "on", "orderNo"], onLabel: "Placed on", followUp: true }, assign];
     case "ins_proposal_form":
@@ -97,9 +108,11 @@ function specsFor(o: OpportunityView): Spec[] {
     case "txn_review":
       return [];
     case "rta_check":
-      // The RTA data check task is completed from the card first; then this wins it.
-      return [{ action: "move", label: "Mark won", title: "Mark won", icon: <Sparkles className="size-4" />,
-        primary: !o.gate.some((g) => g.completeTaskId), moves: true, fields: ["on"], onLabel: "Done on", followUp: false }];
+      // Completing the RTA data check task wins it (operations, from the card
+      // or the task). "Mark won" is only the fallback once that task is done.
+      return o.gate.some((g) => g.completeTaskId) ? []
+        : [{ action: "move", label: "Mark won", title: "Mark won", icon: <Sparkles className="size-4" />,
+            primary: true, moves: true, fields: ["on"], onLabel: "Done on", followUp: false }];
     default:
       return o.next
         ? [{ action: "move", label: ends ? "Mark won" : `Move to: ${nextName}`, title: ends ? "Mark won" : `Move to: ${nextName}`,
@@ -119,7 +132,10 @@ export function StepActions({ o, staff, gateOpen, onChange }: {
     <>
       {specs.map((s) => (
         <Button key={s.action} size="sm" variant={s.primary ? "primary" : "secondary"} icon={s.icon}
-          disabled={s.moves && gateOpen} onClick={() => setOpen(s)}>
+          disabled={s.moves && (s.action === "record_acceptance"
+            // Recording the acceptance IS what clears its own gate item; anything else unmet still blocks.
+            ? o.gate.some((g) => !g.satisfied && g.byAction !== "record_acceptance")
+            : gateOpen)} onClick={() => setOpen(s)}>
           {s.label}
         </Button>
       ))}
@@ -150,6 +166,7 @@ function StepDialog({ o, spec, staff, onClose, onDone }: {
   const [orderNo, setOrderNo] = useState("");
   const [formNo, setFormNo] = useState("");
   const [policyNo, setPolicyNo] = useState("");
+  const [how, setHow] = useState("");
   // A meeting's day is the follow-up unless another is picked (steps.ts).
   const [followUpOn, setFollowUpOn] = useState(has("meeting") ? "" : defaultFollowUp);
   const [conflict, setConflict] = useState(false);
@@ -178,6 +195,7 @@ function StepDialog({ o, spec, staff, onClose, onDone }: {
     if (has("assignee") && !assigneeId) return notify.error("Pick who does it.");
     if (has("amount") && !(Number(amount) > 0)) return notify.error("Enter the amount.");
     if (has("policyNo") && !policyNo.trim()) return notify.error("Enter the policy number.");
+    if (has("how") && !how) return notify.error("Say how the client confirmed.");
     setBusy(true);
     try {
       if (has("meeting")) {
@@ -216,6 +234,7 @@ function StepDialog({ o, spec, staff, onClose, onDone }: {
         orderNo: has("orderNo") ? orderNo.trim() : null,
         formNo: has("formNo") ? formNo.trim() : null,
         policyNo: has("policyNo") ? policyNo.trim() : null,
+        how: has("how") ? how : null,
       });
     } finally {
       setBusy(false);
@@ -277,6 +296,19 @@ function StepDialog({ o, spec, staff, onClose, onDone }: {
             </Field>
             <Field label="Due on" required>
               {(id, d) => <DateField id={id} aria-describedby={d} value={dueOn} onChange={(e) => setDueOn(e.target.value)} min={today} />}
+            </Field>
+          </>)}
+          {has("how") && (<>
+            <p className="text-xs text-muted-foreground">
+              There is no proposal for this in the CRM, so your record is the evidence of the client&apos;s yes. It is kept with your name on the history and in the audit log.
+            </p>
+            <Field label="How did the client confirm?" required>
+              {(id, d) => (
+                <SelectField id={id} aria-describedby={d} value={how} onChange={(e) => setHow(e.target.value)} className="w-full">
+                  <option value="">Pick one</option>
+                  {HOW.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </SelectField>
+              )}
             </Field>
           </>)}
           {has("amount") && text("Amount (₹)", amount, setAmount, { required: true, numeric: true })}

@@ -15,6 +15,12 @@
  *
  * `?opportunity=new&product=…` on the page URL opens the "New opportunity"
  * dialog pre-filled — the new-lead form and the Cross-sell card link here.
+ * `&source=lead_match` (the new-lead form found an existing client) and
+ * `&leadId=` record where it came from.
+ *
+ * Who may do what beyond working it (`perms`, from the API): approving the
+ * transaction and the RTA data check are operations' and never the owner's;
+ * moving back a step and reopening are a supervisor's (journey.ts).
  *
  * OpportunityCard and NewOpportunityDialog are shared with the Opportunities
  * module (/dashboard/opportunities): the card is the journey on the detail
@@ -26,7 +32,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDashed, ExternalLink,
-  Hourglass, Loader2, Plus, RefreshCw, Sparkles, Target, UserCog, XCircle,
+  Hourglass, Loader2, Plus, RefreshCw, RotateCcw, Sparkles, Target, Undo2, UserCog, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -42,9 +48,13 @@ import { OPPORTUNITY_PRODUCTS, productPipeline } from "@/lib/opportunities/produ
 import type { OpportunityView } from "@/lib/opportunities/journey";
 import { cn } from "@/lib/utils";
 import { StepActions } from "./StepActions";
+import { SendRiskProfileLinkButton } from "@/components/risk-profile/SendRiskProfileLinkButton";
 import { LaterBanner, LaterDialog, LaterFields, laterError, laterPayload, newLaterDraft, type LaterDraft } from "./LaterControls";
 
-export type Staff = { id: string; name: string; insurance: boolean };
+export type Staff = { id: string; name: string; insurance: boolean; ops?: boolean };
+/** Beyond working it: operations' review (transaction, RTA check) and a supervisor's move back / reopen. */
+export type OpportunityPerms = { review: boolean; reopen: boolean; me: string | null };
+const NO_PERMS: OpportunityPerms = { review: false, reopen: false, me: null };
 
 /** Today in India, and `n` days on — YYYY-MM-DD. */
 const istDay = (n = 0) => new Date(Date.now() + 5.5 * 36e5 + n * 864e5).toISOString().slice(0, 10);
@@ -70,8 +80,9 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
   const [staff, setStaff] = useState<Staff[]>([]);
   const [assignees, setAssignees] = useState<{ list: Staff[]; me: string | null }>({ list: [], me: null });
   const [canWork, setCanWork] = useState(false);
+  const [perms, setPerms] = useState<OpportunityPerms>(NO_PERMS);
   const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState<{ product: string } | null>(null);
+  const [creating, setCreating] = useState<{ product: string; source?: string; leadId?: string | null } | null>(null);
   const [showClosed, setShowClosed] = useState(false);
 
   const load = useCallback(async () => {
@@ -83,6 +94,7 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
       setStaff(j.staff ?? []);
       setAssignees({ list: j.assignees ?? [], me: j.me ?? null });
       setCanWork(!!j.canWork);
+      setPerms({ review: !!j.perms?.review, reopen: !!j.perms?.reopen, me: j.me ?? null });
       setError(null);
       return (j.items ?? []) as OpportunityView[];
     } catch (e: any) {
@@ -106,14 +118,22 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
     return () => { alive = false; };
   }, [load]);
 
-  // Deep link: ?opportunity=new&product=health_insurance
+  // Deep link: ?opportunity=new&product=health_insurance[&source=lead_match&leadId=…]
   useEffect(() => {
     if (params.get("opportunity") === "new") {
       const p = params.get("product");
-      setCreating({ product: p && OPPORTUNITY_PRODUCTS.some((x) => x.key === p) ? p : "" });
+      const src = params.get("source");
+      const lead = params.get("leadId");
+      setCreating({
+        product: p && OPPORTUNITY_PRODUCTS.some((x) => x.key === p) ? p : "",
+        source: src === "lead_match" ? "lead_match" : undefined,
+        leadId: lead && /^[0-9a-f-]{36}$/i.test(lead) ? lead : null,
+      });
       const q = new URLSearchParams(params.toString());
       q.delete("opportunity");
       q.delete("product");
+      q.delete("source");
+      q.delete("leadId");
       router.replace(`${pathname}${q.toString() ? `?${q}` : ""}`, { scroll: false });
     }
   }, [params, pathname, router]);
@@ -154,7 +174,7 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
       ) : (
         <div className="space-y-4">
           {open.map((o) => (
-            <OpportunityCard key={o.id} o={o} canWork={canWork} staff={staff} onChange={replace} onReload={load}
+            <OpportunityCard key={o.id} o={o} canWork={canWork} staff={staff} perms={perms} onChange={replace} onReload={load}
               detailHref={`/dashboard/opportunities/${o.id}`} />
           ))}
         </div>
@@ -181,6 +201,9 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
                     {o.status === "lost" && o.lostReason ? ` · ${o.lostReason}` : ""}
                     {o.status === "lost" && o.revisitOn ? ` · revisit ${formatDate(o.revisitOn)}` : ""}
                   </span>
+                  {perms.reopen && !openProducts.has(o.product) && (
+                    <ReopenButton o={o} onDone={async () => { await load(); router.refresh(); }} />
+                  )}
                 </li>
               ))}
             </ul>
@@ -193,6 +216,8 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
           investorId={investorId}
           investorName={investorName}
           initialProduct={creating.product}
+          source={creating.source}
+          sourceLeadId={creating.leadId ?? null}
           openProducts={openProducts}
           staff={staff}
           assignees={assignees}
@@ -206,13 +231,16 @@ export function OpportunitiesPanel({ investorId, investorName }: { investorId: s
 
 /* ─────────────────────────────── one opportunity ─────────────────────────────── */
 
-export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailHref }: {
+export function OpportunityCard({ o, canWork, staff, perms = NO_PERMS, onChange, onReload, detailHref }: {
   o: OpportunityView; canWork: boolean; staff: Staff[];
+  perms?: OpportunityPerms;
   onChange: (v: OpportunityView | undefined) => void; onReload: () => Promise<unknown>;
   /** "Open" link to the opportunity's own page (on the client page). */
   detailHref?: string;
 }) {
-  const [busy, setBusy] = useState<"sync" | "approve" | "reject" | "rta" | null>(null);
+  const [busy, setBusy] = useState<"sync" | "approve" | "reject" | "rta" | "back" | null>(null);
+  /** Operations reviews; the opportunity's own owner never reviews their own sale. */
+  const mayReview = perms.review && !!perms.me && perms.me !== o.ownerId;
   const [losing, setLosing] = useState(false);
   const [needsOpen, setNeedsOpen] = useState(false);
   const [rtaOpen, setRtaOpen] = useState(false);
@@ -260,7 +288,7 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
     if (!rtaTaskId) return;
     const ok = await confirmDialog({
       title: "Complete the RTA data check?",
-      message: "Confirm the transaction matches the RTA data (CAMS / KFintech). The task is marked completed and the opportunity can then be marked won.",
+      message: "Confirm the transaction matches the RTA data (CAMS / KFintech). The task is marked completed and the opportunity is won.",
       confirmLabel: "Complete RTA data check",
     });
     if (!ok) return;
@@ -277,7 +305,30 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
       const r = await fetch(`/api/opportunities/${o.id}`);
       const v = await r.json().catch(() => ({}));
       if (v.opportunity) onChange(v.opportunity);
-      notify.success("RTA data check completed — you can now mark it won.");
+      notify.success(v.opportunity?.status === "won" ? "RTA data check completed — marked won." : "RTA data check completed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** A supervisor takes the journey back one step (a step marked done by mistake). */
+  async function moveBack() {
+    if (!o.previous) return;
+    const why = await promptDialog({
+      title: `Move back to "${o.previous.name}"?`,
+      message: `"${o.current.name}" is undone. Say why — it goes on the history and the audit log.`,
+      confirmLabel: "Move back", multiline: true,
+    });
+    if (!why?.trim()) return;
+    setBusy("back");
+    try {
+      const res = await fetch(`/api/opportunities/${o.id}/manage`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "back", reason: why.trim() }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return notify.error(j.error ?? "Could not move it back");
+      notify.success(`Back at "${o.previous.name}"`);
+      onChange(j.opportunity);
     } finally {
       setBusy(null);
     }
@@ -383,9 +434,21 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
         </div>
       )}
 
+      {o.status === "open" && o.current.key === "txn_review" && !mayReview && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Waiting for operations to approve or reject the transaction{perms.me && perms.me === o.ownerId ? " — the owner does not review their own" : ""}.
+        </p>
+      )}
+
+      {!canWork && o.status !== "open" && perms.reopen && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <ReopenButton o={o} onDone={() => onReload()} onView={onChange} />
+        </div>
+      )}
+
       {canWork && !o.later && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {o.status === "open" && o.current.key === "txn_review" && (
+          {o.status === "open" && o.current.key === "txn_review" && mayReview && (
             <>
               <Button variant="primary" size="sm" loading={busy === "approve"} disabled={busy != null}
                 icon={<Sparkles className="size-4" />} onClick={() => setRtaOpen(true)}>
@@ -397,7 +460,7 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
               </Button>
             </>
           )}
-          {rtaTaskId && (
+          {rtaTaskId && mayReview && (
             <Button variant="primary" size="sm" loading={busy === "rta"} disabled={busy != null}
               icon={<CheckCircle2 className="size-4" />} onClick={completeRtaCheck}>
               Complete RTA data check
@@ -411,14 +474,25 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
               {o.needsAnalysis ? "Edit needs analysis" : "Record needs analysis"}
             </Button>
           )}
-          {(o.current.key === "proposal" || o.next?.key === "proposal") && o.pipeline !== "general" && (
+          {/* Every product can be proposed (a mixed / comprehensive proposal carries any line). */}
+          {(o.current.key === "proposal" || o.current.key === "accepted" || o.next?.key === "proposal") && (
             <Link href={`/dashboard/proposals/new?investorId=${o.investorId}&opportunityId=${o.id}`} className="inline-flex min-h-8 items-center rounded-md px-2 text-sm font-medium text-primary hover:bg-accent">
               Create proposal
             </Link>
           )}
+          {/* MF suitability: the client fills the risk profile themselves (the existing share-token link). */}
+          {o.pipeline === "mf" && (o.current.key === "suitability" || (o.next?.key === "proposal" && gateOpen)) && (
+            <SendRiskProfileLinkButton investorId={o.investorId} appearance="row" />
+          )}
           {o.canSync && (
             <Button variant="ghost" size="sm" loading={busy === "sync"} icon={<RefreshCw className="size-3.5" />} onClick={sync}>
               Check again
+            </Button>
+          )}
+          {perms.reopen && o.previous && (
+            <Button variant="ghost" size="sm" className="text-muted-foreground" loading={busy === "back"} disabled={busy != null}
+              icon={<Undo2 className="size-3.5" />} onClick={moveBack}>
+              Move back one step
             </Button>
           )}
           <Button variant="ghost" size="sm" className="ml-auto text-muted-foreground" icon={<Hourglass className="size-3.5" />}
@@ -436,6 +510,39 @@ export function OpportunityCard({ o, canWork, staff, onChange, onReload, detailH
       {laterOpen && <LaterDialog o={o} onClose={() => setLaterOpen(false)} onDone={(v) => { setLaterOpen(false); onChange(v); }} />}
       {needsOpen && <NeedsAnalysisDialog o={o} onClose={() => setNeedsOpen(false)} onDone={(v) => { setNeedsOpen(false); onChange(v); }} />}
     </article>
+  );
+}
+
+/** A supervisor reopens a won / lost opportunity at the step it closed from. */
+function ReopenButton({ o, onDone, onView }: {
+  o: OpportunityView; onDone: () => unknown; onView?: (v: OpportunityView | undefined) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  async function reopen() {
+    const why = await promptDialog({
+      title: `Reopen ${o.productLabel}?`,
+      message: `It opens again at the step it was ${o.status} from. Say why — it goes on the history and the audit log.`,
+      confirmLabel: "Reopen", multiline: true,
+    });
+    if (!why?.trim()) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/opportunities/${o.id}/manage`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "reopen", reason: why.trim() }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return notify.error(j.error ?? "Could not reopen it");
+      notify.success("Reopened");
+      onView?.(j.opportunity);
+      await onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Button variant="ghost" size="sm" className="ml-auto" loading={busy} icon={<RotateCcw className="size-3.5" />} onClick={reopen}>
+      Reopen
+    </Button>
   );
 }
 
@@ -534,10 +641,12 @@ function StageRail({ stages }: { stages: OpportunityView["stages"] }) {
 
 /* ─────────────────────────────── dialogs ─────────────────────────────── */
 
-export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName: fixedInvestorName, initialProduct, openProducts: fixedOpen, staff: fixedStaff, assignees: fixedAssignees, onClose, onCreated }: {
+export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName: fixedInvestorName, initialProduct, source, sourceLeadId, openProducts: fixedOpen, staff: fixedStaff, assignees: fixedAssignees, onClose, onCreated }: {
   /** The client — omitted in the Opportunities module, where the dialog picks one. */
   investorId?: string; investorName?: string;
   initialProduct: string; openProducts?: Set<string>; staff?: Staff[];
+  /** Where it came from when not the dialog's own guess: "lead_match" from the new-lead form. */
+  source?: string; sourceLeadId?: string | null;
   /** Who it may be assigned to (GET …/opportunities `assignees`), and the viewer — the default. */
   assignees?: { list: Staff[]; me: string | null };
   onClose: () => void; onCreated: (opportunity?: OpportunityView) => void;
@@ -603,7 +712,8 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
           ownerId,
           coOwnerId: coOwnerId && coOwnerId !== ownerId ? coOwnerId : null,
           notes: notes.trim() || null,
-          source: initialProduct ? "cross_sell" : "manual",
+          source: source === "lead_match" ? "lead_match" : initialProduct ? "cross_sell" : "manual",
+          sourceLeadId: sourceLeadId || null,
           followUpOn: when === "now" ? followUpOn || null : null,
           later: when === "later" ? laterPayload(later) : null,
         }),
@@ -626,7 +736,7 @@ export function NewOpportunityDialog({ investorId: fixedInvestorId, investorName
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{fixedInvestorId ? `New opportunity for ${fixedInvestorName}` : "New opportunity"}</DialogTitle>
-          <DialogDescription>An existing client wants another product. Steps already on file (KYC, UCC, mandate) will be skipped.</DialogDescription>
+          <DialogDescription>An existing client wants another product. Steps the client has already done (a current risk profile, a shared proposal) are passed automatically; KYC, a UCC and a mandate are checked before an MF order, not asked again.</DialogDescription>
         </DialogHeader>
         <div className="mt-4 space-y-3">
           {!fixedInvestorId && (
@@ -747,11 +857,12 @@ function RtaCheckDialog({ o, onClose, onDone }: { o: OpportunityView; onClose: (
       const res = await fetch(`/api/investors/${o.investorId}/opportunities`, { cache: "no-store" }).catch(() => null);
       const j = res?.ok ? await res.json().catch(() => ({})) : {};
       if (!alive) return;
-      const l: Staff[] = j.assignees ?? [];
+      // Operations' check: only people who can take it, never the opportunity's owner.
+      const l: Staff[] = ((j.assignees ?? []) as Staff[]).filter((s) => s.ops && s.id !== o.ownerId);
       const me: string | null = j.me ?? null;
       setList({ list: l, me });
-      // The opportunity's owner by default, else the person approving.
-      setAssigneeId(l.some((s) => s.id === o.ownerId) ? o.ownerId! : l.some((s) => s.id === me) ? me! : l[0]?.id ?? "");
+      // The person approving by default.
+      setAssigneeId(l.some((s) => s.id === me) ? me! : l[0]?.id ?? "");
     })();
     return () => { alive = false; };
   }, [o.investorId, o.ownerId]);
@@ -794,7 +905,7 @@ function RtaCheckDialog({ o, onClose, onDone }: { o: OpportunityView; onClose: (
               {!list
                 ? <option value="">Loading…</option>
                 : list.list.length === 0
-                  ? <option value="">Nobody can take this client</option>
+                  ? <option value="">Nobody in operations can take this client</option>
                   : list.list.map((s) => <option key={s.id} value={s.id}>{s.id === list.me ? `${s.name} (me)` : s.name}</option>)}
             </SelectField>
             )}
@@ -825,6 +936,7 @@ function LostDialog({ o, onClose, onDone }: { o: OpportunityView; onClose: () =>
   const [revisitOn, setRevisitOn] = useState("");
   const [busy, setBusy] = useState(false);
   async function save() {
+    if (revisitOn && revisitOn <= istDay()) return notify.error("Pick a revisit date after today.");
     setBusy(true);
     try {
       const lostReason = reason === "Other" ? detail.trim() || "Other" : detail.trim() ? `${reason} — ${detail.trim()}` : reason;
@@ -862,7 +974,7 @@ function LostDialog({ o, onClose, onDone }: { o: OpportunityView; onClose: () =>
           </Field>
           <Field label="Revisit on" optional>
             {(id, d) => (
-            <DateField id={id} aria-describedby={d} value={revisitOn} onChange={(e) => setRevisitOn(e.target.value)} min={new Date().toISOString().slice(0, 10)} />
+            <DateField id={id} aria-describedby={d} value={revisitOn} onChange={(e) => setRevisitOn(e.target.value)} min={istDay(1)} />
             )}
           </Field>
         </div>

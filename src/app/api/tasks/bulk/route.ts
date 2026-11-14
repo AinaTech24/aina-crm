@@ -33,6 +33,7 @@ import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
 import { notifyWatchers } from "@/lib/tasks/watchers";
 import { tasks, users } from "@/db/schema";
 import { taskInScopeSql } from "@/lib/tasks/scope";
+import { onOpportunityTaskCompleted } from "@/lib/opportunities/journey";
 
 export const dynamic = "force-dynamic";
 
@@ -196,7 +197,10 @@ export async function POST(req: NextRequest) {
         for (const u of updated) {
           const before = beforeById.get(u.id);
           if (!before || before.status === patch.status) continue;
-          if (patch.status === "completed") await syncTaskBusinessEntry(tx, entryCtx, before, "completed");
+          if (patch.status === "completed") {
+            await syncTaskBusinessEntry(tx, entryCtx, before, "completed");
+            await onOpportunityTaskCompleted(tx, { tenantId: session.tenantId, userId: session.userId, roles: session.roles, permissions: session.permissions }, before);
+          }
           else if (patch.status === "cancelled") await syncTaskBusinessEntry(tx, entryCtx, before, "cancelled");
           else if (before.status === "cancelled" || before.status === "completed")
             await syncTaskBusinessEntry(tx, entryCtx, before, "reopened");

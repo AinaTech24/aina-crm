@@ -15,7 +15,7 @@ import { requireSession } from "@/lib/auth/session";
 import { handleApiError } from "@/lib/api/error-handler";
 import { loadViewableOpportunity, requireWorkOpportunities } from "@/lib/opportunities/access";
 import { listOpportunities } from "@/lib/opportunities/journey";
-import { runStepAction, STEP_ACTIONS } from "@/lib/opportunities/steps";
+import { ACCEPTANCE_HOW, runStepAction, STEP_ACTIONS } from "@/lib/opportunities/steps";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +31,7 @@ const Body = z.object({
   orderNo: z.string().trim().max(60).nullish(),
   formNo: z.string().trim().max(60).nullish(),
   policyNo: z.string().trim().max(60).nullish(),
+  how: z.enum(ACCEPTANCE_HOW).nullish(),
   followUpOn: day.nullish(),
 });
 

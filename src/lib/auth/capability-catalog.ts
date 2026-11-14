@@ -79,6 +79,8 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "lead.view.assigned": { group: "Leads", label: "View assigned leads only" },
   "lead.edit.all": { group: "Leads", label: "Edit all leads" },
   "lead.edit.assigned": { group: "Leads", label: "Edit assigned leads only" },
+  "opportunity.review_transaction": { group: "Transactions & Operations", label: "Approve opportunity transactions and RTA checks" },
+  "opportunity.reopen": { group: "Leads", label: "Move an opportunity back a step or reopen it" },
 
   // ── Transactions & Operations ───────────────────────────────────────────
   "transactions.view": { group: "Transactions & Operations", label: "View transactions" },
