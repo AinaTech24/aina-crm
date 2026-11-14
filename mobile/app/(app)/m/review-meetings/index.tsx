@@ -2,7 +2,9 @@
  * Review Meetings — web parity. Stats ribbon (upcoming / this week / completed
  * MTD / overdue), search + a full filter/sort sheet (category / status / mode /
  * type / RM / date range / sort), an upgraded meeting card, and a FAB that opens
- * the schedule form. Tap → detail; long-press → edit / cancel.
+ * the schedule form. Tap → detail; long-press → edit / cancel. A List / Kanban
+ * switch opens the web's status board (long-press a card to move it; a
+ * reschedule needs a new date, so it is never a destination).
  */
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -29,6 +31,12 @@ import { titleCase } from "../../../../src/lib/format";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
 import { asIcon } from "../../../../src/lib/icons";
+import { KanbanBoard } from "../../../../src/components/domain/KanbanBoard";
+import { LayoutSwitch } from "../../../../src/components/ui/LayoutSwitch";
+import { api } from "../../../../src/api/client";
+import { toast } from "../../../../src/lib/toast";
+import { toneColors } from "../../../../src/theme";
+import { useQueryClient } from "@tanstack/react-query";
 
 function useDebounced<T>(value: T, delay = 350): T {
   const [v, setV] = useState(value);
@@ -101,12 +109,16 @@ export default function MeetingsList({ embedded = false }: { embedded?: boolean 
   const [filters, setFilters] = useState<UiMeetingFilters>({ ...EMPTY_MEETING_FILTERS });
   const [sheetOpen, setSheetOpen] = useState(false);
   const [rowAction, setRowAction] = useState<Meeting | null>(null);
+  const [layout, setLayout] = useState<"list" | "kanban">("list");
+  const isKanban = layout === "kanban";
+  const qc = useQueryClient();
   const debounced = useDebounced(search);
   const cancel = useCancelMeeting(rowAction?.id ?? "");
   const rmOptions = useTeam().data?.rows ?? [];
 
   // The status chip row is a quick override on top of the sheet's status set.
-  const statusCsv = status ? status : filters.status.join(",");
+  // The board shows every status, so the chips step aside there.
+  const statusCsv = isKanban ? filters.status.join(",") : status ? status : filters.status.join(",");
   const apiFilters = useMemo(() => ({
     q: debounced,
     category: filters.category.join(","),
@@ -125,6 +137,17 @@ export default function MeetingsList({ embedded = false }: { embedded?: boolean 
   const activeCount = countMeetingFilters(filters) - filters.status.length; // status shown as chips
 
   const open = (id: string) => router.push(`/m/review-meetings/${id}`);
+  const moveMeeting = async (m: Meeting, to: string) => {
+    try {
+      await api.patch(`/api/review-meetings/${m.id}`, { status: to });
+      toast.success(`Moved to ${meetingStatusBadge(to).label}`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't move the meeting");
+    } finally {
+      qc.invalidateQueries({ queryKey: ["meetings"] });
+      qc.invalidateQueries({ queryKey: ["meeting", m.id] });
+    }
+  };
   const doCancel = (m: Meeting) => {
     setRowAction(null);
     confirmDelete({ title: "Cancel this meeting?", message: "It's marked cancelled and the reminder is cleared.", confirmLabel: "Cancel meeting" }, () => cancel.mutate());
@@ -147,13 +170,16 @@ export default function MeetingsList({ embedded = false }: { embedded?: boolean 
           <Text style={{ fontWeight: fontWeight.medium, color: activeCount ? palette.brand : palette.ink }}>Filter & sort{activeCount ? ` · ${activeCount}` : ""}</Text>
         </Pressable>
         {activeCount > 0 ? <Pressable onPress={() => setFilters({ ...EMPTY_MEETING_FILTERS, status: filters.status })} hitSlop={8}><Text variant="caption" style={{ color: palette.danger }}>Clear</Text></Pressable> : null}
+        <LayoutSwitch value={layout} onChange={setLayout} />
       </View>
-      <View style={styles.chips}>
-        <Chip label="All" selected={status === ""} onPress={() => setStatus("")} />
-        {MEETING_STATUSES.map((s) => (
-          <Chip key={s} label={titleCase(s)} selected={status === s} onPress={() => setStatus(status === s ? "" : s)} />
-        ))}
-      </View>
+      {!isKanban ? (
+        <View style={styles.chips}>
+          <Chip label="All" selected={status === ""} onPress={() => setStatus("")} />
+          {MEETING_STATUSES.map((s) => (
+            <Chip key={s} label={titleCase(s)} selected={status === s} onPress={() => setStatus(status === s ? "" : s)} />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -167,6 +193,32 @@ export default function MeetingsList({ embedded = false }: { embedded?: boolean 
         </>
       ) : isError ? (
         <ErrorState message={(error as any)?.message} onRetry={() => refetch()} />
+      ) : isKanban ? (
+        <View style={{ flex: 1 }}>
+          <View style={{ paddingHorizontal: spacing.lg }}>{header}</View>
+          <KanbanBoard<Meeting>
+            columns={MEETING_STATUSES.map((k) => {
+              const b = meetingStatusBadge(k);
+              return { key: k, label: b.label, color: toneColors(b.tone as any).fg, noDrop: k === "rescheduled" };
+            })}
+            items={meetings}
+            columnOf={(m) => m.status ?? "scheduled"}
+            keyOf={(m) => m.id}
+            onOpen={(m) => open(m.id)}
+            onMove={moveMeeting}
+            renderCard={(m) => {
+              const who = m.subject_name ?? m.investor_name ?? m.lead_name;
+              return (
+                <View style={{ gap: 2 }}>
+                  <Text variant="caption" style={{ fontWeight: fontWeight.semibold }} numberOfLines={2}>{m.subject ?? titleCase(m.meeting_type) ?? "Meeting"}</Text>
+                  {who ? <Text variant="caption" tone="muted" numberOfLines={1}>{who}{m.lead_id ? " · Lead" : ""}</Text> : null}
+                  <Text variant="caption" tone={isOverdue(m) ? "danger" : "muted"} numberOfLines={1}>{fmtMeetingWhen(m.meeting_date)}{m.meeting_mode ? ` · ${titleCase(m.meeting_mode)}` : ""}</Text>
+                  {m.rm_name ? <Text variant="caption" tone="faint" numberOfLines={1}>RM: {m.rm_name}</Text> : null}
+                </View>
+              );
+            }}
+          />
+        </View>
       ) : (
         <FlashList
           data={meetings}

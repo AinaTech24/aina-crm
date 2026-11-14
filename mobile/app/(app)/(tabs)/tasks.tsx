@@ -1,7 +1,8 @@
 /**
  * Tasks tab — web parity. KPI strip (Open / Due today / Overdue / SLA at risk),
- * view tabs (All / To me / By me / Board), search + a full filter & sort sheet,
- * and a list or a status kanban. Tap → task detail; create FAB.
+ * scope tabs (All / To me / By me), a List / Kanban switch (separate from the
+ * scope, as on the web: ?layout=kanban), search + a full filter & sort sheet.
+ * The Kanban is the web's status board: long-press a card to move it.
  */
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -17,12 +18,19 @@ import { SkeletonList } from "../../../src/components/ui/Skeleton";
 import { EmptyState, SearchEmptyState, ErrorState } from "../../../src/components/states";
 import { TaskCard } from "../../../src/components/domain/TaskCard";
 import { TaskFilters, EMPTY_TASK_FILTERS, countTaskFilters, type UiTaskFilters } from "../../../src/features/tasks/TaskFilters";
-import { useTasks, useTaskKpis, groupTasksByStatus } from "../../../src/features/tasks/api";
+import { useTasks, useTaskKpis, TASK_STATUSES, type Task } from "../../../src/features/tasks/api";
+import { KanbanBoard } from "../../../src/components/domain/KanbanBoard";
+import { LayoutSwitch } from "../../../src/components/ui/LayoutSwitch";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "../../../src/api/client";
+import { toast } from "../../../src/lib/toast";
+import { fmtDate, titleCase } from "../../../src/lib/format";
 import { useTeam } from "../../../src/features/team/api";
 import { palette, radius, spacing, fontWeight } from "../../../src/theme/tokens";
 import { asIcon } from "../../../src/lib/icons";
 
-type TaskView = "" | "to_me" | "by_me" | "kanban";
+type TaskView = "" | "to_me" | "by_me";
+const ALL_STATUSES = TASK_STATUSES.map((s) => s.key).join(",");
 type Due = "" | "today" | "overdue" | "sla_risk";
 
 function useDebounced<T>(value: T, delay = 350): T {
@@ -37,16 +45,19 @@ export default function TasksTab() {
   useEffect(() => { if (["today", "overdue", "sla_risk"].includes(params.due ?? "")) setDue(params.due as Due); }, [params.due]);
   const [search, setSearch] = useState("");
   const [view, setView] = useState<TaskView>("");
+  const [layout, setLayout] = useState<"list" | "kanban">("list");
+  const qc = useQueryClient();
   const [due, setDue] = useState<Due>("");
   const [filters, setFilters] = useState<UiTaskFilters>({ ...EMPTY_TASK_FILTERS });
   const [sheetOpen, setSheetOpen] = useState(false);
   const debounced = useDebounced(search);
   const rmOptions = useTeam().data?.rows ?? [];
-  const isKanban = view === "kanban";
+  const isKanban = layout === "kanban";
 
   const apiFilters = useMemo(() => ({
     q: debounced, view, due: isKanban ? "" as Due : due,
-    status: filters.status.join(","), priority: filters.priority.join(","), type: filters.type.join(","),
+    // The board shows every status, like the web's.
+    status: filters.status.length ? filters.status.join(",") : isKanban ? ALL_STATUSES : "", priority: filters.priority.join(","), type: filters.type.join(","),
     department: filters.department.join(","), assignee: filters.assignee.join(","),
     created_from: filters.created_from, created_to: filters.created_to, sort: filters.sort,
   }), [debounced, view, due, filters, isKanban]);
@@ -54,8 +65,18 @@ export default function TasksTab() {
   const { data, isLoading, isError, error, refetch, isRefetching } = useTasks(apiFilters);
   const { data: kpis } = useTaskKpis(apiFilters);
   const tasks = data?.tasks ?? [];
-  const columns = useMemo(() => groupTasksByStatus(tasks), [tasks]);
   const activeCount = countTaskFilters(filters);
+  const moveTask = async (t: Task, status: string) => {
+    try {
+      const r: any = await api.patch(`/api/tasks/${t.id}`, { status });
+      toast.success(status === "completed" && r?.status !== "completed" && r?.approvalStatus === "pending" ? "Sent for approval" : `Moved to ${TASK_STATUSES.find((s) => s.key === status)?.label ?? status}`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't move the task");
+    } finally {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["task-kpis"] });
+    }
+  };
 
   const toggleDue = (d: Due) => setDue((cur) => (cur === d ? "" : d));
 
@@ -69,7 +90,7 @@ export default function TasksTab() {
           <Kpi icon="clock" tone={palette.violet} label="SLA at risk" value={kpis.slaRisk} active={due === "sla_risk"} onPress={() => toggleDue("sla_risk")} />
         </ScrollView>
       )}
-      <Segmented<TaskView> options={[{ key: "", label: "All" }, { key: "to_me", label: "To me" }, { key: "by_me", label: "By me" }, { key: "kanban", label: "Board" }]} value={view} onChange={setView} />
+      <Segmented<TaskView> options={[{ key: "", label: "All" }, { key: "to_me", label: "To me" }, { key: "by_me", label: "By me" }]} value={view} onChange={setView} />
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search tasks…" />
       <View style={styles.toolbarRow}>
         <Pressable style={styles.filterBtn} onPress={() => setSheetOpen(true)}>
@@ -77,6 +98,7 @@ export default function TasksTab() {
           <Text style={{ fontWeight: fontWeight.medium, color: activeCount ? palette.brand : palette.ink }}>Filter & sort{activeCount ? ` · ${activeCount}` : ""}</Text>
         </Pressable>
         {activeCount > 0 ? <Pressable onPress={() => setFilters({ ...EMPTY_TASK_FILTERS })} hitSlop={8}><Text variant="caption" style={{ color: palette.danger }}>Clear</Text></Pressable> : null}
+        <LayoutSwitch value={layout} onChange={setLayout} />
       </View>
     </View>
   );
@@ -88,20 +110,23 @@ export default function TasksTab() {
       : isKanban ? (
         <View style={{ flex: 1 }}>
           <View style={{ paddingHorizontal: spacing.lg }}>{header}</View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.board}>
-            {columns.map((col) => (
-              <View key={col.key} style={styles.column}>
-                <View style={styles.colHeader}>
-                  <View style={[styles.colDot, { backgroundColor: toneColor(col.tone) }]} />
-                  <Text variant="label" style={{ flex: 1 }} numberOfLines={1}>{col.label}</Text>
-                  <View style={styles.countBadge}><Text variant="caption" tone="muted">{col.tasks.length}</Text></View>
-                </View>
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  {col.tasks.map((t) => <TaskCard key={t.id} task={t} compact onPress={() => router.push(`/m/tasks/${t.id}`)} />)}
-                </ScrollView>
+          <KanbanBoard<Task>
+            columns={TASK_STATUSES.map((s) => ({ key: s.key, label: s.label, color: toneColor(s.tone) }))}
+            items={tasks}
+            columnOf={(t) => t.status ?? "open"}
+            keyOf={(t) => t.id}
+            onOpen={(t) => router.push(`/m/tasks/${t.id}` as any)}
+            onMove={moveTask}
+            renderCard={(t) => (
+              <View style={{ gap: 2 }}>
+                <Text variant="caption" style={{ fontWeight: fontWeight.semibold }} numberOfLines={2}>{t.title}</Text>
+                {t.investorName || t.leadName ? <Text variant="caption" tone="muted" numberOfLines={1}>{t.investorName ?? t.leadName}</Text> : null}
+                <Text variant="caption" style={{ color: t.dueAt && new Date(t.dueAt).getTime() < Date.now() && t.status !== "completed" ? palette.danger : palette.muted }} numberOfLines={1}>
+                  {[t.dueAt ? `Due ${fmtDate(t.dueAt)}` : null, t.priority ? titleCase(t.priority) : null, t.assignee].filter(Boolean).join(" · ")}
+                </Text>
               </View>
-            ))}
-          </ScrollView>
+            )}
+          />
         </View>
       ) : (
         <FlashList
@@ -140,9 +165,4 @@ const styles = StyleSheet.create({
   kpiHead: { flexDirection: "row", alignItems: "center", gap: 4 },
   toolbarRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   filterBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  board: { paddingHorizontal: spacing.lg, paddingBottom: 96, gap: spacing.md },
-  column: { width: 230, backgroundColor: palette.surfaceSunken, borderRadius: 14, padding: spacing.sm, marginRight: spacing.md },
-  colHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.xs, paddingVertical: spacing.sm },
-  colDot: { width: 8, height: 8, borderRadius: 4 },
-  countBadge: { backgroundColor: palette.surface, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
 });
