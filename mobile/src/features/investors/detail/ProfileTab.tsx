@@ -30,6 +30,9 @@ export function ProfileTab({ d }: { d: any }) {
   const banks: any[] = i.bankAccounts?.length ? i.bankAccounts : i.bankName ? [{ bankName: i.bankName, accountMasked: i.bankAccountNumberMasked, ifsc: i.bankIfsc }] : [];
   const kycData = i.kycData && typeof i.kycData === "object" ? Object.entries(i.kycData) : [];
   const comp = d.completeness ?? {};
+  const compScore = Math.max(0, Math.min(100, Number(comp.score ?? comp.pct ?? 0)));
+  const compColor = compScore >= 90 ? palette.success : compScore >= 70 ? palette.warning : palette.danger;
+  const compMissing: string[] = (comp.missing ?? []).map((m: any) => (typeof m === "string" ? m : m?.label ?? m?.key)).filter(Boolean);
   const type = i.investorCategory as string | undefined;
   const kind = clientKind(type);
   const td = i.typeDetails ?? {};
@@ -152,12 +155,23 @@ export function ProfileTab({ d }: { d: any }) {
       </Section>
 
       {/* Completeness */}
+      {/* The CRM's completeness: score, filled of total, and the missing fields
+          (each { key, label } — they were printed as objects). */}
       <Section title="Profile completeness" icon="check-circle">
         <View style={styles.compHead}>
-          <Text style={{ fontSize: 22, fontWeight: fontWeight.bold }}>{comp.pct ?? comp.score ?? 0}%</Text>
-          <View style={styles.compTrack}><View style={[styles.compFill, { width: `${comp.pct ?? comp.score ?? 0}%` }]} /></View>
+          <Text style={{ fontSize: 22, fontWeight: fontWeight.bold, color: compColor }}>{compScore}%</Text>
+          <View style={styles.compTrack}><View style={[styles.compFill, { width: `${compScore}%`, backgroundColor: compColor }]} /></View>
         </View>
-        {(comp.missing ?? []).length > 0 ? <Text variant="caption" tone="muted">Missing: {(comp.missing ?? []).join(", ")}</Text> : <Text variant="caption" tone="muted">All key fields captured.</Text>}
+        <Text variant="caption" tone="muted" style={{ marginBottom: spacing.xs }}>
+          {compScore >= 90 ? "Complete" : compScore >= 70 ? "Mostly there" : "Incomplete"}{comp.total ? ` · ${comp.filled ?? 0} of ${comp.total} fields` : ""}
+        </Text>
+        {compMissing.length > 0 ? (
+          <View style={styles.missingWrap}>
+            {compMissing.map((m) => (
+              <View key={m} style={styles.missingChip}><Text variant="caption" style={{ color: palette.warning }}>{m}</Text></View>
+            ))}
+          </View>
+        ) : <Text variant="caption" tone="muted">All key fields captured.</Text>}
       </Section>
 
       {/* KYC data */}
@@ -252,6 +266,8 @@ function TypeCard({ type, td, dob }: { type?: string; td: any; dob?: string | nu
 }
 
 const styles = StyleSheet.create({
+  missingWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  missingChip: { borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2, backgroundColor: palette.warning + "14" },
   sep: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: palette.line },
   compHead: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.sm },
   compTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: palette.surfaceSunken, overflow: "hidden" },

@@ -17,6 +17,8 @@ import { ClientOpportunities } from "../../opportunities/ClientOpportunities";
 import { RecordNotes } from "../../notes/RecordNotes";
 
 const healthTone = (n: number) => (n >= 70 ? palette.success : n >= 40 ? palette.warning : palette.danger);
+const BAND_LABEL: Record<string, string> = { green: "Healthy", amber: "Watch", red: "At risk" };
+const BAND_COLOR: Record<string, string> = { green: palette.success, amber: palette.warning, red: palette.danger };
 const CADENCE = [
   { key: "monthly", label: "Monthly" },
   { key: "quarterly", label: "Quarterly" },
@@ -26,8 +28,13 @@ const CADENCE = [
 
 export function OverviewTab({ d, id, startOpportunity }: { d: any; id: string; startOpportunity?: string }) {
   const inv = d.investor ?? {};
-  const score = inv.healthScore != null ? Number(inv.healthScore) : null;
-  const missing: string[] = d.completeness?.missing ?? [];
+  // The CRM's health card (ClientHealthCard): the live score, its band, and each
+  // factor that cost points — label, why, −points. An older server sends no
+  // breakdown; then the stored score shows alone.
+  const health: { score: number; band: string; factors: Array<{ key: string; label: string; why: string; deduction: number }> } | null = d.health ?? null;
+  const score = health ? health.score : inv.healthScore != null ? Number(inv.healthScore) : null;
+  const band: string | null = health?.band ?? inv.healthBand ?? null;
+  const factors = health?.factors ?? [];
 
   return (
     <View>
@@ -39,15 +46,24 @@ export function OverviewTab({ d, id, startOpportunity }: { d: any; id: string; s
             <Text variant="caption" tone="muted">/ 100</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontWeight: fontWeight.semibold }}>{inv.healthBand ? titleCase(inv.healthBand) : "Not scored"}</Text>
-            <Text variant="caption" tone="muted">
-              {inv.healthScoredAt ? `Scored ${timeAgo(inv.healthScoredAt)}` : "A blend of KYC, nominee, risk, review and activity signals."}
-            </Text>
-            {missing.length > 0 ? (
-              <Text variant="caption" tone="muted" style={{ marginTop: 4 }}>Gaps: {missing.slice(0, 4).join(", ")}</Text>
+            <Text style={{ fontWeight: fontWeight.semibold, color: band ? BAND_COLOR[band] ?? palette.ink : palette.muted }}>{band ? BAND_LABEL[band] ?? titleCase(band) : "Not scored"}</Text>
+            {health && factors.length === 0 ? (
+              <Text variant="caption" style={{ color: palette.success, marginTop: 2 }}>All checks green — nothing flagged.</Text>
+            ) : !health && inv.healthScoredAt ? (
+              <Text variant="caption" tone="muted">Scored {timeAgo(inv.healthScoredAt)}</Text>
             ) : null}
           </View>
         </View>
+        {factors.slice(0, 5).map((f) => (
+          <View key={f.key} style={styles.factor}>
+            <View style={{ flex: 1 }}>
+              <Text variant="caption" style={{ fontWeight: fontWeight.semibold }} numberOfLines={1}>{f.label}</Text>
+              <Text variant="caption" tone="muted" numberOfLines={2}>{f.why}</Text>
+            </View>
+            <Text variant="caption" style={{ color: palette.danger, fontWeight: fontWeight.bold }}>−{f.deduction}</Text>
+          </View>
+        ))}
+        {factors.length > 5 ? <Text variant="caption" tone="muted" style={{ marginTop: 4 }}>+ {factors.length - 5} more</Text> : null}
       </Section>
 
       {/* Summary grid */}
@@ -114,6 +130,7 @@ function SummaryCard({ label, value, sub }: { label: string; value: string; sub:
 }
 
 const styles = StyleSheet.create({
+  factor: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, paddingVertical: spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.lineSoft },
   healthRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
   gauge: { width: 72, height: 72, borderRadius: 36, borderWidth: 3, alignItems: "center", justifyContent: "center", backgroundColor: palette.surfaceAlt },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
