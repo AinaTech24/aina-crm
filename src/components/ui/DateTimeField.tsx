@@ -7,7 +7,10 @@
  * `e.target.value`, so a conversion is a tag rename.
  *
  * Times come in 15-minute steps, shown as "9:30 am"; a stored time off that
- * grid (10:07) is kept and listed. Picking a date with no time yet uses
+ * grid (10:07) is kept and listed. The list opens on working hours
+ * (8:00 am – 9:00 pm) — nobody schedules a call at 12:15 am, and a list that
+ * started there made every pick a long scroll; the small hours follow in
+ * their own group. Picking a date with no time yet uses
  * 10:00 am; picking a time with no date yet uses today. Clearing the date
  * clears the whole value.
  */
@@ -20,6 +23,8 @@ import { formatTimeLabel, toIsoDate } from "@/lib/dates/typed-date";
 const STEPS: string[] = [];
 for (let h = 0; h < 24; h++) for (const m of [0, 15, 30, 45]) STEPS.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
 const DEFAULT_TIME = "10:00";
+/** Working hours, listed first: 08:00 up to and including 21:00. */
+const isWorkingHour = (t: string) => t >= "08:00" && t <= "21:00";
 
 function split(v: string | null | undefined): { date: string; time: string } {
   const m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?/.exec(v ?? "");
@@ -93,11 +98,20 @@ export function DateTimeField({
         <option value="" disabled>
           Time
         </option>
-        {times.map((t) => (
-          <option key={t} value={t}>
-            {formatTimeLabel(t)}
-          </option>
-        ))}
+        <optgroup label="Working hours">
+          {times.filter(isWorkingHour).map((t) => (
+            <option key={t} value={t}>
+              {formatTimeLabel(t)}
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label="Early / late">
+          {times.filter((t) => !isWorkingHour(t)).map((t) => (
+            <option key={t} value={t}>
+              {formatTimeLabel(t)}
+            </option>
+          ))}
+        </optgroup>
       </select>
       {name && <input type="hidden" name={name} value={date ? `${date}T${time || DEFAULT_TIME}` : ""} />}
     </div>

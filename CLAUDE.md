@@ -701,6 +701,58 @@ C1–C17):
 - A directly-added client's journey (`/api/investors/[id]/blueprint`) is
   placed from facts (`client-facts.ts`), never a fake "all done".
 
+## Leads — capture, access and admin
+
+Since 2026-11 (journey audit L3–L22; `tests/lead-capture-access-db.test.ts`):
+
+- **One lead scope** (`leadScopeSql` / `leadScopeCondition`,
+  `lib/leads/access.ts`) for the list, the API, nurture, deleted leads and the
+  duplicate check: firm (`lead.view.all`) · branch (a branch head: the lead's
+  `branch_id`, or with none recorded its owner's branch — `leadWhere`'s rule) ·
+  own + the reporting line below (`users.reporting_manager_id`, the
+  dashboards' team). A teammate's lead is visible, not editable
+  (`loadEditableLead`). The app (`session.mobile`) keeps own-only.
+- **check-duplicate never widens access**: a lead outside the scope is only
+  `{ outsideScope: true, matchedOn }` ("already a lead with another RM"),
+  like a client outside the book.
+- **A lead's branch is its owner's** on every write — create (web, app,
+  import, public form) and every reassignment (`lib/leads/ownership.ts`
+  `reassignLead`, which also moves the lead's open follow-ups to the new owner).
+  Every assignment notifies the owner (`lead.assigned`). Auto-assignment is
+  `autoAssignLeadOwner`: Assignment Rules, then least-loaded by OPEN leads
+  (`leadOpenSql`).
+- **Bulk** (`/api/leads/bulk`) checks each id with `loadEditableLead`, reports
+  skips (`skippedLeads`), moves stages with `writeStageThroughJourney`.
+- **Follow-ups end with the lead**: Lost (every path — `runStageSideEffects`
+  on `not_qualified`), delete and convert call `closeLeadTasks`. A lead has ONE
+  next-touch reminder (`scheduleNextTouchReminder`, meta `nextTouch`: the lead
+  form's first follow-up, call-backs, "call later"), and it sets
+  `next_follow_up_at`.
+- **Delete is soft and restorable** (`lib/leads/lifecycle.ts`): the
+  `__deleted__` marker, journey stopped with its step kept, tasks cancelled; a
+  converted lead is not deleted (409). Restore (`POST /api/leads/[id]/restore`,
+  page `/dashboard/leads/deleted`): owner, branch head, lead managers
+  (`canRestoreLeads`).
+- **Contact rules** (`lib/leads/contact-rules.ts`, form + API): name, and a
+  phone OR email; an Indian mobile (+91 / 0 allowed) or "+<country>…"; an
+  invalid PAN is a 400 with `field: "pan"`. Manual leads record no consent
+  row: `privacy_consents` holds consent the PERSON ticked; the notice is
+  recorded on the first email by `dispatch()`.
+- **Import** normalises phone/email, rejects a bad PAN, skips a row matching a
+  client, a live lead or an earlier row (`skippedRows` with reasons), and
+  owns rows by the Owner column (email or name) else `autoAssignLeadOwner`.
+  **A public form** from an existing client becomes a task for the client's
+  RM; from an existing lead, a note on that lead — never a second record; the
+  answer is the same either way.
+- **Sources**: one list, `LEAD_SOURCE_OPTIONS` (form, filters, cards), every
+  stored value incl. Google Ads / Meta Ads / LinkedIn. Lead-phase labels come
+  from `stages.ts` (the stepper and its history relabel; "Mark Lost", "Won").
+- **Sending to a lead** (checklist, template dispatch) needs
+  `loadEditableLead`; the checklist email is the `doc_checklist` template via
+  `dispatch()`.
+- **Add client "KYC Verified"** needs `kyc.manage`; anyone else's choice is
+  saved Pending with `kycNotice` (the KRA check on the client moves it).
+
 ## Meetings — attendees and action items
 
 `review_meetings` (the Meetings module). Two rules since 2026-10-01:

@@ -210,6 +210,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
     const body = parse.data;
+    // KYC "Verified" is a fact about the KRA's record, not a choice on a form
+    // (audit C8). Only someone whose job is KYC (kyc.manage — operations, back
+    // office, compliance, service, the owner) may record it at creation; for
+    // anyone else the client starts Pending and the KYC check on the client
+    // (or an uploaded KYC proof) moves it. No KRA call is made in here.
+    let kycNotice: string | null = null;
+    if (body.kycStatus === "verified" && !can(session.roles, "kyc.manage", session.permissions)) {
+      body.kycStatus = "pending";
+      kycNotice = "KYC saved as Pending — Verified needs a KRA check or KYC proof. Run Check now on the client.";
+    }
     if (body.dateOfDemise) {
       const bad = demiseDateError(body.dateOfDemise.slice(0, 10), body.dob);
       if (bad) return NextResponse.json({ error: bad, field: "dateOfDemise" }, { status: 400 });
@@ -435,7 +445,7 @@ export async function POST(req: NextRequest) {
       await getClientHealth(tx, session.tenantId, id);
     });
 
-    return NextResponse.json({ id }, { status: 201 });
+    return NextResponse.json({ id, ...(kycNotice ? { kycNotice } : {}) }, { status: 201 });
   } catch (err: any) {
     if (isUniqueViolation(err, "investors_tenant_pan_unique")) {
       return NextResponse.json({ error: "investor with this PAN already exists" }, { status: 409 });

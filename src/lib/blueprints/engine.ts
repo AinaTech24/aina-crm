@@ -111,7 +111,7 @@ export async function ensureActiveBlueprint(tx: Tx, tenantId: string) {
       tenantId,
       moduleName: MODULE,
       blueprintName: LEAD_TO_CLIENT_BLUEPRINT_NAME,
-      description: "Full Lead → Client SOP — 30 stages with branching paths (call-back loops, KYC routes, mandate/transaction retries).",
+      description: "Full Lead → Client SOP — the lead stages, then client onboarding, with branching paths (call-back loops, KYC routes, mandate/transaction retries).",
       versionNumber: 1,
       isActive: true,
     })

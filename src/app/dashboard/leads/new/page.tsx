@@ -276,7 +276,8 @@ export default function NewLeadPage() {
           label="Phone"
           value={form.phone}
           setValue={(v) => set("phone", v)}
-        // placeholder="+919XXXXXXXXX"
+          placeholder="10-digit mobile — phone or email needed"
+          type="tel"
         />
         <Row
           label="Email"

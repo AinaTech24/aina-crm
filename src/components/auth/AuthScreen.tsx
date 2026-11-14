@@ -310,8 +310,9 @@ export function AuthScreen({
             {/* ── LOGIN ── */}
             {mode === "login" && !challenge && !enroll && (
               <form onSubmit={submitLogin} className="mt-8 space-y-4">
-                <FieldShell label="Work email">
+                <FieldShell label="Work email" htmlFor="login-email">
                   <input
+                    id="login-email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -323,12 +324,12 @@ export function AuthScreen({
                 </FieldShell>
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Password</label>
+                    <label htmlFor="login-password" className="text-xs font-semibold text-foreground/80">Password</label>
                     <Link href="/forgot-password" className="text-xs text-primary hover:underline font-medium">
                       Forgot?
                     </Link>
                   </div>
-                  <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required placeholder="••••••••" />
+                  <PasswordInput id="login-password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required placeholder="••••••••" />
                 </div>
                 <button disabled={busy} className="btn-primary w-full mt-2">
                   {busy ? <><Loader2 className="size-4 animate-spin" /> Signing in…</> : <>Sign in <ArrowRight className="size-4" /></>}
@@ -339,8 +340,9 @@ export function AuthScreen({
             {/* ── LOGIN · 2FA ── */}
             {mode === "login" && challenge && (
               <form onSubmit={submit2fa} className="mt-8 space-y-4">
-                <FieldShell label="Authentication code">
+                <FieldShell label="Authentication code" htmlFor="login-2fa-code">
                   <input
+                    id="login-2fa-code"
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     autoFocus
@@ -367,8 +369,9 @@ export function AuthScreen({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={enroll.qr} alt="QR code for your authenticator app" width={180} height={180} className="mx-auto rounded-lg border border-border bg-white p-2" />
                 <p className="text-2xs text-muted-foreground text-center break-all">Can&apos;t scan? Enter this key: <span className="font-mono">{enroll.secret}</span></p>
-                <FieldShell label="Code from the app">
+                <FieldShell label="Code from the app" htmlFor="login-enroll-code">
                   <input
+                    id="login-enroll-code"
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     autoFocus
@@ -404,20 +407,20 @@ export function AuthScreen({
             {/* ── SIGNUP ── */}
             {mode === "signup" && (
               <form onSubmit={submitSignup} className="mt-6 space-y-3">
-                <FieldShell label="Firm name">
-                  <input value={firmName} onChange={(e) => setFirmName(e.target.value)} required placeholder="Acme Wealth Advisors" className="input-base" />
+                <FieldShell label="Firm name" htmlFor="signup-firm">
+                  <input id="signup-firm" value={firmName} onChange={(e) => setFirmName(e.target.value)} required placeholder="Acme Wealth Advisors" className="input-base" />
                 </FieldShell>
-                <FieldShell label="ARN">
-                  <input value={arn} onChange={(e) => setArn(e.target.value)} required placeholder="ARN-123456" className="input-base" />
+                <FieldShell label="ARN" htmlFor="signup-arn">
+                  <input id="signup-arn" value={arn} onChange={(e) => setArn(e.target.value)} required placeholder="ARN-123456" className="input-base" />
                 </FieldShell>
-                <FieldShell label="Your name">
-                  <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} required placeholder="Your full name" className="input-base" />
+                <FieldShell label="Your name" htmlFor="signup-name">
+                  <input id="signup-name" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} required placeholder="Your full name" className="input-base" />
                 </FieldShell>
-                <FieldShell label="Work email">
-                  <input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} autoComplete="email" required placeholder="you@yourfirm.com" className="input-base" />
+                <FieldShell label="Work email" htmlFor="signup-email">
+                  <input id="signup-email" type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} autoComplete="email" required placeholder="you@yourfirm.com" className="input-base" />
                 </FieldShell>
-                <FieldShell label="Password">
-                  <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required placeholder="8+ characters" />
+                <FieldShell label="Password" htmlFor="signup-password">
+                  <PasswordInput id="signup-password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required placeholder="8+ characters" />
                 </FieldShell>
                 <button disabled={busy} className="btn-primary w-full mt-2">
                   {busy ? <><Loader2 className="size-4 animate-spin" /> Creating…</> : <>Create workspace <ArrowRight className="size-4" /></>}
@@ -450,10 +453,12 @@ export function AuthScreen({
   );
 }
 
-function FieldShell({ label, children }: { label: string; children: React.ReactNode }) {
+/** A label tied to its input by id (htmlFor), so a screen reader names the
+ *  field and clicking the label focuses it. */
+function FieldShell({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="text-xs font-semibold text-foreground/80 block mb-1.5">{label}</label>
+      <label htmlFor={htmlFor} className="text-xs font-semibold text-foreground/80 block mb-1.5">{label}</label>
       {children}
     </div>
   );

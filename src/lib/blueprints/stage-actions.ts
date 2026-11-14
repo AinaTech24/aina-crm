@@ -136,7 +136,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
     },
     {
       key: "not_qualified",
-      label: "Not Qualified",
+      label: "Mark Lost",
       tone: "danger",
       targetStage: "not_qualified",
       hint: "Lead isn't a fit — close as lost.",
@@ -331,7 +331,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
     },
     {
       key: "skip_proposal",
-      label: "Skip Proposal — Won Lead",
+      label: "Skip Proposal — Won",
       tone: "secondary",
       targetStage: "won_lead",
       hint: "The client has decided without a proposal. Pick the product(s) they are investing in — the onboarding flow adapts to it.",
@@ -353,7 +353,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
   proposal_sent: [
     {
       key: "won_lead",
-      label: "Proposal Approved — Won Lead",
+      label: "Proposal Approved — Won",
       tone: "success",
       targetStage: "won_lead",
       hint: "The client approved the proposal (by phone or in person). Marks it accepted, wins the lead and sends the document checklist. If they approve through the proposal link, this happens by itself.",

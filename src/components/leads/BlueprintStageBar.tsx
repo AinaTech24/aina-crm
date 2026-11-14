@@ -131,7 +131,10 @@ export function BlueprintStageBar({
       // keep their blueprint names.
       const relabel = <T extends { key: string; name: string }>(s: T): T =>
         leadPipelineColumn(s.key) ? { ...s, name: stageLabel(s.key) } : s;
-      setData({ ...d, current: d.current && relabel(d.current), allStages: (d.allStages ?? []).map(relabel) });
+      // The history uses the same names as the stepper and the board.
+      const history = (d.history ?? []).map((h: HistoryRow) =>
+        leadPipelineColumn(h.stageKey) ? { ...h, stageName: stageLabel(h.stageKey) } : h);
+      setData({ ...d, current: d.current && relabel(d.current), allStages: (d.allStages ?? []).map(relabel), history });
     } catch (e: any) {
       setError(e?.message ?? "Failed to load");
     } finally {
