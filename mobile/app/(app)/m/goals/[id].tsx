@@ -32,6 +32,8 @@ import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
 import { inr, fmtDate, toNumber } from "../../../../src/lib/format";
 import { palette, spacing, radius, fontWeight } from "../../../../src/theme/tokens";
 import { errorMessage } from "../../../../src/lib/errors";
+import { downloadAndShare } from "../../../../src/lib/download";
+import { toast } from "../../../../src/lib/toast";
 
 const num = (v: any, d = 0) => { const n = toNumber(v); return Number.isFinite(n) && n !== 0 ? n : (v == null || v === "" ? d : n); };
 
@@ -44,6 +46,7 @@ export default function GoalDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   if (isLoading) return <View style={styles.screen}><ScreenHeader title="Goal" onBack={() => router.back()} /><LoadingState /></View>;
   if (isError || !data) return <View style={styles.screen}><ScreenHeader title="Goal" onBack={() => router.back()} /><ErrorState message={(error as any)?.message} onRetry={() => refetch()} /></View>;
@@ -181,7 +184,21 @@ export default function GoalDetail() {
           ) : null}
 
           {/* Actions */}
-          <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.lg }}>
+          <Button
+            label="Download PDF"
+            variant="secondary"
+            full
+            loading={pdfBusy}
+            icon={<Feather name="download" size={15} color={palette.ink} />}
+            onPress={() => {
+              setPdfBusy(true);
+              downloadAndShare(`/api/goals/${id}/pdf?download=1`, `Goal-Plan-${g.name ?? "Goal"}.pdf`)
+                .catch((e) => toast.error(errorMessage(e)))
+                .finally(() => setPdfBusy(false));
+            }}
+            style={{ marginTop: spacing.lg }}
+          />
+          <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.md }}>
             <View style={{ flex: 1 }}><Button label="Share" variant="secondary" onPress={doShare} icon={<Feather name="message-circle" size={15} color={palette.ink} />} full /></View>
             <View style={{ flex: 1 }}><Button label="Archive" variant="danger" loading={del.isPending} onPress={doDelete} icon={<Feather name="archive" size={15} color="#fff" />} full /></View>
           </View>

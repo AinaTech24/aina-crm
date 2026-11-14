@@ -44,7 +44,10 @@ export default function OpportunitiesList() {
   useEffect(() => { const t = setTimeout(() => setQ(search), 300); return () => clearTimeout(t); }, [search]);
 
   const active = FILTERS.find((x) => x.key === filter)!;
-  const { data, isLoading, isError, refetch, isRefetching } = useOpportunityBoard({ ...active.f, q });
+  const { data, isLoading, isError, error, refetch, isRefetching } = useOpportunityBoard({ ...active.f, q });
+  // The board's list endpoint ships with this app version; an older CRM server
+  // answers 404. Each client's own Opportunities section works either way.
+  const notOnServer = (error as any)?.status === 404;
   const rows = data?.rows ?? [];
   const k = data?.kpis;
 
@@ -73,7 +76,12 @@ export default function OpportunitiesList() {
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       <ScreenHeader title="Opportunities" />
-      {isError && !data ? <ErrorState onRetry={refetch} /> : isLoading && !data ? (
+      {isError && !data ? (
+        <ErrorState
+          message={notOnServer ? "The Opportunities board needs the latest CRM server update. Until then, open a client to see and work their opportunities." : (error as any)?.message}
+          onRetry={refetch}
+        />
+      ) : isLoading && !data ? (
         <View style={{ padding: spacing.lg }}><Skeleton width="100%" height={72} /><Skeleton width="100%" height={72} style={{ marginTop: spacing.sm }} /></View>
       ) : (
         <FlashList
