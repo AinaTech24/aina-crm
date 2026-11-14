@@ -7,7 +7,8 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { View, ScrollView, Pressable, Image, Linking, RefreshControl, StyleSheet } from "react-native";
+import { View, ScrollView, Pressable, Image, Linking, RefreshControl, StyleSheet, Alert } from "react-native";
+import { toast } from "../../../../src/lib/toast";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
@@ -27,7 +28,7 @@ import { AiBriefSheet } from "../../../../src/features/investors/detail/AiBriefS
 import { QuickCommsSheet } from "../../../../src/features/investors/detail/QuickCommsSheet";
 import { OnboardingWizardSheet } from "../../../../src/features/investors/detail/OnboardingWizardSheet";
 import { avatarUri, useAvatarHeaders, useUploadAvatar } from "../../../../src/features/investors/detail/subfeatures";
-import { useInvestorFull, useVerifyContact, useSendStatement, useDeleteInvestor } from "../../../../src/features/investors/api";
+import { useInvestorFull, useVerifyContact, useSendStatement, useDeleteInvestor, useSetClientExited } from "../../../../src/features/investors/api";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { inr, initials, fmtDate } from "../../../../src/lib/format";
 import { investorStatusBadge, kycBadge } from "../../../../src/lib/status";
@@ -59,6 +60,7 @@ export default function InvestorDetail() {
   const verify = useVerifyContact(id!);
   const statement = useSendStatement(id!);
   const del = useDeleteInvestor();
+  const exit = useSetClientExited(id!);
   const avatar = useUploadAvatar(id!);
   const avatarHeaders = useAvatarHeaders();
   const [tab, setTab] = useState<Tab>("overview");
@@ -93,6 +95,20 @@ export default function InvestorDetail() {
   const email = i.email as string | null;
   const v = d.valuation ?? {};
 
+  const exited = i.status === "exited" || i.status === "closed";
+  const doExit = () => {
+    setActions(false);
+    Alert.alert(
+      exited ? `Reactivate ${i.name}?` : `Mark ${i.name} as exited?`,
+      exited
+        ? "The client goes back to Active, in the client list and the dashboards."
+        : "The client leaves the client list and the dashboard counts, but nothing is deleted — history, family, RM, notes and documents stay. When they invest again the CRM makes them Active by itself.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: exited ? "Reactivate" : "Mark as exited", onPress: () => exit.mutate(!exited, { onSuccess: () => toast.success(exited ? `${i.name} is Active again` : `${i.name} marked as exited`) }) },
+      ],
+    );
+  };
   const doDelete = () => {
     setActions(false);
     confirmDelete(
@@ -189,6 +205,7 @@ export default function InvestorDetail() {
         <Button label="Onboarding wizard" variant="secondary" full icon={<Feather name="check-square" size={15} color={palette.ink} />} onPress={() => { setActions(false); setOnboardOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Email statement" variant="secondary" full loading={statement.isPending} icon={<Feather name="file-text" size={15} color={palette.ink} />} onPress={() => sendStatement("email")} style={{ marginBottom: spacing.sm }} />
         <Button label="WhatsApp statement" variant="secondary" full loading={statement.isPending} icon={<Feather name="message-circle" size={15} color={palette.ink} />} onPress={() => sendStatement("whatsapp")} style={{ marginBottom: spacing.sm }} />
+        <Button label={exited ? "Reactivate client" : "Mark as exited"} variant="secondary" full loading={exit.isPending} icon={<Feather name={exited ? "rotate-ccw" : "log-out"} size={15} color={palette.ink} />} onPress={doExit} style={{ marginBottom: spacing.sm }} />
         <Button label="Delete client" variant="danger" full loading={del.isPending} icon={<Feather name="trash-2" size={15} color="#fff" />} onPress={doDelete} />
       </BottomSheet>
 

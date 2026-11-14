@@ -200,6 +200,22 @@ export function useDispatchComm(id: string, subject: CommSubject = "investor") {
   });
 }
 
+/** "Mark as exited" / "Reactivate client" (the CRM's rule of 2026-10-15): a
+ *  client with no business is EXITED, not deleted — history, family, RM, notes
+ *  and documents stay, and new money from the registrar makes them Active. */
+export function useSetClientExited(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (exit: boolean) => api.patch(`/api/investors/${id}`, { status: exit ? "exited" : "active" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["investor-full", id] });
+      qc.invalidateQueries({ queryKey: ["investor", id] });
+      qc.invalidateQueries({ queryKey: ["investors"] });
+      qc.invalidateQueries({ queryKey: ["investor-kpis"] });
+    },
+  });
+}
+
 export function useDeleteInvestor() {
   const qc = useQueryClient();
   return useMutation({
