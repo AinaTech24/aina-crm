@@ -13,7 +13,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Pressable, ScrollView, StyleSheet, Switch } from "react-native";
+import { View, Pressable, ScrollView, StyleSheet, Switch, KeyboardAvoidingView } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
@@ -225,6 +225,7 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       <ScreenHeader title="New task" />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 140 }} keyboardShouldPersistTaps="handled">
         {(templates.data ?? []).length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingBottom: spacing.md }}>
@@ -318,6 +319,7 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
           </View>
         </Card>
       </ScrollView>
+      </KeyboardAvoidingView>
       <View style={styles.footer}><Button label="Create task" full loading={busy} onPress={save} /></View>
       {pick ? <RecordPicker kind={pick} onClose={() => setPick(null)} onPick={(r) => { pick === "client" ? setClient(r) : setLead(r); setPick(null); }} /> : null}
     </View>

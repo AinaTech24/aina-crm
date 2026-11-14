@@ -3,10 +3,15 @@
  * forms. Smooth slide-up on open AND slide-down on close (driven by a shared
  * value so the exit actually plays — RN Modal unmounts instantly otherwise).
  * Tap-outside to dismiss. Hugs its content; no dead space below.
+ *
+ * Keyboard-aware: when the keyboard covers the sheet (Android draws apps edge
+ * to edge, so a modal is no longer resized for it) the sheet lifts by exactly
+ * the part that is covered — a note's Save button was hidden behind the
+ * keyboard. Measured, so a window the OS did resize is not lifted twice.
  */
 
-import React, { useEffect, useState } from "react";
-import { Modal, View, Pressable, StyleSheet, useWindowDimensions } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Modal, View, Pressable, StyleSheet, useWindowDimensions, Keyboard, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing, runOnJS } from "react-native-reanimated";
 import { palette, radius, spacing } from "../../theme/tokens";
@@ -30,6 +35,20 @@ export function BottomSheet({
   const { height } = useWindowDimensions();
   const [mounted, setMounted] = useState(visible);
   const progress = useSharedValue(0); // 0 = closed, 1 = open
+  const rootRef = useRef<View>(null);
+  const [kbOverlap, setKbOverlap] = useState(0);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const show = Keyboard.addListener(showEvt, (e) => {
+      const kbTop = e.endCoordinates.screenY;
+      rootRef.current?.measureInWindow((_x, y, _w, h) => setKbOverlap(Math.max(0, Math.round(y + h - kbTop))));
+    });
+    const hide = Keyboard.addListener(hideEvt, () => setKbOverlap(0));
+    return () => { show.remove(); hide.remove(); };
+  }, [mounted]);
 
   useEffect(() => {
     if (visible) {
@@ -50,11 +69,11 @@ export function BottomSheet({
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.root}>
+      <View style={styles.root} ref={rootRef} collapsable={false}>
         <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
           <Pressable style={styles.backdrop} onPress={onClose} />
         </Animated.View>
-        <Animated.View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) }, sheetStyle]}>
+        <Animated.View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) + kbOverlap }, sheetStyle]}>
           <View style={styles.grabber} />
           {title ? (
             <Text variant="subtitle" style={{ marginBottom: spacing.md }}>

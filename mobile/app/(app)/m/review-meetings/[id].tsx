@@ -12,7 +12,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { View, ScrollView, Pressable, StyleSheet } from "react-native";
+import { View, ScrollView, Pressable, StyleSheet, KeyboardAvoidingView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -189,6 +189,7 @@ export default function MeetingDetail() {
   return (
     <View style={styles.screen}>
       <ScreenHeader title={m.subject ?? "Meeting"} subtitle={titleCase(m.meeting_type) || undefined} onBack={() => router.back()} />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["4xl"] }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Animated.View entering={FadeInUp.duration(240)}>
           {/* Header */}
@@ -344,6 +345,7 @@ export default function MeetingDetail() {
           ) : null}
         </Animated.View>
       </ScrollView>
+      </KeyboardAvoidingView>
       <AttendeePicker visible={pickerOpen} onClose={() => setPickerOpen(false)} taken={attendees}
         onPick={(a) => { setAttendees((p) => [...p, a]); setPickerOpen(false); }} />
     </View>

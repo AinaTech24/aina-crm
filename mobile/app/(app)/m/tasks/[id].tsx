@@ -11,7 +11,7 @@
  */
 
 import React, { useState } from "react";
-import { View, ScrollView, StyleSheet, Pressable } from "react-native";
+import { View, ScrollView, StyleSheet, Pressable, KeyboardAvoidingView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
@@ -123,6 +123,7 @@ export default function TaskDetail() {
   return (
     <View style={styles.screen}>
       <ScreenHeader title="Task" subtitle={titleCase(task.type) || undefined} />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Animated.View entering={FadeIn.duration(240)}>
           <Card>
@@ -293,6 +294,7 @@ export default function TaskDetail() {
           </Card>
         </Animated.View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <BottomSheet visible={statusSheet} onClose={() => setStatusSheet(false)} title="Set status">
         {TASK_STATUSES.map((s) => (

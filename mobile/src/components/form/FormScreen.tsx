@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { View, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import { View, ScrollView, KeyboardAvoidingView, StyleSheet } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -230,7 +230,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
         </View>
       ) : null}
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }}
           keyboardShouldPersistTaps="handled"
