@@ -950,12 +950,18 @@ the imports and every label; never copy the enum again.
   (`taxStatusOptions`, defaulted on a type change), marital status, income
   range, household type (Individual · Family · Company · HUF). `withCurrent`
   keeps an imported value the list lacks.
-- **Pincode → city / state only in RTA imports** (2026-10-14, the firm's
-  call after a day of form auto-fill that overwrote typed cities with India
-  Post districts): the forms never fill from the pincode. `importRtaFolios`
+- **Pincode → city / state fills BLANKS only** (the owner's request of
+  2026-11-14; it replaces the 2026-10-14 rule "forms never fill from the
+  pincode", which followed a day of form auto-fill that OVERWROTE typed cities
+  with India Post districts). On Add client and the client edit form, typing a
+  complete Indian pincode (`usePincodeAutofill` → `GET /api/pincode/[pin]` →
+  `lookupPincode`) fills a blank city (the district), a blank state and a
+  blank country (India) — never a typed value (`lib/pincode/autofill.ts`). A
+  typed state that disagrees stays, with a "Use <state>" hint; the pincode
+  already on file when an edit form opens is not looked up. `importRtaFolios`
   completes a registrar row that has a pincode and a BLANK (or "NA" / "-")
-  city or state (`lib/pincode/fill.ts`, India Post via `lookupPincode`);
-  nothing written is ever replaced. Do not put form auto-fill back.
+  city or state (`lib/pincode/fill.ts`); nothing written is ever replaced.
+  Never make the form overwrite a typed city or state.
 - **Each type sees only its own fields** (2026-10-14), on the client page as
   in the forms: personal fields for a person or minor, adult fields
   (marital status, occupation, employer, PAN–Aadhaar link, anniversary) for
