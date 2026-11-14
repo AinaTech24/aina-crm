@@ -153,7 +153,8 @@ export function costOfDelay(params: {
  * over distribution years at postReturnPct.
  *
  * Rate convention: uses the goal-planning fvLumpsum/requiredSip (NOMINAL r/12)
- * for the accumulation side; distribution PV uses NOMINAL monthly r/12 and g/12.
+ * for the accumulation side; distribution PV uses NOMINAL monthly return r/12
+ * and EFFECTIVE monthly inflation (1+i)^(1/12) − 1 (web 1752943b).
  */
 export function retirementCorpus(params: {
   currentAge: number;
@@ -193,7 +194,10 @@ export function retirementCorpus(params: {
   // at inflation, draw rate = postReturnPct. Closed-form:
   //   PV = P × (1 − ((1+g)/(1+r))^n) / (r − g)
   // where g = monthly inflation, r = monthly return, P = first month's withdrawal.
-  const g = inflationPct / 100 / 12;
+  // g is the EFFECTIVE monthly inflation, so income grows exactly inflationPct a
+  // year after retirement too (6%/12 compounded to 6.17%, overstating the corpus
+  // ~2% against the annual inflation used before retirement).
+  const g = Math.pow(1 + inflationPct / 100, 1 / 12) - 1;
   const r = postReturnPct / 100 / 12;
   let corpusRequired = 0;
   if (distMonths === 0) {
@@ -316,7 +320,7 @@ export function stpCalculate(params: {
     sourceFinalValue: balanceSource,
     targetFinalValue: balanceTarget,
     totalFinalValue,
-    gain: Math.max(0, totalFinalValue - lumpsum),
+    gain: totalFinalValue - lumpsum, // negative = a loss (never shown as ₹0)
   };
 }
 
@@ -391,7 +395,7 @@ export function rentVsBuy(p: {
   const emi = n === 0 ? 0 : r === 0 ? loan / n : (loan * r) / (1 - Math.pow(1 + r, -n));
   const Hm = Math.round(p.horizonYears * 12);
 
-  // BUY — net worth = appreciated home value − outstanding loan.
+  // BUY — appreciated home value and the loan still outstanding at the horizon.
   const homeValue = p.homePrice * Math.pow(1 + p.homeAppreciationPct / 100, p.horizonYears);
   let bal = loan;
   const monthsPaid = Math.min(Hm, n);
@@ -400,14 +404,16 @@ export function rentVsBuy(p: {
     bal = bal - (emi - interest);
   }
   const outstanding = Hm >= n ? 0 : Math.max(0, bal);
-  const buyNetWorth = homeValue - outstanding;
 
-  // RENT + INVEST the difference — invest the down-payment as a lumpsum, then
-  // each month invest whatever the owner spends above the renter (EMI +
-  // maintenance − rent). Rent escalates annually.
+  // Both sides spend the same each month: whichever spends LESS invests the
+  // difference (web 1752943b). The renter starts with the down-payment as a
+  // lumpsum and invests (EMI + maintenance − rent) while that is positive; the
+  // owner invests (rent − EMI − maintenance) once rent overtakes it (e.g. after
+  // the loan closes). Rent escalates annually.
   const eqM = p.equityReturnPct / 100 / 12;
   const maintenanceMonthly = (p.homePrice * (p.maintenancePctPerYear / 100)) / 12;
   let invest = down;
+  let ownerInvest = 0;
   let rent = p.monthlyRent;
   const buySeries: { year: number; value: number }[] = [{ year: 0, value: down }];
   const rentSeries: { year: number; value: number }[] = [{ year: 0, value: down }];
@@ -417,6 +423,7 @@ export function rentVsBuy(p: {
     const ownerOutflow = (m < n ? emi : 0) + maintenanceMonthly;
     const surplus = ownerOutflow - rent;
     invest = invest * (1 + eqM) + (surplus > 0 ? surplus : 0);
+    ownerInvest = ownerInvest * (1 + eqM) + (surplus < 0 ? -surplus : 0);
     // track owner equity over time for the chart
     if (m < n) {
       const interest = runBal * r;
@@ -425,10 +432,12 @@ export function rentVsBuy(p: {
     if ((m + 1) % 12 === 0) {
       const yr = (m + 1) / 12;
       const hv = p.homePrice * Math.pow(1 + p.homeAppreciationPct / 100, yr);
-      buySeries.push({ year: yr, value: hv - Math.max(0, runBal) });
+      buySeries.push({ year: yr, value: hv - Math.max(0, runBal) + ownerInvest });
       rentSeries.push({ year: yr, value: invest });
     }
   }
+  // BUY — net worth = appreciated home − outstanding loan + the owner's savings invested.
+  const buyNetWorth = homeValue - outstanding + ownerInvest;
   const rentNetWorth = invest;
   return {
     emi,
@@ -507,13 +516,27 @@ export function btid(p: {
   const btidCorpus = fvAnnualDue(investable, p.mfReturnPct, p.years);
   const tradCorpus = fvAnnualDue(p.annualBudget, p.tradReturnPct, p.years);
   const tradCover = p.annualBudget * (p.tradCoverMultiple ?? 10);
+  // Equity LTCG on redemption: 12.5% above the ₹1.25 L exemption (from 23 Jul 2024).
+  const ltcg = (corpus: number, paidIn: number) => 0.125 * Math.max(0, corpus - paidIn - 125000);
+  const btidTax = ltcg(btidCorpus, investable * p.years);
+  // ULIP maturity is tax-free only while the annual premium is ≤ ₹2.5 L; above
+  // that its gains are taxed as equity LTCG too.
+  const ulipTaxFree = p.annualBudget <= 250000;
+  const tradTax = ulipTaxFree ? 0 : ltcg(tradCorpus, p.annualBudget * p.years);
+  const btidPostTax = btidCorpus - btidTax;
+  const tradPostTax = tradCorpus - tradTax;
   return {
     investable,
     btidCorpus,
     tradCorpus,
+    btidTax,
+    tradTax,
+    btidPostTax,
+    tradPostTax,
+    ulipTaxFree,
     btidCover: p.termCover,
     tradCover,
-    wealthGap: btidCorpus - tradCorpus,
+    wealthGap: btidPostTax - tradPostTax,
     coverGap: p.termCover - tradCover,
   };
 }
@@ -607,8 +630,9 @@ export function computeEmiSip(input: EmiSipInput): EmiSipResult {
   if (input.mode === "loan") {
     monthlyEmi = computeEmi(input.loanAmount, input.interestRatePct, n);
     totalRepayment = monthlyEmi * n;
-    principalRepayment = input.loanAmount;
-    interestRepayment = totalRepayment - input.loanAmount;
+    // No tenure ⇒ nothing is repaid (not "−principal" of interest).
+    principalRepayment = n > 0 ? input.loanAmount : 0;
+    interestRepayment = n > 0 ? totalRepayment - input.loanAmount : 0;
   } else {
     monthlyEmi = input.emiAmount;
     totalRepayment = input.emiAmount * n;

@@ -15,19 +15,23 @@ import { StatusPill } from "../../../../src/components/ui/StatusPill";
 import { Skeleton } from "../../../../src/components/ui/Skeleton";
 import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
 import { FAB } from "../../../../src/components/ui/FAB";
-import { useProposals, num, type Proposal, type ProposalStatus } from "../../../../src/features/proposals/api";
+import { useProposals, num, isDraft, isCancelled, pastValidity, STATUS_LABEL, type Proposal, type ProposalStatus } from "../../../../src/features/proposals/api";
 import { inr, fmtDate, titleCase } from "../../../../src/lib/format";
 import { spacing, palette, radius, fontWeight } from "../../../../src/theme/tokens";
 import { toneColors, type Tone } from "../../../../src/theme";
 
 const STATUS_TONE: Record<ProposalStatus, Tone> = {
-  draft: "neutral", ready: "info", sent: "info", viewed: "brand", accepted: "success", rejected: "danger", expired: "warning",
+  draft: "neutral", ready: "info", sent: "info", viewed: "brand", changes_requested: "warning", accepted: "success",
+  partially_approved: "success", executed: "success", rejected: "danger", expired: "warning", superseded: "neutral",
 };
-const FILTERS: { key: string; label: string; match: (s: ProposalStatus) => boolean }[] = [
+const open = (p: Proposal) => !["accepted", "partially_approved", "executed", "rejected", "superseded"].includes(p.status);
+// The web's tabs (dashboard/proposals): an open proposal past its validity reads as expired.
+const FILTERS: { key: string; label: string; match: (p: Proposal) => boolean }[] = [
   { key: "all", label: "All", match: () => true },
-  { key: "draft", label: "Drafts", match: (s) => s === "draft" || s === "ready" },
-  { key: "sent", label: "Awaiting", match: (s) => s === "sent" || s === "viewed" },
-  { key: "accepted", label: "Accepted", match: (s) => s === "accepted" },
+  { key: "draft", label: "Drafts", match: (p) => isDraft(p.status) && !pastValidity(p) },
+  { key: "sent", label: "Sent", match: (p) => ["sent", "viewed", "changes_requested"].includes(p.status) && !pastValidity(p) },
+  { key: "accepted", label: "Accepted", match: (p) => ["accepted", "partially_approved", "executed"].includes(p.status) },
+  { key: "expired", label: "Expired", match: (p) => p.status === "expired" || (open(p) && pastValidity(p)) },
 ];
 
 export default function ProposalsList() {
@@ -35,18 +39,19 @@ export default function ProposalsList() {
   const { data, isLoading, isRefetching, refetch } = useProposals();
   const [filter, setFilter] = React.useState("all");
 
-  const all = data ?? [];
+  // Superseded versions and cancelled proposals are not the RM's work (web list).
+  const all = (data ?? []).filter((p) => p.status !== "superseded" && !isCancelled(p));
   const active = FILTERS.find((f) => f.key === filter)!;
-  const rows = all.filter((p) => active.match(p.status));
+  const rows = all.filter((p) => active.match(p));
 
   const header = (
     <View>
       <View style={styles.ribbon}>
         <Metric label="Total" value={String(all.length)} />
         <View style={styles.vline} />
-        <Metric label="Awaiting" value={String(all.filter((p) => p.status === "sent" || p.status === "viewed").length)} />
+        <Metric label="With client" value={String(all.filter((p) => ["sent", "viewed", "changes_requested"].includes(p.status)).length)} />
         <View style={styles.vline} />
-        <Metric label="Accepted" value={String(all.filter((p) => p.status === "accepted").length)} />
+        <Metric label="Accepted" value={String(all.filter((p) => ["accepted", "partially_approved", "executed"].includes(p.status)).length)} />
       </View>
       <View style={styles.chips}>
         {FILTERS.map((f) => (
@@ -87,7 +92,7 @@ function Row({ p, onPress }: { p: Proposal; onPress: () => void }) {
       <Card style={{ marginBottom: spacing.sm }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <Text variant="body" style={{ flex: 1, fontWeight: fontWeight.semibold }} numberOfLines={1}>{p.title}</Text>
-          <StatusPill label={titleCase(p.status)} tone={STATUS_TONE[p.status]} size="sm" />
+          <StatusPill label={STATUS_LABEL[p.status] ?? titleCase(p.status)} tone={STATUS_TONE[p.status] ?? "neutral"} size="sm" />
         </View>
         <Text variant="caption" tone="muted" numberOfLines={1} style={{ marginTop: 2 }}>
           {p.proposalNumber} · {p.recipientName}

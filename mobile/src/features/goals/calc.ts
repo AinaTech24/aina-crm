@@ -92,6 +92,34 @@ export function monthsBetween(from: Date, to: Date): number {
 
 export type GoalStatus = "not_started" | "on_track" | "behind_track" | "achieved";
 
+/**
+ * Where a goal stands, from the money and the projection (web goalTier, 098b73eb):
+ *   achieved   what is linked TODAY already covers the target
+ *   on_track   projected value at the target date >= target
+ *   behind     projected at least GOAL_BEHIND_FLOOR_PCT % of the target
+ *   off_track  projected below that (including nothing linked and no SIP)
+ * A projection is an assumption, not money: until the money is there the best a
+ * goal can be is On track.
+ */
+export type GoalTier = "achieved" | "on_track" | "behind" | "off_track";
+
+export const GOAL_TIER_LABEL: Record<GoalTier, string> = {
+  achieved: "Achieved",
+  on_track: "On track",
+  behind: "Behind",
+  off_track: "Off track",
+};
+
+/** Below this share of the target (projected), a goal is Off track, not Behind. */
+export const GOAL_BEHIND_FLOOR_PCT = 75;
+
+export function goalTier(currentValue: number, projectedValue: number, target: number): GoalTier {
+  if (target > 0 && currentValue >= target) return "achieved";
+  if (projectedValue >= target) return "on_track";
+  const pct = target > 0 ? (projectedValue / target) * 100 : 0;
+  return pct >= GOAL_BEHIND_FLOOR_PCT ? "behind" : "off_track";
+}
+
 export interface GoalComputation {
   futureTarget: number;
   months: number;
@@ -102,6 +130,11 @@ export interface GoalComputation {
   requiredLumpsumToday: number;
   additionalMonthlySipNeeded: number;
   gapAmount: number;
+  /** Projected value at the target date as a % of the target (can exceed 100). */
+  projectedPct: number;
+  /** Achieved / On track / Behind / Off track — see goalTier(). */
+  tier: GoalTier;
+  /** The DB enum, derived from `tier`: "behind_track" covers Behind and Off track. */
   status: GoalStatus;
 }
 
@@ -127,11 +160,14 @@ export function computeGoal(input: {
 
   if (months === 0) {
     const gap = Math.max(0, fT - pv);
+    const tier = goalTier(pv, pv, fT);
     return {
       futureTarget: fT, months, years, projectedTotalFV: pv,
       requiredMonthlySipTotal: 0, requiredStepUpInitialSip: 0, requiredLumpsumToday: fT,
       additionalMonthlySipNeeded: 0, gapAmount: gap,
-      status: pv >= fT ? "achieved" : "behind_track",
+      projectedPct: fT > 0 ? (pv / fT) * 100 : 0,
+      tier,
+      status: tier === "achieved" ? "achieved" : "behind_track",
     };
   }
 
@@ -142,41 +178,45 @@ export function computeGoal(input: {
   const additional = Math.max(0, reqTotal - sip);
   const gap = Math.max(0, fT - projectedTotalFV);
 
+  // Achieved only when the money linked today covers the target (web 098b73eb);
+  // a projection that clears it is On track.
+  const tier = goalTier(pv, projectedTotalFV, fT);
   let status: GoalStatus;
-  if (pv === 0 && sip === 0) status = "not_started";
-  else if (projectedTotalFV >= fT) status = "achieved";
-  else if (sip >= reqTotal * 0.9) status = "on_track";
+  if (tier === "achieved") status = "achieved";
+  else if (pv === 0 && sip === 0) status = "not_started";
+  else if (tier === "on_track") status = "on_track";
   else status = "behind_track";
 
   return {
     futureTarget: fT, months, years, projectedTotalFV,
     requiredMonthlySipTotal: reqTotal, requiredStepUpInitialSip: reqStepUp, requiredLumpsumToday: reqLump,
-    additionalMonthlySipNeeded: additional, gapAmount: gap, status,
+    additionalMonthlySipNeeded: additional, gapAmount: gap,
+    projectedPct: fT > 0 ? (projectedTotalFV / fT) * 100 : 0,
+    tier, status,
   };
 }
 
 export interface YearRow { year: number; monthlySip: number; contributedThisYear: number; cumulativeContributed: number; endOfYearCorpus: number }
 
-/** Year-by-year projection (mirrors projectYearly). */
+/** Year-by-year projection — the web's projectYearly, unrounded (the screen formats). */
 export function projectYearly(p: { currentValue: number; initialMonthlySip: number; annualReturnPct: number; stepUpPct?: number; months: number }): YearRow[] {
   const m = p.annualReturnPct / 100 / 12;
   const step = (p.stepUpPct ?? 0) / 100;
-  const totalMonths = Math.max(0, Math.round(p.months));
-  const years = Math.ceil(totalMonths / 12);
-  let corpus = Math.max(0, p.currentValue);
-  let monthlySip = Math.max(0, p.initialMonthlySip);
+  const years = Math.ceil(p.months / 12);
+  let corpus = p.currentValue;
+  let monthlySip = p.initialMonthlySip;
   let cumulative = 0;
   const rows: YearRow[] = [];
-  let monthsDone = 0;
   for (let y = 1; y <= years; y++) {
+    const monthsThisYear = y === years ? p.months - (years - 1) * 12 : 12;
+    if (monthsThisYear <= 0) break;
     let contributedThisYear = 0;
-    for (let mo = 0; mo < 12 && monthsDone < totalMonths; mo++) {
+    for (let mo = 0; mo < monthsThisYear; mo++) {
       corpus = corpus * (1 + m) + monthlySip;
       contributedThisYear += monthlySip;
-      monthsDone++;
     }
     cumulative += contributedThisYear;
-    rows.push({ year: y, monthlySip: Math.round(monthlySip), contributedThisYear: Math.round(contributedThisYear), cumulativeContributed: Math.round(cumulative), endOfYearCorpus: Math.round(corpus) });
+    rows.push({ year: y, monthlySip, contributedThisYear, cumulativeContributed: cumulative, endOfYearCorpus: corpus });
     monthlySip = monthlySip * (1 + step);
   }
   return rows;
