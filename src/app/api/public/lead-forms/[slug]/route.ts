@@ -3,6 +3,15 @@
  *   GET  /api/public/lead-forms/[slug]   — return form definition for rendering
  *   POST /api/public/lead-forms/[slug]   — accept a submission, create a lead
  *
+ * A submission from someone the firm already knows is never a second record
+ * (audit L19): an existing CLIENT (same phone, email or PAN) becomes a task
+ * for the client's RM — another product is an opportunity on their record —
+ * and an existing LEAD gets the submission added to its notes and its owner
+ * is told. Only a new person becomes a new lead, owned by the form's default
+ * RM or the assignment rules, in that owner's branch, and the owner is told.
+ * The answer is the same in every case, so the form never reveals who is on
+ * file.
+ *
  * No session — caller is the public internet. We resolve the tenant via
  * the slug. The actual DB work runs inside withTenant(form.tenantId,…)
  * so RLS scopes correctly. withSystem is used ONLY for the slug → tenant
@@ -16,8 +25,9 @@ import { eq, and, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { CONSENT_REQUIRED_ERROR, recordFormConsent } from "@/lib/privacy/consent";
 import { withSystem, withTenant } from "@/db/client";
-import { leadCaptureForms, leads, tenants } from "@/db/schema";
-import { pickRmForNewLead } from "@/lib/leads/assign";
+import { leadCaptureForms, leads, tasks, tenants } from "@/db/schema";
+import { autoAssignLeadOwner, notifyLeadAssigned, ownerBranchId } from "@/lib/leads/ownership";
+import { createNotification } from "@/lib/notifications/create";
 import { enforce } from "@/lib/rate-limit";
 import {
   normalizeEmail,
@@ -174,11 +184,7 @@ export async function POST(
 
   // Create the lead inside the form's tenant scope.
   const leadId = uuid();
-  await withTenant(form.tenantId, async (tx) => {
-    let rmId: string | null = form.defaultRmId ?? null;
-    if (!rmId) {
-      rmId = await pickRmForNewLead(tx, { strategy: "least_loaded" });
-    }
+  const created = await withTenant(form.tenantId, async (tx) => {
     // Roll the extras into the notes field so they're visible to the RM
     // without needing a custom_fields column. Format: original notes
     // followed by a "Form responses" block.
@@ -194,6 +200,102 @@ export async function POST(
       .join("")
       .trim();
 
+    const phone10 = normalizePhoneLast10(phone);
+    const emailNorm = normalizeEmail(email);
+    const submission = [
+      `Web form "${form.name}" (${new Date().toISOString().slice(0, 10)}): ${name}`,
+      // Contact details only — a PAN is never copied into free text.
+      [phone ? `phone ${phone}` : null, email ? `email ${email}` : null].filter(Boolean).join(", "),
+      composedNotes,
+    ].filter(Boolean).join("\n");
+
+    // 1. Already a client → their RM follows up on the client record.
+    const clientConds = [
+      phone10 ? sql`right(regexp_replace(COALESCE(i.phone, ''), '[^0-9]', '', 'g'), 10) = ${phone10}` : null,
+      emailNorm ? sql`lower(btrim(COALESCE(i.email, ''))) = ${emailNorm}` : null,
+      pan ? sql`upper(i.pan) = ${pan}` : null,
+    ].filter((c): c is NonNullable<typeof c> => c !== null);
+    const client = clientConds.length
+      ? ((await tx.execute(sql`
+          SELECT i.id::text AS id, i.name, i.rm_id::text AS rm_id FROM investors i
+           WHERE i.tenant_id = ${form.tenantId}::uuid AND i.deleted_at IS NULL AND i.merged_into_id IS NULL
+             AND (${sql.join(clientConds, sql` OR `)})
+           ORDER BY i.aum DESC NULLS LAST LIMIT 1
+        `)).rows[0] as { id: string; name: string; rm_id: string | null } | undefined)
+      : undefined;
+    if (client) {
+      const assignee = client.rm_id ?? form.defaultRmId ?? (await autoAssignLeadOwner(tx, { tenantId: form.tenantId, source: form.leadSource }));
+      if (assignee) {
+        const [task] = await tx.insert(tasks).values({
+          tenantId: form.tenantId,
+          subjectType: "investor",
+          subjectId: client.id,
+          relatedInvestorId: client.id,
+          type: "follow_up",
+          title: `Website enquiry from client: ${client.name}`,
+          description: `${submission}\n\nAn existing client asked through the website. If they want another product, start an opportunity on their record.`,
+          priority: "high",
+          status: "open",
+          assigneeId: assignee,
+          department: "sales",
+          dueAt: new Date(Date.now() + 24 * 3600 * 1000),
+          meta: { source: "public_lead_form", formId: form.id },
+        } as any).returning({ id: tasks.id });
+        await createNotification(tx, {
+          tenantId: form.tenantId,
+          userId: assignee,
+          kind: "task.assigned",
+          title: `Website enquiry: ${client.name} (your client)`,
+          body: "An existing client filled in the website form — follow up on their record.",
+          linkUrl: `/dashboard/investors/${client.id}`,
+          severity: "info",
+          meta: { task_id: task?.id ?? null, investor_id: client.id, how: "web_form" },
+        });
+      }
+      await recordFormConsent(tx, { tenantId: form.tenantId, subject: { type: "investor", id: client.id }, source: "lead_form", headers: req.headers });
+      return null;
+    }
+
+    // 2. Already a lead → the submission joins that lead.
+    const leadConds = [
+      phone10 ? sql`l.phone_normalized = ${phone10}` : null,
+      emailNorm ? sql`l.email_normalized = ${emailNorm}` : null,
+      pan ? sql`upper(COALESCE(l.pan, '')) = ${pan}` : null,
+    ].filter((c): c is NonNullable<typeof c> => c !== null);
+    const existing = leadConds.length
+      ? ((await tx.execute(sql`
+          SELECT l.id::text AS id, l.owner_id::text AS owner_id FROM leads l
+           WHERE l.tenant_id = ${form.tenantId}::uuid AND l.lost_reason IS DISTINCT FROM '__deleted__'
+             AND l.converted_investor_id IS NULL AND (${sql.join(leadConds, sql` OR `)})
+           ORDER BY l.updated_at DESC LIMIT 1
+        `)).rows[0] as { id: string; owner_id: string | null } | undefined)
+      : undefined;
+    if (existing) {
+      await tx.execute(sql`
+        UPDATE leads SET notes = CASE WHEN notes IS NULL OR notes = '' THEN ${submission} ELSE ${submission} || E'\n\n' || notes END,
+                         updated_at = now()
+         WHERE id = ${existing.id}::uuid AND tenant_id = ${form.tenantId}::uuid
+      `);
+      if (existing.owner_id) {
+        await createNotification(tx, {
+          tenantId: form.tenantId,
+          userId: existing.owner_id,
+          kind: "lead.assigned",
+          title: `${name} enquired again`,
+          body: "Your lead filled in the website form again — the answers are in the lead's notes.",
+          linkUrl: `/dashboard/leads/${existing.id}`,
+          severity: "info",
+          meta: { lead_id: existing.id, how: "web_form_repeat" },
+        });
+      }
+      await recordFormConsent(tx, { tenantId: form.tenantId, subject: { type: "lead", id: existing.id }, source: "lead_form", headers: req.headers });
+      return null;
+    }
+
+    // 3. Someone new → a lead, owned and in its owner's branch.
+    const rmId: string | null = form.defaultRmId ?? (await autoAssignLeadOwner(tx, { tenantId: form.tenantId, source: form.leadSource }));
+    const branchId = await ownerBranchId(tx, form.tenantId, rmId);
+
     // Deterministic initial score from the captured signals.
     const initialScore = scoreFields({
       source: normalizeLeadSource(form.leadSource),
@@ -205,12 +307,12 @@ export async function POST(
 
     await tx.execute(sql`
       INSERT INTO leads (
-        id, tenant_id, name, email, email_normalized, phone, phone_normalized,
+        id, tenant_id, branch_id, name, email, email_normalized, phone, phone_normalized,
         pan, source, source_campaign, owner_id, stage, stage_changed_at,
         lead_score, score_band, scored_at,
         notes, created_at, updated_at
       ) VALUES (
-        ${leadId}::uuid, ${form.tenantId}::uuid, ${name},
+        ${leadId}::uuid, ${form.tenantId}::uuid, ${branchId}::uuid, ${name},
         ${email || null}, ${normalizeEmail(email)}, ${phone || null},
         ${normalizePhoneLast10(phone)}, ${pan},
         ${normalizeLeadSource(form.leadSource)}, ${form.sourceCampaign},
@@ -247,6 +349,8 @@ export async function POST(
     `);
 
     await recordFormConsent(tx, { tenantId: form.tenantId, subject: { type: "lead", id: leadId }, source: "lead_form", headers: req.headers });
+    await notifyLeadAssigned(tx, { tenantId: form.tenantId, leadId, ownerId: rmId, how: "web_form" });
+    return leadId;
   });
 
   // Suppress unused-import warning (leads is needed for type-resolution
@@ -255,5 +359,7 @@ export async function POST(
   void leads;
   void and;
 
-  return NextResponse.json({ ok: true, leadId });
+  // The same answer whether a lead was created or the person was already on
+  // file (leadId only for a new lead, as the honeypot answers null).
+  return NextResponse.json({ ok: true, leadId: created });
 }

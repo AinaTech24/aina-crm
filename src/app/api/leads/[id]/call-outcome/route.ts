@@ -17,6 +17,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { transitionTo } from "@/lib/blueprints/engine";
 import { loadEditableLead } from "@/lib/leads/access";
 import { closeLeadTasks, touchClientContact } from "@/lib/leads/open-tasks";
+import { scheduleNextTouchReminder } from "@/lib/blueprints/stage-side-effects";
 
 export const dynamic = "force-dynamic";
 
@@ -114,25 +115,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
 
       if (body.outcome === "call_later" && body.followUpDate) {
+        // The lead's ONE next-touch reminder moves (or is created), and its
+        // next follow-up date with it — a second "call later" never adds a
+        // second task (audit L14).
         const dueAt = new Date(`${body.followUpDate}T09:00:00`);
-        await tx.insert(tasks).values({
-          tenantId: session.tenantId,
-          subjectType: "lead" as any,
-          subjectId: id,
-          relatedLeadId: id,
-          type: "follow_up",
-          title: `Follow-up call: ${lead.name}`,
-          description: body.notes ?? null,
-          priority: "normal",
-          status: "open",
-          assigneeId: lead.ownerId ?? session.userId,
-          department: "sales",
-          dueAt,
-        } as any);
-        await tx
-          .update(leads)
-          .set({ nextFollowUpAt: dueAt, updatedAt: now } as any)
-          .where(eq(leads.id, id));
+        await scheduleNextTouchReminder(tx, session.tenantId, id, lead.ownerId ?? session.userId, dueAt.toISOString(), "call_back_later");
         toStageKey = "call_back_later";
       }
 

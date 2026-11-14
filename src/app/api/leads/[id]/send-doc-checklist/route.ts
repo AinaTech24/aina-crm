@@ -3,8 +3,8 @@ import { handleApiError } from "@/lib/api/error-handler";
  * POST /api/leads/[id]/send-doc-checklist
  *
  * One-click: mint a secure document-collection link and send it to the client by
- * BOTH email (the firm's connected mailbox / Resend — NOT the global system
- * sender) and WhatsApp (the comms pipeline → Vartify). Reports the REAL per-channel
+ * BOTH email and WhatsApp, each through the comms pipeline (dispatch(): consent
+ * / opt-out, the compliance gate, the sender's own mailbox for email). Reports the REAL per-channel
  * outcome and always returns a wa.me fallback so the advisor can send from their
  * own WhatsApp when a proactive platform send can't be delivered (Meta's 24h
  * rule for non-template messages).
@@ -17,7 +17,8 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { withTenant } from "@/db/client";
+import { loadEditableLead, requireLeadEdit } from "@/lib/leads/access";
 import { CLIENT_TYPES, sendDocChecklist } from "@/lib/onboarding/send-doc-checklist";
 import type { ClientType } from "@/lib/onboarding/doc-checklists";
 
@@ -28,7 +29,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "lead.edit.assigned", session.permissions);
+    // Whoever may edit THIS lead (its owner, the branch head of its branch, a
+    // lead manager) may send it — not any RM to any lead id (audit L17).
+    requireLeadEdit(session);
+    await withTenant(session.tenantId, (tx) => loadEditableLead(tx, session, id));
 
     const body = await req.json().catch(() => ({}));
     const clientType = ((CLIENT_TYPES as readonly string[]).includes(body?.clientType)

@@ -14,7 +14,7 @@ import {
 import { withTenant } from "@/db/client";
 import { branches, customFieldDefs, investors, leads, subDistributors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { requireLeadView, leadScopeSql } from "@/lib/leads/access";
+import { canRestoreLeads, requireLeadView, leadScopeSql } from "@/lib/leads/access";
 
 import { LeadsKanban } from "@/components/leads/LeadsKanban";
 import { LeadsTable } from "@/components/leads/LeadsTable";
@@ -24,7 +24,7 @@ import { MoreMenu } from "@/components/common/MoreMenu";
 import { ExportButton } from "@/components/export/ExportButton";
 import { buttonClass } from "@/components/ui/button-class";
 import { cookies } from "next/headers";
-import { LEAD_PIPELINE, LEAD_PIPELINE_STAGE_VALUES, leadPipelineColumn, leadStageDisplay } from "@/lib/leads/stages";
+import { LEAD_OPEN_COLUMN_KEYS, LEAD_PIPELINE, LEAD_PIPELINE_STAGE_VALUES, leadPipelineColumn, leadStageDisplay } from "@/lib/leads/stages";
 import { LEAD_SOURCE_OPTIONS } from "@/lib/leads/sources";
 import { LEADS_VIEW_COOKIE, LEADS_LIST_THRESHOLD, parseLeadsView } from "@/lib/leads/view-pref";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
@@ -358,7 +358,12 @@ export default async function LeadsPage({
               "Module" dropdown (Pipeline Board, Lifecycle) lives in ⋯ now, and
               the Kanban / List toggle sits with the other view controls in the
               filter bar. */}
-          <MoreMenu items={MORE_ITEMS} label="More lead views" />
+          <MoreMenu
+            items={canRestoreLeads(session)
+              ? [...MORE_ITEMS, { href: "/dashboard/leads/deleted", label: "Deleted leads", description: "Restore a lead deleted by mistake" }]
+              : MORE_ITEMS}
+            label="More lead views"
+          />
           <ExportButton module="leads" />
           <Link href="/dashboard/leads/import" className={buttonClass("secondary")}>
             <FileUp className="size-4" /> Import
@@ -427,8 +432,9 @@ export default async function LeadsPage({
                 {
                   id: "open",
                   name: "All open",
-                  // Column keys: each one also matches the stages folded into it.
-                  params: "stage=new,call_done,meeting_scheduled,meeting_done,won_lead",
+                  // The open columns, New → Proposal Sent (each key also
+                  // matches the stages folded into it); never Won or Lost.
+                  params: `stage=${LEAD_OPEN_COLUMN_KEYS.join(",")}`,
                 },
                 { id: "referrals", name: "Referrals only", params: "source=referral,existing_client" },
                 { id: "won", name: "Won", params: "stage=won_lead" },

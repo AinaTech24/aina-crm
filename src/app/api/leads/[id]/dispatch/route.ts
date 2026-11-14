@@ -15,10 +15,10 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { loadEditableLead, loadViewableLead, requireLeadEdit } from "@/lib/leads/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { handleApiError } from "@/lib/api/error-handler";
-import { templates, templateVersions, leads } from "@/db/schema";
+import { templates, templateVersions } from "@/db/schema";
 import { dispatch } from "@/lib/comms/pipeline";
 
 export const dynamic = "force-dynamic";
@@ -29,12 +29,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
 
     const data = await withTenant(session.tenantId, async (tx) => {
-      const [lead] = await tx
-        .select()
-        .from(leads)
-        .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)))
-        .limit(1);
-      if (!lead) throw new Error("Lead not found");
+      // Only someone who may see the lead lists what can be sent to it.
+      const lead = await loadViewableLead(tx, session, id);
+      if (!lead) throw Object.assign(new Error("Lead not found"), { status: 404 });
 
       return tx
         .select({
@@ -66,9 +63,9 @@ const PostBody = z.object({
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    // Messaging a prospect is a lead-facing action — gate it the same way an
-    // edit to the lead would be.
-    requireCap(session.roles, "lead.edit.assigned", session.permissions);
+    // Messaging a prospect is a lead-facing action — gated like an edit to
+    // THIS lead: its owner, its branch head, a lead manager (audit L17).
+    requireLeadEdit(session);
     await assertActiveLicense(session.tenantId, session.roles);
     const { id } = await params;
 
@@ -81,12 +78,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // Bad input is the caller's problem, not a server fault — resolve first and
     // map to a real status code, rather than throwing into a generic 500.
     const result = await withTenant(session.tenantId, async (tx) => {
-      const [lead] = await tx
-        .select()
-        .from(leads)
-        .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)))
-        .limit(1);
-      if (!lead) return { error: "Lead not found", status: 404 } as const;
+      const lead = await loadEditableLead(tx, session, id);
 
       // A lead has a single phone/email — no separate WhatsApp number.
       const recipient = channel === "email" ? (lead.email ?? "") : (lead.phone ?? "");
@@ -115,6 +107,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         variables,
         category: tmpl.category,
         leadId: id,
+        // The sending RM's mailbox, as the investor send does.
+        actorUserId: session.userId,
       });
       return { sent } as const;
     });

@@ -5,17 +5,22 @@ import { handleApiError } from "@/lib/api/error-handler";
  * Body: { ids: string[], action, value? }
  *   action = "assign"     value = ownerId (uuid) | null   → reassign RM
  *          = "follow_up"  value = ISO date string         → set next follow-up
- *          = "stage"      value = stage key               → move stage (override)
- *          = "lost"       value = lost reason (optional)  → mark not_qualified
- *          = "delete"     (no value)                      → soft-delete (hidden)
+ *          = "stage"      value = stage key               → move stage
+ *          = "lost"       value = lost reason (optional)  → mark Lost
+ *          = "delete"     (no value)                      → soft-delete (restorable)
  *
- * Tenant-scoped via withTenant + RLS; only leads in the caller's tenant are
- * touched. Audited as a single bulk action.
- *
- * "stage" and "lost" move each lead's journey (blueprint) the way a Kanban
- * drag does — an admin override, recorded in its history — so the journey
- * card and leads.stage never disagree. A lead whose journey refuses the move
- * (a finished journey) is left as it is and counted in `skipped`.
+ * Every id goes through the caller's EDIT scope first (loadEditableLead: own
+ * leads, a branch head's branch, the firm for a lead manager) — an id outside
+ * it is skipped and reported, never touched (audit L4). Then each action runs
+ * the same code as its single-lead version:
+ *   - stage / lost: through the journey (writeStageThroughJourney — the same
+ *     access rule, step writes and lost side effects as the board); a move the
+ *     journey refuses is skipped with its reason;
+ *   - lost / delete: the lead's follow-up and call-back tasks close
+ *     (closeLeadTasks); delete is lib/leads/lifecycle.ts softDeleteLead;
+ *   - assign: owner and branch move together, the lead's follow-ups go to the
+ *     new owner and they are notified (lib/leads/ownership.ts reassignLead).
+ * Audited as one bulk action plus each lead's own record.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -25,11 +30,15 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
-import { leads, users, eventsOutbox } from "@/db/schema";
+import { leads, eventsOutbox } from "@/db/schema";
 import { scoreFields } from "@/lib/leads/score";
 import { CANONICAL_LEAD_STAGES } from "@/lib/leads/normalize";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { transitionTo } from "@/lib/blueprints/engine";
+import { loadEditableLead } from "@/lib/leads/access";
+import { writeStageThroughJourney } from "@/lib/blueprints/journey-access";
+import { activeMember, reassignLead } from "@/lib/leads/ownership";
+import { softDeleteLead } from "@/lib/leads/lifecycle";
+import { closeLeadTasks } from "@/lib/leads/open-tasks";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,143 +50,119 @@ const Body = z.object({
   value: z.string().nullable().optional(),
 });
 
+type Skip = { id: string; reason: string };
+
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    // Bulk acts on arbitrary lead ids (no per-row ownership re-check), so it's a
-    // manager-level capability — RMs do single-lead edits via their own routes.
+    // A manager-level action; each id is still checked against the caller's
+    // own edit scope below.
     requireCap(session.roles, "lead.edit.all", session.permissions);
-    // A lapsed tenant must not be able to mutate the pipeline in bulk (the
-    // single-lead PATCH already enforces this; bulk skipped it).
+    // A lapsed tenant must not be able to mutate the pipeline in bulk.
     await assertActiveLicense(session.tenantId, session.roles);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
     }
-    const { ids, action, value } = parsed.data;
+    const { action, value } = parsed.data;
+    const ids = [...new Set(parsed.data.ids)];
     const meta = clientMetaFromHeaders(req.headers);
 
-    const patch: Record<string, any> = { updatedAt: new Date() };
-    switch (action) {
-      case "assign":
-        if (value && value.length > 0) {
-          if (!UUID_RE.test(value)) {
-            return NextResponse.json({ error: "assign value must be a user id" }, { status: 400 });
-          }
-          // Assigning to an out-of-tenant uuid would orphan the leads under an
-          // owner who can't see them — verify the target is a user in this firm.
-          const exists = await withTenant(session.tenantId, async (tx) => {
-            const [u] = await tx
-              .select({ id: users.id })
-              .from(users)
-              .where(and(eq(users.id, value), eq(users.tenantId, session.tenantId)))
-              .limit(1);
-            return !!u;
-          });
-          if (!exists) return NextResponse.json({ error: "selected owner is not a user in this firm" }, { status: 400 });
-          patch.ownerId = value;
-        } else {
-          patch.ownerId = null;
-        }
-        break;
-      case "follow_up":
-        if (!value) return NextResponse.json({ error: "value (date) required" }, { status: 400 });
-        patch.nextFollowUpAt = new Date(value);
-        break;
-      case "stage":
-        if (!value) return NextResponse.json({ error: "value (stage) required" }, { status: 400 });
-        // Guard the enum: a raw arbitrary stage would violate the column check
-        // (500) or store garbage. Only canonical stage keys are accepted.
-        if (!(CANONICAL_LEAD_STAGES as readonly string[]).includes(value)) {
-          return NextResponse.json({ error: "invalid stage" }, { status: 400 });
-        }
-        patch.stage = value;
-        patch.stageChangedAt = new Date();
-        break;
-      case "lost":
-        patch.stage = "not_qualified";
-        patch.lostAt = new Date();
-        patch.lostReason = value || "Bulk-marked not qualified";
-        break;
-      case "delete":
-        // Mirror the single-lead DELETE: soft-delete with the __deleted__
-        // sentinel so these leads are HIDDEN from every list / kanban / KPI
-        // (filtered out), not dumped into the genuine "Not qualified" bucket.
-        patch.stage = "not_qualified";
-        patch.stageChangedAt = new Date();
-        patch.lostAt = new Date();
-        patch.lostReason = "__deleted__";
-        break;
+    let ownerId: string | null = null;
+    let followUpAt: Date | null = null;
+    if (action === "assign" && value) {
+      if (!UUID_RE.test(value)) return NextResponse.json({ error: "assign value must be a user id" }, { status: 400 });
+      ownerId = value;
     }
+    if (action === "follow_up") {
+      if (!value) return NextResponse.json({ error: "value (date) required" }, { status: 400 });
+      followUpAt = new Date(value);
+      if (Number.isNaN(followUpAt.getTime())) return NextResponse.json({ error: "value must be a date" }, { status: 400 });
+    }
+    if (action === "stage") {
+      if (!value) return NextResponse.json({ error: "value (stage) required" }, { status: 400 });
+      // Only canonical stage keys: an arbitrary value would break the column check.
+      if (!(CANONICAL_LEAD_STAGES as readonly string[]).includes(value)) {
+        return NextResponse.json({ error: "invalid stage" }, { status: 400 });
+      }
+    }
+    const lostReason = action === "lost" ? (value || "Bulk-marked lost") : null;
 
-    const { count, skipped } = await withTenant(session.tenantId, async (tx) => {
-      // Move the journey first; only leads it moved get the rest of the patch.
-      let targetIds = ids;
-      const refused: string[] = [];
-      if (action === "stage" || action === "lost") {
-        const visible = await tx.select({ id: leads.id }).from(leads).where(inArray(leads.id, ids));
-        targetIds = [];
-        for (const { id } of visible) {
-          const moved = await transitionTo(tx, session.tenantId, id, patch.stage, {
-            actorUserId: session.userId,
-            actorRoles: session.roles ?? [],
-            remarks: action === "lost" ? `Bulk-marked not qualified: ${patch.lostReason}` : "Bulk stage change.",
-            systemBypass: true,
-            ...meta,
+    const out = await withTenant(session.tenantId, async (tx) => {
+      // The target must be an active team member of this firm.
+      if (ownerId && !(await activeMember(tx, session.tenantId, ownerId))) return "bad_owner" as const;
+
+      const done: string[] = [];
+      const skipped: Skip[] = [];
+      for (const id of ids) {
+        // Each lead in its own savepoint: one refusal never undoes the others.
+        try {
+          await tx.transaction(async (sp) => {
+            const lead = await loadEditableLead(sp as any, session, id);
+            if (lead.lostReason === "__deleted__" && action !== "delete") throw Object.assign(new Error("The lead is deleted."), { status: 409 });
+            switch (action) {
+              case "assign": {
+                await reassignLead(sp as any, { tenantId: session.tenantId, leadId: id, toOwnerId: ownerId, actorUserId: session.userId });
+                break;
+              }
+              case "follow_up": {
+                await sp.update(leads).set({ nextFollowUpAt: followUpAt, updatedAt: new Date() } as any)
+                  .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)));
+                break;
+              }
+              case "stage":
+              case "lost": {
+                const target = action === "lost" ? "not_qualified" : value!;
+                const moved = await writeStageThroughJourney(sp as any, session, id, target, {
+                  remarks: action === "lost" ? `Bulk-marked lost: ${lostReason}` : "Bulk stage change.",
+                  ...meta,
+                });
+                if (!moved.ok) throw Object.assign(new Error(moved.reason ?? "The journey refused this move."), { status: 409 });
+                if (action === "lost") {
+                  await sp.update(leads).set({ lostReason, lostAt: new Date(), updatedAt: new Date() } as any)
+                    .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)));
+                  await closeLeadTasks(sp as any, session.tenantId, id, { reason: `Lead marked lost: ${lostReason}.` });
+                }
+                break;
+              }
+              case "delete": {
+                await softDeleteLead(sp as any, { tenantId: session.tenantId, actorUserId: session.userId, lead, source: "bulk" }, meta);
+                break;
+              }
+            }
           });
-          if (moved.ok) targetIds.push(id);
-          else refused.push(id);
+          done.push(id);
+        } catch (e: any) {
+          const status = Number(e?.status ?? 500);
+          if (status >= 500) throw e;
+          skipped.push({
+            id,
+            reason: status === 403 || status === 404 ? "Not in your leads" : String(e?.message ?? "Not changed"),
+          });
         }
       }
 
-      // Tenant isolation is enforced by RLS (withTenant sets app.tenant_id);
-      // matching the single-lead route convention — scope by id only, never
-      // add a redundant tenant_id predicate. RLS guarantees only the caller's
-      // tenant's leads are visible/updatable.
-      const updated = targetIds.length
-        ? await tx
-            .update(leads)
-            .set(patch as any)
-            .where(inArray(leads.id, targetIds))
-            .returning({ id: leads.id })
-        : [];
-
-      // Re-score affected leads when the action changed a scoring input (stage,
-      // follow-up momentum, or marking lost). Owner reassignment doesn't move
-      // the score, so we skip the recompute there.
-      if (action === "stage" || action === "lost" || action === "follow_up") {
-        const touchedIds = updated.map((u) => u.id);
-        if (touchedIds.length) {
-          const rows = await tx.select().from(leads).where(inArray(leads.id, touchedIds));
-          for (const l of rows) {
-            const sf = scoreFields({
-              source: l.source,
-              stage: l.stage,
-              intendedAmount: l.intendedAmount,
-              lastContactAt: l.lastContactAt,
-              nextFollowUpAt: l.nextFollowUpAt,
-              stageChangedAt: l.stageChangedAt,
-              email: l.email,
-              phone: l.phone,
-              pan: l.pan,
-              interestProducts: l.interestProducts,
-            });
-            await tx.update(leads).set(sf as any).where(eq(leads.id, l.id));
-          }
+      // Re-score where a scoring input moved (stage, lost, follow-up momentum).
+      if (done.length && (action === "stage" || action === "lost" || action === "follow_up")) {
+        const rows = await tx.select().from(leads).where(inArray(leads.id, done));
+        for (const l of rows) {
+          const sf = scoreFields({
+            source: l.source, stage: l.stage, intendedAmount: l.intendedAmount, lastContactAt: l.lastContactAt,
+            nextFollowUpAt: l.nextFollowUpAt, stageChangedAt: l.stageChangedAt, email: l.email, phone: l.phone,
+            pan: l.pan, interestProducts: l.interestProducts,
+          });
+          await tx.update(leads).set(sf as any).where(eq(leads.id, l.id));
         }
       }
 
-      // Emit lead.updated per affected lead so record_action "edit" workflow
-      // rules fire on bulk changes too (not just on /won + single edits). The
-      // after-snapshot is the post-update row; before is omitted — bulk is a
-      // coarse admin action, not a field-level change worth diffing.
-      const finalIds = updated.map((u) => u.id);
-      if (finalIds.length) {
-        const finalRows = await tx.select().from(leads).where(inArray(leads.id, finalIds));
+      // lead.updated per changed lead so workflow rules fire on bulk changes
+      // too (delete emitted lead.deleted in softDeleteLead).
+      if (done.length && action !== "delete") {
+        const finalRows = await tx.select().from(leads).where(inArray(leads.id, done));
         await tx.insert(eventsOutbox).values(
           finalRows.map((l) => ({
             tenantId: session.tenantId,
-            kind: action === "delete" ? "lead.deleted" : "lead.updated",
+            kind: "lead.updated",
             entityType: "lead",
             entityId: l.id,
             after: l as any,
@@ -192,13 +177,14 @@ export async function POST(req: NextRequest) {
         action: `lead.bulk_${action}`,
         entityType: "lead",
         entityId: session.tenantId,
-        after: { action, value: value ?? null, count: updated.length, ids, skipped: refused } as any,
+        after: { action, value: value ?? null, count: done.length, ids: done, skipped } as any,
         ...meta,
       });
-      return { count: updated.length, skipped: refused.length };
+      return { updated: done.length, skipped };
     });
 
-    return NextResponse.json({ ok: true, updated: count, skipped });
+    if (out === "bad_owner") return NextResponse.json({ error: "selected owner is not an active user in this firm" }, { status: 400 });
+    return NextResponse.json({ ok: true, updated: out.updated, skipped: out.skipped.length, skippedLeads: out.skipped });
   } catch (err: any) {
     return handleApiError(err);
   }

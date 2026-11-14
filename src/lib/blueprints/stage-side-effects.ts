@@ -7,7 +7,9 @@
  *   UCC Activated      → the UCC is stored on the client
  *   Mandate Activated  → the mandate is stored on the client
  *   Mandate Rejected   → a "re-do the mandate" task
- *   a call-back loop   → a reminder task at the chosen time
+ *   a call-back loop   → ONE reminder task at the chosen time, and the lead's
+ *                        next follow-up date
+ *   Lost               → the lead's follow-up / call-back tasks close
  *
  * The subject is the lead (its converted client) or, for a journey whose
  * subject is a client directly, that client.
@@ -17,6 +19,7 @@ import { sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import type { Tx } from "@/db/client";
 import { tasks } from "@/db/schema";
+import { closeLeadTasks } from "@/lib/leads/open-tasks";
 
 /** Stages whose transition schedules a next-touch reminder for the lead owner
  *  so parked leads never go silent. */
@@ -40,6 +43,10 @@ export async function runStageSideEffects(
   const { tenantId, leadId, stageKey, actorUserId } = p;
   if (NEXT_TOUCH_STAGES.includes(stageKey) && input.callBackAt) {
     await scheduleNextTouchReminder(tx, tenantId, leadId, actorUserId, input.callBackAt, stageKey);
+  }
+  if (stageKey === "not_qualified") {
+    // A lost lead has nothing left to follow up (audit L14).
+    await closeLeadTasks(tx, tenantId, leadId, { reason: "Lead marked lost." });
   }
   if (stageKey === "ucc_activated" && input.uccNumber) {
     const v = input.uccNumber.trim();
@@ -115,7 +122,13 @@ export async function kycValidationBlock(tx: Tx, tenantId: string, leadId: strin
   return "KYC Validated needs evidence: run the KYC check on the client (a verified KRA result), or upload the KYC proof to the client's documents.";
 }
 
-async function scheduleNextTouchReminder(
+/**
+ * The lead's one live next-touch reminder (audit L14): a loop re-entered, or a
+ * call outcome "call later", moves the open reminder instead of adding
+ * another, and the lead's next_follow_up_at follows it — so "Next follow-up"
+ * and "Follow-up due" see it.
+ */
+export async function scheduleNextTouchReminder(
   tx: Tx, tenantId: string, leadId: string, fallbackAssigneeId: string, callBackAt: string, stageKey: string,
 ): Promise<void> {
   const due = new Date(callBackAt);

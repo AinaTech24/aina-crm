@@ -216,6 +216,19 @@ export function ImportWizard({
               </ul>
             </details>
           )}
+          {commitResult.skippedRows?.length > 0 && (
+            <details className="mt-3 text-xs text-left">
+              <summary className="cursor-pointer">Why {commitResult.skippedRows.length} rows were skipped</summary>
+              <ul className="mt-2 space-y-1">
+                {commitResult.skippedRows.map((e: any, i: number) => (
+                  <li key={i} className="flex items-center gap-2 text-muted-foreground">
+                    <AlertCircle className="size-3" />
+                    Row {e.rowIndex}: {e.reason}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           <button
             onClick={() => router.push(backHref)}
             className="mt-6 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium"

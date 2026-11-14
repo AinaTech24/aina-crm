@@ -86,6 +86,20 @@ export function leadPipelineColumn(stage: string | null | undefined): LeadPipeli
   return LEAD_PIPELINE.find((c) => c.members.includes(stage)) ?? null;
 }
 
+/** Won or Lost (any value folded into those columns): no follow-up is due. */
+export function isClosedLeadStage(stage: string | null | undefined): boolean {
+  const key = leadPipelineColumn(stage)?.key;
+  return key === "won_lead" || key === "not_qualified";
+}
+
+/** The board's open columns, New → Proposal Sent (the "All open" view). */
+export const LEAD_OPEN_COLUMN_KEYS: readonly string[] = LEAD_PIPELINE.map((c) => c.key).filter(
+  (k) => k !== "won_lead" && k !== "not_qualified",
+);
+
+/** Every stored stage value of an open lead (the open columns' members). */
+export const LEAD_OPEN_STAGE_VALUES: readonly string[] = LEAD_PIPELINE.filter((c) => LEAD_OPEN_COLUMN_KEYS.includes(c.key)).flatMap((c) => c.members);
+
 /** The outcome a loop stage stands for, shown as a tag on the card and list row. */
 export const LEAD_STAGE_TAG: Record<string, string> = {
   call_back_later: "Call back later",

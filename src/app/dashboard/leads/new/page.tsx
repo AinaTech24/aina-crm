@@ -13,17 +13,25 @@ import { SelectField } from "@/components/ui/SelectField";
 import { ThemeDate } from "@/components/ui/ThemeDate";
 import { CustomFieldsSection, missingRequired, type CustomFieldDef } from "@/components/common/CustomFieldInputs";
 import { fromLeadProduct } from "@/lib/opportunities/products";
+import { LEAD_SOURCE_OPTIONS, leadSourceLabel } from "@/lib/leads/sources";
+import { leadStageDisplay } from "@/lib/leads/stages";
+import { leadContactIssue } from "@/lib/leads/contact-rules";
 
-type DupMatch = {
-  id: string;
-  name: string;
-  stage: string;
-  source: string;
-  phone?: string | null;
-  email?: string | null;
-  createdAt: string;
-  matchedOn: string[];
-};
+/** A matching LEAD (check-duplicate `matches`): in full when the viewer may
+ *  see it, else only "already a lead with another RM" (audit L3). */
+type DupMatch =
+  | {
+      id: string;
+      name: string;
+      stage: string;
+      source: string;
+      phone?: string | null;
+      email?: string | null;
+      createdAt: string;
+      matchedOn: string[];
+      outsideScope?: undefined;
+    }
+  | { outsideScope: true; matchedOn: string[] };
 
 /** An EXISTING CLIENT with the same phone / email (check-duplicate `clients`). */
 type ClientMatch =
@@ -171,6 +179,9 @@ export default function NewLeadPage() {
     try {
       const missCf = missingRequired(cfDefs, customFields);
       if (missCf) { setErr(`${missCf.label} is required.`); return; }
+      // Name, and a phone or an email that look real — the API holds the same rule.
+      const issue = leadContactIssue({ name: form.name, phone: form.phone, email: form.email }, { requireContact: true, requireName: true });
+      if (issue) { setErr(issue.error); return; }
       // Build a clean payload — coerce numbers/dates, omit empties (an empty
       // string would fail the API's enum / uuid / number validators).
       const payload: any = {
@@ -213,7 +224,8 @@ export default function NewLeadPage() {
         setErr(j.error ?? "Create failed");
         return;
       }
-      router.push("/dashboard/leads");
+      // Straight onto the new lead — the next thing is to work it.
+      router.push(j.id ? `/dashboard/leads/${j.id}` : "/dashboard/leads");
     } finally {
       setBusy(false);
     }
@@ -336,27 +348,34 @@ export default function NewLeadPage() {
               follow-ups.
             </p>
             <ul className="space-y-1">
-              {duplicates.map((m) => (
-                <li
-                  key={m.id}
-                  className="flex items-center justify-between bg-white/70 rounded-md px-2.5 py-1.5 text-xs"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate">{m.name}</div>
-                    <div className="text-2xs text-muted-foreground truncate">
-                      stage: {m.stage} · source: {m.source} · matched on{" "}
-                      {m.matchedOn.join(", ")}
-                    </div>
-                  </div>
-                  <Link
-                    href={`/dashboard/leads/${m.id}`}
-                    target="_blank"
-                    className="inline-flex items-center gap-1 text-amber-800 hover:text-amber-900 font-semibold whitespace-nowrap"
+              {duplicates.map((m, i) =>
+                m.outsideScope ? (
+                  <li key={`out-${i}`} className="rounded-md bg-white/70 px-2.5 py-1.5 text-xs text-amber-900/90">
+                    Already a lead with another RM (matched on {m.matchedOn.join(", ")}). Ask your branch head or the lead&apos;s
+                    owner before adding it again.
+                  </li>
+                ) : (
+                  <li
+                    key={m.id}
+                    className="flex items-center justify-between bg-white/70 rounded-md px-2.5 py-1.5 text-xs"
                   >
-                    Open <ExternalLink className="size-3" />
-                  </Link>
-                </li>
-              ))}
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{m.name}</div>
+                      <div className="text-2xs text-muted-foreground truncate">
+                        {leadStageDisplay(m.stage)} · {leadSourceLabel(m.source)} · matched on{" "}
+                        {m.matchedOn.join(", ")}
+                      </div>
+                    </div>
+                    <Link
+                      href={`/dashboard/leads/${m.id}`}
+                      target="_blank"
+                      className="inline-flex items-center gap-1 text-amber-800 hover:text-amber-900 font-semibold whitespace-nowrap"
+                    >
+                      Open <ExternalLink className="size-3" />
+                    </Link>
+                  </li>
+                ),
+              )}
             </ul>
           </div>
         )}
@@ -378,16 +397,9 @@ export default function NewLeadPage() {
               }
             }}
           >
-            <option value="referral">Client Referral</option>
-            <option value="website">Website</option>
-            <option value="social_media">Social Media</option>
-            <option value="webinar">Webinar</option>
-            <option value="seminar">Seminar</option>
-            <option value="walk_in">Walk-in</option>
-            <option value="google">Google</option>
-            <option value="cold_call">Cold Call</option>
-            <option value="other">Other</option>
-            <option value="manual">Manual entry</option>
+            {LEAD_SOURCE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
           </SelectField>
           {form.source === "other" && (
             <input
