@@ -17,16 +17,16 @@ import { Section, Empty } from "./primitives";
 import { confirmDelete } from "../../../lib/confirm";
 import { fmtDate, titleCase } from "../../../lib/format";
 import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
-import { useDocuments, useUploadDocument, useDeleteDocument, getDocumentUrl } from "./subfeatures";
+import { useDocuments, useUploadDocument, useDeleteDocument, getDocumentUrl, type DocSubject } from "./subfeatures";
 import { asIcon } from "../../../lib/icons";
 
 const iconFor = (mime?: string | null) => (!mime ? "file" : mime.includes("pdf") ? "file-text" : mime.startsWith("image/") ? "image" : "file");
 const kb = (b?: string | null) => (b ? `${Math.max(1, Math.round(Number(b) / 1024))} KB` : "");
 
-export function DocumentsSection({ id, clientName }: { id: string; clientName?: string }) {
-  const { data } = useDocuments(id);
-  const upload = useUploadDocument(id);
-  const del = useDeleteDocument(id);
+export function DocumentsSection({ id, clientName, subject = "investor" }: { id: string; clientName?: string; subject?: DocSubject }) {
+  const { data } = useDocuments(id, subject);
+  const upload = useUploadDocument(id, subject);
+  const del = useDeleteDocument(id, subject);
   const [pick, setPick] = useState(false);
   const docs = data?.documents ?? [];
 
@@ -52,21 +52,21 @@ export function DocumentsSection({ id, clientName }: { id: string; clientName?: 
     }
   };
   const openDoc = async (docId: string) => {
-    try { const url = await getDocumentUrl(id, docId, true); Linking.openURL(url); } catch {}
+    try { const url = await getDocumentUrl(id, docId, true, subject); Linking.openURL(url); } catch {}
   };
   const removeDoc = (docId: string, name: string) => {
-    confirmDelete({ title: `Delete “${name}”?`, message: "This removes the document from the client record.", confirmLabel: "Delete" }, () => del.mutate(docId));
+    confirmDelete({ title: `Delete “${name}”?`, message: `This removes the document from the ${subject === "lead" ? "lead" : "client record"}.`, confirmLabel: "Delete" }, () => del.mutate(docId));
   };
 
   return (
     <Section title="Documents" icon="paperclip" right={<Pressable accessibilityRole="button" accessibilityLabel="Upload document" onPress={() => setPick(true)} hitSlop={8}><Feather name="upload" size={16} color={palette.brand} /></Pressable>}>
       {upload.isPending ? <Text variant="caption" tone="muted" style={{ marginBottom: spacing.xs }}>Uploading…</Text> : null}
-      {docs.length === 0 ? <Empty text="No documents. Tap upload to add KYC / statements / forms." /> : docs.map((doc) => (
+      {docs.length === 0 ? <Empty text={subject === "lead" ? "No attachments. Tap upload to add one — they move to the client on conversion." : "No documents. Tap upload to add KYC / statements / forms."} /> : docs.map((doc) => (
         <Pressable key={doc.id} style={styles.row} onPress={() => openDoc(doc.id)} onLongPress={() => removeDoc(doc.id, doc.name)}>
           <Feather name={asIcon(iconFor(doc.mimeType))} size={16} color={palette.brand} />
           <View style={{ flex: 1 }}>
             <Text variant="caption" style={{ fontWeight: fontWeight.medium }} numberOfLines={1}>{doc.name}</Text>
-            <Text variant="caption" tone="faint">{[titleCase(doc.category), kb(doc.sizeBytes), fmtDate(doc.createdAt)].filter(Boolean).join(" · ")}</Text>
+            <Text variant="caption" tone="faint">{[doc.category ? titleCase(doc.category) : null, kb(doc.sizeBytes), fmtDate(doc.createdAt)].filter(Boolean).join(" · ")}</Text>
           </View>
           <Feather name="external-link" size={14} color={palette.faint} />
         </Pressable>

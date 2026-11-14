@@ -70,6 +70,7 @@ export const reviewMeetingForm: FormSpec = {
       locationOrLink: "",
       discussionPoints: "",
       rmId: "",
+      coAttendeeIds: [],
       status: "scheduled",
     };
   },
@@ -174,6 +175,18 @@ export const reviewMeetingForm: FormSpec = {
           placeholder: "Use the client's RM",
           clearable: true,
         },
+        {
+          // A joint meeting (CRM 2026-10-01): colleagues alongside the RM — each is
+          // saved as a team attendee and told; the meeting shows in their meetings.
+          key: "coAttendeeIds",
+          label: "Colleagues joining (optional)",
+          type: "multiselect",
+          lookupEndpoint: "/api/review-meetings/team",
+          lookupEnvelope: "team",
+          lookupLabel: (u) => u.name,
+          lookupFilter: (u, form) => u.id !== form.rmId,
+          help: "Up to 10.",
+        },
         { key: "locationOrLink", label: "Location / link" },
         { key: "discussionPoints", label: "Discussion points (agenda)", type: "textarea" },
       ],
@@ -191,6 +204,7 @@ export const reviewMeetingForm: FormSpec = {
       locationOrLink: form.locationOrLink || undefined,
       discussionPoints: form.discussionPoints || undefined,
       rmId: form.rmId || undefined,
+      coAttendeeIds: Array.isArray(form.coAttendeeIds) && form.coAttendeeIds.length ? form.coAttendeeIds.slice(0, 10) : undefined,
       status: form.status,
     };
     if (form.subjectKind === "client") body.investorId = form.investorId;

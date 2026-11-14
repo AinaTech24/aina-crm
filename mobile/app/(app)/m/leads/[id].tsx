@@ -27,6 +27,7 @@ import { Section, FieldRow, Empty } from "../../../../src/features/investors/det
 import { useLeadFull, useLogActivity, useConvertLead, useDeleteLead, LEAD_STAGES, stageMeta, stageDisplay, canonicalStage } from "../../../../src/features/leads/api";
 import { JourneyPanel } from "../../../../src/features/leads/JourneyPanel";
 import { RecordNotes } from "../../../../src/features/notes/RecordNotes";
+import { DocumentsSection } from "../../../../src/features/investors/detail/DocumentsSection";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { startCall } from "../../../../src/features/activities/callAndLog";
 import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
@@ -245,6 +246,8 @@ function Activity({ d }: { d: any }) {
       {/* The CRM's Notes feed: calls, visits and notes logged anywhere (the app's
           call log included) plus the lead's older follow-up notes. */}
       <RecordNotes type="lead" id={d.lead.id} />
+      {/* Attachments — they move to the client when the lead converts. */}
+      <DocumentsSection id={d.lead.id} subject="lead" clientName={d.lead.name} />
       <Section title="Tasks" icon="check-square" right={<Text variant="caption" tone="faint">{tasks.length}</Text>}>
         {tasks.length === 0 ? <Empty text="No tasks." /> : tasks.slice(0, 15).map((t) => (
           <View key={t.id} style={styles.row}>
