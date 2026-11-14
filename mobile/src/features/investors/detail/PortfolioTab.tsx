@@ -9,6 +9,7 @@ import { Text } from "../../../components/ui/Text";
 import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
 import { inr, fmtDate, titleCase } from "../../../lib/format";
 import { Section, FieldRow, AllocBar, Badge, Empty } from "./primitives";
+import { ClientFixedDeposits } from "../../fixed-deposits/ClientFixedDeposits";
 
 const churnTone = (b?: string) => (b === "high" ? palette.danger : b === "medium" ? palette.warning : palette.success);
 const num = (v: any) => (v == null ? 0 : Number(v));
@@ -101,6 +102,8 @@ export function PortfolioTab({ d }: { d: any }) {
           </View>
         ))}
       </Section>
+
+      {d.investor?.id ? <ClientFixedDeposits investorId={d.investor.id} name={d.investor.name} /> : null}
 
       {/* Cross-sell */}
       <Section title="Cross-sell / holdings" icon="shopping-bag">

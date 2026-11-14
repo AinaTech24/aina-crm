@@ -40,6 +40,7 @@ export const MENU: MenuGroup[] = [
     items: [
       { key: "investors", label: "Clients", icon: "users", route: "/m/investors", anyCap: ["investor.view.all", "investor.view.assigned"] },
       { key: "opportunities", label: "Opportunities", icon: "crosshair", route: "/m/opportunities", anyCap: ["investor.view.all", "investor.view.assigned"] },
+      { key: "fixed-deposits", label: "Fixed Deposits", icon: "lock", route: "/m/fixed-deposits", anyCap: ["investor.view.all", "investor.view.assigned"] },
       { key: "goals", label: "Goal Planning", icon: "target", route: "/m/goals", anyCap: ["goal.manage"] },
     ],
   },
