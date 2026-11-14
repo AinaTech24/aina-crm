@@ -28,6 +28,7 @@
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { withTenant, type Tx } from "@/db/client";
+import { isUuid } from "@/lib/api/uuid";
 import { investors } from "@/db/schema";
 import type { SessionUser } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
@@ -152,6 +153,8 @@ export async function investorScopeSql(tx: any, session: SessionUser, alias = "i
 
 /** Authorize the parent before returning any child records or private files. */
 export async function loadViewableInvestor(tx: Tx, session: SessionUser, id: string) {
+  // A malformed id is a client nobody can open — not a uuid cast error (500).
+  if (!isUuid(id)) return null;
   const scope = await investorScopeCondition(tx, session);
   const [row] = await tx.select().from(investors).where(and(
     eq(investors.id, id), eq(investors.tenantId, session.tenantId), isNull(investors.deletedAt), scope,

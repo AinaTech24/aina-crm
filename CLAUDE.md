@@ -917,9 +917,10 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   every member the new head's RM; merging families gives the moved members the
   survivor head's RM; a client created straight into a family gets the head's
   RM unless an RM was chosen (an own-book-only creator keeps their own). It is
-  a default, not a lock — a member's RM can be changed on their record. Only
-  `rm_id` moves (as the client page and bulk Assign RM do), and each change is
-  audited as `investor.rm_from_family_head`.
+  a default, not a lock — a member's RM can be changed on their record.
+  `rm_id` moves and the branch follows the new RM's (as the client page and
+  bulk Assign RM do, below), and each change is audited as
+  `investor.rm_from_family_head` (before / after RM and branch).
   A family has ONE RM (2026-10-22): changing the RM of ANY member — head or not — on
   the client's record or by bulk Assign RM gives the head and every member the same RM,
   and the family (`setFamilyRmFromClient`, reason `family_rm_changed`; clearing an RM
@@ -927,6 +928,15 @@ head, the name and notes — nothing else (the firm's request, 2026-10-02).
   (`PATCH /api/families/[id]`) does the same through `setFamilyRm`. The head's RM also reaches the family when a client reaches the
   **Family Mapping** step of the onboarding journey (`blueprints/engine.ts`,
   reason `family_mapping_stage`: a head's whole family, or a member alone).
+- **A client's branch follows its RM by default** (`lib/investors/rm-branch.ts`,
+  2026-11-03): Add client puts the client in the RM's branch, and an RM change
+  — the client page, bulk Assign RM, the family RM cascade — moves it to the
+  new RM's branch. An RM with no branch (an owner) leaves it. The edit form's
+  Branch field (investor.edit.all only) sets one explicitly, and that wins.
+- **Add client into a family maps it in the create transaction**
+  (`POST /api/investors` `familyId` + `familyRole` →
+  `lib/families/attach.ts`, the same code as `POST /api/families/[id]/members`):
+  a family the user may not map into refuses the create, nothing half-made.
 - **Family mapping has its own permissions** (2026-10-19, "Family Mapping" group
   in Customize Access Permissions): `family.map.view` / `.create` / `.edit` /
   `.delete` — see families, add a client to a family, change a member's
@@ -983,6 +993,26 @@ the imports and every label; never copy the enum again.
   found by the guardian PAN typed), and two triggers keep the category, score,
   signed date and provisional flag equal to the guardian's — on any write path.
   The forms show it read-only for a minor and never send `riskProfile`.
+- **The APIs enforce the type's requirements** (`clientTypeIssue`, 2026-11-03):
+  a minor needs a DOB under 18 and a guardian's name, an HUF a Karta's name —
+  a 400 naming the field (`dob`, `typeDetails.guardian.name`,
+  `typeDetails.karta.name`). PATCH checks only the rules whose inputs the edit
+  changed (or all of them on a type change), so an old import's gap does not
+  block an unrelated edit. Create drops fields a type does not have.
+- **Minor to major** (PATCH, 2026-11-03): changing the type from Minor needs
+  the client's OWN PAN (typed, or the one in `MINOR:<PAN>`), stored with no
+  prefix (PAN dedup applies; the guardian's PAN is refused as taken). It sets
+  KYC to pending, unlinks the guardian, replaces the copied guardian risk with
+  the client's own latest assessment or nothing, and audits
+  `investor.minor_to_major` (ids and key kinds, never a PAN). A client still a
+  minor keeps the guardian-keyed PAN locked.
+- **A risk category picked by staff is PROVISIONAL** (`STAFF_ENTRY` in
+  `lib/risk-profile/apply.ts`, 2026-11-03): Add client, the edit form and the
+  guided setup store it provisional, signed by nobody, basis `staff_entry` —
+  it never passes the "client-confirmed in 12 months" gate, and the setup
+  checklist, the wizard and the header ("Onboarding incomplete") do not count
+  it as done. The edit path records only a CHANGED category. (The spreadsheet
+  import still writes a non-provisional category.)
 - **Dropdowns, not free text** (lists in client-types.ts): tax status by type
   (`taxStatusOptions`, defaulted on a type change), marital status, income
   range, household type (Individual · Family · Company · HUF). `withCurrent`

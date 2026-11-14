@@ -22,13 +22,18 @@ import { healthFields } from "@/lib/investors/health";
 import { NomineesArray } from "@/lib/investors/nominee";
 import { ReferralsArray } from "@/lib/investors/referral";
 import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
-import { CLIENT_TYPE_KEYS, TypeDetailsSchema, canNominate, cleanTypeDetails, singleHoldingOnly } from "@/lib/investors/client-types";
+import {
+  CLIENT_TYPE_KEYS, TypeDetailsSchema, canNominate, cleanTypeDetails, clientTypeIssue, hasAdultDetails, hasPersonalDetails, singleHoldingOnly,
+} from "@/lib/investors/client-types";
 import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
-import { applyRiskCategory, RISK_CATEGORIES } from "@/lib/risk-profile/apply";
+import { applyRiskCategory, RISK_CATEGORIES, STAFF_ENTRY } from "@/lib/risk-profile/apply";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { investors, eventsOutbox } from "@/db/schema";
 import { familyHeadRmId } from "@/lib/families/head-rm";
-import { applyDemise, demiseDateError } from "@/lib/investors/demise";
+import { attachClientsToFamily } from "@/lib/families/attach";
+import { rmBranchId } from "@/lib/investors/rm-branch";
+import { getClientHealth } from "@/lib/metrics/health";
+import { applyDemise, demiseDateError, indiaToday } from "@/lib/investors/demise";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +59,8 @@ const CreateBody = z.object({
   guardianInvestorId: z.string().uuid().optional(),
   rmId: z.string().uuid().optional(),
   familyId: z.string().uuid().optional(),
+  /** The client's relationship in that family (head, spouse, son …). */
+  familyRole: z.string().trim().min(1).max(40).regex(/^[a-z0-9_]+$/, "invalid relationship").optional(),
   bseUccCode: z.string().optional(),
   nseCanCode: z.string().optional(),
   uccCodes: z.array(z.string()).optional(),
@@ -207,6 +214,14 @@ export async function POST(req: NextRequest) {
       const bad = demiseDateError(body.dateOfDemise.slice(0, 10), body.dob);
       if (bad) return NextResponse.json({ error: bad, field: "dateOfDemise" }, { status: 400 });
     }
+    // What the client type requires (lib/investors/client-types.ts) — the
+    // form checks it too, but a browser-only rule is no rule.
+    const typeIssue = clientTypeIssue({ type: body.investorCategory, dob: body.dob, typeDetails: body.typeDetails }, indiaToday());
+    if (typeIssue) return NextResponse.json(typeIssue, { status: 400 });
+    // Each type keeps only its own fields: a company has no birthday, a minor
+    // no employer (the forms never send them; an API caller is held to it).
+    const personal = hasPersonalDetails(body.investorCategory);
+    const adult = hasAdultDetails(body.investorCategory);
 
     // A minor is filed the way the registrar import files one (lib/rta/import.ts):
     // MINOR:<own PAN>, or — with no PAN of their own — MINOR:<guardian PAN>:<NAME>,
@@ -254,6 +269,9 @@ export async function POST(req: NextRequest) {
       // unless someone allowed to choose the RM chose one.
       let rmId = (canAssignAnyRm ? body.rmId : undefined) ?? session.userId;
       if (body.familyId && canAssignAnyRm && !body.rmId) rmId = (await familyHeadRmId(tx, body.familyId)) ?? rmId;
+      // The client's branch follows its RM by default; an RM with no branch
+      // (an owner, say) leaves the creator's.
+      const branchId = (await rmBranchId(tx, session.tenantId, rmId)) ?? session.branchId ?? null;
 
       // A minor's guardian as a client: the one picked, else the client whose
       // PAN is the guardian PAN. The minor then carries the guardian's risk
@@ -282,17 +300,17 @@ export async function POST(req: NextRequest) {
         .values({
           id,
           tenantId: session.tenantId,
-          branchId: session.branchId,
+          branchId,
           name: body.name,
           pan: storedPan,
           email: body.email || null,
           phone: body.phone || null,
           whatsappPhone: body.whatsappPhone || null,
-          dob: body.dob || null,
-          gender: body.gender ?? null,
-          occupation: body.occupation || null,
+          dob: (personal && body.dob) || null,
+          gender: personal ? body.gender ?? null : null,
+          occupation: (adult && body.occupation) || null,
           incomeRange: body.incomeRange || null,
-          employerName: body.employerName || null,
+          employerName: (adult && body.employerName) || null,
           segmentTag: body.segmentTag,
           investorCategory: body.investorCategory,
           clientCategory: body.clientCategory ?? null,
@@ -307,7 +325,8 @@ export async function POST(req: NextRequest) {
           nomineeRelation: (canNominate(body.investorCategory) && body.nominees?.[0]?.relation) || null,
           nomineeDob: (canNominate(body.investorCategory) && body.nominees?.[0]?.dob) || null,
           rmId,
-          familyId: body.familyId ?? null,
+          // Mapped into the family below, inside this transaction.
+          familyId: null,
           address: body.address,
           notes: body.notes,
           bseUccCode: body.bseUccCode || null,
@@ -317,14 +336,14 @@ export async function POST(req: NextRequest) {
           kycStatus: body.kycStatus ?? "pending",
           taxStatus: body.taxStatus || null,
           residencyStatus: body.residencyStatus ?? null,
-          aadhaarLast4: body.aadhaarLast4 || null,
+          aadhaarLast4: (personal && body.aadhaarLast4) || null,
           // Personal
-          maritalStatus: body.maritalStatus || null,
+          maritalStatus: (adult && body.maritalStatus) || null,
           modeOfHolding: singleHoldingOnly(body.investorCategory) ? "Single" : body.modeOfHolding || null,
-          anniversaryDate: body.anniversaryDate || null,
+          anniversaryDate: (adult && body.anniversaryDate) || null,
           dateOfDemise: body.dateOfDemise || null,
-          birthPlace: body.birthPlace || null,
-          motherName: body.motherName || null,
+          birthPlace: (personal && body.birthPlace) || null,
+          motherName: (personal && body.motherName) || null,
           mobileRelation: body.mobileRelation || null,
           emailRelation: body.emailRelation || null,
           referralClientName: body.referralClientName || null,
@@ -345,10 +364,10 @@ export async function POST(req: NextRequest) {
           onboardedAt: body.onboardedAt ? new Date(body.onboardedAt) : new Date(),
           customFields: Object.keys(customFields).length ? customFields : null,
           status: "active",
-          // Deterministic initial health from the captured fields.
+          // Initial health from what was captured (re-scored in full below).
           ...healthFields({
             status: "active",
-            kycStatus: "pending",
+            kycStatus: body.kycStatus ?? "pending",
             riskProfile: null,
             riskProfileSignedAt: null,
           }),
@@ -383,8 +402,9 @@ export async function POST(req: NextRequest) {
       // Register each nominee's PAN file as a client document.
       if (canNominate(body.investorCategory)) await registerNomineePanDocs(tx, session.tenantId, id, body.nominees, session.userId);
 
-      // Risk profile chosen on the form → create a risk_profile_responses record
-      // + cache it on the investor row (no-op if not provided).
+      // A risk category chosen on the form is the RM's view, not the client's
+      // answers: stored PROVISIONAL and signed by nobody (STAFF_ENTRY), so it
+      // never passes a "client-confirmed in the last 12 months" gate.
       if (body.riskProfile) {
         await applyRiskCategory({
           tx,
@@ -393,9 +413,26 @@ export async function POST(req: NextRequest) {
           category: body.riskProfile,
           currentCategory: null,
           createdById: session.userId,
-          signedByName: body.name,
+          ...STAFF_ENTRY,
         });
       }
+
+      // Added into a family: mapped here, in the same transaction, so the
+      // client is never created half-way (lib/families/attach). An RM chosen
+      // on the form is kept; otherwise the head's RM applies.
+      if (body.familyId) {
+        await attachClientsToFamily(tx, session, {
+          familyId: body.familyId,
+          investorIds: [id],
+          familyRole: body.familyRole ?? null,
+          clientMeta,
+          createdIds: [id],
+          keepRmOf: canAssignAnyRm && body.rmId ? [id] : [],
+        });
+      }
+
+      // Score with every input now on the row (KYC, risk, family).
+      await getClientHealth(tx, session.tenantId, id);
     });
 
     return NextResponse.json({ id }, { status: 201 });

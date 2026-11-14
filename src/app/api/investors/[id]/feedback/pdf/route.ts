@@ -17,6 +17,7 @@ import { requireAny, can } from "@/lib/auth/rbac";
 import { investorScopeSql } from "@/lib/investors/access";
 import { renderClientFeedbackPdf } from "@/lib/support/client-feedback-pdf";
 import { handleApiError } from "@/lib/api/error-handler";
+import { isUuid } from "@/lib/api/uuid";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const session = await requireSession();
+    if (!isUuid(id)) return NextResponse.json({ error: "not found" }, { status: 404 });
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const canViewAll = can(session.roles, "investor.view.all", session.permissions);
     const download = req.nextUrl.searchParams.get("download") === "1";

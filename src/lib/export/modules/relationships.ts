@@ -350,7 +350,7 @@ export const riskProfilesExport: ExportModule = {
     { key: "profile_date", label: "Profile date", group: "Risk profile", sql: d(sql`rp.profile_date`), kind: "date" },
     { key: "verification", label: "How it was taken", group: "Risk profile", sql: labelCase(sql`rp.verification_method`, VERIFICATION_LABELS) },
     { key: "signed_by", label: "Signed by", group: "Risk profile", sql: sql`rp.signed_by_name` },
-    { key: "basis", label: "Suggestion basis", group: "Risk profile", sql: labelCase(sql`rp.basis`, { age_band: "Age band" }) },
+    { key: "basis", label: "Suggestion basis", group: "Risk profile", sql: labelCase(sql`rp.basis`, { age_band: "Age band", fact_find: "Fact-find", staff_entry: "Chosen by staff" }) },
     { key: "remarks", label: "RM remarks", group: "Risk profile", sql: sql`rp.rm_remarks` },
 
     { key: "age", label: "Age at profiling", group: "Answers", sql: sql`rp.age`, kind: "number" },

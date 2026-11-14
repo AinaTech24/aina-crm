@@ -22,7 +22,12 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { isMinorKey, ownPan } from "@/lib/investors/pan-display";
-import { CLIENT_TYPE_KEYS, TypeDetailsSchema, canNominate, cleanTypeDetails, singleHoldingOnly } from "@/lib/investors/client-types";
+import {
+  CLIENT_TYPE_KEYS, TypeDetailsSchema, canNominate, cleanTypeDetails, clientTypeDef, clientTypeIssue, singleHoldingOnly,
+} from "@/lib/investors/client-types";
+import { isUuid } from "@/lib/api/uuid";
+import { applyRiskCategory, STAFF_ENTRY } from "@/lib/risk-profile/apply";
+import { rmBranchId } from "@/lib/investors/rm-branch";
 import { applyFamilySharedDetails, familyHeadedBy, familySharedDetails } from "@/lib/families/shared-details";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
@@ -34,7 +39,7 @@ import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist"
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { getClientHealth } from "@/lib/metrics/health";
 import { setFamilyRmFromClient } from "@/lib/families/head-rm";
-import { applyDemise, applyInactive, clearDemise, demiseDateError, type DemiseEffects } from "@/lib/investors/demise";
+import { applyDemise, applyInactive, clearDemise, demiseDateError, indiaToday, type DemiseEffects } from "@/lib/investors/demise";
 import { clientsHoldingMoney, holdersMessage } from "@/lib/investors/holds-money";
 import {
   investors,
@@ -104,6 +109,9 @@ const Patch = z.object({
    *  profile becomes the minor's (migration 0234). */
   guardianInvestorId: z.string().uuid().nullable().optional(),
   rmId: z.string().uuid().optional(),
+  /** The client's branch. It follows the RM by default (lib/investors/rm-branch);
+   *  set here it wins. Moving a client between branches needs investor.edit.all. */
+  branchId: z.string().uuid().nullable().optional(),
   // Client-service preferences
   statementCadence: z.enum(["off", "monthly", "quarterly"]).optional(),
   languagePref: z.enum(["en", "hi", "gu", "mr", "ta", "te", "kn", "bn", "ml", "pa"]).optional(),
@@ -303,6 +311,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
+    if (!isUuid(id)) return NextResponse.json({ error: "not found" }, { status: 404 });
 
     requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
     const editsAll = can(session.roles, "investor.edit.all", session.permissions);
@@ -352,6 +361,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (!u) return "bad_rm" as const;
       }
 
+      // Branch: an explicit one (validated, and only for someone who edits
+      // every client), else the new RM's branch when the RM changes
+      // (lib/investors/rm-branch) — the same as bulk Assign RM.
+      const branchPatch: { branchId?: string | null } = {};
+      const rmChanging = !!parse.data.rmId && parse.data.rmId !== before.rmId;
+      if (parse.data.branchId !== undefined) {
+        if (parse.data.branchId === before.branchId) {
+          // Kept as it is, on purpose — the RM change below does not move it.
+        } else if (!editsAll) {
+          return "branch_forbidden" as const;
+        } else if (parse.data.branchId) {
+          const b = await tx.execute(sql`
+            SELECT 1 FROM branches WHERE id = ${parse.data.branchId}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1`);
+          if (!b.rows.length) return "bad_branch" as const;
+        }
+        if (parse.data.branchId !== before.branchId) branchPatch.branchId = parse.data.branchId;
+      } else if (rmChanging) {
+        const rmBranch = await rmBranchId(tx, session.tenantId, parse.data.rmId);
+        if (rmBranch && rmBranch !== before.branchId) branchPatch.branchId = rmBranch;
+      }
+
       // PAN. Never cleared — the RTA import and the duplicate check find the
       // client by it — and never written over an import key: a minor filed
       // under the guardian's PAN keeps `MINOR:<guardian>:<name>`, and a minor
@@ -359,10 +389,75 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // holds is refused the way the unique index would refuse it, with a
       // message instead of a constraint error (and no name: that client may be
       // outside the editor's book).
-      const { pan: typedPan, ...fields } = parse.data;
+      const { pan: typedPan, riskProfile: typedRisk, ...fields } = parse.data;
+      delete (fields as any).branchId; // written through branchPatch
       const panPatch: { pan?: string } = {};
       const pan = (typedPan ?? "").replace(/\s+/g, "").toUpperCase();
-      if (pan && pan !== ownPan(before.pan)) {
+      const nextType = (parse.data.investorCategory ?? (before as any).investorCategory ?? "individual") as string;
+      const nextKind = clientTypeDef(nextType).kind;
+
+      // What the client type requires (lib/investors/client-types.ts), for the
+      // inputs this edit changes — an unrelated edit of an old imported record
+      // is not refused for a gap it already had.
+      {
+        const typeChanged = parse.data.investorCategory !== undefined && parse.data.investorCategory !== (before as any).investorCategory;
+        const beforeDob = before.dob ? String(before.dob).slice(0, 10) : null;
+        const nextDob = parse.data.dob !== undefined ? (parse.data.dob ? String(parse.data.dob).slice(0, 10) : null) : beforeDob;
+        const beforeDetails = ((before as any).typeDetails ?? {}) as any;
+        const nextDetails = (parse.data.typeDetails !== undefined ? parse.data.typeDetails ?? {} : beforeDetails) as any;
+        const name = (d: any, k: string) => String(d?.[k]?.name ?? "").trim();
+        const issue = clientTypeIssue({ type: nextType, dob: nextDob, typeDetails: nextDetails }, indiaToday(), typeChanged ? undefined : {
+          dob: nextDob !== beforeDob,
+          guardian: name(nextDetails, "guardian") !== name(beforeDetails, "guardian"),
+          karta: name(nextDetails, "karta") !== name(beforeDetails, "karta"),
+        });
+        if (issue) return { typeIssue: issue } as const;
+      }
+
+      // Minor → major: a minor who turns 18 becomes an Individual with their
+      // OWN PAN, fresh KYC and no guardian. The record may be keyed
+      // MINOR:<guardian PAN>:<NAME> (or MINOR:<own PAN>); the adult's PAN
+      // replaces the key outright (no prefix, so the KRA refresh and the RTA
+      // import see an ordinary PAN). The PAN rules still apply: well-formed,
+      // and not another client's.
+      const minorToMajor =
+        nextKind !== "minor" &&
+        ((before as any).investorCategory === "minor" || (isMinorKey(before.pan) && !!pan));
+      const majorPatch: Record<string, unknown> = {};
+      if (minorToMajor) {
+        const adultPan = pan || ownPan(before.pan);
+        if (!adultPan) return "adult_needs_pan" as const;
+        if (!PAN_RE.test(adultPan)) return "bad_pan" as const;
+        if (adultPan !== before.pan) {
+          if ((before as any).dedupPan !== false) {
+            const clash = await tx.execute(sql`
+              SELECT 1 FROM investors
+              WHERE tenant_id = ${session.tenantId}::uuid AND id <> ${id}::uuid
+                AND dedup_pan AND pan = ${adultPan}
+              LIMIT 1`);
+            if (clash.rows.length) return "pan_taken" as const;
+          }
+          panPatch.pan = adultPan;
+        }
+        // Fresh KYC in the adult's own name.
+        majorPatch.kycStatus = "pending";
+        majorPatch.kycValidatedAt = null;
+        majorPatch.isMinor = false;
+        if ((before as any).guardianInvestorId) {
+          majorPatch.guardianInvestorId = null;
+          // The risk profile on the row was the guardian's (migration 0234);
+          // the adult keeps only an assessment of their own, if any.
+          const own = (await tx.execute(sql`
+            SELECT final_category, total_score, signed_at, provisional FROM risk_profile_responses
+             WHERE tenant_id = ${session.tenantId}::uuid AND investor_id = ${id}::uuid
+             ORDER BY signed_at DESC NULLS LAST LIMIT 1`)).rows[0] as
+            { final_category: string; total_score: number; signed_at: string | null; provisional: boolean } | undefined;
+          majorPatch.riskProfile = own?.final_category ?? null;
+          majorPatch.riskProfileScore = own?.total_score ?? null;
+          majorPatch.riskProfileSignedAt = own?.signed_at ? new Date(own.signed_at) : null;
+          majorPatch.riskProfileProvisional = own?.provisional ?? false;
+        }
+      } else if (pan && pan !== ownPan(before.pan)) {
         if (!PAN_RE.test(pan)) return "bad_pan" as const;
         const minor = isMinorKey(before.pan);
         if (minor && !ownPan(before.pan)) return "pan_locked" as const;
@@ -380,6 +475,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       // Stamp KYC audit fields when any KYC-related column is touched.
       const touchingKyc =
+        minorToMajor ||
         parse.data.kycStatus !== undefined ||
         parse.data.nameAsPerPan !== undefined ||
         parse.data.panAadhaarLinkStatus !== undefined ||
@@ -411,7 +507,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // a minor, an HUF or an entity a nominee list is not written — and what
       // is already on file is left alone, not deleted. A minor is flagged as
       // one, and a type that cannot hold jointly holds singly.
-      const nextType = (parse.data.investorCategory ?? (before as any).investorCategory ?? "individual") as string;
       const nominating = canNominate(nextType);
       if (!nominating) {
         for (const k of ["nominees", "nomineeName", "nomineeRelation", "nomineeDob"] as const) {
@@ -467,7 +562,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
-      const merged = { ...before, ...fields, ...panPatch, ...mirror, ...typePatch };
+      const merged = { ...before, ...fields, ...panPatch, ...mirror, ...typePatch, ...majorPatch, ...branchPatch };
       const health = healthFields(merged as any);
 
       // When the review cadence changes (preset OR custom days), re-derive the
@@ -520,10 +615,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         .set({
           ...fields,
           ...panPatch,
+          ...branchPatch,
           ...reviewPatch,
           ...datePatch,
           ...mirror,
           ...typePatch,
+          ...majorPatch,
           ...(parse.data.uccCodes !== undefined ? { uccCodes: cleanUccCodes(parse.data.uccCodes) } : {}),
           updatedAt: new Date(),
           ...(touchingKyc
@@ -533,6 +630,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         } as any)
         .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)))
         .returning();
+
+      // A risk category picked on the client master is the RM's view: stored
+      // PROVISIONAL, signed by nobody (lib/risk-profile/apply STAFF_ENTRY), so
+      // it never passes the "client-confirmed in 12 months" gate. Only a
+      // CHANGE is recorded — the form sends the current value on every save.
+      if (typedRisk && typedRisk !== before.riskProfile) {
+        await applyRiskCategory({
+          tx, tenantId: session.tenantId, investorId: id, category: typedRisk,
+          createdById: session.userId, ...STAFF_ENTRY,
+        });
+        const [fresh] = await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId))).limit(1);
+        if (fresh) after[0] = fresh;
+      }
 
       // Re-score with the full inputs (the open-SR-breach flag included), so the
       // stored score equals what the client page and the drawer show.
@@ -614,6 +724,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ...clientMetaFromHeaders(req.headers),
       });
 
+      if (minorToMajor) {
+        // Ids and kinds only — never a PAN on the audit line.
+        await recordAudit(tx, {
+          tenantId: session.tenantId,
+          actorUserId: session.userId,
+          action: "investor.minor_to_major",
+          entityType: "investor",
+          entityId: id,
+          before: {
+            investorCategory: (before as any).investorCategory,
+            panKey: !isMinorKey(before.pan) ? "pan" : ownPan(before.pan) ? "minor_own_pan" : "guardian_pan",
+            guardianInvestorId: (before as any).guardianInvestorId ?? null,
+            kycStatus: before.kycStatus ?? null,
+          },
+          after: {
+            investorCategory: nextType,
+            panKey: "pan",
+            guardianInvestorId: null,
+            kycStatus: "pending",
+          },
+          ...clientMetaFromHeaders(req.headers),
+        });
+      }
+
       // Register any newly-uploaded nominee PAN files as client documents.
       if (nominating) await registerNomineePanDocs(tx, session.tenantId, id, parse.data.nominees, session.userId);
 
@@ -647,6 +781,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (result && typeof result === "object" && "badDemise" in result) {
       return NextResponse.json({ error: (result as { badDemise: string }).badDemise, field: "dateOfDemise" }, { status: 400 });
     }
+    if (result && typeof result === "object" && "typeIssue" in result) {
+      return NextResponse.json((result as { typeIssue: { field: string; error: string } }).typeIssue, { status: 400 });
+    }
+    if (result === "adult_needs_pan")
+      return NextResponse.json({ error: "Now that the client is an adult, enter their own PAN.", field: "pan" }, { status: 400 });
+    if (result === "branch_forbidden")
+      return NextResponse.json({ error: "Only someone who can edit every client can move a client to another branch.", field: "branchId" }, { status: 403 });
+    if (result === "bad_branch") return NextResponse.json({ error: "That branch is not one of this firm's.", field: "branchId" }, { status: 400 });
     if (result === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
     if (result === "bad_pan") return NextResponse.json({ error: "PAN should look like ABCDE1234F.", field: "pan" }, { status: 400 });
     if (result === "pan_locked")
@@ -671,6 +813,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     // Permanent erasure is far more dangerous than an edit — gate on the narrow
     // delete capability (owner / compliance), not the broad edit.all.
     requireCap(session.roles, "investor.delete", session.permissions);
+    if (!isUuid(id)) return NextResponse.json({ error: "not found" }, { status: 404 });
     // Default delete = soft-delete into the Trash bin (recoverable until the
     // retention window elapses). `?purge=1` (Trash → "Delete permanently") does
     // the irreversible hard delete + cascade.

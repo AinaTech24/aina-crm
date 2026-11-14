@@ -69,7 +69,7 @@ export const DDQ_ITEMS: DdqItem[] = [
   // ───────────── III — Operations & Customer Service ─────────────
   { key: "platform_used", section: "III", ddqRef: "3.1", title: "Details of platform used for placing MF transactions", href: "/dashboard/tech-stack", hrefLabel: "Tech stack", coverage: "in_app" },
   { key: "ipv_sop", section: "III", ddqRef: "3.1 / 4.2", title: "SOP for conducting IPV of customers", href: "/dashboard/sops", coverage: "document" },
-  { key: "onboarding_form", section: "III", ddqRef: "3.1 / 4.2", title: "Client onboarding form / application format", href: "/dashboard/onboarding", coverage: "in_app" },
+  { key: "onboarding_form", section: "III", ddqRef: "3.1 / 4.2", title: "Client onboarding form / application format", href: "/dashboard/investors/new", coverage: "in_app" },
   { key: "record_keeping", section: "III", ddqRef: "3.2", title: "Record keeping (online/physical) of daily transactions", href: "/dashboard/transactions", coverage: "in_app" },
   { key: "comm_mechanism", section: "III", ddqRef: "2.4", title: "Customer communication mechanism for important/compliance updates", href: "/dashboard/communications/cadence", hrefLabel: "Communication cadence", coverage: "in_app" },
   { key: "feedback_grievance_policy", section: "III", ddqRef: "3.6", title: "Policy & process for customer feedback & grievance", href: "/dashboard/complaints", coverage: "in_app" },

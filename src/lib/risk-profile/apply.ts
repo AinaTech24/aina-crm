@@ -22,6 +22,20 @@ const SCORE_BY_CATEGORY: Record<RiskCategory, number> = {
   very_aggressive: 40,
 };
 
+/**
+ * A category a member of staff picks on the client master (Add client, the
+ * edit form, the guided setup) is the RM's view, not the client's answers.
+ * It is stored PROVISIONAL and signed in nobody's name, so it never satisfies
+ * a "client-confirmed risk profile signed in the last 12 months" gate; the
+ * client's own questionnaire replaces it.
+ */
+export const STAFF_ENTRY = {
+  provisional: true,
+  basis: "staff_entry",
+  signedByName: null,
+  remarks: "Provisional — chosen by staff on the client master, not answered by the client. Send the questionnaire to confirm.",
+} as const;
+
 /** Coerce free text (form value or spreadsheet cell) to a canonical category. */
 export function normalizeRiskCategory(raw: any): RiskCategory | null {
   const s = String(raw ?? "").trim().toLowerCase().replace(/\s+/g, "_");

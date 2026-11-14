@@ -53,10 +53,16 @@ export default async function EditClientDetailsPage({ params }: { params: Promis
         SELECT id, name, risk_profile FROM investors WHERE id = ${(inv as any).guardianInvestorId}::uuid AND tenant_id = ${session.tenantId}::uuid LIMIT 1`)).rows[0] as { id: string; name: string; risk_profile: string | null } | undefined;
       if (g) guardian = { id: g.id, name: g.name, riskProfile: g.risk_profile };
     }
-    return { inv, family, guardian };
+    // Someone who edits every client may move one between branches; the
+    // branch otherwise follows the RM (lib/investors/rm-branch).
+    const branches = editsAll
+      ? ((await tx.execute(sql`
+          SELECT id, name FROM branches WHERE tenant_id = ${session.tenantId}::uuid ORDER BY name`)).rows as Array<{ id: string; name: string }>)
+      : null;
+    return { inv, family, guardian, branches };
   }, { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles });
   if (!loaded) notFound();
-  const { inv, family, guardian } = loaded;
+  const { inv, family, guardian, branches } = loaded;
   if (!editsAll) {
     const branchScoped = !session.roles.includes("owner") && session.roles.includes("branch_head") && !!session.branchId;
     if (branchScoped ? inv.branchId !== session.branchId : inv.rmId !== session.userId) redirect(clientHref);
@@ -89,7 +95,7 @@ export default async function EditClientDetailsPage({ params }: { params: Promis
         subtitle={inv.name}
         breadcrumb={[{ label: "Clients", href: "/dashboard/investors" }, { label: inv.name, href: clientHref }, { label: "Edit" }]}
       />
-      <ClientDetailsForm investor={JSON.parse(JSON.stringify(inv))} flags={flags} family={family} guardian={guardian} />
+      <ClientDetailsForm investor={JSON.parse(JSON.stringify(inv))} flags={flags} family={family} guardian={guardian} branches={branches} />
     </div>
   );
 }

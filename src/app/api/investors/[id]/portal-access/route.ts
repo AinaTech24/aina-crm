@@ -9,6 +9,7 @@ import { investorScopeCondition } from "@/lib/investors/access";
 import { issuePortalAccess } from "@/lib/portal/access";
 import { recordAudit } from "@/lib/audit";
 import { handleApiError } from "@/lib/api/error-handler";
+import { isUuid } from "@/lib/api/uuid";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,8 @@ const IssueBody = z.object({ expiresInDays: z.number().int().min(1).max(90).defa
 async function authorizeInvestor(id: string) {
   const session = await requireSession();
   requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
+  // A malformed id is not found (never a uuid cast error).
+  if (!isUuid(id)) return { session, investor: null };
   const investor = await withTenant(
     session.tenantId,
     async (tx) => {
