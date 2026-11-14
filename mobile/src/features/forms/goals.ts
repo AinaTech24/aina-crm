@@ -63,7 +63,7 @@ export const goalForm: FormSpec = {
           searchEndpoint: "/api/search",
           searchEnvelope: "investors",
           searchLabel: (i) => i.name,
-          searchSublabel: (i) => [i.pan, i.segment_tag].filter(Boolean).join(" · "),
+          searchSublabel: (i) => [i.pan_display, i.segment_tag].filter(Boolean).join(" · "),
           placeholder: "Search a client by name or PAN…",
         },
         { key: "name", label: "Goal name", placeholder: "e.g. Riya's college fund" },

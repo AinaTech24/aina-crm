@@ -222,7 +222,7 @@ export const investorForm: FormSpec = {
         { key: "gEmail", label: "Guardian's email", type: "email" },
         {
           key: "guardianInvestorId", label: "Guardian's client record", type: "typeahead", searchEndpoint: "/api/search", searchEnvelope: "investors",
-          searchLabel: (i) => i.name, searchSublabel: (i) => [i.pan, i.segment_tag].filter(Boolean).join(" · "),
+          searchLabel: (i) => i.name, searchSublabel: (i) => [i.pan_display, i.segment_tag].filter(Boolean).join(" · "),
           placeholder: "Search the guardian's client record…",
           help: "The minor's risk profile is the guardian's. Left blank, the guardian is found by the PAN above.",
         },

@@ -121,7 +121,7 @@ export const taskForm: FormSpec = {
           searchEndpoint: "/api/search",
           searchEnvelope: "investors",
           searchLabel: (r) => r.name,
-          searchSublabel: (r) => [r.pan, r.phone].filter(Boolean).join(" · "),
+          searchSublabel: (r) => [r.pan_display, r.phone].filter(Boolean).join(" · "),
           placeholder: "Search clients…",
         },
         {

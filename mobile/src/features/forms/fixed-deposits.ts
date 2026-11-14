@@ -113,7 +113,7 @@ export const fixedDepositForm: FormSpec = {
         { key: "_investorName", label: "Client", type: "readonly", visibleIf: (v) => !!v._investorName && !v._edit },
         {
           key: "investorId", label: "Client", type: "typeahead", required: true, searchEndpoint: "/api/search", searchEnvelope: "investors",
-          searchLabel: (i) => i.name, searchSublabel: (i) => [i.pan, i.phone].filter(Boolean).join(" · "), placeholder: "Search a client…",
+          searchLabel: (i) => i.name, searchSublabel: (i) => [i.pan_display, i.phone].filter(Boolean).join(" · "), placeholder: "Search a client…",
           visibleIf: (v) => !v._investorName && !v._edit,
         },
       ],

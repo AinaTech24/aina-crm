@@ -111,7 +111,7 @@ export const leadForm: FormSpec = {
           searchEndpoint: "/api/search",
           searchEnvelope: "investors",
           searchLabel: (r) => r.name,
-          searchSublabel: (r) => [r.pan, r.phone].filter(Boolean).join(" · "),
+          searchSublabel: (r) => [r.pan_display, r.phone].filter(Boolean).join(" · "),
           placeholder: "Type the existing client's name, PAN, or mobile…",
           help: "Required for Client Referral / Existing Client Reference. Links the referring client so referral credit is tracked.",
           visibleIf: (v) => v._edit !== "1" && ["referral", "existing_client"].includes(v.source),

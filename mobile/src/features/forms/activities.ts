@@ -52,7 +52,7 @@ export const activityForm: FormSpec = {
         {
           key: "investorId", label: "Client", type: "typeahead",
           searchEndpoint: "/api/search", searchEnvelope: "investors",
-          searchLabel: (i) => i.name, searchSublabel: (i) => [i.pan, i.segment_tag].filter(Boolean).join(" · "),
+          searchLabel: (i) => i.name, searchSublabel: (i) => [i.pan_display, i.segment_tag].filter(Boolean).join(" · "),
           placeholder: "Search a client by name or PAN…",
           visibleIf: (v) => v.subjectType === "investor",
         },

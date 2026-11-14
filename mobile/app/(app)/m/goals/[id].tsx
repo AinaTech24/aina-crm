@@ -6,6 +6,7 @@
  * recompute, WhatsApp share, and archive. Computed with the ported calc engine.
  */
 
+import { ownPan } from "../../../../src/features/investors/client-types";
 import React, { useEffect, useMemo, useState } from "react";
 import { View, ScrollView, Pressable, Linking, StyleSheet } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -90,7 +91,7 @@ export default function GoalDetail() {
               <View style={{ flex: 1 }}>
                 <Text variant="title" numberOfLines={1}>{inr(targetAmt)}</Text>
                 <Pressable onPress={() => inv && router.push(`/m/investors/${inv.id}` as any)}>
-                  <Text variant="caption" tone="muted" numberOfLines={1}>{inv?.name ?? "—"}{inv?.pan ? ` · ${inv.pan}` : ""} · by {new Date(g.targetDate).getFullYear()}</Text>
+                  <Text variant="caption" tone="muted" numberOfLines={1}>{inv?.name ?? "—"}{ownPan(inv?.pan) ? ` · ${ownPan(inv?.pan)}` : ""} · by {new Date(g.targetDate).getFullYear()}</Text>
                 </Pressable>
               </View>
               <StatusPill label={st.label} tone={st.tone} />

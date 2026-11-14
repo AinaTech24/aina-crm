@@ -127,7 +127,7 @@ export default function GlobalSearch() {
 
 // ── Rows ──
 function InvestorRow({ it, last, onOpen }: { it: SearchInvestor; last: boolean; onOpen: () => void }) {
-  const sub = [it.pan, it.phone].filter(Boolean).join(" · ");
+  const sub = [it.pan_display, it.phone].filter(Boolean).join(" · ");
   return (
     <View style={[styles.row, !last && styles.divider]}>
       <Avatar name={it.name} tone={palette.violet} />
