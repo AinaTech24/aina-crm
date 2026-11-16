@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { idDamagedByExcel, istInstant, isoDate, mobile, yesNo, zohoId } from "@/lib/imports/zoho/values";
-import { mapZohoContact, reviewFrequencyFromZoho, riskFromZoho } from "@/lib/imports/zoho/contacts";
+import { BASE_LEAD_SOURCES, BASE_SALUTATIONS, PICKLISTS, leadSourceOption, leadSourceOptions, mapZohoContact, picklistOption, picklistOptions, reviewFrequencyFromZoho, riskFromZoho } from "@/lib/imports/zoho/contacts";
 import { mapZohoMeeting, meetingModeFromZoho, meetingTypeFromZoho } from "@/lib/imports/zoho/meetings";
 
 const NOW = new Date("2026-11-14T10:00:00+05:30");
@@ -154,6 +154,40 @@ describe("Zoho Contacts → client", () => {
     expect(riskFromZoho("Balanced")).toBe("moderate");
     expect(reviewFrequencyFromZoho("Yearly")).toBe("annual");
     expect(reviewFrequencyFromZoho("Quarterly")).toBe("quarterly");
+  });
+});
+
+describe("Lead Source picklist", () => {
+  it("matches the CRM list ignoring case, spacing and known aliases", () => {
+    expect(leadSourceOption("seminar", BASE_LEAD_SOURCES)).toBe("Seminar");
+    expect(leadSourceOption("WALK IN", BASE_LEAD_SOURCES)).toBe("Walk-in");
+    expect(leadSourceOption("Referral", BASE_LEAD_SOURCES)).toBe("Client Referral");
+    expect(leadSourceOption("Existing Client", BASE_LEAD_SOURCES)).toBe("Client Referral");
+    expect(leadSourceOption("Trade Show", BASE_LEAD_SOURCES)).toBe("Trade Show");
+  });
+
+  it("builds the list: existing, then the CRM sources, then new values from the file — no near-duplicates", () => {
+    const opts = leadSourceOptions(["Partner"], ["seminar", "Trade Show", "trade  show", "referral"]);
+    expect(opts.slice(0, 2)).toEqual(["Partner", "Client Referral"]);
+    expect(opts).toContain("Trade Show");
+    expect(opts.filter((o) => o.toLowerCase().includes("trade"))).toHaveLength(1);
+    expect(opts).not.toContain("seminar");
+    expect(opts).not.toContain("referral");
+  });
+
+  it("Salutation is a picklist too: Mr / mrs. / DR read as the list entries", () => {
+    const sal = PICKLISTS[1];
+    expect(picklistOption("Mr", BASE_SALUTATIONS, sal.aliases)).toBe("Mr.");
+    expect(picklistOption("mrs.", BASE_SALUTATIONS, sal.aliases)).toBe("Mrs.");
+    expect(picklistOption("DR", BASE_SALUTATIONS, sal.aliases)).toBe("Dr.");
+    expect(picklistOption("Doctor", BASE_SALUTATIONS, sal.aliases)).toBe("Dr.");
+    expect(picklistOptions([], BASE_SALUTATIONS, ["Mr", "Prof."], sal.aliases)).toEqual([...BASE_SALUTATIONS, "Prof."]);
+  });
+
+  it("the mapper keeps the Zoho text for the run to place on the list", () => {
+    expect(mapZohoContact({ "Record Id": "1", "Contact Name": "A B", Salutation: "Mr" }).custom.cf_zoho_salutation).toBe("Mr");
+    expect(mapZohoContact({ "Record Id": "1", "Contact Name": "A B", Salutation: "Mr" }).gender).toBe("M");
+    expect(mapZohoContact({ "Record Id": "1", "Contact Name": "A B", "Lead Source": "Seminar" }).custom.cf_zoho_lead_source).toBe("Seminar");
   });
 });
 

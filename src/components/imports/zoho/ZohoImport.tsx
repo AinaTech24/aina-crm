@@ -7,7 +7,7 @@
  * Record Id the clients step stores.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, FileSpreadsheet, Loader2 } from "lucide-react";
 import { Button, buttonClass } from "@/components/ui/Button";
@@ -22,9 +22,61 @@ type Kind = "contacts" | "meetings";
 export function ZohoImport({ mayContacts, mayMeetings }: { mayContacts: boolean; mayMeetings: boolean }) {
   return (
     <div className="space-y-4">
+      {mayContacts && <ClientFields />}
       <Step kind="contacts" n={1} title="Clients — Zoho Contacts export" allowed={mayContacts} />
       <Step kind="meetings" n={2} title="Meetings — Zoho Meetings export" allowed={mayMeetings} />
     </div>
+  );
+}
+
+/** Puts every Zoho column on the client form now, before any import. */
+function ClientFields() {
+  const [state, setState] = useState<{ present: number; total: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/imports/zoho/fields").then((r) => (r.ok ? r.json() : null)).then((j) => j && setState(j)).catch(() => {});
+  }, []);
+  async function add() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/imports/zoho/fields", { method: "POST" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setErr(j.error ?? "Something went wrong.");
+      else setState({ present: j.present, total: j.total });
+    } finally {
+      setBusy(false);
+    }
+  }
+  // Shown even before (or without) the count, so a slow or failed check never hides the button.
+  const all = !!state && state.present >= state.total;
+  return (
+    <Card>
+      <CardHeader
+        title="Client fields from Zoho"
+        action={all ? <Badge tone="success" dot>On the client form</Badge> : undefined}
+      />
+      <CardBody className="space-y-3 text-sm">
+        <p>
+          {!state
+            ? "Lead Source, Salutation, TIN, IIFL Account, the product ticks and the rest of Zoho's client columns, as fields on every client."
+            : all
+            ? `All ${state.total} Zoho fields are on the client form (client page → Custom fields; Lead Source and Salutation are picklists).`
+            : `${state.present} of ${state.total} Zoho fields are on the client form. Lead Source, Salutation, TIN, IIFL Account, the product ticks and the rest appear on every client once added.`}
+        </p>
+        {err && <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">{err}</div>}
+        {!all && (
+          <Button variant="secondary" disabled={busy} onClick={add}>
+            {busy ? <Loader2 className="size-4 animate-spin" /> : null}
+            Add the Zoho fields to the client form
+          </Button>
+        )}
+        <div>
+          <Link className="underline" href="/dashboard/settings/custom-fields">Settings → Custom fields</Link> to rename, reorder or edit a picklist.
+        </div>
+      </CardBody>
+    </Card>
   );
 }
 
@@ -243,6 +295,13 @@ function ContactsPreview({ p }: { p: ContactImportResult }) {
       <PeopleTable rows={p.owners.map((o) => ({ owner: o.owner, count: o.clients, user: o.user }))} unit="Clients" />
       <ul className="text-sm space-y-1">
         <li>Families: {f.created} new, {f.joinedExisting} existing · {f.membersLinked} members linked{f.inAnotherFamily ? ` · ${f.inAnotherFamily} already in another family (left there)` : ""}{f.headMissing ? ` · ${f.headMissing} whose family owner is not in the file` : ""}</li>
+        {p.picklists.map((pl) => (
+          <li key={pl.label}>
+            {pl.label} picklist on the client: {pl.options.length} options
+            {pl.addedFromFile.length > 0 && <> · new from Zoho: {pl.addedFromFile.join(", ")}</>}
+            {pl.convertedFromText && <> · the old text field becomes this picklist</>}
+          </li>
+        ))}
         <li>Referrals linked to the referring client: {p.referralsLinked}</li>
         <li>Products marked "Held with us" on Cross-sell: {p.crossSellClients} clients</li>
         <li>Risk profiles: {p.riskProfiles} (recorded as provisional — confirm with each client)</li>

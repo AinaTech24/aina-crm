@@ -27,7 +27,7 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { withTenant } from "@/db/client";
 import { recordAudit } from "@/lib/audit";
-import { customFieldDefs, families, investors } from "@/db/schema";
+import { families, investors } from "@/db/schema";
 import { healthFields } from "@/lib/investors/health";
 import { applyRiskCategory } from "@/lib/risk-profile/apply";
 import { familyHealthFields } from "@/lib/families/health";
@@ -39,8 +39,17 @@ import { applyFamilySharedDetails } from "@/lib/families/shared-details";
 import { recomputeFamilyHealth } from "@/lib/families/health-persist";
 import { onClientFamilyMapped } from "@/lib/families/journey";
 import { HEAD_ROLE } from "@/lib/families/roles";
-import { CONTACT_CUSTOM_FIELDS, IGNORED_CONTACT_COLUMNS, ZOHO_ID_FIELD, mapZohoContact, ownerKey, type MappedContact } from "./contacts";
+import {
+  CONTACT_CUSTOM_FIELDS,
+  IGNORED_CONTACT_COLUMNS,
+  ZOHO_ID_FIELD,
+  PICKLISTS,
+  mapZohoContact,
+  ownerKey,
+  type MappedContact,
+} from "./contacts";
 import { ZohoFileError } from "./workbook";
+import { ensureZohoClientFields, type PicklistResult } from "./fields";
 
 export type ImportActor = { tenantId: string; userId: string; branchId: string | null; roles: string[] };
 
@@ -56,6 +65,8 @@ export type ContactImportResult = {
   families: { created: number; joinedExisting: number; membersLinked: number; inAnotherFamily: number; headMissing: number; aloneNotCreated: number };
   referralsLinked: number;
   customFieldsCreated: string[];
+  /** The client picklists (Lead Source, Salutation): their options, and which came from this file. */
+  picklists: PicklistResult[];
   crossSellClients: number;
   riskProfiles: number;
   minors: number;
@@ -100,6 +111,7 @@ export async function importZohoContacts(
       families: { created: 0, joinedExisting: 0, membersLinked: 0, inAnotherFamily: 0, headMissing: 0, aloneNotCreated: 0 },
       referralsLinked: 0,
       customFieldsCreated: [],
+      picklists: [],
       crossSellClients: 0,
       riskProfiles: 0,
       minors: 0,
@@ -134,29 +146,30 @@ export async function importZohoContacts(
     const me = users.find((u) => u.id === actor.userId);
     const ownerOf = (m: MappedContact) => (m.ownerText ? userByKey.get(ownerKey(m.ownerText)) : undefined) ?? me ?? null;
 
-    // ── Custom fields this file needs ───────────────────────────────
-    const usedKeys = new Set<string>();
-    for (const m of mapped) for (const k of Object.keys(m.custom)) usedKeys.add(k);
-    usedKeys.add(ZOHO_ID_FIELD.key);
-    const defs = (await tx.execute(sql`
-      SELECT key, sort_order FROM custom_field_defs WHERE tenant_id = ${actor.tenantId}::uuid AND entity = 'investor'
-    `)).rows as Array<{ key: string; sort_order: number }>;
-    const haveKey = new Set(defs.map((d) => d.key));
-    let sortOrder = defs.reduce((mx, d) => Math.max(mx, Number(d.sort_order) || 0), 0);
-    for (const f of CONTACT_CUSTOM_FIELDS) {
-      if (!usedKeys.has(f.key) || haveKey.has(f.key)) continue;
-      await tx.insert(customFieldDefs).values({
-        tenantId: actor.tenantId,
-        entity: "investor",
-        key: f.key,
-        label: f.label,
-        type: f.type,
-        options: null,
-        required: false,
-        sortOrder: ++sortOrder,
-        createdBy: actor.userId,
-      });
-      result.customFieldsCreated.push(f.label);
+    // ── The firm's Zoho client fields (all of them, even ones this file leaves blank) ──
+    const fileValues: Record<string, string[]> = {};
+    for (const pl of PICKLISTS) fileValues[pl.field.key] = mapped.map((m) => String(m.custom[pl.field.key] ?? "")).filter(Boolean);
+    const fields = await ensureZohoClientFields(tx, actor.tenantId, actor.userId, fileValues);
+    result.customFieldsCreated = fields.created;
+    result.picklists = Object.values(fields.picklists);
+    for (const pl of [...PICKLISTS].reverse()) {
+      const place = fields.placeOn[pl.field.key];
+      const tally = new Map<string, { to: string; count: number }>();
+      for (const m of mapped) {
+        const raw = m.custom[pl.field.key];
+        if (typeof raw !== "string" || !raw) continue;
+        const to = place.get(raw) ?? raw;
+        m.custom[pl.field.key] = to;
+        const t = tally.get(raw) ?? { to, count: 0 };
+        t.count++;
+        tally.set(raw, t);
+      }
+      if (tally.size) {
+        result.values.unshift({
+          label: pl.field.label,
+          items: [...tally.entries()].map(([value, x]) => ({ value, ...x })).sort((a, b) => b.count - a.count).slice(0, 30),
+        });
+      }
     }
 
     // ── Clients already in the CRM ──────────────────────────────────
