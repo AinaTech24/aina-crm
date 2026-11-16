@@ -70,7 +70,19 @@ function inDays(n: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function ProposalsBulkTable({ rows, canRenew = false }: { rows: Row[]; canRenew?: boolean }) {
+export function ProposalsBulkTable({
+  rows,
+  canRenew = false,
+  colOrder,
+  extraCols = [],
+}: {
+  rows: Row[];
+  canRenew?: boolean;
+  /** Column keys in the order to draw them (built-in keys and `x:<field>`); decided on the server from the person's cookie. */
+  colOrder?: string[];
+  /** The fields the person added, with their labels; their values ride on `row.extra`. */
+  extraCols?: { key: string; label: string }[];
+}) {
   const router = useRouter();
   const [preview, setPreview] = useState<Row | null>(null);
   const [renewing, setRenewing] = useState<string | null>(null);
@@ -106,7 +118,7 @@ export function ProposalsBulkTable({ rows, canRenew = false }: { rows: Row[]; ca
     }
   }
 
-  const columns: BulkColumn<Row>[] = [
+  const builtIn: BulkColumn<Row>[] = [
     {
       key: "number", colKey: "number", header: "#", thClass: "text-left px-4 py-2 font-medium", tdClass: "px-4 py-3 text-xs whitespace-nowrap",
       render: (p) => (
@@ -201,6 +213,24 @@ export function ProposalsBulkTable({ rows, canRenew = false }: { rows: Row[]; ca
       ),
     },
   ];
+
+  // Columns in this person's order: the built-in ones, then any field they
+  // added (`x:<field>`). Without an order the built-ins keep their own.
+  const extraColumns: BulkColumn<Row>[] = extraCols.map((c) => ({
+    key: `x:${c.key}`,
+    colKey: `x:${c.key}`,
+    header: c.label,
+    thClass: "text-left py-2 font-medium whitespace-nowrap",
+    tdClass: "py-3 text-xs max-w-[16rem] truncate",
+    render: (p) => {
+      const v = p.extra?.[c.key];
+      return v ? <span title={v}>{v}</span> : <span className="text-muted-foreground">—</span>;
+    },
+  }));
+  const byKey = new Map([...builtIn, ...extraColumns].map((c) => [c.key, c]));
+  const columns: BulkColumn<Row>[] = colOrder && colOrder.length
+    ? colOrder.map((k) => byKey.get(k)).filter((c): c is BulkColumn<Row> => !!c)
+    : builtIn;
 
   return (
     <>

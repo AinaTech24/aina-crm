@@ -6,7 +6,7 @@
  * side-peek drawer for rapid lead inspections.
  */
 
-import { useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
@@ -41,7 +41,12 @@ type Row = {
   score: number;
   /** Every other lead field, formatted on the server (null = blank). */
   cells: Record<string, string | null>;
+  /** Values of the fields this person added from the column menu (`x:<field>` columns). */
+  extra?: Record<string, string>;
 };
+
+/** The built-in columns in their default order (the extra lead fields follow, then Actions). */
+const BASE_COLUMN_KEYS = ["score", "name", "stage", "intendedAmount", "source", "nextFollowUpAt", "lastContactAt", "owner", "createdAt"];
 
 const toneStyles: Record<string, string> = {
   blue: "bg-blue-50 text-blue-700 border-blue-200",
@@ -72,11 +77,17 @@ export function LeadsTable({
   extraColumns,
   sort,
   dir = "desc",
+  colOrder,
+  addedCols = [],
 }: {
   rows: Row[];
   extraColumns: LeadExtraColumn[];
   sort: string;
   dir?: "asc" | "desc";
+  /** Column keys in the order to draw them (built-in keys and `x:<field>`); server-decided from the person's cookie. */
+  colOrder?: string[];
+  /** Fields the person added from "Manage columns" — drawn as `x:<key>`. */
+  addedCols?: { key: string; label: string }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -148,6 +159,158 @@ export function LeadsTable({
 
   const sortArrow = (key: string) => (sort === key ? (dir === "asc" ? "↑" : "↓") : "");
 
+  // ── Columns, in the order this person chose ──────────────────────────────
+  // Built-in columns, the other lead fields, and any field they added
+  // (`x:<field>`); the server reads their cookie and hands the order down, so
+  // nothing reshuffles after paint.
+  const py = isCompact ? "py-1.5" : "py-2.5";
+  const defaultOrder = [...BASE_COLUMN_KEYS, ...extraColumns.map((c) => c.key), "actions"];
+  const known = new Set([...defaultOrder, ...addedCols.map((c) => `x:${c.key}`)]);
+  const order = (colOrder && colOrder.length ? colOrder : defaultOrder).filter((k) => known.has(k));
+  const extraByKey = new Map(extraColumns.map((c) => [c.key, c]));
+  const addedLabel = (k: string) => addedCols.find((c) => `x:${c.key}` === k)?.label ?? k.slice(2);
+
+  const heads: Record<string, ReactNode> = {
+    score: (
+      <th data-col="score" className={`${py} font-medium`}>
+        <button onClick={() => setSort("score")} className="inline-flex items-center gap-1 hover:text-foreground">
+          Score <ArrowUpDown className="size-3" /> {sortArrow("score")}
+        </button>
+      </th>
+    ),
+    name: <th data-col="name" className={`px-1 ${py} font-medium`}>Name</th>,
+    stage: <th data-col="stage" className={`${py} font-medium`}>Stage</th>,
+    intendedAmount: <th data-col="intendedAmount" className={`${py} font-medium text-right pr-6`}>Intended Amount</th>,
+    source: <th data-col="source" className={`${py} font-medium`}>Source</th>,
+    nextFollowUpAt: <th data-col="nextFollowUpAt" className={`${py} font-medium`}>Next Follow-Up</th>,
+    lastContactAt: <th data-col="lastContactAt" className={`${py} font-medium`}>Last Contacted</th>,
+    owner: <th data-col="owner" className={`${py} font-medium`}>Owner (RM)</th>,
+    createdAt: (
+      <th data-col="createdAt" className={`${py} font-medium`}>
+        <button onClick={() => setSort("recent")} className="inline-flex items-center gap-1 hover:text-foreground">
+          Created <ArrowUpDown className="size-3" /> {sortArrow("recent")}
+        </button>
+      </th>
+    ),
+    actions: <th data-col="actions" className={`px-4 ${py} text-right font-medium`}>Actions</th>,
+  };
+  for (const c of extraColumns) {
+    heads[c.key] = <th data-col={c.key} className={`${py} font-medium whitespace-nowrap`}>{c.label}</th>;
+  }
+  for (const k of order) {
+    if (k.startsWith("x:")) {
+      heads[k] = <th data-col={k} className={`${py} font-medium whitespace-nowrap`}>{addedLabel(k)}</th>;
+    }
+  }
+
+  function cellFor(k: string, l: Row, band: ReturnType<typeof leadScoreBand>): ReactNode {
+    switch (k) {
+      case "score":
+        return (
+          <td data-col="score" className={py}>
+            <span className={`inline-flex items-center gap-1 chip text-xs border font-bold tabular-nums ${band.chip}`}>
+              <span className={`size-1.5 rounded-full ${band.dot}`} />
+              {l.score}
+            </span>
+          </td>
+        );
+      case "name":
+        return (
+          <td data-col="name" className={`px-1 ${py} font-medium`}>
+            <div className="flex items-center gap-2">
+              <Avatar src={l.avatarUrl ? `/api/leads/${l.id}/avatar` : null} name={l.name} size={isCompact ? 22 : 28} />
+              <div>
+                <Link href={`/dashboard/leads/${l.id}`} className="hover:text-brand-navy hover:underline">{l.name}</Link>
+                {(l.phone || l.email) && (
+                  <div className="text-2xs text-muted-foreground mt-0.5 space-x-2 font-mono">
+                    {l.phone && <span>{l.phone}</span>}
+                    {l.phone && l.email && <span>·</span>}
+                    {l.email && <span>{l.email}</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+          </td>
+        );
+      case "stage":
+        return (
+          <td data-col="stage" className={py}>
+            <span className={`chip text-xs border font-medium ${toneStyles[l.stageTone] ?? "bg-muted"}`}>{l.stageLabel}</span>
+          </td>
+        );
+      case "intendedAmount":
+        return (
+          <td data-col="intendedAmount" className={`${py} text-right pr-6 tabular-nums font-semibold`}>
+            {l.intendedAmount ? formatINR(l.intendedAmount) : "—"}
+          </td>
+        );
+      case "source":
+        return (
+          <td data-col="source" className={py}>
+            <span className={`chip text-xs border ${sourceColors[l.source] ?? "bg-muted"}`}>{leadSourceLabel(l.source)}</span>
+          </td>
+        );
+      case "nextFollowUpAt":
+        return (
+          <td data-col="nextFollowUpAt" className={`${py} text-xs text-muted-foreground tabular-nums`}>
+            {l.nextFollowUpAt ? formatDate(l.nextFollowUpAt) : "—"}
+          </td>
+        );
+      case "lastContactAt":
+        return (
+          <td data-col="lastContactAt" className={`${py} text-xs text-muted-foreground tabular-nums`}>
+            {l.lastContactAt ? formatDate(l.lastContactAt) : "—"}
+          </td>
+        );
+      case "owner":
+        return <td data-col="owner" className={`${py} text-xs font-medium`}>{l.owner ?? "—"}</td>;
+      case "createdAt":
+        return (
+          <td data-col="createdAt" className={`${py} text-xs text-muted-foreground tabular-nums`}>
+            {l.createdAt ? formatDate(l.createdAt) : "—"}
+          </td>
+        );
+      case "actions":
+        return (
+          <td data-col="actions" className={`px-4 ${py} text-right`}>
+            <div className="flex items-center justify-end gap-1" data-no-row-nav>
+              <button
+                type="button"
+                onClick={() => setSidePeekLead(l)}
+                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                title="Side-Peek Snapshot"
+              >
+                <Eye className="size-3.5" />
+              </button>
+              <RowActions inline editHref={`/dashboard/leads/${l.id}`} deleteUrl={`/api/leads/${l.id}`} itemLabel="lead" itemName={l.name} verb="Delete" />
+            </div>
+          </td>
+        );
+      default: {
+        if (k.startsWith("x:")) {
+          const v = l.extra?.[k.slice(2)];
+          return (
+            <td data-col={k} className={`${py} text-xs whitespace-nowrap ${v ? "" : "text-muted-foreground"}`}>
+              {v ?? "—"}
+            </td>
+          );
+        }
+        const c = extraByKey.get(k);
+        if (!c) return null;
+        const v = l.cells[c.key];
+        return (
+          <td
+            data-col={c.key}
+            title={c.long && v ? v : undefined}
+            className={`${py} text-xs ${v ? "" : "text-muted-foreground"} ${c.long ? "max-w-xs truncate" : "whitespace-nowrap"}`}
+          >
+            {v ?? "—"}
+          </td>
+        );
+      }
+    }
+  }
+
   return (
     <div className="card-surface overflow-hidden relative">
       {/* Table Sub-header with Density Switcher */}
@@ -167,27 +330,9 @@ export function LeadsTable({
               <th className={`px-3 ${isCompact ? "py-1.5" : "py-2.5"} w-8`}>
                 <input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-4 rounded" aria-label="Select all" />
               </th>
-              <th data-col="score" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
-                <button onClick={() => setSort("score")} className="inline-flex items-center gap-1 hover:text-foreground">
-                  Score <ArrowUpDown className="size-3" /> {sortArrow("score")}
-                </button>
-              </th>
-              <th data-col="name" className={`px-1 ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Name</th>
-              <th data-col="stage" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Stage</th>
-              <th data-col="intendedAmount" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium text-right pr-6`}>Intended Amount</th>
-              <th data-col="source" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Source</th>
-              <th data-col="nextFollowUpAt" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Next Follow-Up</th>
-              <th data-col="lastContactAt" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Last Contacted</th>
-              <th data-col="owner" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Owner (RM)</th>
-              <th data-col="createdAt" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
-                <button onClick={() => setSort("recent")} className="inline-flex items-center gap-1 hover:text-foreground">
-                  Created <ArrowUpDown className="size-3" /> {sortArrow("recent")}
-                </button>
-              </th>
-              {extraColumns.map((c) => (
-                <th key={c.key} data-col={c.key} className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium whitespace-nowrap`}>{c.label}</th>
+              {order.map((k) => (
+                <Fragment key={k}>{heads[k] ?? null}</Fragment>
               ))}
-              <th data-col="actions" className={`px-4 ${isCompact ? "py-1.5" : "py-2.5"} text-right font-medium`}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -209,72 +354,9 @@ export function LeadsTable({
                   <td className={`px-3 ${isCompact ? "py-1.5" : "py-2.5"}`}>
                     <input type="checkbox" checked={isSel} onChange={() => toggle(l.id)} className="size-3.5 rounded" aria-label={`Select ${l.name}`} />
                   </td>
-                  <td data-col="score" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
-                    <span className={`inline-flex items-center gap-1 chip text-xs border font-bold tabular-nums ${band.chip}`}>
-                      <span className={`size-1.5 rounded-full ${band.dot}`} />
-                      {l.score}
-                    </span>
-                  </td>
-                  <td data-col="name" className={`px-1 ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
-                    <div className="flex items-center gap-2">
-                      <Avatar src={l.avatarUrl ? `/api/leads/${l.id}/avatar` : null} name={l.name} size={isCompact ? 22 : 28} />
-                      <div>
-                        <Link href={`/dashboard/leads/${l.id}`} className="hover:text-brand-navy hover:underline">{l.name}</Link>
-                        {(l.phone || l.email) && (
-                          <div className="text-2xs text-muted-foreground mt-0.5 space-x-2 font-mono">
-                            {l.phone && <span>{l.phone}</span>}
-                            {l.phone && l.email && <span>·</span>}
-                            {l.email && <span>{l.email}</span>}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td data-col="stage" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
-                    <span className={`chip text-xs border font-medium ${toneStyles[l.stageTone] ?? "bg-muted"}`}>{l.stageLabel}</span>
-                  </td>
-                  <td data-col="intendedAmount" className={`${isCompact ? "py-1.5" : "py-2.5"} text-right pr-6 tabular-nums font-semibold`}>
-                    {l.intendedAmount ? formatINR(l.intendedAmount) : "—"}
-                  </td>
-                  <td data-col="source" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
-                    <span className={`chip text-xs border ${sourceColors[l.source] ?? "bg-muted"}`}>{leadSourceLabel(l.source)}</span>
-                  </td>
-                  <td data-col="nextFollowUpAt" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs text-muted-foreground tabular-nums`}>
-                    {l.nextFollowUpAt ? formatDate(l.nextFollowUpAt) : "—"}
-                  </td>
-                  <td data-col="lastContactAt" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs text-muted-foreground tabular-nums`}>
-                    {l.lastContactAt ? formatDate(l.lastContactAt) : "—"}
-                  </td>
-                  <td data-col="owner" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs font-medium`}>{l.owner ?? "—"}</td>
-                  <td data-col="createdAt" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs text-muted-foreground tabular-nums`}>
-                    {l.createdAt ? formatDate(l.createdAt) : "—"}
-                  </td>
-                  {extraColumns.map((c) => {
-                    const v = l.cells[c.key];
-                    return (
-                      <td
-                        key={c.key}
-                        data-col={c.key}
-                        title={c.long && v ? v : undefined}
-                        className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs ${v ? "" : "text-muted-foreground"} ${c.long ? "max-w-xs truncate" : "whitespace-nowrap"}`}
-                      >
-                        {v ?? "—"}
-                      </td>
-                    );
-                  })}
-                  <td data-col="actions" className={`px-4 ${isCompact ? "py-1.5" : "py-2.5"} text-right`}>
-                    <div className="flex items-center justify-end gap-1" data-no-row-nav>
-                      <button
-                        type="button"
-                        onClick={() => setSidePeekLead(l)}
-                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                        title="Side-Peek Snapshot"
-                      >
-                        <Eye className="size-3.5" />
-                      </button>
-                      <RowActions inline editHref={`/dashboard/leads/${l.id}`} deleteUrl={`/api/leads/${l.id}`} itemLabel="lead" itemName={l.name} verb="Delete" />
-                    </div>
-                  </td>
+                  {order.map((k) => (
+                    <Fragment key={k}>{cellFor(k, l, band)}</Fragment>
+                  ))}
                 </tr>
               );
             })}

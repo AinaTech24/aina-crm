@@ -11,7 +11,7 @@
  * Preserves data-table / data-col attributes for the ColumnManager.
  */
 
-import { useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, X, UserCog, RefreshCw, Ban, Trash2 } from "lucide-react";
@@ -20,6 +20,7 @@ import { RmSelector } from "@/components/common/RmSelector";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
+import { SERVICE_REQUEST_DEFAULT_COLUMNS } from "@/lib/list-columns/service-request-fields";
 
 const TYPE_LABEL: Record<string, string> = {
   nominee_update: "Nominee Update", bank_update: "Bank Update", mobile_update: "Mobile Update",
@@ -77,8 +78,21 @@ const PRIORITY_TONE: Record<string, string> = {
 };
 
 /** `canDelete`: the viewer holds service_request.delete (lib/service-requests/delete.ts).
- *  A complaint is never offered for deletion — it can only be closed. */
-export function ServiceRequestsTable({ rows, canDelete = false }: { rows: any[]; canDelete?: boolean }) {
+ *  A complaint is never offered for deletion — it can only be closed.
+ *  `colOrder`: column keys in the order to draw them (built-in keys and `x:<field>`), decided
+ *  on the server from the person's cookie; `extraCols`: the fields they added, for headings
+ *  (values are on each row's `extra`). */
+export function ServiceRequestsTable({
+  rows,
+  canDelete = false,
+  colOrder,
+  extraCols = [],
+}: {
+  rows: any[];
+  canDelete?: boolean;
+  colOrder?: string[];
+  extraCols?: { key: string; label: string }[];
+}) {
   const router = useRouter();
   const toast = useToast();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -127,6 +141,117 @@ export function ServiceRequestsTable({ rows, canDelete = false }: { rows: any[];
     );
   }
 
+  const order = (colOrder && colOrder.length ? colOrder : SERVICE_REQUEST_DEFAULT_COLUMNS).filter(
+    (k) => !k.startsWith("x:") || extraCols.some((c) => `x:${c.key}` === k),
+  );
+  const extraLabel = (k: string) => extraCols.find((c) => `x:${c.key}` === k)?.label ?? k.slice(2);
+
+  const heads: Record<string, ReactNode> = {
+    ticket: <th data-col="ticket" className="text-left px-1 py-2 font-medium">Ticket #</th>,
+    client: <th data-col="client" className="text-left py-2 font-medium">Client</th>,
+    type: <th data-col="type" className="text-left py-2 font-medium">Request type</th>,
+    subject: <th data-col="subject" className="text-left py-2 font-medium">Subject</th>,
+    assignee: <th data-col="assignee" className="text-left py-2 font-medium">Assigned to</th>,
+    due: <th data-col="due" className="text-left py-2 font-medium" title="Time left before the resolution SLA">Due</th>,
+    status: <th data-col="status" className="text-left py-2 font-medium">Status</th>,
+    raised: <th data-col="raised" className="text-left py-2 font-medium">Raised</th>,
+    priority: <th data-col="priority" className="text-left py-2 font-medium">Priority</th>,
+    tat: <th data-col="tat" className="text-right py-2 font-medium" title="Days since the ticket was raised">Age (days)</th>,
+    attachments: <th data-col="attachments" className="text-right py-2 font-medium pr-4">Att.</th>,
+    actions: <th data-col="actions" className="px-4 py-2"></th>,
+  };
+  for (const k of order) {
+    if (k.startsWith("x:")) {
+      heads[k] = <th data-col={k} className="text-left py-2 pr-3 font-medium whitespace-nowrap">{extraLabel(k)}</th>;
+    }
+  }
+
+  function cellFor(k: string, sr: any): ReactNode {
+    switch (k) {
+      case "ticket":
+        return (
+          <td data-col="ticket" className="px-1 py-3 font-mono text-xs whitespace-nowrap">
+            <Link href={`/dashboard/service-requests/${sr.id}`} className="hover:underline text-brand-cyan-deep">{sr.ticket_no}</Link>
+          </td>
+        );
+      case "client":
+        return (
+          <td data-col="client" className="py-3 whitespace-nowrap">
+            <div className="flex items-center gap-2">
+              <Avatar src={sr.investor_id && sr.investor_avatar_url ? `/api/investors/${sr.investor_id}/avatar` : null} name={sr.investor_name} size={26} />
+              {sr.investor_id ? (
+                <Link href={`/dashboard/investors/${sr.investor_id}`} className="hover:underline">{sr.investor_name}</Link>
+              ) : (<span>{sr.investor_name ?? "—"}</span>)}
+            </div>
+          </td>
+        );
+      case "type":
+        return <td data-col="type" className="py-3 pr-2 text-xs !whitespace-normal">{TYPE_LABEL[sr.type] ?? sr.type}</td>;
+      case "subject":
+        return (
+          <td data-col="subject" className="py-3 pr-3 text-sm !whitespace-normal">
+            {/* Wraps to two lines rather than forcing the table wider
+                than a laptop screen and pushing Status off the edge. */}
+            <Link href={`/dashboard/service-requests/${sr.id}`} className="line-clamp-2 font-medium hover:underline" title={sr.subject ?? undefined}>
+              {sr.subject || <span className="font-normal text-muted-foreground">No subject</span>}
+            </Link>
+          </td>
+        );
+      case "assignee":
+        return <td data-col="assignee" className="py-3 text-xs whitespace-nowrap">{sr.assignee_name ?? <span className="text-muted-foreground">Unassigned</span>}</td>;
+      case "due":
+        return (
+          <td data-col="due" className="py-3 text-xs whitespace-nowrap tabular-nums">
+            {(() => {
+              const c = slaCountdown(sr);
+              return <span className={c.tone} title={c.title}>{c.text}</span>;
+            })()}
+          </td>
+        );
+      case "status":
+        return (
+          <td data-col="status" className="py-3 whitespace-nowrap">
+            {/* A badge, not a control: change status on the ticket. */}
+            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_TONE[sr.status] ?? ""}`}>
+              {STATUS_LABEL[sr.status] ?? sr.status}
+            </span>
+          </td>
+        );
+      case "raised":
+        return <td data-col="raised" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">{formatDate(sr.created_at)}</td>;
+      case "priority":
+        return <td data-col="priority" className={`py-3 text-xs capitalize ${PRIORITY_TONE[sr.priority]}`}>{sr.priority}</td>;
+      case "tat":
+        return (
+          <td data-col="tat" className="py-3 text-right tabular-nums">
+            {sr.breached ? <span className="text-rose-600 font-semibold" title="Past the promised resolution date">{sr.tat_days}</span> : <span className="text-muted-foreground">{sr.tat_days}</span>}
+          </td>
+        );
+      case "attachments":
+        return <td data-col="attachments" className="py-3 text-right tabular-nums text-muted-foreground">{sr.attach_count > 0 ? sr.attach_count : "—"}</td>;
+      case "actions":
+        return (
+          <td data-col="actions" className="px-4 py-3 text-right">
+            <div className="inline-flex items-center justify-end gap-1">
+              {canDelete && sr.type !== "complaint" && (
+                <RowActions inline deleteUrl={`/api/service-requests/${sr.id}?permanent=1`} itemLabel="ticket" itemName={sr.ticket_no} verb="Delete" permanent />
+              )}
+              <RowActions editHref={`/dashboard/service-requests/${sr.id}`} deleteUrl={`/api/service-requests/${sr.id}`} itemLabel="ticket" itemName={sr.ticket_no} verb="Close" deleteIcon={Ban} />
+            </div>
+          </td>
+        );
+      default: {
+        if (!k.startsWith("x:")) return null;
+        const v = sr.extra?.[k.slice(2)];
+        return (
+          <td data-col={k} className={`py-3 pr-3 text-xs whitespace-nowrap ${v ? "" : "text-muted-foreground"}`}>
+            {v ?? "—"}
+          </td>
+        );
+      }
+    }
+  }
+
   return (
     <div className="card-surface">
       {selected.size > 0 && (
@@ -166,18 +291,9 @@ export function ServiceRequestsTable({ rows, canDelete = false }: { rows: any[];
           <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
             <tr>
               <th className="px-3 py-2 w-8"><input type="checkbox" checked={allSelected} onChange={toggleAll} className={`size-4 rounded transition-opacity ${selected.size > 0 ? "opacity-100" : "opacity-0 group-hover/tbl:opacity-100 focus:opacity-100"}`} aria-label="Select all" /></th>
-              <th data-col="ticket" className="text-left px-1 py-2 font-medium">Ticket #</th>
-              <th data-col="client" className="text-left py-2 font-medium">Client</th>
-              <th data-col="type" className="text-left py-2 font-medium">Request type</th>
-              <th data-col="subject" className="text-left py-2 font-medium">Subject</th>
-              <th data-col="assignee" className="text-left py-2 font-medium">Assigned to</th>
-              <th data-col="due" className="text-left py-2 font-medium" title="Time left before the resolution SLA">Due</th>
-              <th data-col="status" className="text-left py-2 font-medium">Status</th>
-              <th data-col="raised" className="text-left py-2 font-medium">Raised</th>
-              <th data-col="priority" className="text-left py-2 font-medium">Priority</th>
-              <th data-col="tat" className="text-right py-2 font-medium" title="Days since the ticket was raised">Age (days)</th>
-              <th data-col="attachments" className="text-right py-2 font-medium pr-4">Att.</th>
-              <th data-col="actions" className="px-4 py-2"></th>
+              {order.map((k) => (
+                <Fragment key={k}>{heads[k] ?? null}</Fragment>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -186,52 +302,9 @@ export function ServiceRequestsTable({ rows, canDelete = false }: { rows: any[];
               return (
                 <tr key={sr.id} className={`group/row border-b last:border-0 hover:bg-secondary/40 ${isSel ? "bg-brand-cyan-light/30" : ""}`}>
                   <td className="px-3 py-3"><input type="checkbox" checked={isSel} onChange={() => toggle(sr.id)} className={`size-3.5 rounded transition-opacity ${isSel ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus:opacity-100"}`} aria-label={`Select ${sr.ticket_no}`} /></td>
-                  <td data-col="ticket" className="px-1 py-3 font-mono text-xs whitespace-nowrap">
-                    <Link href={`/dashboard/service-requests/${sr.id}`} className="hover:underline text-brand-cyan-deep">{sr.ticket_no}</Link>
-                  </td>
-                  <td data-col="client" className="py-3 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <Avatar src={sr.investor_id && sr.investor_avatar_url ? `/api/investors/${sr.investor_id}/avatar` : null} name={sr.investor_name} size={26} />
-                      {sr.investor_id ? (
-                        <Link href={`/dashboard/investors/${sr.investor_id}`} className="hover:underline">{sr.investor_name}</Link>
-                      ) : (<span>{sr.investor_name ?? "—"}</span>)}
-                    </div>
-                  </td>
-                  <td data-col="type" className="py-3 pr-2 text-xs !whitespace-normal">{TYPE_LABEL[sr.type] ?? sr.type}</td>
-                  <td data-col="subject" className="py-3 pr-3 text-sm !whitespace-normal">
-                    {/* Wraps to two lines rather than forcing the table wider
-                        than a laptop screen and pushing Status off the edge. */}
-                    <Link href={`/dashboard/service-requests/${sr.id}`} className="line-clamp-2 font-medium hover:underline" title={sr.subject ?? undefined}>
-                      {sr.subject || <span className="font-normal text-muted-foreground">No subject</span>}
-                    </Link>
-                  </td>
-                  <td data-col="assignee" className="py-3 text-xs whitespace-nowrap">{sr.assignee_name ?? <span className="text-muted-foreground">Unassigned</span>}</td>
-                  <td data-col="due" className="py-3 text-xs whitespace-nowrap tabular-nums">
-                    {(() => {
-                      const c = slaCountdown(sr);
-                      return <span className={c.tone} title={c.title}>{c.text}</span>;
-                    })()}
-                  </td>
-                  <td data-col="status" className="py-3 whitespace-nowrap">
-                    {/* A badge, not a control: change status on the ticket. */}
-                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_TONE[sr.status] ?? ""}`}>
-                      {STATUS_LABEL[sr.status] ?? sr.status}
-                    </span>
-                  </td>
-                  <td data-col="raised" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">{formatDate(sr.created_at)}</td>
-                  <td data-col="priority" className={`py-3 text-xs capitalize ${PRIORITY_TONE[sr.priority]}`}>{sr.priority}</td>
-                  <td data-col="tat" className="py-3 text-right tabular-nums">
-                    {sr.breached ? <span className="text-rose-600 font-semibold" title="Past the promised resolution date">{sr.tat_days}</span> : <span className="text-muted-foreground">{sr.tat_days}</span>}
-                  </td>
-                  <td data-col="attachments" className="py-3 text-right tabular-nums text-muted-foreground">{sr.attach_count > 0 ? sr.attach_count : "—"}</td>
-                  <td data-col="actions" className="px-4 py-3 text-right">
-                    <div className="inline-flex items-center justify-end gap-1">
-                      {canDelete && sr.type !== "complaint" && (
-                        <RowActions inline deleteUrl={`/api/service-requests/${sr.id}?permanent=1`} itemLabel="ticket" itemName={sr.ticket_no} verb="Delete" permanent />
-                      )}
-                      <RowActions editHref={`/dashboard/service-requests/${sr.id}`} deleteUrl={`/api/service-requests/${sr.id}`} itemLabel="ticket" itemName={sr.ticket_no} verb="Close" deleteIcon={Ban} />
-                    </div>
-                  </td>
+                  {order.map((k) => (
+                    <Fragment key={k}>{cellFor(k, sr)}</Fragment>
+                  ))}
                 </tr>
               );
             })}

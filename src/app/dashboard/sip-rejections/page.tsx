@@ -14,6 +14,11 @@ import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
+import { loadTenantLicense } from "@/lib/auth/license";
+import { isFieldAllowed } from "@/lib/auth/field-gate";
+import { readColumnPrefs } from "@/lib/list-columns/server";
+import { EXTRA_PREFIX, orderKeys } from "@/lib/list-columns/prefs";
+import { SIP_REJ_DEFAULT_COLUMNS, allowedSipRejectionKeys, loadSipRejectionExtra, sipRejectionExtraOptions } from "@/lib/list-columns/sip-rejection-fields";
 
 const SIP_REJ_COLUMNS = [
   { key: "rejected_on", label: "Rejected on", required: true },
@@ -25,6 +30,7 @@ const SIP_REJ_COLUMNS = [
   { key: "follow_up", label: "Follow-up" },
   { key: "recovery_date", label: "Recovery date", defaultHidden: true },
   { key: "recovery_status", label: "Recovery status" },
+  { key: "auto_recover", label: "Auto-action", required: true },
   { key: "remarks", label: "Remarks" },
 ];
 
@@ -42,6 +48,12 @@ export default async function SipRejectionsPage({
   const reasonCat = (sp.reason_cat ?? "").trim();
   const overdueOnly = sp.overdue === "1";
   const mtdOnly = sp.mtd === "1";
+
+  const colPrefs = await readColumnPrefs("sip-rejections");
+  const license = await loadTenantLicense(session.tenantId, session.roles);
+  const extraOptions = sipRejectionExtraOptions((f) => isFieldAllowed(license, "investor", f));
+  const extraAllowed = allowedSipRejectionKeys(extraOptions);
+  const extraKeys = colPrefs.extra.filter((k) => extraAllowed.has(k));
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Viewer scope: a rejection is visible only when its client is. The rows
@@ -99,6 +111,14 @@ export default async function SipRejectionsPage({
       ORDER BY r.rejection_date DESC, r.created_at DESC
       LIMIT 200
     `);
+
+    // The fields this person added as columns — only for the rows on screen.
+    const extraValues = await loadSipRejectionExtra(
+      tx,
+      (rows.rows as any[]).map((x) => String(x.id)),
+      extraKeys,
+      extraAllowed,
+    );
 
     const stats = await tx.execute(sql`
       SELECT
@@ -174,9 +194,18 @@ export default async function SipRejectionsPage({
       },
       aging: { a0_2: Number(s.age_0_2), a3_7: Number(s.age_3_7), a7p: Number(s.age_7p) },
       byRm: byRm.rows as any[],
-      rows: rows.rows as any[],
+      rows: (rows.rows as any[]).map((x) => ({ ...x, extra: extraValues[String(x.id)] })),
     };
   });
+
+  // The columns in this person's order: the built-in ones, then the fields they
+  // added; their saved sequence decides and the date column stays first.
+  const colOrder = orderKeys(
+    [...SIP_REJ_DEFAULT_COLUMNS, ...extraKeys.map((k) => EXTRA_PREFIX + k)],
+    colPrefs.order,
+    ["rejected_on"],
+  );
+  const extraCols = extraKeys.map((k) => ({ key: k, label: extraOptions.find((o) => o.key === k)?.label ?? k }));
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -305,7 +334,7 @@ export default async function SipRejectionsPage({
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
-            <ColumnManager moduleKey="sip-rejections" columns={SIP_REJ_COLUMNS} />
+            <ColumnManager moduleKey="sip-rejections" columns={SIP_REJ_COLUMNS} extraFields={extraOptions} prefs={colPrefs} pinFirst={["rejected_on"]} />
             <CustomViews
               viewsKey="views:sip-rejections"
               presets={[
@@ -319,7 +348,7 @@ export default async function SipRejectionsPage({
         }
       />
 
-      <SipRejectionsTable rows={data.rows as any} />
+      <SipRejectionsTable rows={data.rows as any} colOrder={colOrder} extraCols={extraCols} />
     </div>
   );
 }

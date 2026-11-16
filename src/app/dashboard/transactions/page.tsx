@@ -17,6 +17,12 @@ import { ColumnManager } from "@/components/common/ColumnManager";
 import { buildTransactionConditions, transactionClientCondition, transactionFiltersNeedInvestors } from "@/lib/transactions/list-filters";
 import { EmptyState, InlineEmpty } from "@/components/common/EmptyState";
 import { EmailRecordButton } from "@/components/comms/EmailRecordButton";
+import { loadTenantLicense } from "@/lib/auth/license";
+import { isFieldAllowed } from "@/lib/auth/field-gate";
+import { readColumnPrefs } from "@/lib/list-columns/server";
+import { EXTRA_PREFIX, orderKeys } from "@/lib/list-columns/prefs";
+import { allowedTransactionExtraKeys, loadTransactionExtra, transactionExtraOptions } from "@/lib/list-columns/transaction-fields";
+import { Fragment, type ReactNode } from "react";
 
 
 const TRANSACTIONS_COLUMNS = [
@@ -107,6 +113,12 @@ export default async function TransactionsPage({
   // user whose permissions the owner customised (everyone else keeps the page
   // they had). A page never throws a 403.
   if (hasCustomPermissions(session) && !can(session.roles, "transactions.view", session.permissions)) redirect("/dashboard");
+  const license = await loadTenantLicense(session.tenantId, session.roles);
+  const colPrefs = await readColumnPrefs("transactions");
+  // Fields this person may add as columns (More fields in the column menu).
+  const extraOptions = transactionExtraOptions((f) => isFieldAllowed(license, "investor", f));
+  const extraAllowed = allowedTransactionExtraKeys(extraOptions);
+  const extraKeys = colPrefs.extra.filter((k) => extraAllowed.has(k));
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const dateFrom = sp.date_from ?? "";
@@ -199,7 +211,11 @@ export default async function TransactionsPage({
       sql`SELECT amc_name, count(*) AS c FROM transactions WHERE tenant_id = ${session.tenantId}::uuid AND amc_name IS NOT NULL AND amc_name <> '' GROUP BY amc_name ORDER BY c DESC LIMIT 60`
     );
 
+    // Added fields: only for the rows on this page, in the same transaction.
+    const extraValues = await loadTransactionExtra(tx, displayRows.map((r) => r.tx.id), extraKeys, extraAllowed);
+
     return {
+      extraValues,
       inflowCount: Number(s.inflowCount),
       inflowAmt: Number(s.inflowAmt),
       outflowAmt: Number(s.outflowAmt),
@@ -246,6 +262,162 @@ export default async function TransactionsPage({
     ["q", "date_from", "date_to", "amc", "source", "txtype", "status", "rm", "branch", "segment", "category", "fam", "tag", "src"].some((k) => (sp[k] ?? "").trim() !== "") ||
     Boolean(sp.cursor);
   const bookEmpty = data.displayRows.length === 0 && !filtering;
+
+  // ── Columns, in the order this person chose ─────────────────────────────
+  // The built-in columns, then the fields they added (`x:<field>`); their saved
+  // sequence decides and the date stays first. The server reads their cookie, so
+  // nothing reshuffles after paint.
+  const order = orderKeys(
+    [...TRANSACTIONS_COLUMNS.map((c) => c.key), ...extraKeys.map((k) => EXTRA_PREFIX + k)],
+    colPrefs.order,
+    ["date"],
+  );
+  const lastKey = order[order.length - 1];
+  const amountAt = order.indexOf("amount");
+  const extraLabel = (k: string) => extraOptions.find((o) => `x:${o.key}` === k)?.label ?? k.slice(2);
+  // The first column carries the left gutter, the last the right one.
+  const gut = (k: string) => (k === order[0] ? "px-4" : k === lastKey ? "pr-4" : "");
+
+  const headFor = (k: string): ReactNode => {
+    const left = `text-left py-2 font-medium ${gut(k)}`;
+    const right = `text-right py-2 font-medium ${gut(k)}`;
+    switch (k) {
+      case "date": return <th data-col="date" className={left}>Date</th>;
+      case "investor": return <th data-col="investor" className={left}>Investor</th>;
+      case "folio": return <th data-col="folio" className={left}>Folio</th>;
+      case "scheme": return <th data-col="scheme" className={left}>AMC / Scheme</th>;
+      case "category": return <th data-col="category" className={left}>Category</th>;
+      case "type": return <th data-col="type" className={left}>Type</th>;
+      case "amount": return <th data-col="amount" className={right}>Amount</th>;
+      case "units": return <th data-col="units" className={right}>Units</th>;
+      case "nav": return <th data-col="nav" className={right}>NAV</th>;
+      case "status": return <th data-col="status" className={left}>Status</th>;
+      case "source": return <th data-col="source" className={left}>Source</th>;
+      case "rm": return <th data-col="rm" className={left}>RM</th>;
+      case "remarks": return <th data-col="remarks" className={left}>Remarks</th>;
+      default:
+        return k.startsWith(EXTRA_PREFIX) ? (
+          <th data-col={k} className={`${left} whitespace-nowrap`}>{extraLabel(k)}</th>
+        ) : null;
+    }
+  };
+
+  const cellFor = (
+    k: string,
+    t: (typeof data.displayRows)[number]["tx"],
+    investorName: string | null,
+    rmName: string | null,
+    extra: Record<string, string> | undefined,
+  ): ReactNode => {
+    const g = gut(k);
+    switch (k) {
+      case "date":
+        return (
+          <td data-col="date" className={`${g} py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap`}>
+            {t.orderDate ? formatDate(t.orderDate) : "—"}
+          </td>
+        );
+      case "investor":
+        return (
+          <td data-col="investor" className={`${g} py-3 whitespace-nowrap`}>
+            {investorName ? (
+              <Link href={`/dashboard/investors/${t.investorId}`} className="hover:underline">
+                {investorName}
+              </Link>
+            ) : (
+              "—"
+            )}
+          </td>
+        );
+      case "folio":
+        return (
+          <td data-col="folio" className={`${g} py-3 text-xs font-mono text-muted-foreground whitespace-nowrap`}>
+            {t.folioNumber ?? "—"}
+          </td>
+        );
+      case "scheme":
+        return (
+          <td data-col="scheme" className={`${g} py-3 max-w-[220px]`}>
+            <div className="text-sm truncate">{t.schemeName ?? t.schemeCode ?? "—"}</div>
+            <div className="text-xs text-muted-foreground truncate">{t.amcName ?? t.amcCode ?? "—"}</div>
+          </td>
+        );
+      case "category":
+        return (
+          <td data-col="category" className={`${g} py-3 text-xs text-muted-foreground capitalize`}>
+            {t.schemeCategory ?? "—"}
+          </td>
+        );
+      case "type":
+        return (
+          <td data-col="type" className={`${g} py-3`}>
+            <div className="flex items-center gap-1.5">
+              <span className={`chip ${TYPE_TONE[t.type] ?? ""} font-medium`}>{TYPE_LABEL[t.type] ?? t.type}</span>
+              {(t.type === "switch" || t.type === "stp" || t.type === "swp") && (t.status === "processed" || t.status === "successful") && t.investorId && (
+                <EmailRecordButton
+                  investorId={t.investorId}
+                  kind="transaction"
+                  recordId={t.id}
+                  clientName={investorName}
+                  summary={`${TYPE_LABEL[t.type] ?? t.type} · ${t.schemeName ?? "scheme"}${t.amount ? ` · ${formatINR(Number(t.amount))}` : ""}`}
+                />
+              )}
+            </div>
+          </td>
+        );
+      case "amount":
+        return (
+          <td data-col="amount" className={`${g} py-3 text-right tabular-nums`}>
+            {t.amount != null ? formatINR(Number(t.amount)) : "—"}
+          </td>
+        );
+      case "units":
+        return (
+          <td data-col="units" className={`${g} py-3 text-right tabular-nums text-muted-foreground`}>
+            {t.units ? Number(t.units).toFixed(2) : "—"}
+          </td>
+        );
+      case "nav":
+        return (
+          <td data-col="nav" className={`${g} py-3 text-right tabular-nums text-muted-foreground`}>
+            {t.nav ? Number(t.nav).toFixed(4) : "—"}
+          </td>
+        );
+      case "status":
+        return (
+          <td data-col="status" className={`${g} py-3`}>
+            <span className={`chip ${STATUS_TONE[t.status] ?? ""}`}>{STATUS_LABEL[t.status] ?? t.status}</span>
+          </td>
+        );
+      case "source":
+        return (
+          <td data-col="source" className={`${g} py-3 text-xs text-muted-foreground`}>
+            {SOURCE_LABEL[t.sourceFeed ?? ""] ?? t.sourceFeed ?? "—"}
+          </td>
+        );
+      case "rm":
+        return (
+          <td data-col="rm" className={`${g} py-3 text-xs`}>
+            {rmName ?? "—"}
+          </td>
+        );
+      case "remarks":
+        return (
+          <td data-col="remarks" className={`${g} py-3 text-xs text-muted-foreground max-w-[180px] truncate`}>
+            {t.remarks ?? t.reasonDescription ?? "—"}
+          </td>
+        );
+      default: {
+        if (!k.startsWith(EXTRA_PREFIX)) return null;
+        const v = extra?.[k.slice(EXTRA_PREFIX.length)];
+        return (
+          <td data-col={k} className={`${g} py-3 text-xs whitespace-nowrap ${v ? "" : "text-muted-foreground"}`}>
+            {v ?? "—"}
+          </td>
+        );
+      }
+    }
+  };
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -294,7 +466,7 @@ export default async function TransactionsPage({
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
-            <ColumnManager moduleKey="transactions" columns={TRANSACTIONS_COLUMNS} />
+            <ColumnManager moduleKey="transactions" columns={TRANSACTIONS_COLUMNS} extraFields={extraOptions} prefs={colPrefs} pinFirst={["date"]} />
             <CustomViews
               viewsKey="views:transactions"
               presets={[
@@ -326,95 +498,27 @@ export default async function TransactionsPage({
               <table className="w-full text-sm" data-table="transactions">
                 <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                   <tr>
-                    <th data-col="date" className="text-left px-4 py-2 font-medium">Date</th>
-                    <th data-col="investor" className="text-left py-2 font-medium">Investor</th>
-                    <th data-col="folio" className="text-left py-2 font-medium">Folio</th>
-                    <th data-col="scheme" className="text-left py-2 font-medium">AMC / Scheme</th>
-                    <th data-col="category" className="text-left py-2 font-medium">Category</th>
-                    <th data-col="type" className="text-left py-2 font-medium">Type</th>
-                    <th data-col="amount" className="text-right py-2 font-medium">Amount</th>
-                    <th data-col="units" className="text-right py-2 font-medium">Units</th>
-                    <th data-col="nav" className="text-right py-2 font-medium">NAV</th>
-                    <th data-col="status" className="text-left py-2 font-medium">Status</th>
-                    <th data-col="source" className="text-left py-2 font-medium">Source</th>
-                    <th data-col="rm" className="text-left py-2 font-medium">RM</th>
-                    <th data-col="remarks" className="text-left py-2 font-medium pr-4">Remarks</th>
+                    {order.map((k) => (
+                      <Fragment key={k}>{headFor(k)}</Fragment>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {data.displayRows.map(({ tx: t, investorName, rmName }) => (
                     <tr key={t.id} className="border-b last:border-0 hover:bg-secondary/40">
-                      <td data-col="date" className="px-4 py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                        {t.orderDate ? formatDate(t.orderDate) : "—"}
-                      </td>
-                      <td data-col="investor" className="py-3 whitespace-nowrap">
-                        {investorName ? (
-                          <Link href={`/dashboard/investors/${t.investorId}`} className="hover:underline">
-                            {investorName}
-                          </Link>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td data-col="folio" className="py-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
-                        {t.folioNumber ?? "—"}
-                      </td>
-                      <td data-col="scheme" className="py-3 max-w-[220px]">
-                        <div className="text-sm truncate">{t.schemeName ?? t.schemeCode ?? "—"}</div>
-                        <div className="text-xs text-muted-foreground truncate">
-                          {t.amcName ?? t.amcCode ?? "—"}
-                        </div>
-                      </td>
-                      <td data-col="category" className="py-3 text-xs text-muted-foreground capitalize">
-                        {t.schemeCategory ?? "—"}
-                      </td>
-                      <td data-col="type" className="py-3">
-                        <div className="flex items-center gap-1.5">
-                        <span className={`chip ${TYPE_TONE[t.type] ?? ""} font-medium`}>
-                          {TYPE_LABEL[t.type] ?? t.type}
-                        </span>
-                        {(t.type === "switch" || t.type === "stp" || t.type === "swp") && (t.status === "processed" || t.status === "successful") && t.investorId && (
-                          <EmailRecordButton
-                            investorId={t.investorId}
-                            kind="transaction"
-                            recordId={t.id}
-                            clientName={investorName}
-                            summary={`${TYPE_LABEL[t.type] ?? t.type} · ${t.schemeName ?? "scheme"}${t.amount ? ` · ${formatINR(Number(t.amount))}` : ""}`}
-                          />
-                        )}
-                        </div>
-                      </td>
-                      <td data-col="amount" className="py-3 text-right tabular-nums">
-                        {t.amount != null ? formatINR(Number(t.amount)) : "—"}
-                      </td>
-                      <td data-col="units" className="py-3 text-right tabular-nums text-muted-foreground">
-                        {t.units ? Number(t.units).toFixed(2) : "—"}
-                      </td>
-                      <td data-col="nav" className="py-3 text-right tabular-nums text-muted-foreground">
-                        {t.nav ? Number(t.nav).toFixed(4) : "—"}
-                      </td>
-                      <td data-col="status" className="py-3">
-                        <span className={`chip ${STATUS_TONE[t.status] ?? ""}`}>
-                          {STATUS_LABEL[t.status] ?? t.status}
-                        </span>
-                      </td>
-                      <td data-col="source" className="py-3 text-xs text-muted-foreground">
-                        {SOURCE_LABEL[t.sourceFeed ?? ""] ?? t.sourceFeed ?? "—"}
-                      </td>
-                      <td data-col="rm" className="py-3 text-xs">{rmName ?? "—"}</td>
-                      <td data-col="remarks" className="py-3 pr-4 text-xs text-muted-foreground max-w-[180px] truncate">
-                        {t.remarks ?? t.reasonDescription ?? "—"}
-                      </td>
+                      {order.map((k) => (
+                        <Fragment key={k}>{cellFor(k, t, investorName, rmName, data.extraValues[t.id])}</Fragment>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
                 <tfoot className="border-t bg-secondary/30 text-xs font-medium sticky bottom-0">
                   <tr>
-                    <td data-col="date" className="px-4 py-2 text-muted-foreground" colSpan={6}>
+                    <td data-col="date" className="px-4 py-2 text-muted-foreground" colSpan={Math.max(1, amountAt)}>
                       {data.displayRows.length} on this page{data.total > data.displayRows.length ? ` of ${data.total} matching` : ""}
                     </td>
                     <td data-col="amount" className="py-2 text-right tabular-nums">{formatINR(pageAmt)}</td>
-                    <td colSpan={6} />
+                    {order.length - amountAt - 1 > 0 && <td colSpan={order.length - amountAt - 1} />}
                   </tr>
                 </tfoot>
               </table>

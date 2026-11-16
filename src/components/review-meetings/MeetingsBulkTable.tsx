@@ -151,24 +151,53 @@ const cancelColumn: BulkColumn<Row> = {
   ),
 };
 
+/** A column the person added from the field list: plain text from `row.extra`. */
+function extraColumn(key: string, label: string): BulkColumn<Row> {
+  return {
+    key: `x:${key}`, colKey: `x:${key}`, header: label,
+    thClass: "text-left py-2 font-medium whitespace-nowrap",
+    tdClass: "py-3 text-xs whitespace-nowrap",
+    render: (m) => {
+      const v = m.extra?.[key];
+      return v ? v : <span className="text-muted-foreground">—</span>;
+    },
+  };
+}
+
+/** Built-in columns + added ones in the saved order, with the cancel / delete slot last. */
+function arrangeColumns(defs: BulkColumn<Row>[], colOrder: string[] | undefined, extraCols: { key: string; label: string }[]): BulkColumn<Row>[] {
+  const all = new Map<string, BulkColumn<Row>>(defs.map((c) => [c.key, c]));
+  for (const e of extraCols) all.set(`x:${e.key}`, extraColumn(e.key, e.label));
+  const keys: string[] = [];
+  for (const k of colOrder ?? []) if (all.has(k) && !keys.includes(k)) keys.push(k);
+  for (const k of all.keys()) if (!keys.includes(k)) keys.push(k);
+  return [...keys.map((k) => all.get(k)!), cancelColumn];
+}
+
 export function MeetingsBulkTable({
   upcoming,
   past,
   rmOptions,
   toolbar,
+  colOrder,
+  extraCols = [],
 }: {
   upcoming: Row[];
   past: Row[];
   rmOptions: { value: string; label: string }[];
+  /** Column keys in the person's order (built-ins, then `x:<field>` added ones); see lib/list-columns. */
+  colOrder?: string[];
+  /** The fields the person added; each row carries its values in `row.extra[key]`. */
+  extraCols?: { key: string; label: string }[];
   /** Search + filter + columns + view controls, rendered in the Past table header. */
   toolbar?: ReactNode;
 }) {
   const actions = actionsFor(rmOptions);
   const [upcomingOpen, setUpcomingOpen] = useState(false); // collapsed by default
 
-  const upcomingCols: BulkColumn<Row>[] = [
+  const upcomingDefs: BulkColumn<Row>[] = [
     {
-      key: "date", header: "Date", tdClass: "px-4 py-3 whitespace-nowrap",
+      key: "date", colKey: "date", header: "Date", tdClass: "px-4 py-3 whitespace-nowrap",
       render: (m) => (
         <>
           <Link href={`/dashboard/review-meetings/${m.id}`} className="font-medium tabular-nums hover:underline">
@@ -180,9 +209,9 @@ export function MeetingsBulkTable({
         </>
       ),
     },
-    { key: "client", header: "Client", tdClass: "py-3", render: clientCell },
+    { key: "client", colKey: "client", header: "Client", tdClass: "py-3", render: clientCell },
     {
-      key: "category", header: "Category", tdClass: "py-3",
+      key: "category", colKey: "category", header: "Category", tdClass: "py-3",
       render: (m) => (
         <>
           <span className={`chip text-2xs ${CATEGORY_TONE[m.category ?? "review"] ?? ""}`}>{CATEGORY_LABEL[m.category ?? "review"] ?? m.category}</span>
@@ -191,7 +220,7 @@ export function MeetingsBulkTable({
       ),
     },
     {
-      key: "agenda", header: "Agenda", tdClass: "py-3 text-xs",
+      key: "agenda", colKey: "agenda", header: "Agenda", tdClass: "py-3 text-xs",
       render: (m) =>
         m.subject ? (
           <>
@@ -202,15 +231,14 @@ export function MeetingsBulkTable({
           TYPE_LABEL[m.meeting_type] ?? m.meeting_type
         ),
     },
-    { key: "mode", header: "Mode", tdClass: "py-3", render: (m) => <span className={`chip ${MODE_TONE[m.meeting_mode] ?? ""}`}>{MODE_LABEL[m.meeting_mode] ?? m.meeting_mode}</span> },
-    { key: "rm", header: "RM", tdClass: "py-3 text-xs", render: (m) => m.rm_name ?? "" },
-    { key: "status", header: "Status", thClass: "text-left py-2 font-medium", tdClass: "py-3", render: (m) => <span className={`chip capitalize ${STATUS_TONE[m.status] ?? ""}`}>{String(m.status).replace(/_/g, " ")}</span> },
-    cancelColumn,
+    { key: "mode", colKey: "mode", header: "Mode", tdClass: "py-3", render: (m) => <span className={`chip ${MODE_TONE[m.meeting_mode] ?? ""}`}>{MODE_LABEL[m.meeting_mode] ?? m.meeting_mode}</span> },
+    { key: "rm", colKey: "rm", header: "RM", tdClass: "py-3 text-xs", render: (m) => m.rm_name ?? "" },
+    { key: "status", colKey: "status", header: "Status", thClass: "text-left py-2 font-medium", tdClass: "py-3", render: (m) => <span className={`chip capitalize ${STATUS_TONE[m.status] ?? ""}`}>{String(m.status).replace(/_/g, " ")}</span> },
   ];
 
-  const pastCols: BulkColumn<Row>[] = [
+  const pastDefs: BulkColumn<Row>[] = [
     {
-      key: "date", header: "Date", tdClass: "px-4 py-3 text-xs tabular-nums whitespace-nowrap",
+      key: "date", colKey: "date", header: "Date", tdClass: "px-4 py-3 text-xs tabular-nums whitespace-nowrap",
       render: (m) => (
         <>
           <Link href={`/dashboard/review-meetings/${m.id}`} className="font-medium hover:underline">{formatDate(m.meeting_date)}</Link>
@@ -218,9 +246,10 @@ export function MeetingsBulkTable({
         </>
       ),
     },
-    { key: "client", header: "Client", tdClass: "py-3", render: clientCell },
+    { key: "client", colKey: "client", header: "Client", tdClass: "py-3", render: clientCell },
     {
-      key: "type", header: "Type", tdClass: "py-3 text-xs",
+      // The same column as the upcoming list's "Agenda" (one entry in the column menu).
+      key: "agenda", colKey: "agenda", header: "Type", tdClass: "py-3 text-xs",
       render: (m) =>
         m.subject ? (
           <>
@@ -231,14 +260,14 @@ export function MeetingsBulkTable({
           TYPE_LABEL[m.meeting_type] ?? m.meeting_type
         ),
     },
-    { key: "status", header: "Status", tdClass: "py-3", render: (m) => <span className={`chip capitalize ${STATUS_TONE[m.status] ?? ""}`}>{String(m.status).replace(/_/g, " ")}</span> },
+    { key: "status", colKey: "status", header: "Status", tdClass: "py-3", render: (m) => <span className={`chip capitalize ${STATUS_TONE[m.status] ?? ""}`}>{String(m.status).replace(/_/g, " ")}</span> },
     {
-      key: "actions", header: "Action items", thClass: "text-right py-2 font-medium", tdClass: "py-3 text-right tabular-nums",
+      key: "actions", colKey: "actions", header: "Action items", thClass: "text-right py-2 font-medium", tdClass: "py-3 text-right tabular-nums",
       render: (m) => (m.action_count > 0 ? <span className={m.follow_up_task_created === "true" ? "text-emerald-600" : "text-amber-600"}>{m.action_count}</span> : ""),
     },
-    { key: "attach", header: "Attachments", thClass: "text-right py-2 font-medium", tdClass: "py-3 text-right tabular-nums text-muted-foreground", render: (m) => (m.attach_count > 0 ? m.attach_count : "") },
+    { key: "attach", colKey: "attach", header: "Attachments", thClass: "text-right py-2 font-medium", tdClass: "py-3 text-right tabular-nums text-muted-foreground", render: (m) => (m.attach_count > 0 ? m.attach_count : "") },
     {
-      key: "notes", header: "Notes", thClass: "text-left py-2 font-medium", tdClass: "py-3 text-xs text-muted-foreground max-w-[260px] truncate",
+      key: "notes", colKey: "notes", header: "Notes", thClass: "text-left py-2 font-medium", tdClass: "py-3 text-xs text-muted-foreground max-w-[260px] truncate",
       render: (m) =>
         m.meeting_notes
           ? m.meeting_notes
@@ -246,8 +275,12 @@ export function MeetingsBulkTable({
             ? null
             : <span className="italic">No notes yet</span>,
     },
-    cancelColumn,
   ];
+
+  // The person's column order, then the fields they added; the cancel / delete
+  // slot stays last. A key a table does not draw is simply skipped there.
+  const upcomingCols = arrangeColumns(upcomingDefs, colOrder, extraCols);
+  const pastCols = arrangeColumns(pastDefs, colOrder, extraCols);
 
   return (
     <div className="space-y-6">
@@ -268,7 +301,7 @@ export function MeetingsBulkTable({
           </button>
           <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${upcomingOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
             <div className="overflow-hidden">
-              <BulkTable rows={upcoming} columns={upcomingCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" rowHref={meetingHref} />
+              <BulkTable rows={upcoming} columns={upcomingCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" rowHref={meetingHref} tableKey="meetings-upcoming" />
             </div>
           </div>
         </div>
@@ -308,7 +341,7 @@ export function MeetingsBulkTable({
             )}
           </div>
         ) : (
-          <BulkTable rows={past.slice(0, 50)} columns={pastCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" scrollBody rowHref={meetingHref} />
+          <BulkTable rows={past.slice(0, 50)} columns={pastCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" scrollBody rowHref={meetingHref} tableKey="meetings-upcoming" />
         )}
       </div>
     </div>

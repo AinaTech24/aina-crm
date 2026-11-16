@@ -36,6 +36,9 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { RowActions } from "@/components/common/RowActions";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { leadExtraCells, leadExtraColumns, type LeadCustomFieldDef } from "@/lib/leads/table-columns";
+import { readColumnPrefs } from "@/lib/list-columns/server";
+import { EXTRA_PREFIX, orderKeys } from "@/lib/list-columns/prefs";
+import { allowedLeadExtraKeys, leadExtraOptions, loadLeadExtra } from "@/lib/list-columns/lead-fields";
 import { leadFieldFilterConds, leadFieldFilterDefs, loadLeadFilterOptions } from "@/lib/leads/field-filters";
 
 /**
@@ -83,6 +86,10 @@ const LEADS_COLUMNS = [
 ];
 // Every other lead field follows (lib/leads/table-columns.ts), then Actions.
 const ACTIONS_COLUMN = { key: "actions", label: "Actions", required: true };
+// Columns that never move in "Manage columns": the score and the name lead the
+// row (as they always have), the row actions close it.
+const LEADS_PIN_FIRST = ["score", "name"];
+const LEADS_PIN_LAST = ["actions"];
 
 /** The lead who referred this one may be a client: their name, when no name was typed. */
 const referredClient = alias(investors, "referred_client");
@@ -99,6 +106,8 @@ export default async function LeadsPage({
   // depth — the sidebar already hides the module).
   requireLeadView(session);
   const sp = await searchParams;
+  // This person's saved column order and the fields they added (cookie).
+  const colPrefs = await readColumnPrefs("leads");
   const q = (sp.q ?? "").trim();
   const stageFilter = (sp.stage ?? "").split(",").filter(Boolean);
   const sourceFilter = (sp.source ?? "").split(",").filter(Boolean);
@@ -295,7 +304,13 @@ export default async function LeadsPage({
     // Pick lists for the field filters — values from the viewer's own book
     // (not deleted, role scope), won and lost leads included.
     const filterOptions = await loadLeadFilterOptions(tx, session.tenantId, sql.join([bookConds[0], bookConds[2]], sql` AND `));
-    return { rows, rms: rmRows.rows as any[], total, view, customDefs, filterOptions, fieldFilterCount: fieldConds.length };
+    // Fields this person added as columns (More fields in the column menu):
+    // only the ones offered, only for the rows on this page, table view only.
+    const extraOptions = leadExtraOptions();
+    const extraAllowed = allowedLeadExtraKeys(extraOptions);
+    const extraKeys = colPrefs.extra.filter((k) => extraAllowed.has(k));
+    const extraValues = isTable ? await loadLeadExtra(tx, rows.map((r) => r.lead.id), extraKeys, extraAllowed) : {};
+    return { rows, rms: rmRows.rows as any[], total, view, customDefs, filterOptions, fieldFilterCount: fieldConds.length, extraOptions, extraKeys, extraValues };
   });
 
   const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -318,6 +333,16 @@ export default async function LeadsPage({
     ...extraColumns.map((c) => ({ key: c.key, label: c.label, group: c.group })),
     ACTIONS_COLUMN,
   ];
+  // The columns in this person's order: the built-in ones, the other lead
+  // fields, then the fields they added; their saved sequence decides, the score
+  // and name stay first and the row actions last.
+  const colOrder = orderKeys(
+    [...columnDefs.map((c) => c.key), ...data.extraKeys.map((k) => EXTRA_PREFIX + k)],
+    colPrefs.order,
+    LEADS_PIN_FIRST,
+    LEADS_PIN_LAST,
+  );
+  const addedCols = data.extraKeys.map((k) => ({ key: k, label: data.extraOptions.find((o) => o.key === k)?.label ?? k }));
   const tableRows = data.rows.map((r) => {
     const l = r.lead as any;
     const column = leadPipelineColumn(l.stage);
@@ -339,6 +364,7 @@ export default async function LeadsPage({
       // Persisted deterministic score (src/lib/leads/score.ts) — written on
       // create + every stage transition, backfilled for historic rows.
       score: l.leadScore ?? 0,
+      extra: data.extraValues[l.id],
       cells: leadExtraCells(
         l,
         { branch: r.branch ?? null, subDistributor: r.subDistributor ?? null, referredClient: r.referredClient ?? null },
@@ -418,7 +444,15 @@ export default async function LeadsPage({
               </Link>
             </div>
             {view === "table" && (
-              <ColumnManager compact moduleKey="leads" columns={columnDefs} />
+              <ColumnManager
+                compact
+                moduleKey="leads"
+                columns={columnDefs}
+                extraFields={data.extraOptions}
+                prefs={colPrefs}
+                pinFirst={LEADS_PIN_FIRST}
+                pinLast={LEADS_PIN_LAST}
+              />
             )}
             <CustomViews
               compact
@@ -524,7 +558,7 @@ export default async function LeadsPage({
         </div>
       ) : (
         <div>
-          <LeadsTable rows={tableRows} extraColumns={extraColumns} sort={sortKey} dir={dir} />
+          <LeadsTable rows={tableRows} extraColumns={extraColumns} sort={sortKey} dir={dir} colOrder={colOrder} addedCols={addedCols} />
           <Pager page={page} totalPages={Math.ceil(data.total / PAGE_SIZE)} total={data.total} pageSize={PAGE_SIZE} />
         </div>
       )}

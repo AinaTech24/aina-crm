@@ -6,6 +6,16 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { ServiceRequestsTable } from "@/components/service-requests/ServiceRequestsTable";
+import { loadTenantLicense } from "@/lib/auth/license";
+import { isFieldAllowed } from "@/lib/auth/field-gate";
+import { readColumnPrefs } from "@/lib/list-columns/server";
+import { EXTRA_PREFIX, orderKeys } from "@/lib/list-columns/prefs";
+import {
+  SERVICE_REQUEST_DEFAULT_COLUMNS,
+  allowedServiceRequestKeys,
+  loadServiceRequestExtra,
+  serviceRequestExtraOptions,
+} from "@/lib/list-columns/service-request-fields";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { ExportButton } from "@/components/export/ExportButton";
 import { dateRangeCond } from "@/lib/filters/date-range";
@@ -81,6 +91,14 @@ export default async function ServiceRequestsPage({
   const canSeeServiceForm = (["service_request.view.all", "service_request.manage"] as const)
     .some((cap) => can(session.roles, cap, session.permissions));
   const canManageRequests = can(session.roles, "service_request.manage", session.permissions);
+  const colPrefs = await readColumnPrefs("service-requests");
+  const license = await loadTenantLicense(session.tenantId, session.roles);
+  // The client's own details (PAN, email, mobile, RM …) only for someone who may open clients at all.
+  const canSeeClientData =
+    can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "investor.view.assigned", session.permissions);
+  const extraOptions = serviceRequestExtraOptions((f) => isFieldAllowed(license, "investor", f), { canSeeClientData });
+  const extraAllowed = allowedServiceRequestKeys(extraOptions);
+  const extraKeys = colPrefs.extra.filter((k) => extraAllowed.has(k));
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const status = (sp.status ?? "").split(",").filter(Boolean);
@@ -178,6 +196,9 @@ export default async function ServiceRequestsPage({
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
       ORDER BY name ASC
     `);
+    // The fields they added as columns, for the tickets on this page only.
+    const extraValues = await loadServiceRequestExtra(tx, (rows.rows as any[]).map((r) => String(r.id)), extraKeys, extraAllowed, clientVisible);
+    for (const r of rows.rows as any[]) r.extra = extraValues[String(r.id)] ?? {};
     return { rows: rows.rows as any[], rms: rmRows.rows as any[], counts: (countRows.rows[0] ?? {}) as Record<string, number> };
   });
 
@@ -191,6 +212,16 @@ export default async function ServiceRequestsPage({
     const qs = p.toString();
     return qs ? `/dashboard/service-requests?${qs}` : "/dashboard/service-requests";
   };
+
+  // Built-in columns first, then the fields they added; their saved sequence
+  // decides, the ticket number stays first and the row actions last.
+  const colOrder = orderKeys(
+    [...SERVICE_REQUEST_DEFAULT_COLUMNS, ...extraKeys.map((k) => EXTRA_PREFIX + k)],
+    colPrefs.order,
+    ["ticket"],
+    ["actions"],
+  );
+  const extraCols = extraKeys.map((k) => ({ key: k, label: extraOptions.find((o) => o.key === k)?.label ?? k }));
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -294,7 +325,7 @@ export default async function ServiceRequestsPage({
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
-            <ColumnManager moduleKey="service-requests" columns={SR_COLUMNS} />
+            <ColumnManager moduleKey="service-requests" columns={SR_COLUMNS} extraFields={extraOptions} prefs={colPrefs} pinFirst={["ticket"]} pinLast={["actions"]} />
             <CustomViews
               viewsKey="views:service-requests"
               presets={[
@@ -309,7 +340,7 @@ export default async function ServiceRequestsPage({
         }
       />
 
-      <ServiceRequestsTable rows={result.rows} canDelete={can(session.roles, "service_request.delete", session.permissions)} />
+      <ServiceRequestsTable rows={result.rows} canDelete={can(session.roles, "service_request.delete", session.permissions)} colOrder={colOrder} extraCols={extraCols} />
     </div>
   );
 }

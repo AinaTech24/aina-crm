@@ -23,6 +23,11 @@ import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
+import { loadTenantLicense } from "@/lib/auth/license";
+import { isFieldAllowed } from "@/lib/auth/field-gate";
+import { readColumnPrefs } from "@/lib/list-columns/server";
+import { EXTRA_PREFIX, orderKeys } from "@/lib/list-columns/prefs";
+import { allowedProposalExtraKeys, loadProposalExtra, proposalExtraOptions } from "@/lib/list-columns/proposal-fields";
 import { Pager } from "@/components/common/Pager";
 import { ProposalsBulkTable } from "@/components/proposals/ProposalsBulkTable";
 import { ProposalsBoard, boardTotals, type BoardRow } from "@/components/proposals/ProposalsBoard";
@@ -111,6 +116,13 @@ export default async function ProposalsPage({
       : sortKey === "invest_desc" ? sql`p.total_investment::numeric DESC NULLS LAST`
         : sortKey === "invest_asc" ? sql`p.total_investment::numeric ASC NULLS LAST`
           : sql`p.created_at DESC`;
+
+  // The person's saved column order and added fields; personal data a licence
+  // withholds (email, mobile, PAN) is not offered as a field.
+  const colPrefs = await readColumnPrefs("proposals");
+  const license = await loadTenantLicense(session.tenantId, session.roles);
+  const extraOptions = proposalExtraOptions((f) => isFieldAllowed(license, "investor", f));
+  const extraKeys = colPrefs.extra.filter((k) => allowedProposalExtraKeys(extraOptions).has(k));
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Own proposals unless the viewer sees all, and only those whose client /
@@ -212,14 +224,30 @@ export default async function ProposalsPage({
       FROM proposals p
       WHERE ${scope}
     `);
+    // Added fields: only for this page's rows, in the same transaction.
+    const pageRows = rows.rows as any[];
+    const extraValues = view === "board"
+      ? {}
+      : await loadProposalExtra(tx, pageRows.map((r) => String(r.id)), extraKeys, allowedProposalExtraKeys(extraOptions));
     return {
       board,
-      rows: rows.rows as any[],
+      extraValues,
+      rows: pageRows,
       s: stats.rows[0] as any,
       filteredTotal: Number((filtered.rows[0] as any)?.c ?? 0),
       counts: (tabCounts.rows[0] ?? {}) as Record<string, number>,
     };
   });
+
+  // The columns in this person's order: their saved sequence decides, the
+  // proposal number stays first and the row actions last.
+  const colOrder = orderKeys(
+    [...PROPOSALS_COLUMNS.map((c) => c.key), ...extraKeys.map((k) => EXTRA_PREFIX + k)],
+    colPrefs.order,
+    ["number"],
+    ["actions"],
+  );
+  const extraCols = extraKeys.map((k) => ({ key: k, label: extraOptions.find((o) => o.key === k)?.label ?? k }));
 
   // A tab keeps every other filter; it replaces status and restarts the page.
   const tabHref = (key: TabKey) => {
@@ -341,7 +369,7 @@ export default async function ProposalsPage({
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
-            {view === "list" && <ColumnManager moduleKey="proposals" columns={PROPOSALS_COLUMNS} version={COLUMNS_VERSION} />}
+            {view === "list" && <ColumnManager moduleKey="proposals" columns={PROPOSALS_COLUMNS} version={COLUMNS_VERSION} extraFields={extraOptions} prefs={colPrefs} pinFirst={["number"]} pinLast={["actions"]} />}
             <CustomViews
               viewsKey="views:proposals"
               presets={[
@@ -380,7 +408,12 @@ export default async function ProposalsPage({
           </div>
         ) : (
           <div>
-            <ProposalsBulkTable canRenew={canRenew} rows={data.rows.map((r, i) => ({ ...r, _seq: (page - 1) * PAGE_SIZE + i + 1 }))} />
+            <ProposalsBulkTable
+              canRenew={canRenew}
+              colOrder={colOrder}
+              extraCols={extraCols}
+              rows={data.rows.map((r, i) => ({ ...r, _seq: (page - 1) * PAGE_SIZE + i + 1, extra: data.extraValues[String(r.id)] }))}
+            />
             <div className="px-4 pb-3">
               <Pager
                 page={page}

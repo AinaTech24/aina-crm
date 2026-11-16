@@ -17,6 +17,11 @@ import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
 import { sipNextDue, indiaToday } from "@/lib/sips/next-due";
 import { clientWhere, sipMonthlySql, textList, type MetricScope } from "@/lib/metrics";
 import { visibleClientSql } from "@/lib/transactions/client-scope";
+import { loadTenantLicense } from "@/lib/auth/license";
+import { isFieldAllowed } from "@/lib/auth/field-gate";
+import { readColumnPrefs } from "@/lib/list-columns/server";
+import { EXTRA_PREFIX, orderKeys } from "@/lib/list-columns/prefs";
+import { allowedSipExtraKeys, loadSipExtra, sipExtraOptions } from "@/lib/list-columns/sip-fields";
 
 const SIPS_COLUMNS = [
   { key: "investor", label: "Investor", required: true },
@@ -113,6 +118,14 @@ export default async function SipsPage({
   };
   const amcs = bookScope.amcs ?? [];
 
+  // Column choices: the saved order and the fields this person added. Personal
+  // data (PAN, email, mobile) is offered only when the licence allows it.
+  const colPrefs = await readColumnPrefs("sips");
+  const license = await loadTenantLicense(session.tenantId, session.roles);
+  const extraOptions = sipExtraOptions((f) => isFieldAllowed(license, "investor", f));
+  const extraAllowed = allowedSipExtraKeys(extraOptions);
+  const extraKeys = colPrefs.extra.filter((k) => extraAllowed.has(k));
+
   const data = await withTenant(session.tenantId, async (tx) => {
     // Own-book slice for non-managers: SIPs they own OR for a client they manage.
     const statsScope = seesAll
@@ -196,7 +209,11 @@ export default async function SipsPage({
       .leftJoin(investors, eq(investors.id, sips.investorId))
       .where(where as any);
 
+    // Values of the fields added as columns, for the rows on this page only.
+    const extraValues = await loadSipExtra(tx, rows.map((r) => r.s.id), extraKeys, extraAllowed);
+
     return {
+      extraValues,
       activeSips: Number(s.active_sips),
       activeAmount: Number(s.active_amount),
       addedMtd: Number(s.added_mtd),
@@ -206,6 +223,19 @@ export default async function SipsPage({
       filteredTotal: Number(cnt[0]?.c ?? 0),
     };
   });
+
+  // Columns in this person's order: the built-in ones, then the fields they
+  // added; their saved sequence decides and the investor stays first.
+  const colOrder = orderKeys(
+    [...SIPS_COLUMNS.map((c) => c.key), ...extraKeys.map((k) => EXTRA_PREFIX + k)],
+    colPrefs.order,
+    ["investor"],
+    [],
+  );
+  const extraLabel = (k: string) => extraOptions.find((o) => o.key === k.slice(EXTRA_PREFIX.length))?.label ?? k.slice(EXTRA_PREFIX.length);
+  const lastKey = colOrder[colOrder.length - 1];
+  // The first column keeps the table's left gutter, the last its right one.
+  const edge = (k: string) => (k === colOrder[0] && k !== "investor" ? " pl-4" : "") + (k === lastKey ? " pr-4" : "");
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -271,7 +301,7 @@ export default async function SipsPage({
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
-            <ColumnManager moduleKey="sips" columns={SIPS_COLUMNS} />
+            <ColumnManager moduleKey="sips" columns={SIPS_COLUMNS} extraFields={extraOptions} prefs={colPrefs} pinFirst={["investor"]} />
             <CustomViews
               viewsKey="views:sips"
               presets={[
@@ -301,18 +331,26 @@ export default async function SipsPage({
             <table className="w-full text-sm" data-table="sips">
               <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
-                  <th data-col="investor" className="text-left px-4 py-2 font-medium">Investor</th>
-                  <th data-col="folio" className="text-left py-2 font-medium">Folio</th>
-                  <th data-col="scheme" className="text-left py-2 font-medium">AMC / Scheme</th>
-                  <th data-col="amount" className="text-right py-2 font-medium">Amount</th>
-                  <th data-col="frequency" className="text-left py-2 font-medium">Frequency</th>
-                  <th data-col="start" className="text-left py-2 font-medium">Start</th>
-                  <th data-col="end" className="text-left py-2 font-medium">End</th>
-                  <th data-col="next_due" className="text-left py-2 font-medium">Next due</th>
-                  <th data-col="mandate" className="text-left py-2 font-medium">Mandate</th>
-                  <th data-col="status" className="text-left py-2 font-medium">Status</th>
-                  <th data-col="rm" className="text-left py-2 font-medium">RM</th>
-                  <th data-col="remarks" className="text-left py-2 font-medium pr-4">Remarks</th>
+                  {colOrder.map((k) => {
+                    switch (k) {
+                      case "investor": return <th key={k} data-col="investor" className="text-left px-4 py-2 font-medium">Investor</th>;
+                      case "folio": return <th key={k} data-col="folio" className={`text-left py-2 font-medium${edge(k)}`}>Folio</th>;
+                      case "scheme": return <th key={k} data-col="scheme" className={`text-left py-2 font-medium${edge(k)}`}>AMC / Scheme</th>;
+                      case "amount": return <th key={k} data-col="amount" className={`text-right py-2 font-medium${edge(k)}`}>Amount</th>;
+                      case "frequency": return <th key={k} data-col="frequency" className={`text-left py-2 font-medium${edge(k)}`}>Frequency</th>;
+                      case "start": return <th key={k} data-col="start" className={`text-left py-2 font-medium${edge(k)}`}>Start</th>;
+                      case "end": return <th key={k} data-col="end" className={`text-left py-2 font-medium${edge(k)}`}>End</th>;
+                      case "next_due": return <th key={k} data-col="next_due" className={`text-left py-2 font-medium${edge(k)}`}>Next due</th>;
+                      case "mandate": return <th key={k} data-col="mandate" className={`text-left py-2 font-medium${edge(k)}`}>Mandate</th>;
+                      case "status": return <th key={k} data-col="status" className={`text-left py-2 font-medium${edge(k)}`}>Status</th>;
+                      case "rm": return <th key={k} data-col="rm" className={`text-left py-2 font-medium${edge(k)}`}>RM</th>;
+                      case "remarks": return <th key={k} data-col="remarks" className={`text-left py-2 font-medium${edge(k)}`}>Remarks</th>;
+                      default:
+                        return k.startsWith(EXTRA_PREFIX) ? (
+                          <th key={k} data-col={k} className={`text-left py-2 font-medium whitespace-nowrap pr-4${edge(k)}`}>{extraLabel(k)}</th>
+                        ) : null;
+                    }
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -320,9 +358,11 @@ export default async function SipsPage({
                   // Never a past date for an active SIP: the stored next date is
                   // not rolled forward, so derive the next debit (lib/sips/next-due).
                   const due = sipNextDue(sip, today);
-                  return (
-                  <tr key={sip.id} className="border-b last:border-0 hover:bg-secondary/40">
-                    <td data-col="investor" className="px-4 py-3 whitespace-nowrap">
+                  const cellFor = (k: string) => {
+                    switch (k) {
+                      case "investor":
+                        return (
+                    <td key={k} data-col="investor" className="px-4 py-3 whitespace-nowrap">
                       {investorName ? (
                         <Link href={`/dashboard/investors/${sip.investorId}`} className="hover:underline">
                           {investorName}
@@ -331,25 +371,44 @@ export default async function SipsPage({
                         "—"
                       )}
                     </td>
-                    <td data-col="folio" className="py-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
+                        );
+                      case "folio":
+                        return (
+                    <td key={k} data-col="folio" className={`py-3 text-xs font-mono text-muted-foreground whitespace-nowrap${edge(k)}`}>
                       {sip.folioNumber ?? "—"}
                     </td>
-                    <td data-col="scheme" className="py-3 max-w-[220px]">
+                        );
+                      case "scheme":
+                        return (
+                    <td key={k} data-col="scheme" className={`py-3 max-w-[220px]${edge(k)}`}>
                       <div className="text-sm truncate">{sip.schemeName ?? sip.schemeCode ?? "—"}</div>
                       <div className="text-xs text-muted-foreground truncate">{sip.amcName ?? sip.amcCode ?? "—"}</div>
                     </td>
-                    <td data-col="amount" className="py-3 text-right tabular-nums">{formatINR(Number(sip.amount))}</td>
-                    <td data-col="frequency" className="py-3 text-xs">
+                        );
+                      case "amount":
+                        return <td key={k} data-col="amount" className={`py-3 text-right tabular-nums${edge(k)}`}>{formatINR(Number(sip.amount))}</td>;
+                      case "frequency":
+                        return (
+                    <td key={k} data-col="frequency" className={`py-3 text-xs${edge(k)}`}>
                       {FREQ_LABEL[sip.frequency] ?? sip.frequency}
                       {sip.sipDate && <span className="text-muted-foreground"> · day {sip.sipDate}</span>}
                     </td>
-                    <td data-col="start" className="py-3 text-xs text-muted-foreground tabular-nums">
+                        );
+                      case "start":
+                        return (
+                    <td key={k} data-col="start" className={`py-3 text-xs text-muted-foreground tabular-nums${edge(k)}`}>
                       {sip.startDate ? formatDate(sip.startDate) : "—"}
                     </td>
-                    <td data-col="end" className="py-3 text-xs text-muted-foreground tabular-nums">
+                        );
+                      case "end":
+                        return (
+                    <td key={k} data-col="end" className={`py-3 text-xs text-muted-foreground tabular-nums${edge(k)}`}>
                       {sip.endDate ? formatDate(sip.endDate) : "—"}
                     </td>
-                    <td data-col="next_due" className="py-3 text-xs tabular-nums">
+                        );
+                      case "next_due":
+                        return (
+                    <td key={k} data-col="next_due" className={`py-3 text-xs tabular-nums${edge(k)}`}>
                       {due.date ? (
                         formatDate(due.date)
                       ) : due.ended ? (
@@ -360,7 +419,10 @@ export default async function SipsPage({
                         <span className="text-muted-foreground" title="No SIP day or debit date on record">—</span>
                       )}
                     </td>
-                    <td data-col="mandate" className="py-3 text-xs">
+                        );
+                      case "mandate":
+                        return (
+                    <td key={k} data-col="mandate" className={`py-3 text-xs${edge(k)}`}>
                       {mandateRef ? (
                         <div>
                           <div className="font-mono text-muted-foreground truncate max-w-[100px]">{mandateRef}</div>
@@ -375,7 +437,10 @@ export default async function SipsPage({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td data-col="status" className="py-3 max-w-[220px]">
+                        );
+                      case "status":
+                        return (
+                    <td key={k} data-col="status" className={`py-3 max-w-[220px]${edge(k)}`}>
                       <span className={`chip ${STATUS_TONE[sip.status] ?? ""}`}>
                         {STATUS_LABEL[sip.status] ?? sip.status}
                       </span>
@@ -391,10 +456,29 @@ export default async function SipsPage({
                         </div>
                       )}
                     </td>
-                    <td data-col="rm" className="py-3 text-xs">{rmName ?? "—"}</td>
-                    <td data-col="remarks" className="py-3 pr-4 text-xs text-muted-foreground max-w-[160px] truncate">
+                        );
+                      case "rm":
+                        return <td key={k} data-col="rm" className={`py-3 text-xs${edge(k)}`}>{rmName ?? "—"}</td>;
+                      case "remarks":
+                        return (
+                    <td key={k} data-col="remarks" className={`py-3 text-xs text-muted-foreground max-w-[160px] truncate${edge(k)}`}>
                       {sip.remarks ?? "—"}
                     </td>
+                        );
+                      default: {
+                        if (!k.startsWith(EXTRA_PREFIX)) return null;
+                        const v = data.extraValues[sip.id]?.[k.slice(EXTRA_PREFIX.length)];
+                        return (
+                          <td key={k} data-col={k} className={`py-3 pr-4 text-xs whitespace-nowrap${v ? "" : " text-muted-foreground"}${edge(k)}`}>
+                            {v ?? "—"}
+                          </td>
+                        );
+                      }
+                    }
+                  };
+                  return (
+                  <tr key={sip.id} className="border-b last:border-0 hover:bg-secondary/40">
+                    {colOrder.map(cellFor)}
                   </tr>
                   );
                 })}

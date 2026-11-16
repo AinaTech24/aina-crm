@@ -17,15 +17,24 @@ import { AddMeetingButton } from "@/components/review-meetings/AddMeetingButton"
 import { MeetingsBulkTable } from "@/components/review-meetings/MeetingsBulkTable";
 import { MeetingsKanban } from "@/components/review-meetings/MeetingsKanban";
 import { LayoutList, KanbanSquare } from "lucide-react";
+import { loadTenantLicense } from "@/lib/auth/license";
+import { isFieldAllowed } from "@/lib/auth/field-gate";
+import { readColumnPrefs } from "@/lib/list-columns/server";
+import { EXTRA_PREFIX, orderKeys } from "@/lib/list-columns/prefs";
+import { allowedMeetingExtraKeys, loadMeetingExtra, meetingExtraOptions } from "@/lib/list-columns/meeting-fields";
 
 const MEETINGS_COLUMNS = [
   { key: "date", label: "Date", required: true },
   { key: "client", label: "Client", required: true },
   { key: "category", label: "Category" },
-  { key: "agenda", label: "Agenda" },
+  { key: "agenda", label: "Agenda / type" },
   { key: "mode", label: "Mode" },
   { key: "rm", label: "RM" },
   { key: "status", label: "Status" },
+  // Drawn by the Past meetings list only.
+  { key: "actions", label: "Action items" },
+  { key: "attach", label: "Attachments" },
+  { key: "notes", label: "Notes" },
 ];
 
 export const dynamic = "force-dynamic";
@@ -70,6 +79,12 @@ export default async function ReviewMeetingsPage({
 }) {
   const session = await requireSession();
   const sp = await searchParams;
+  // The person's saved column order and the fields they added (More fields in the column menu).
+  const colPrefs = await readColumnPrefs("meetings-upcoming");
+  const license = await loadTenantLicense(session.tenantId, session.roles);
+  const extraOptions = meetingExtraOptions((f) => isFieldAllowed(license, "investor", f));
+  const extraAllowed = allowedMeetingExtraKeys(extraOptions);
+  const extraKeys = colPrefs.extra.filter((k) => extraAllowed.has(k));
   const q = (sp.q ?? "").trim();
   const categoryFilter = (sp.category ?? "").split(",").filter(Boolean);
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
@@ -179,7 +194,9 @@ export default async function ReviewMeetingsPage({
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
       ORDER BY name ASC
     `);
-    return { rows: meetings.rows as any[], stats: s, rms: rmRows.rows as any[] };
+    // Values of the fields this person added, for the meetings on this page only.
+    const extraValues = view === "kanban" ? {} : await loadMeetingExtra(tx, (meetings.rows as any[]).map((r) => String(r.id)), extraKeys, extraAllowed);
+    return { rows: meetings.rows as any[], stats: s, rms: rmRows.rows as any[], extraValues };
   });
 
   const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -199,6 +216,17 @@ export default async function ReviewMeetingsPage({
         new Date(r.meeting_date).toDateString() === new Date().toDateString()
     )
     .sort((a, b) => new Date(a.meeting_date).getTime() - new Date(b.meeting_date).getTime());
+
+  // The columns in the person's order: the ones the tables draw, then the fields
+  // they added. The date stays first (the cancel / delete slot stays last).
+  const colOrder = orderKeys(
+    [...MEETINGS_COLUMNS.map((c) => c.key), ...extraKeys.map((k) => EXTRA_PREFIX + k)],
+    colPrefs.order,
+    ["date"],
+    [],
+  );
+  const extraCols = extraKeys.map((k) => ({ key: k, label: extraOptions.find((o) => o.key === k)?.label ?? k }));
+  const withExtra = (r: any) => ({ ...r, extra: data.extraValues[String(r.id)] ?? {} });
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -263,9 +291,11 @@ export default async function ReviewMeetingsPage({
         <MeetingsKanban meetings={data.rows} />
       ) : (
         <MeetingsBulkTable
-          upcoming={upcoming}
-          past={past}
+          upcoming={upcoming.map(withExtra)}
+          past={past.map(withExtra)}
           rmOptions={rmOptions}
+          colOrder={colOrder}
+          extraCols={extraCols}
           toolbar={
             <CompactFilterBar
               bare
@@ -324,7 +354,7 @@ export default async function ReviewMeetingsPage({
               ]}
               rightSlot={
                 <>
-                  <ColumnManager compact moduleKey="meetings-upcoming" columns={MEETINGS_COLUMNS} />
+                  <ColumnManager compact moduleKey="meetings-upcoming" columns={MEETINGS_COLUMNS} extraFields={extraOptions} prefs={colPrefs} pinFirst={["date"]} />
                   <CustomViews
                     compact
                     viewsKey="views:review-meetings"
