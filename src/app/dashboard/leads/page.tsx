@@ -309,7 +309,7 @@ export default async function LeadsPage({
     const extraOptions = leadExtraOptions();
     const extraAllowed = allowedLeadExtraKeys(extraOptions);
     const extraKeys = colPrefs.extra.filter((k) => extraAllowed.has(k));
-    const extraValues = isTable ? await loadLeadExtra(tx, rows.map((r) => r.lead.id), extraKeys, extraAllowed) : {};
+    const extraValues: Record<string, Record<string, string>> = isTable ? await loadLeadExtra(tx, rows.map((r) => r.lead.id), extraKeys, extraAllowed) : {};
     return { rows, rms: rmRows.rows as any[], total, view, customDefs, filterOptions, fieldFilterCount: fieldConds.length, extraOptions, extraKeys, extraValues };
   });
 
