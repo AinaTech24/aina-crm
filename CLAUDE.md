@@ -671,6 +671,11 @@ Bank / corporate / NBFC / post-office FDs a client placed through the firm —
   the old one becomes `renewed`.
 - **Access follows the client** (`investorScopeSql` / `loadViewableInvestor`);
   writes need `investor.edit.*`. Soft delete (`deleted_at`).
+- **Every firm sees it** (the owner's instruction, 2026-11-16): migration 0262
+  added `/dashboard/fixed-deposits` to every SAVED sidebar list that predated
+  it — firm grants, package feature lists, and team members' grants that hold
+  Business Entries. A saved list grants only what it names, so a sidebar item
+  added later is hidden from every firm on one until a list is updated.
 
 ## Insurance premium — typed per payment, stored annual
 
