@@ -139,7 +139,7 @@ export default function StandalonePreviewDashboardPage() {
               <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search investors, PAN, folios, schemes, tasks... (Press Ctrl + K)"
+                aria-label="Search investors, PAN, folios, schemes and tasks" placeholder="Search investors, PAN, folios, schemes, tasks... (Press Ctrl + K)"
                 className="w-full text-xs bg-secondary/50 border border-border/80 rounded-xl pl-9 pr-14 py-2 text-foreground placeholder:text-muted-foreground focus:ring-1 focus:ring-primary transition-all"
               />
               <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-2xs font-mono bg-card px-1.5 py-0.5 rounded border border-border/70 text-muted-foreground">

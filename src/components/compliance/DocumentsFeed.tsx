@@ -263,7 +263,7 @@ export function DocumentsFeed({
           <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search by document name, description or client…"
+            aria-label="Search by document name, description or client" placeholder="Search by document name, description or client…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-background border rounded-md pl-9 pr-4 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-cyan"

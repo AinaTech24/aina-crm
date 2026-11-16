@@ -255,7 +255,7 @@ function BranchDesks({
             </div>
           ) : (
             <div key={d.id} className="flex items-center gap-2 text-sm">
-              <span className="flex-1">
+              <span className="min-w-0 flex-1">
                 <span className="font-medium">{d.name}</span>
                 {d.code && <span className="text-xs text-muted-foreground ml-1.5">({d.code})</span>}
                 <span className="text-xs text-muted-foreground ml-2">{d.memberCount} member{d.memberCount === 1 ? "" : "s"}</span>
@@ -267,8 +267,8 @@ function BranchDesks({
                   setEditName(d.name);
                   setEditCode(d.code ?? "");
                 }}
-                className="text-muted-foreground hover:text-brand-cyan-deep"
-                aria-label="Edit desk"
+                className="btn-icon text-muted-foreground hover:text-brand-cyan-deep"
+                aria-label={`Edit desk ${d.name}`}
               >
                 <Pencil className="size-3.5" />
               </button>
@@ -276,8 +276,8 @@ function BranchDesks({
                 type="button"
                 disabled={busy}
                 onClick={() => onDelete(d.id)}
-                className="text-muted-foreground hover:text-rose-600"
-                aria-label="Delete desk"
+                className="btn-icon text-muted-foreground hover:text-rose-600"
+                aria-label={`Delete desk ${d.name}`}
               >
                 <Trash2 className="size-3.5" />
               </button>
@@ -290,13 +290,15 @@ function BranchDesks({
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="New desk name (e.g. DK)"
-            className="flex-1 rounded-md border border-border px-2 py-1 text-sm focus:outline-none focus:border-brand-cyan"
+            aria-label="New desk name"
+            className="min-w-0 flex-1 rounded-md border border-border px-2 py-1 text-sm focus:outline-none focus:border-brand-cyan"
           />
           <input
             value={newCode}
             onChange={(e) => setNewCode(e.target.value)}
             placeholder="Code"
-            className="w-20 rounded-md border border-border px-2 py-1 text-sm focus:outline-none focus:border-brand-cyan"
+            aria-label="New desk code"
+            className="w-20 shrink-0 rounded-md border border-border px-2 py-1 text-sm focus:outline-none focus:border-brand-cyan"
           />
           <button
             type="button"

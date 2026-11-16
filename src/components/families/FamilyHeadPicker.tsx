@@ -107,7 +107,7 @@ export function FamilyHeadPicker({
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search an existing client by name, PAN, mobile…"
+          aria-label="Search an existing client by name, PAN, mobile" placeholder="Search an existing client by name, PAN, mobile…"
           className="w-full border rounded-md pl-9 pr-8 py-2 text-sm bg-background"
         />
         {loading && <Loader2 className="size-4 absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />}

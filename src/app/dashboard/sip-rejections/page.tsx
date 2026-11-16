@@ -219,7 +219,7 @@ export default async function SipRejectionsPage({
 
       <ModuleTabs tabs={SIP_TABS} />
 
-      <div className="grid grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Stat icon={AlertTriangle} label="Total" value={data.total} />
         <Stat icon={Clock} label="Pending" value={data.pending} tone={data.pending > 0 ? "amber" : "muted"} />
         <Stat icon={Clock} label="In progress" value={data.inProgress} />

@@ -59,7 +59,7 @@ export default async function FinancialChecklistPage() {
             <ul className="p-4 space-y-2">
               {group.items.map((item, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm">
-                  <ChecklistBox storageKey={`finchk:${group.cadence}:${i}`} />
+                  <ChecklistBox storageKey={`finchk:${group.cadence}:${i}`} label={item} />
                   <span>{item}</span>
                 </li>
               ))}

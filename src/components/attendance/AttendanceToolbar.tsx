@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { CountBadge } from "@/components/ui/CountBadge";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { DateField } from "@/components/ui/DateField";
@@ -68,7 +69,7 @@ export function AttendanceToolbar({ statusOptions }: { statusOptions: { value: s
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search employee…"
+          aria-label="Search employee" placeholder="Search employee…"
           className="w-36 sm:w-56 rounded-lg border border-border bg-background pl-8 pr-7 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-cyan/20 focus:border-brand-cyan/50"
         />
         {q && (
@@ -89,9 +90,7 @@ export function AttendanceToolbar({ statusOptions }: { statusOptions: { value: s
         >
           <SlidersHorizontal className="size-3.5" />
           <span className="hidden sm:inline">Filters</span>
-          {activeCount > 0 && (
-            <span className="grid place-items-center min-w-4 h-4 px-1 rounded-full bg-brand-cyan text-white text-2xs font-bold leading-none">{activeCount}</span>
-          )}
+          <CountBadge count={activeCount} tone="brand" />
         </button>
 
         {open && (

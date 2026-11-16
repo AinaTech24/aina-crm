@@ -9,7 +9,7 @@ import { Check } from "lucide-react";
  * couldn't mark items done. State persists per-browser in localStorage, keyed
  * by a stable storageKey, so ticks survive reloads.
  */
-export function ChecklistBox({ storageKey }: { storageKey: string }) {
+export function ChecklistBox({ storageKey, label }: { storageKey: string; label: string }) {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
@@ -37,14 +37,20 @@ export function ChecklistBox({ storageKey }: { storageKey: string }) {
       type="button"
       role="checkbox"
       aria-checked={checked}
+      aria-label={label}
       onClick={toggle}
-      className={`mt-0.5 size-4 rounded border flex-shrink-0 grid place-items-center transition-colors ${
-        checked
-          ? "bg-brand-cyan border-brand-cyan text-white"
-          : "border-border bg-card hover:border-brand-cyan"
-      }`}
+      // A 24px hit area (CLAUDE.md "Hit targets") around the 16px box.
+      className="group -my-0.5 -ml-1 size-6 flex-shrink-0 grid place-items-center rounded"
     >
-      {checked && <Check className="size-3" strokeWidth={3} />}
+      <span
+        className={`size-4 rounded border grid place-items-center transition-colors ${
+          checked
+            ? "bg-brand-cyan border-brand-cyan text-white"
+            : "border-border bg-card group-hover:border-brand-cyan"
+        }`}
+      >
+        {checked && <Check className="size-3" strokeWidth={3} />}
+      </span>
     </button>
   );
 }

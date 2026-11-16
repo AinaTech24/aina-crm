@@ -196,7 +196,7 @@ function SubjectPicker({ value, onChange }: { value: Subject | null; onChange: (
   return (
     <div className="relative">
       <div className="text-2xs text-muted-foreground mb-1">Client / Lead</div>
-      <input value={q} onChange={(e) => onType(e.target.value)} placeholder="Search by name or phone…" className="input-base" autoFocus />
+      <input value={q} onChange={(e) => onType(e.target.value)} aria-label="Search by name or phone" placeholder="Search by name or phone…" className="input-base" autoFocus />
       {loading && <Loader2 className="size-4 animate-spin absolute right-3 top-7 text-muted-foreground" />}
       {results.length > 0 && (
         <div className="mt-1 rounded-lg border bg-card shadow-sm divide-y max-h-56 overflow-y-auto">

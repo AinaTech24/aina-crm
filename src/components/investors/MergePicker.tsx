@@ -137,7 +137,7 @@ export function MergePicker() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search clients…"
+          aria-label="Search clients" placeholder="Search clients…"
           className="input-base w-full pl-9"
         />
         {searching && <Loader2 className="size-4 absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />}

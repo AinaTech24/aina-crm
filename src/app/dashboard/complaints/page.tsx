@@ -169,7 +169,7 @@ export default async function ComplaintsPage({
           </Link>
         </div></>} />
 
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <Stat icon={AlertOctagon} label="Open complaints" value={data.open} tone={data.open > 0 ? "amber" : "muted"} />
         <Stat icon={CheckCircle2} label="Resolved (30d)" value={data.resolved30d} tone="emerald" />
         <Stat icon={AlertTriangle} label="SLA breached" value={data.breached} tone={data.breached > 0 ? "rose" : "muted"} />

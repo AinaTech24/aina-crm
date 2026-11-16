@@ -20,7 +20,7 @@ export function MfSchemeSearch({ initialQuery = "" }: { initialQuery?: string })
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search by scheme name or AMC — e.g. “HDFC Flexi Cap”, “Axis”…"
+        aria-label="Search by scheme name or AMC — e.g. “HDFC Flexi Cap”, “Axis”" placeholder="Search by scheme name or AMC — e.g. “HDFC Flexi Cap”, “Axis”…"
         className="w-full h-10 rounded-lg border border-border bg-card pl-10 pr-3 text-sm focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15"
       />
     </form>

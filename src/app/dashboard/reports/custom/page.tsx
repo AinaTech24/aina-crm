@@ -128,7 +128,7 @@ export default function CustomReportsPage() {
         <div className="space-y-3">
           <div className="relative max-w-sm">
             <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search reports…" className="input-base pl-9" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search reports" placeholder="Search reports…" className="input-base pl-9" />
           </div>
 
           <div className="card-surface overflow-hidden">

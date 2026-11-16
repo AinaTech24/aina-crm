@@ -150,7 +150,7 @@ export default function HelpPage() {
               type="search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search ARN, KYC, NAV…"
+              aria-label="Search ARN, KYC, NAV" placeholder="Search ARN, KYC, NAV…"
               className="pl-9 pr-3 py-2 text-sm border border-input rounded-lg bg-background w-64 focus:ring-2 focus:ring-ring focus:outline-none"
             />
           </div>

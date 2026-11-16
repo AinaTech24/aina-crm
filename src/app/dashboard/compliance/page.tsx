@@ -281,7 +281,7 @@ export default async function CompliancePage() {
           </div>
           <ShieldCheck className="size-16 text-emerald-600/40" />
         </div>
-        <div className="grid grid-cols-4 gap-3 mt-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
           <ScoreCard label="NISM validity" score={nismValidity} />
           <ScoreCard label="ARN renewal" score={arnRenewalStatus} />
           <ScoreCard label="KYD docs" score={kydCompleteness} />

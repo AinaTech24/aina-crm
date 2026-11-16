@@ -470,6 +470,11 @@
   .page-subtitle {
     @apply text-sm leading-relaxed text-muted-foreground;
   }
+  /* Pages pass their header buttons inside their own flex group; on a phone
+     that group must wrap too, or three buttons push the page sideways. */
+  .page-heading-actions > * {
+    @apply max-w-full flex-wrap;
+  }
 
   /* Section title (smaller, used on inner panels) */
   /* A section heading must not be the same size as the body text under it —

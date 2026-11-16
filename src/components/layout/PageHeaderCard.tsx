@@ -53,7 +53,7 @@ export function PageHeaderCard({
           {subtitle && <p className="page-subtitle mt-2 max-w-2xl">{subtitle}</p>}
           {children}
         </div>
-        {actions && <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
+        {actions && <div className="page-heading-actions flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
       </div>
     </header>
   );

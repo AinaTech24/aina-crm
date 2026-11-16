@@ -53,7 +53,7 @@ export function PeriodSelector({ current, variant = "dark" }: { current: Period;
 
   return (
     <div
-      className={`inline-flex rounded-lg border p-0.5 gap-0.5 ${cls.wrap} ${
+      className={`inline-flex max-w-full overflow-x-auto rounded-lg border p-0.5 gap-0.5 ${cls.wrap} ${
         pending ? "opacity-60 pointer-events-none" : ""
       }`}
     >

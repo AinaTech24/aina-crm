@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { CountBadge } from "@/components/ui/CountBadge";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -183,9 +184,7 @@ export function ModernAttentionCenter({
             }`}
           >
             <span>SIP Bounces</span>
-            <span className="size-4 rounded-full bg-rose-500 text-white text-2xs grid place-items-center">
-              {rejections.length}
-            </span>
+            <CountBadge count={rejections.length} />
           </button>
 
           <button

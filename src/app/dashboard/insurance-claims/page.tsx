@@ -165,7 +165,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
         {openOver != null && <input type="hidden" name="open_over" value={openOver} />}
         {rmFilter.length > 0 && <input type="hidden" name="rm" value={rmFilter.join(",")} />}
         {branchFilter.length > 0 && <input type="hidden" name="branch" value={branchFilter.join(",")} />}
-        <input name="q" defaultValue={q} placeholder="Search proposer, policy no., insurer…" className="input-base" />
+        <input name="q" defaultValue={q} aria-label="Search proposer, policy no., insurer" placeholder="Search proposer, policy no., insurer…" className="input-base" />
       </form>
 
       <div className="card-surface overflow-hidden">

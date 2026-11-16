@@ -163,7 +163,7 @@ export function MapFamilyDialog({
                   value={q}
                   onChange={(e) => { setQ(e.target.value); setPicked(null); }}
                   autoFocus
-                  placeholder="Search by family or head name…"
+                  aria-label="Search by family or head name" placeholder="Search by family or head name…"
                   className="input-base w-full pl-8 text-sm"
                 />
               </span>
