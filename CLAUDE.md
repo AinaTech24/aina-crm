@@ -445,6 +445,26 @@ branch head, merge scope, a PAN clash needs an explicit tick). The unit is the
 folio — a folio belongs to one client, so schemes inside it travel with it. To
 fold a whole duplicate record away use Merge Clients (`mergeInvestors`).
 
+## List columns — order and added fields (2026-11-16)
+
+Every list's **Manage columns** menu (`components/common/ColumnManager.tsx`) can move a column up / down and
+**add a field** from the module's data as an extra column. Done for Clients, Leads, Transactions, SIP Book,
+SIP Rejections, Service Requests, Proposals and Meetings. Code: `lib/list-columns/` (`prefs.ts` pure; `server.ts`
+reads the cookie; one `<module>-fields.ts` per module).
+
+- **The choice lives in a cookie** (`aina_cols_<module>`: `{order, extra}`), so the SERVER draws the table already
+  in that order and loads only the chosen fields for the rows on the page — no flash, no DOM shuffling. Show / hide
+  of the built-in columns is still localStorage CSS. An added column's key is `x:<field>`.
+- **A field is a catalog row**: static SQL over fixed aliases, returned as display text (India dates, rupees via
+  `formatINR`). Only keys in the catalog and offered to this viewer are ever run; a cookie cannot name anything
+  else. Personal data (email, mobile, PAN) is withheld by `isFieldAllowed`, and where a viewer can see a record
+  outside their book (service requests) the client fields are masked as the page already does.
+- **A table draws its columns from `order`** (a header map + a `cellFor(key,row)` switch); the first identifying
+  column and the row actions are pinned. To add a field: append to the module's catalog; its test loads EVERY
+  catalog field against the real DB, so a wrong column name fails there, not in production.
+- **Never export a list's default-column array from a `"use client"` table** — the server page reads it as a
+  proxy, not an array, and it fails only at runtime. Keep it in the plain `lib/list-columns` module.
+
 ## Overdue tasks — the escalation ladder
 
 Settings → Escalation (`/dashboard/settings/escalation`, 2026-10-24, CEO
