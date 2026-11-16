@@ -29,6 +29,7 @@ import { InvestorSidePeek, type SidePeekInvestor } from "@/components/investors/
 import { MassUpdateDialog, type MassUpdateOptions } from "@/components/investors/MassUpdateDialog";
 import { notify } from "@/components/ui/Toast";
 import { FolioTransferDialog } from "@/components/investors/FolioTransferDialog";
+import { INVESTOR_DEFAULT_COLUMNS } from "@/lib/list-columns/investor-columns";
 
 export type InvestorTableRow = {
   id: string;
@@ -50,8 +51,6 @@ export type InvestorTableRow = {
   extra?: Record<string, string>;
 };
 
-/** The columns, in the order the table draws them when the person has not moved any. */
-export const INVESTOR_DEFAULT_COLUMNS = ["name", "pan", "category", "tier", "segment", "aum", "sip", "kyc", "health", "complete", "status", "actions"];
 
 export type InvestorTableFlags = {
   showPan: boolean;
