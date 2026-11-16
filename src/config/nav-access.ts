@@ -129,6 +129,8 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/employees", label: "Team Members", module: "employees" },
       { key: "/dashboard/attendance", label: "Attendance" },
       { key: "/dashboard/leave-applications", label: "Leave" },
+      { key: "/dashboard/payroll", label: "Payroll" },
+      { key: "/dashboard/my-pay", label: "My pay" },
       { key: "/dashboard/announcements", label: "Announcements" },
     ],
   },

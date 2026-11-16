@@ -29,6 +29,7 @@ export const CAPABILITY_GROUP_ORDER = [
   "Workflows & Marketing",
   "Compliance",
   "Reports & Dashboards",
+  "Payroll",
   "Settings",
 ] as const;
 
@@ -155,6 +156,8 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "dashboards.manage": { group: "Reports & Dashboards", label: "Manage dashboards", hint: "Edit, share, lock and delete any dashboard; set the default dashboard per role and per user" },
 
   // ── Settings ────────────────────────────────────────────────────────────
+  "payroll.manage": { group: "Payroll", label: "Run payroll", hint: "Set salaries, run and approve pay runs, export the bank file — sees every salary" },
+  "payroll.view": { group: "Payroll", label: "View payroll", hint: "Read pay runs, registers and payslips — sees every salary" },
   "settings.users": { group: "Settings", label: "Manage team & permissions", hint: "Lets this member change others' access" },
   "settings.billing": { group: "Settings", label: "Manage billing & subscription" },
   "settings.masters": { group: "Settings", label: "Manage master data" },

@@ -137,6 +137,8 @@ export const tenants = pgTable(
     require2fa: boolean("require_2fa").notNull().default(false),
     /** The firm allows AI features — its data may go to the AI provider (migration 0258, lib/ai/firm-switch.ts). */
     aiEnabled: boolean("ai_enabled").notNull().default(true),
+    /** Payroll settings (migration 0261, lib/payroll/settings.ts). */
+    payrollSettings: jsonb("payroll_settings").$type<Record<string, unknown>>().notNull().default({}),
 
     /** Age → risk-category bands for bulk provisional profiling. NULL = use the
      *  product defaults in src/lib/risk-profile/age-bands.ts. */

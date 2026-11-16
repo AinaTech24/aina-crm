@@ -81,6 +81,8 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Team", href: "/dashboard/employees", label: "Team Members" },
   { group: "Team", href: "/dashboard/attendance", label: "Attendance" },
   { group: "Team", href: "/dashboard/leave-applications", label: "Leave" },
+  { group: "Team", href: "/dashboard/payroll", label: "Payroll" },
+  { group: "Team", href: "/dashboard/my-pay", label: "My pay" },
   { group: "Team", href: "/dashboard/induction", label: "Induction" },
   { group: "Team", href: "/dashboard/announcements", label: "Announcements" },
   // Data & Admin

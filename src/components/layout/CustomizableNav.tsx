@@ -26,7 +26,7 @@ import {
   FileSignature, FileText, FolderArchive, GitBranch, HeartHandshake, Image as ImageIcon,
   Inbox, LayoutDashboard, ListChecks, Megaphone, MessageSquare, PhoneCall, PieChart,
   Radio, Repeat, Scale, ScrollText, Shield, ShieldCheck, Sparkles, Target, TrendingUp,
-  UserCog, Users, Users2, Wallet, Workflow, XOctagon,
+  UserCog, Users, Users2, Wallet, ReceiptText, Workflow, XOctagon,
   // ── unique-icon replacements for the de-duplicated sidebar ──
   UserPlus, Presentation, CalendarClock, ShieldAlert, LayoutTemplate, Library, Gauge,
   FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, FolderOpen,
@@ -52,7 +52,7 @@ const ICON_LIST: LucideIcon[] = [
   FileSignature, FileText, FolderArchive, GitBranch, HeartHandshake, ImageIcon,
   Inbox, LayoutDashboard, ListChecks, Megaphone, MessageSquare, PhoneCall, PieChart,
   Radio, Repeat, Scale, ScrollText, Shield, ShieldCheck, Sparkles, Target, TrendingUp,
-  UserCog, Users, Users2, Wallet, Workflow, XOctagon,
+  UserCog, Users, Users2, Wallet, ReceiptText, Workflow, XOctagon,
   UserPlus, Presentation, CalendarClock, ShieldAlert, LayoutTemplate, Library, Gauge,
   FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, FolderOpen,
   LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
