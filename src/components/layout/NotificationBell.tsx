@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CountBadge, countLabel } from "@/components/ui/CountBadge";
 import Link from "next/link";
 import { Bell, AlertTriangle, CheckCircle2, Info, AlertOctagon, Cake } from "lucide-react";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -128,17 +129,13 @@ export function NotificationBell() {
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="relative rounded-md p-1.5 hover:bg-accent"
-          aria-label="Notifications"
+          className="relative size-9 rounded-full bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground grid place-items-center transition-colors"
+          aria-label={countLabel("Notifications", unread)}
           aria-haspopup="dialog"
           aria-expanded={open}
         >
           <Bell className="size-4" />
-          {unread > 0 && (
-            <span className="absolute -top-1 -right-1.5 h-4 min-w-4 px-1 grid place-items-center rounded-full bg-rose-600 text-white text-2xs font-semibold leading-none tabular-nums">
-              {unread > 99 ? "99+" : unread}
-            </span>
-          )}
+          <CountBadge count={unread} placement="corner" />
         </button>
       </Tooltip>
 

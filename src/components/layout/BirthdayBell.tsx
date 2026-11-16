@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { CountBadge, countLabel } from "@/components/ui/CountBadge";
 import Link from "next/link";
 import { Cake, ArrowRight, MessageCircle, Check } from "lucide-react";
 import { formatDate } from "@/lib/format";
@@ -105,16 +106,14 @@ export function BirthdayBell() {
           type="button"
           onClick={() => { setOpen((o) => !o); if (!open) load(); }}
           className="relative size-9 rounded-full bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground grid place-items-center transition-colors"
-          aria-label="Birthdays today"
+          aria-label={countLabel("Birthdays today", todayCount, todayCount === 1 ? "client" : "clients")}
           aria-haspopup="dialog"
           aria-expanded={open}
         >
           <Cake className="size-4" />
-          {todayCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 size-4 grid place-items-center rounded-full bg-rose-500 text-white text-2xs font-semibold">
-              {todayCount > 9 ? "9+" : todayCount}
-            </span>
-          )}
+          {/* A birthday is not an alarm: brand colour, not the red reserved
+              for unread / overdue work. */}
+          <CountBadge count={todayCount} tone="brand" placement="corner" />
         </button>
       </Tooltip>
 

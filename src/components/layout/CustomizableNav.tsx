@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CountBadge } from "@/components/ui/CountBadge";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Pencil, Check, Plus, Search, GripVertical, X, RotateCcw, Circle, ChevronDown, ChevronUp, Star,
@@ -120,8 +121,6 @@ const GROUP_ICON: Record<string, LucideIcon> = {
 const DASHBOARD_PAGE = /^\/dashboard\/(manage|new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/|$)/;
 
 /** The red action-count pill, shared by an item and by its collapsed group. */
-const COUNT_PILL = "rounded-full bg-rose-500 px-1.5 min-w-[1.1rem] text-center text-2xs font-semibold leading-[1.1rem] text-white";
-
 function slug(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "group";
 }
@@ -592,9 +591,10 @@ export function CustomizableNav({
                       {g.title}
                     </span>
                     {groupBadge > 0 && (
-                      <span className={`shrink-0 ${COUNT_PILL}`} aria-label={`${groupBadge} waiting on you`}>
-                        {groupBadge > 99 ? "99+" : groupBadge}
-                      </span>
+                      <>
+                        <span className="sr-only">{groupBadge} waiting on you</span>
+                        <CountBadge count={groupBadge} className="shrink-0" />
+                      </>
                     )}
                     {/* Chevron on the right — ▼ collapsed, ▲ when expanded. */}
                     <ChevronDown className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
@@ -685,9 +685,10 @@ function NavRow({
         </span>
       ) : null}
       {!editing && item.badge ? (
-        <span className={`nav-link-badge ml-auto shrink-0 ${COUNT_PILL}`}>
-          {item.badge > 99 ? "99+" : item.badge}
-        </span>
+        <>
+          <span className="sr-only">{item.badge} waiting on you</span>
+          <CountBadge count={item.badge} className="nav-link-badge ml-auto shrink-0" />
+        </>
       ) : null}
       {/* Pin indicator — a subtle gold dot at rest for a pinned row; on row
           hover the dot yields to the star button (to unpin). An unpinned row
