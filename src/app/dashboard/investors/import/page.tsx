@@ -1,11 +1,12 @@
 "use client";
 
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Upload, FileSpreadsheet, Loader2, Check, AlertCircle } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
+import { buttonClass } from "@/components/ui/button-class";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_IMPORT_ROWS, IMPORT_COMMIT_CHUNK } from "@/lib/investors/import-limits";
 
@@ -31,6 +32,11 @@ export default function ImportPage() {
   const [err, setErr] = useState<string | null>(null);
   const [commitResult, setCommitResult] = useState<any>(null);
   const [progress, setProgress] = useState<{ done: number; total: number; rows: number } | null>(null);
+  // A firm moving off Zoho CRM gets a guided import (flag "zohoImport", lib/imports/zoho).
+  const [zohoOn, setZohoOn] = useState(false);
+  useEffect(() => {
+    fetch("/api/imports/zoho/contacts").then((r) => (r.ok ? r.json() : null)).then((j) => setZohoOn(!!j?.enabled)).catch(() => {});
+  }, []);
 
   // How the file's rows are processed (mirrors Zoho's import dialog).
   const [mode, setMode] = useState<Mode>("add");
@@ -138,7 +144,10 @@ export default function ImportPage() {
 
   return (
     <div className="space-y-4 max-w-4xl">
-<PageHeaderCard title={<>Import clients from Excel</>} />
+<PageHeaderCard
+  title={<>Import clients from Excel</>}
+  actions={zohoOn ? <Link href="/dashboard/imports/zoho" className={buttonClass("secondary", "sm")}>From Zoho CRM</Link> : undefined}
+/>
 <ol className="flex items-center gap-4 text-xs">
         <Step label="Upload file" active={step === "upload"} done={step !== "upload"} />
         <Step label="Map columns" active={step === "map"} done={step === "commit" || step === "done"} />
