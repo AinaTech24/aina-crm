@@ -40,7 +40,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         SELECT
           r.final_category, r.total_score, r.responses, r.profile_date, r.age,
           r.signed_at, r.signed_by_name, r.next_review_at, r.verification_method, r.document_url, r.created_at,
-          r.verified_email, r.email_verified_at, r.client_ip, r.otp_transaction_id,
+          r.verified_email, r.email_verified_at, r.client_ip, r.otp_transaction_id, r.provisional, r.rm_remarks,
           i.name AS investor_name, i.pan AS investor_pan,
           i.address AS investor_address, i.email AS investor_email, i.phone AS investor_phone,
           i.id AS investor_id, u.name AS rm_name
@@ -97,6 +97,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           nextReviewAt: row.next_review_at ?? null,
           age: row.age != null ? Number(row.age) : null,
           verificationMethod: row.verification_method ?? null,
+          // A profile with no answers says how it was recorded instead of
+          // printing an empty questionnaire and a client signature.
+          provisional: row.provisional === true,
+          note: row.rm_remarks ?? null,
           verification: {
             email: row.verified_email ?? null,
             verifiedAt: row.email_verified_at ? new Date(row.email_verified_at).toISOString() : null,
