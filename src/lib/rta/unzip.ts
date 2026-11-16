@@ -71,3 +71,36 @@ export async function extractRtaFileFromZip(
     await reader.close();
   }
 }
+
+
+/**
+ * One line saying what kind of archive this is — "AES-256, 1 file" — for the
+ * message on a refused import. "The password is wrong" and "this archive uses a
+ * kind of encryption we cannot read" look the same from outside; this tells them
+ * apart without anyone having to send the file. Never throws.
+ */
+export async function describeZip(buf: Uint8Array): Promise<string> {
+  try {
+    const reader = new ZipReader(new Uint8ArrayReader(buf));
+    try {
+      const entries = ((await reader.getEntries()) as unknown as Array<{
+        directory: boolean;
+        encrypted?: boolean;
+        extraFieldAES?: { strength?: number };
+      }>).filter((e) => !e.directory);
+      if (!entries.length) return "empty archive";
+      const kinds = new Set(
+        entries.map((e) =>
+          !e.encrypted ? "not encrypted"
+            : e.extraFieldAES ? `AES-${({ 1: 128, 2: 192, 3: 256 } as Record<number, number>)[e.extraFieldAES.strength ?? 3] ?? 256}`
+            : "ZipCrypto"
+        )
+      );
+      return `${[...kinds].join(" + ")}, ${entries.length} file${entries.length === 1 ? "" : "s"}`;
+    } finally {
+      await reader.close();
+    }
+  } catch {
+    return "could not read the archive's header";
+  }
+}

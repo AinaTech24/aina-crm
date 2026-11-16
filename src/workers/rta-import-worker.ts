@@ -26,7 +26,7 @@ import { sql } from "drizzle-orm";
 import { withTenant, withSystem } from "@/db/client";
 import { processRtaFile } from "@/lib/rta/process";
 import { decodeRtaToText } from "@/lib/rta/decode";
-import { extractRtaFileFromZip } from "@/lib/rta/unzip";
+import { extractRtaFileFromZip, describeZip } from "@/lib/rta/unzip";
 // RTA zip is uploaded to S3 (full file, no web-server body cap), parsed, then
 // deleted from S3 immediately — transient, never retained.
 import { getObjectBytes, deleteObject, putObject } from "@/lib/storage/s3";
@@ -179,15 +179,26 @@ async function openWithAnyPassword(
 }
 
 /** Build the right message/status for an unzip failure, aware of how many passwords were tried. */
-function classifyUnzipFailure(error: any, triedCount: number, hadAnyPassword: boolean): { rejected: boolean; message: string } {
+function classifyUnzipFailure(
+  error: any,
+  triedCount: number,
+  hadAnyPassword: boolean,
+  zipInfo?: string,
+): { rejected: boolean; message: string } {
   if (hadAnyPassword && isWrongPasswordError(error?.message)) {
+    // Say exactly what was tried. "The only one saved" hid the fact that a
+    // password typed on the key button, when it equals the saved one, adds nothing —
+    // the file simply wants a different password than every one the CRM holds.
+    const tried =
+      triedCount > 1
+        ? `none of the ${triedCount} different passwords tried (saved ones and any you typed) opened the archive`
+        : `the only password tried (the saved one — a typed one that matches it counts as the same) did not open the archive`;
     return {
       rejected: true,
       message:
-        triedCount > 1
-          ? `Not this firm's file — none of the ${triedCount} saved passwords opened the archive, so it was ignored. ` +
-            `If you know this file's password (a registrar lets one be set on each request), use the key button on this row.`
-          : NOT_OUR_FILE,
+        `Not opened — ${tried}${zipInfo ? ` [ZIP: ${zipInfo}]` : ""}. ` +
+        `This file was protected with another password: a registrar lets one be set on each request or schedule. ` +
+        `Type that one on the key button (it must differ from the ones already saved), or re-create the schedule with the saved password.`,
     };
   }
   return { rejected: false, message: `Could not open the zip — ${error?.message ?? "unsupported archive"}.` };
@@ -236,12 +247,6 @@ async function markRejected(job: RtaImportJob, reason: string, extra?: { checksu
     ctx
   );
 }
-
-/** Shown on every archive we could not open — deliberately not phrased as an error. */
-const NOT_OUR_FILE =
-  "Not this firm's file — the archive is encrypted with a different password from the only one saved, " +
-  "so it was ignored. Save the password this report was requested with (Settings → Integrations → RTA Mailback), " +
-  "or use the key button on this row to open it with that password.";
 
 /**
  * Idempotency guard. A worker restart (deploy / OOM) can leave a job 'stalled',
@@ -343,7 +348,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
     const opened = await openWithAnyPassword(buf, passwords);
     if (!opened.ok) {
       const extra = { checksum, sizeBytes: buf.length };
-      const verdict = classifyUnzipFailure(opened.error, opened.triedCount, passwords.length > 0);
+      const verdict = classifyUnzipFailure(opened.error, opened.triedCount, passwords.length > 0, await describeZip(new Uint8Array(buf)));
       if (verdict.rejected) await markRejected(job, verdict.message, extra);
       else await markFailed(job, verdict.message, extra);
       return;
@@ -769,7 +774,7 @@ async function computeRichImport(
     const passwords = candidatePasswords(job);
     const opened = await openWithAnyPassword(buf, passwords);
     if (!opened.ok) {
-      const verdict = classifyUnzipFailure(opened.error, opened.triedCount, passwords.length > 0);
+      const verdict = classifyUnzipFailure(opened.error, opened.triedCount, passwords.length > 0, await describeZip(new Uint8Array(buf)));
       return { ok: false, notOurs: verdict.rejected, error: verdict.message };
     }
     await rememberTypedPassword(job, (job as any).rta, opened.usedPassword);

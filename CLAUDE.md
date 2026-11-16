@@ -1183,6 +1183,12 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   (3) the cause (a password set per request) was not said anywhere — the RTA
   Mailback card and the banner now say it. Not fixable in code: the registrar's form
   asks for the password on every request.
+- **A refused ZIP now says what was tried and what the archive is** (2026-11-16): `rta.password_rejected`
+  rows read "none of the N different passwords tried … [ZIP: AES-256, 1 file]" (`describeZip`,
+  `lib/rta/unzip.ts`). N counts DIFFERENT passwords — a typed one equal to a saved one adds nothing, so
+  "N = 1" after typing a password means the file wants one the CRM does not hold. The old message said
+  "the only one saved" and hid that. zip.js reads AES-128/192/256 and ZipCrypto (plain and streamed);
+  `tests/rta-unzip-describe.test.ts` pins it, so a file that still refuses is a password we do not have.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.
