@@ -100,7 +100,7 @@ export async function loadSipRejectionExtra(
     WHERE r.id IN (${sql.join(ids.map((x) => sql`${x}::uuid`), sql`, `)})
   `);
   const out: Record<string, Record<string, string>> = {};
-  for (const r of res.rows as any[]) {
+  for (const r of res.rows as Array<Record<string, unknown>>) {
     const o: Record<string, string> = {};
     fields.forEach((k, n) => {
       const v = r[`c${n}`];

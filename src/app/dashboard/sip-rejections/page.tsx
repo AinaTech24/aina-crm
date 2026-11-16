@@ -115,7 +115,7 @@ export default async function SipRejectionsPage({
     // The fields this person added as columns — only for the rows on screen.
     const extraValues = await loadSipRejectionExtra(
       tx,
-      (rows.rows as any[]).map((x) => String(x.id)),
+      (rows.rows as Array<{ id: unknown }>).map((x) => String(x.id)),
       extraKeys,
       extraAllowed,
     );
@@ -194,7 +194,7 @@ export default async function SipRejectionsPage({
       },
       aging: { a0_2: Number(s.age_0_2), a3_7: Number(s.age_3_7), a7p: Number(s.age_7p) },
       byRm: byRm.rows as any[],
-      rows: (rows.rows as any[]).map((x) => ({ ...x, extra: extraValues[String(x.id)] })),
+      rows: (rows.rows as Array<{ id: unknown }>).map((x) => ({ ...x, extra: extraValues[String(x.id)] })),
     };
   });
 

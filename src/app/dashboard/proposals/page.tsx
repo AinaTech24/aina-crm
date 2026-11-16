@@ -225,7 +225,7 @@ export default async function ProposalsPage({
       WHERE ${scope}
     `);
     // Added fields: only for this page's rows, in the same transaction.
-    const pageRows = rows.rows as any[];
+    const pageRows = rows.rows as Array<Record<string, unknown> & { id: string }>;
     const extraValues = view === "board"
       ? {}
       : await loadProposalExtra(tx, pageRows.map((r) => String(r.id)), extraKeys, allowedProposalExtraKeys(extraOptions));

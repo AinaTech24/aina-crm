@@ -197,8 +197,8 @@ export default async function ServiceRequestsPage({
       ORDER BY name ASC
     `);
     // The fields they added as columns, for the tickets on this page only.
-    const extraValues = await loadServiceRequestExtra(tx, (rows.rows as any[]).map((r) => String(r.id)), extraKeys, extraAllowed, clientVisible);
-    for (const r of rows.rows as any[]) r.extra = extraValues[String(r.id)] ?? {};
+    const extraValues = await loadServiceRequestExtra(tx, (rows.rows as Array<{ id: unknown }>).map((r) => String(r.id)), extraKeys, extraAllowed, clientVisible);
+    for (const r of rows.rows as Array<{ id: unknown; extra?: Record<string, string> }>) r.extra = extraValues[String(r.id)] ?? {};
     return { rows: rows.rows as any[], rms: rmRows.rows as any[], counts: (countRows.rows[0] ?? {}) as Record<string, number> };
   });
 

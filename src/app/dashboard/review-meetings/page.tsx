@@ -23,6 +23,8 @@ import { readColumnPrefs } from "@/lib/list-columns/server";
 import { EXTRA_PREFIX, orderKeys } from "@/lib/list-columns/prefs";
 import { allowedMeetingExtraKeys, loadMeetingExtra, meetingExtraOptions } from "@/lib/list-columns/meeting-fields";
 
+type MeetingRow = Parameters<typeof MeetingsKanban>[0]["meetings"][number];
+
 const MEETINGS_COLUMNS = [
   { key: "date", label: "Date", required: true },
   { key: "client", label: "Client", required: true },
@@ -195,8 +197,8 @@ export default async function ReviewMeetingsPage({
       ORDER BY name ASC
     `);
     // Values of the fields this person added, for the meetings on this page only.
-    const extraValues = view === "kanban" ? {} : await loadMeetingExtra(tx, (meetings.rows as any[]).map((r) => String(r.id)), extraKeys, extraAllowed);
-    return { rows: meetings.rows as any[], stats: s, rms: rmRows.rows as any[], extraValues };
+    const extraValues = view === "kanban" ? {} : await loadMeetingExtra(tx, (meetings.rows as Array<{ id: unknown }>).map((r) => String(r.id)), extraKeys, extraAllowed);
+    return { rows: meetings.rows as unknown as MeetingRow[], stats: s, rms: rmRows.rows as Array<Record<string, any>>, extraValues };
   });
 
   const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
