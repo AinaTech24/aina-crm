@@ -105,7 +105,7 @@ export default async function ReferralsPage({
     <div className="space-y-6 max-w-7xl">
       <PageHeaderCard title={<><Heart className="size-6 text-muted-foreground" /> Referral Tracking</>} />
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat
           icon={Users}
           label="Active referrers"

@@ -69,7 +69,7 @@ export function AttendanceToolbar({ statusOptions }: { statusOptions: { value: s
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search employee…"
+          aria-label="Search employee" placeholder="Search employee…"
           className="w-36 sm:w-56 rounded-lg border border-border bg-background pl-8 pr-7 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-cyan/20 focus:border-brand-cyan/50"
         />
         {q && (

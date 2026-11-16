@@ -429,7 +429,7 @@ export function CustomizableNav({
                   setQuery("");
                 }
               }}
-              placeholder="Search modules…"
+              aria-label="Search modules" placeholder="Search modules…"
               className="h-[34px] w-full rounded-lg bg-secondary pl-8 pr-2 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/40"
             />
           </label>

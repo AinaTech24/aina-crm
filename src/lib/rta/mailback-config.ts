@@ -305,14 +305,27 @@ export async function ensureForwardAddress(
     }
     return row;
   }
+  // Two first loads at once (the settings page asks twice) both see no row; the
+  // one-active-address index lets one insert win and the other reads it back,
+  // instead of answering 500 with a duplicate-key error.
   const minted = mintAddress(domain);
-  await tx.insert(rtaForwardAddresses).values({
-    tenantId,
-    address: minted.address,
-    token: minted.token,
-    isActive: true,
-  } as any);
-  return minted;
+  const inserted = await tx
+    .insert(rtaForwardAddresses)
+    .values({
+      tenantId,
+      address: minted.address,
+      token: minted.token,
+      isActive: true,
+    } as any)
+    .onConflictDoNothing()
+    .returning({ address: rtaForwardAddresses.address, token: rtaForwardAddresses.token });
+  if (inserted.length) return inserted[0];
+  const [winner] = await tx
+    .select({ address: rtaForwardAddresses.address, token: rtaForwardAddresses.token })
+    .from(rtaForwardAddresses)
+    .where(and(eq(rtaForwardAddresses.tenantId, tenantId), eq(rtaForwardAddresses.isActive, true)))
+    .limit(1);
+  return winner ?? minted;
 }
 
 /** Rotate to a fresh address (e.g. the old one leaked / spam). Deactivates old. */

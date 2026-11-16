@@ -137,7 +137,7 @@ export default async function InsuranceDetailPage({
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Tile
           icon={IndianRupee}
           label="Sum assured"
@@ -189,7 +189,7 @@ export default async function InsuranceDetailPage({
           <Calendar className="size-4 text-muted-foreground" />
           <h2 className="section-title">Schedule</h2>
         </div>
-        <div className="grid grid-cols-4 gap-3 text-xs">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
           <KV label="Policy start" value={p.policyStartDate ? formatDate(p.policyStartDate) : "—"} />
           <KV
             label="Policy term"
@@ -225,7 +225,7 @@ export default async function InsuranceDetailPage({
             <Users className="size-4 text-muted-foreground" />
             <h2 className="section-title">Nominee</h2>
           </div>
-          <div className="grid grid-cols-4 gap-3 text-xs">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
             <KV label="Name" value={p.nomineeName ?? "—"} />
             <KV label="Relation" value={p.nomineeRelation ?? "—"} />
             <KV label="Share" value={`${p.nomineeShare ?? 100}%`} />

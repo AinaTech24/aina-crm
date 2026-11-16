@@ -350,12 +350,14 @@ export function AssistantChat({ insightsHref }: { insightsHref?: string }) {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               rows={1}
+              aria-label="Ask the assistant"
               placeholder="Ask about your clients, AUM, SIPs, tasks…"
               className="flex-1 resize-none max-h-32 rounded-xl border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan/20 focus:border-brand-cyan/50"
             />
             <button
               onClick={() => send()}
               disabled={busy || !input.trim()}
+              aria-label={busy ? "Sending" : "Send"}
               className="size-10 shrink-0 grid place-items-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40 hover:opacity-90 transition"
             >
               {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}

@@ -126,7 +126,7 @@ export function MultiSelectField({
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search…"
+                aria-label="Search" placeholder="Search…"
                 className="w-full rounded-md border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-brand-cyan"
               />
             </div>

@@ -187,7 +187,7 @@ export function TaskWatchersDeps({
         ) : (
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-            <input value={depQ} onChange={(e) => setDepQ(e.target.value)} placeholder="Search a task that blocks this…" className="input-base text-xs pl-8 h-8 bg-white" />
+            <input value={depQ} onChange={(e) => setDepQ(e.target.value)} aria-label="Search a task that blocks this" placeholder="Search a task that blocks this…" className="input-base text-xs pl-8 h-8 bg-white" />
             {depSearching && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 animate-spin text-brand-cyan" />}
             {depResults.length > 0 && (
               <ul className="absolute left-0 right-0 top-full mt-1 z-50 max-h-56 overflow-y-auto scrollbar-thin card-elevated bg-card p-1">

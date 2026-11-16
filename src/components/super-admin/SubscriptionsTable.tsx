@@ -132,7 +132,7 @@ export function SubscriptionsTable({ rows }: { rows: SubscriptionRow[] }) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search MFD name, ARN, or package…"
+            aria-label="Search MFD name, ARN, or package" placeholder="Search MFD name, ARN, or package…"
             className="w-full text-sm border rounded-md pl-8 pr-2 py-1.5 bg-background"
           />
         </div>

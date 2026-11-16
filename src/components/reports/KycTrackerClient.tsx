@@ -212,10 +212,10 @@ export function KycTrackerClient({
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search name / PAN / CKYC / mobile…"
+          aria-label="Search name / PAN / CKYC / mobile" placeholder="Search name / PAN / CKYC / mobile…"
           className="input-base flex-1 min-w-[240px]"
         />
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <span className="text-xs text-muted-foreground mr-1">KYC:</span>
           <ChipBtn
             on={kycFilter === "all"}

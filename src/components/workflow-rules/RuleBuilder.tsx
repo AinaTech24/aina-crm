@@ -783,7 +783,7 @@ function SearchableFieldSelect({
                 autoFocus
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search…"
+                aria-label="Search" placeholder="Search…"
                 className="bg-transparent outline-none text-xs w-full"
               />
             </div>

@@ -310,7 +310,8 @@ export function RtaMailbackCard() {
                   markSourcesDirty(true);
                 }}
                 placeholder="you@yourfirm.com, ops@yourfirm.com"
-                className="input-base text-sm flex-1"
+                aria-label="Mailboxes you forward from, comma-separated"
+                className="input-base text-sm min-w-0 flex-1"
               />
               {sourcesDirty && (
                 <button type="submit" className="btn-secondary text-xs shrink-0">

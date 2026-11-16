@@ -128,7 +128,7 @@ export function TenantsTable({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search name, ARN or email…"
+            aria-label="Search name, ARN or email" placeholder="Search name, ARN or email…"
             className="w-full border border-border rounded-md pl-8 pr-3 py-1.5 text-sm bg-card"
           />
         </div>

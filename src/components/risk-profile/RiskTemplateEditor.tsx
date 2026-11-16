@@ -374,16 +374,17 @@ export function RiskTemplateEditor({
                 <input
                   value={q.label}
                   onChange={(e) => updateQuestion(qi, { label: e.target.value })}
+                  aria-label={`Question ${qi + 1} text`}
                   className="input-base text-sm flex-1 font-semibold"
                   placeholder="Question text"
                 />
-                <button onClick={() => moveQuestion(qi, -1)} disabled={qi === 0} className="btn-icon h-7 w-7 disabled:opacity-30">
+                <button onClick={() => moveQuestion(qi, -1)} disabled={qi === 0} aria-label={`Move question ${qi + 1} up`} className="btn-icon h-7 w-7 disabled:opacity-30">
                   <ChevronUp className="size-3.5" />
                 </button>
-                <button onClick={() => moveQuestion(qi, 1)} disabled={qi === t.questions.length - 1} className="btn-icon h-7 w-7 disabled:opacity-30">
+                <button onClick={() => moveQuestion(qi, 1)} disabled={qi === t.questions.length - 1} aria-label={`Move question ${qi + 1} down`} className="btn-icon h-7 w-7 disabled:opacity-30">
                   <ChevronDown className="size-3.5" />
                 </button>
-                <button onClick={() => removeQuestion(qi)} className="btn-icon h-7 w-7 text-rose-600">
+                <button onClick={() => removeQuestion(qi)} aria-label={`Remove question ${qi + 1}`} className="btn-icon h-7 w-7 text-rose-600">
                   <Trash2 className="size-3.5" />
                 </button>
               </div>
@@ -416,12 +417,14 @@ export function RiskTemplateEditor({
                       <input
                         value={o.value}
                         onChange={(e) => updateOption(qi, oi, { value: e.target.value.replace(/[^a-zA-Z0-9_]/g, "_") })}
+                        aria-label={`Option ${oi + 1} value`}
                         className="input-base text-xs w-32 font-mono"
                         placeholder="value"
                       />
                       <input
                         value={o.label}
                         onChange={(e) => updateOption(qi, oi, { label: e.target.value })}
+                        aria-label={`Option ${oi + 1} label`}
                         className="input-base text-xs flex-1"
                         placeholder="Label shown to RM"
                       />
@@ -429,9 +432,10 @@ export function RiskTemplateEditor({
                         type="number"
                         value={o.score}
                         onChange={(e) => updateOption(qi, oi, { score: Number(e.target.value) })}
+                        aria-label={`Option ${oi + 1} score`}
                         className="input-base text-xs w-20 text-right tabular-nums"
                       />
-                      <button onClick={() => removeOption(qi, oi)} disabled={q.options.length <= 2} className="btn-icon h-6 w-6 text-rose-600 disabled:opacity-30">
+                      <button onClick={() => removeOption(qi, oi)} disabled={q.options.length <= 2} aria-label={`Remove option ${oi + 1}`} className="btn-icon h-6 w-6 text-rose-600 disabled:opacity-30">
                         <X className="size-3" />
                       </button>
                     </div>
@@ -475,7 +479,8 @@ export function RiskTemplateEditor({
                 type="color"
                 value={b.color ?? "#0ea5e9"}
                 onChange={(e) => updateBand(bi, { color: e.target.value })}
-                className="h-9 w-10 rounded border"
+                aria-label={`${b.label || `Band ${bi + 1}`} colour`}
+                className="h-9 w-10 shrink-0 rounded border"
               />
               <div className="flex-1 grid grid-cols-4 gap-2">
                 <Field label="Label">
@@ -505,7 +510,7 @@ export function RiskTemplateEditor({
                   />
                 </Field>
               </div>
-              <button onClick={() => removeBand(bi)} disabled={t.bands.length <= 2} className="btn-icon h-7 w-7 text-rose-600 disabled:opacity-30">
+              <button onClick={() => removeBand(bi)} disabled={t.bands.length <= 2} aria-label={`Remove band ${b.label || bi + 1}`} className="btn-icon h-7 w-7 text-rose-600 disabled:opacity-30">
                 <Trash2 className="size-3.5" />
               </button>
             </div>
@@ -525,6 +530,7 @@ export function RiskTemplateEditor({
                   rows={2}
                   value={b.description ?? ""}
                   onChange={(e) => updateBand(bi, { description: e.target.value })}
+                  aria-label={`${b.label || `Band ${bi + 1}`} description`}
                   className="input-base text-xs flex-1"
                   placeholder={`Description of the "${b.label}" category — shown to RMs on review.`}
                 />

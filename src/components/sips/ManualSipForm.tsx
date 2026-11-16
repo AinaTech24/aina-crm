@@ -188,7 +188,7 @@ function ClientField({ value, onPick, onText }: { value: string; onPick: (c: { i
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
-          placeholder="Search existing clients…"
+          aria-label="Search existing clients" placeholder="Search existing clients…"
           className="w-full h-9 rounded-lg border border-border bg-card pl-9 pr-3 text-sm focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15"
         />
         {busy && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 animate-spin text-brand-cyan" />}

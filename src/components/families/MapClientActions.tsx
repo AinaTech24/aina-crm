@@ -186,7 +186,7 @@ function LinkToFamilyDialog({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               autoFocus
-              placeholder="Search by household or head name…"
+              aria-label="Search by household or head name" placeholder="Search by household or head name…"
               className="w-full pl-8 pr-3 py-2 text-sm border rounded-md bg-background"
             />
           </div>

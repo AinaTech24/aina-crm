@@ -727,7 +727,7 @@ function CalcGallery({
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search calculators by name…"
+          aria-label="Search calculators by name" placeholder="Search calculators by name…"
           autoFocus
           className="w-full rounded-lg border border-border bg-card pl-9 pr-9 py-2 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
         />

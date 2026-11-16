@@ -247,6 +247,7 @@ export default function VartifyConnectCard() {
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="e.g. Aina@001"
+                aria-label="Vartify webhook key (api_key)"
                 autoComplete="off"
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm font-mono bg-background"
               />

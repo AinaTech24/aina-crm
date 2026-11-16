@@ -289,11 +289,13 @@ export function ZohoIntegrationCard() {
             />
           </div>
 
-          <div className="text-2xs text-muted-foreground leading-relaxed rounded-lg border border-border bg-secondary/40 px-3 py-2 inline-flex items-start gap-2">
+          <div className="text-2xs text-muted-foreground leading-relaxed rounded-lg border border-border bg-secondary/40 px-3 py-2 flex items-start gap-2">
             <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
+            <span className="min-w-0 break-words">
             In Zoho, add a single-line custom field named <code className="px-1 rounded bg-secondary">Aina_Record_ID</code> to
             every synced module — see the <strong>Synced modules</strong> list above. That&rsquo;s what stops the sync from
             creating duplicates.
+            </span>
           </div>
 
           <div className="flex items-center gap-2">

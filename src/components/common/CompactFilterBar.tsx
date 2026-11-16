@@ -681,6 +681,7 @@ function SearchInput({ initial, placeholder, onSubmit }: { initial: string; plac
         value={v}
         onChange={(e) => { dirty.current = true; setV(e.target.value); }}
         placeholder={placeholder}
+        aria-label={placeholder ? placeholder.replace(/(…|\.\.\.)$/, "") : "Search"}
         className="input-base pl-9 text-xs h-8"
       />
     </form>

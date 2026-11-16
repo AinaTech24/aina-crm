@@ -195,7 +195,7 @@ export default async function CampaignsPage({
         </div></>} />
 
       {/* KPI strip */}
-      <div className="grid grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Link href="/dashboard/campaigns?status=scheduled,sending,sent" className="block transition-transform hover:scale-[1.01]">
           <Stat icon={Megaphone} label="Active" value={data.s.active ?? 0} tone="emerald" active={sp.status === "scheduled,sending,sent"} />
         </Link>
@@ -451,12 +451,12 @@ function Stat({
         ? "ring-2 ring-primary/65 border-primary bg-secondary/50 shadow-sm"
         : "hover:border-slate-300 bg-white"
       }`}>
-      <div className="flex items-center justify-between">
-        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
         </span>
         {Icon && (
-          <div className={`size-7 rounded-lg grid place-items-center ${iconBg}`}>
+          <div className={`size-7 shrink-0 rounded-lg grid place-items-center ${iconBg}`}>
             <Icon className="size-3.5" />
           </div>
         )}

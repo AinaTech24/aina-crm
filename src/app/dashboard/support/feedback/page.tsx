@@ -96,7 +96,7 @@ export default async function FeedbackPage() {
         </Link>
         {canSend && <SendNpsSurvey />}</div>} />
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="border rounded-lg p-5 bg-card relative overflow-hidden">
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Net Promoter Score

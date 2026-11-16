@@ -423,7 +423,7 @@ function ColumnEditor({ fields, selected, onChange }: { fields: { key: string; l
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div>
         <div className="relative mb-1.5">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search fields…" className="input-base text-xs py-1.5" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search fields" placeholder="Search fields…" className="input-base text-xs py-1.5" />
         </div>
         <div className="rounded-lg border border-border max-h-56 overflow-y-auto divide-y">
           {available.length === 0 ? (

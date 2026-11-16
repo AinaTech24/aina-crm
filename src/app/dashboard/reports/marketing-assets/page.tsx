@@ -44,7 +44,7 @@ export default async function MarketingAssetsPage() {
               {group.items.map((item, i) => (
                 <li key={i} className="flex items-start justify-between gap-2 text-sm">
                   <div className="flex items-start gap-2">
-                    <ChecklistBox storageKey={`mktg:${group.key}:${i}`} />
+                    <ChecklistBox storageKey={`mktg:${group.key}:${i}`} label={item.title} />
                     <span>{item.title}</span>
                   </div>
                   {item.href && (

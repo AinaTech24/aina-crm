@@ -164,10 +164,10 @@ export function ArnEuinTrackerClient({
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by name / code / ARN / EUIN / NISM…"
+          aria-label="Search by name / code / ARN / EUIN / NISM" placeholder="Search by name / code / ARN / EUIN / NISM…"
           className="input-base flex-1 min-w-[240px]"
         />
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <span className="text-xs text-muted-foreground mr-1">
             Expiring in:
           </span>

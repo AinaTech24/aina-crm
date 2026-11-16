@@ -39,6 +39,7 @@ export function InvestorLookup({
   onSelect,
   onClear,
   placeholder,
+  ariaLabel,
   required,
   includeLeads,
   displayKind,
@@ -49,6 +50,8 @@ export function InvestorLookup({
   onSelect: (id: string, name: string, kind?: Kind) => void;
   onClear?: () => void;
   placeholder?: string;
+  /** The search box's accessible name (it has no visible label of its own). */
+  ariaLabel?: string;
   required?: boolean;
   /** Also search open Leads (not just Clients) and tag results by kind. */
   includeLeads?: boolean;
@@ -141,6 +144,7 @@ export function InvestorLookup({
           onChange={(e) => setQ(e.target.value)}
           onFocus={() => results.length > 0 && setOpen(true)}
           placeholder={placeholder ?? "Search by name, PAN, mobile, or email…"}
+          aria-label={ariaLabel ?? "Search clients by name, PAN, mobile or email"}
           required={required}
           className="input-base pl-9"
         />

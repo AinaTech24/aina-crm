@@ -260,7 +260,7 @@ export default async function EmployeesPage({
                                 <span key={l} className="chip text-2xs bg-secondary text-foreground whitespace-nowrap">{l}</span>
                               ))}
                               {rest.length > 0 && (
-                                <span className="chip text-2xs bg-secondary text-muted-foreground" title={rest.join(", ")}>
+                                <span className="relative chip text-2xs bg-secondary text-muted-foreground" title={rest.join(", ")}>
                                   +{rest.length}
                                   <span className="sr-only"> more: {rest.join(", ")}</span>
                                 </span>

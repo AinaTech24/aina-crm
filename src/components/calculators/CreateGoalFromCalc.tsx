@@ -230,7 +230,7 @@ export function CreateGoalFromCalc({
                   setPickerOpen(true);
                 }}
                 onFocus={() => hits.length > 0 && setPickerOpen(true)}
-                placeholder="Search client by name or PAN…"
+                aria-label="Search client by name or PAN" placeholder="Search client by name or PAN…"
                 className="input-base pl-8"
               />
               {pickerOpen && hits.length > 0 && (

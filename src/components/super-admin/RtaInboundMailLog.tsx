@@ -224,7 +224,7 @@ export function RtaInboundMailLog() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search subject, sender, address, firm…"
+            aria-label="Search subject, sender, address, firm" placeholder="Search subject, sender, address, firm…"
             className="w-full rounded-md border pl-8 pr-3 py-2 text-sm"
           />
         </div>

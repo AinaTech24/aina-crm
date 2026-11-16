@@ -171,7 +171,7 @@ export function SaveCalcToClient({
               ref={inputRef}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search clients by name or PAN…"
+              aria-label="Search clients by name or PAN" placeholder="Search clients by name or PAN…"
               className="input-base h-9 text-sm pl-8 w-full"
             />
             {q.trim().length >= 2 && (

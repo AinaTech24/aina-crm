@@ -432,11 +432,11 @@ export default function ProfileForm({
               <input id={`${uid}-full-name`} className={field} value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div>
-              <label className={label}>Email</label>
+              <label htmlFor={`${uid}-email`} className={label}>Email</label>
               {/* Read-only: your email is your login identity — managed by your firm
                   owner. You can confirm it here, which is required before you can
                   invite team members. */}
-              <input className={`${field} bg-secondary/40 text-muted-foreground`} value={email} readOnly />
+              <input id={`${uid}-email`} className={`${field} bg-secondary/40 text-muted-foreground`} value={email} readOnly />
               <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                 {emailVerified ? (
                   <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">

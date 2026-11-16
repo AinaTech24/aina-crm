@@ -174,7 +174,7 @@ export default async function TemplatesPage({
                 type="text"
                 name="q"
                 defaultValue={q}
-                placeholder="Search name or key…"
+                aria-label="Search name or key" placeholder="Search name or key…"
                 className="h-8 w-52 rounded-lg border border-border bg-card pl-8 pr-2 text-xs"
               />
             </form>

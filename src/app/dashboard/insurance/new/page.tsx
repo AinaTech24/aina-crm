@@ -718,7 +718,7 @@ function NewInsuranceForm() {
 
       {/* 3. Schedule */}
       <Section title="3. Schedule">
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <DateField
             label="Policy start"
             value={form.policyStartDate}
@@ -844,7 +844,7 @@ function NewInsuranceForm() {
 
       {kind === "travel" && (
         <Section title="4. Trip details">
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
               <Field label="Destination(s)" placeholder="Schengen, USA…" value={d("destination")} setValue={(v) => setD("destination", v)} />
             </div>
@@ -962,7 +962,7 @@ function NewInsuranceForm() {
           <Field label="Mobile no" placeholder="" value={d("mobile")} setValue={(v) => setD("mobile", v)} />
         </div>
         <Field label="Address — street / line 1" placeholder="" value={d("addressLine1")} setValue={(v) => setD("addressLine1", v)} />
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Field label="City" placeholder="" value={d("city")} setValue={(v) => setD("city", v)} />
           <Field label="State" placeholder="" value={d("state")} setValue={(v) => setD("state", v)} />
           <Field label="Postal code" placeholder="" value={d("postalCode")} setValue={(v) => setD("postalCode", v)} />
@@ -1161,7 +1161,7 @@ function NewInsuranceForm() {
         {!details.proposerSameAddress && (
           <>
             <Field label="Proposer address — line 1" value={d("proposerAddressLine1")} setValue={(v) => setD("proposerAddressLine1", v)} />
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <Field label="City" value={d("proposerCity")} setValue={(v) => setD("proposerCity", v)} />
               <Field label="State" value={d("proposerState")} setValue={(v) => setD("proposerState", v)} />
               <Field label="Postal code" value={d("proposerPostalCode")} setValue={(v) => setD("proposerPostalCode", v)} />
