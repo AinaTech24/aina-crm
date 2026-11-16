@@ -25,7 +25,7 @@ import { ageOn, cell, email, isoDate, istMidnight, mobile, nameKey, pan, yesNo, 
 export const CONTACT_SIGNATURE = ["Record Id", "Contact Owner", "Contact Name"];
 
 /** A firm custom field this import creates (only when the file has a value for it). */
-export type ZohoCustomField = { key: string; label: string; type: "text" | "checkbox" | "textarea"; column: string };
+export type ZohoCustomField = { key: string; label: string; type: "text" | "checkbox" | "textarea" | "select"; column: string };
 
 /** Product columns → their Cross-sell bucket. Each is also kept as a checkbox field. */
 export const PRODUCT_COLUMNS: Array<{ column: string; crossSell: string; key: string }> = [
@@ -46,7 +46,6 @@ export const PRODUCT_COLUMNS: Array<{ column: string; crossSell: string; key: st
 
 /** Text columns kept as custom fields as they are. */
 const TEXT_FIELDS: Array<[column: string, key: string, label: string]> = [
-  ["Lead Source", "cf_zoho_lead_source", "Lead Source"],
   ["Tag", "cf_zoho_tag", "Tag"],
   ["IIFL Account", "cf_zoho_iifl_account", "IIFL Account"],
   ["SISO", "cf_zoho_siso", "SISO"],
@@ -61,12 +60,80 @@ const TEXT_FIELDS: Array<[column: string, key: string, label: string]> = [
   ["If Nominee Minor, Guardian Name", "cf_zoho_nominee_guardian", "Nominee's Guardian (if minor)"],
 ];
 
+/**
+ * Two Zoho columns are firm PICKLISTS on the client ("select" custom fields),
+ * not free text: Lead Source and Salutation. Each list is what the firm already
+ * has, then the CRM's own values, then any new value the Zoho file uses. An
+ * existing text field of the same key is turned into the picklist.
+ */
+export const LEAD_SOURCE_FIELD: ZohoCustomField = { key: "cf_zoho_lead_source", label: "Lead Source", type: "select", column: "Lead Source" };
+export const SALUTATION_FIELD: ZohoCustomField = { key: "cf_zoho_salutation", label: "Salutation", type: "select", column: "Salutation" };
+
+/** The CRM's lead sources as people read them (lib/leads/sources.ts, without "Manual entry"). */
+export const BASE_LEAD_SOURCES = ["Client Referral", "Website", "Social Media", "Webinar", "Seminar", "Walk-in", "Google", "Cold Call", "Other"];
+export const BASE_SALUTATIONS = ["Mr.", "Mrs.", "Ms.", "Miss", "Dr.", "Master"];
+
+export type Picklist = { field: ZohoCustomField; base: readonly string[]; aliases: Record<string, string> };
+
+export const PICKLISTS: Picklist[] = [
+  {
+    field: LEAD_SOURCE_FIELD,
+    base: BASE_LEAD_SOURCES,
+    aliases: {
+      referral: "Client Referral",
+      clientreferral: "Client Referral",
+      existingclient: "Client Referral",
+      existingclientreference: "Client Referral",
+      walkin: "Walk-in",
+      socialmedia: "Social Media",
+      coldcall: "Cold Call",
+    },
+  },
+  { field: SALUTATION_FIELD, base: BASE_SALUTATIONS, aliases: { doctor: "Dr.", mister: "Mr." } },
+];
+
+const optionKey = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * The picklist entry a Zoho value becomes: an option that reads the same (any
+ * case, spacing or punctuation — "mr" is "Mr."), a known alias, else the value
+ * as Zoho wrote it, which then joins the list.
+ */
+export function picklistOption(raw: string, options: readonly string[], aliases: Record<string, string> = {}): string {
+  const v = raw.trim().replace(/\s+/g, " ");
+  if (!v) return "";
+  const k = optionKey(v);
+  const same = options.find((o) => optionKey(o) === k);
+  if (same) return same;
+  const alias = aliases[k];
+  return alias && options.includes(alias) ? alias : v.slice(0, 100);
+}
+
+/** A firm's list: what it already has, then the base values, then the file's new values — no near-duplicates. */
+export function picklistOptions(existing: readonly string[], base: readonly string[], fileValues: readonly string[], aliases: Record<string, string> = {}): string[] {
+  const out: string[] = [];
+  const add = (v: string) => {
+    const t = v.trim();
+    if (t && !out.some((o) => optionKey(o) === optionKey(t))) out.push(t);
+  };
+  existing.forEach(add);
+  base.forEach(add);
+  for (const v of fileValues) add(picklistOption(v, out, aliases));
+  return out;
+}
+
+const LS = PICKLISTS[0];
+export const leadSourceOption = (raw: string, options: readonly string[]) => picklistOption(raw, options, LS.aliases);
+export const leadSourceOptions = (existing: readonly string[], fileValues: readonly string[]) => picklistOptions(existing, LS.base, fileValues, LS.aliases);
+
 /** The Zoho id field — always created; it links meetings and re-runs. */
 export const ZOHO_ID_FIELD: ZohoCustomField = { key: "cf_zoho_record_id", label: "Zoho Record ID", type: "text", column: "Record Id" };
 
 /** Every custom field the import may create, in display order. */
 export const CONTACT_CUSTOM_FIELDS: ZohoCustomField[] = [
   ZOHO_ID_FIELD,
+  LEAD_SOURCE_FIELD,
+  SALUTATION_FIELD,
   ...TEXT_FIELDS.map(([column, key, label]) => ({ key, label, type: "text" as const, column })),
   // Kept only when the value is not one the CRM field understands.
   { key: "cf_zoho_risk_profile", label: "Risk Profile (Zoho)", type: "text", column: "Risk Profile" },
@@ -92,7 +159,6 @@ export const IGNORED_CONTACT_COLUMNS: Record<string, string> = {
   "Last Activity Time": "Zoho housekeeping",
   "Connected To.module": "Zoho housekeeping",
   "Connected To.id": "Zoho housekeeping",
-  Salutation: "Used only to set gender",
 };
 
 export type MappedContact = {
@@ -213,6 +279,9 @@ export function mapZohoContact(row: Record<string, unknown>, now: Date = new Dat
     const v = clean(row[column]);
     if (v) custom[key] = v;
   }
+  const leadSource = g("Lead Source");
+  if (leadSource) custom[LEAD_SOURCE_FIELD.key] = leadSource.slice(0, 100);
+  if (salutation) custom[SALUTATION_FIELD.key] = salutation.slice(0, 100);
   if (famType && !householdType) custom.cf_zoho_family_or_individual = famType;
   if (riskRaw && !risk) custom.cf_zoho_risk_profile = riskRaw;
   if (catRaw && !grade && !segment) custom.cf_zoho_client_category = catRaw;
