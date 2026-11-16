@@ -12,7 +12,7 @@
  * the one "expired · dormant" row stands out.
  */
 
-import { useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp, ArrowUpDown, GitMerge, PencilLine } from "lucide-react";
@@ -46,7 +46,12 @@ export type InvestorTableRow = {
   healthBand: HealthBand;
   dormDays: number | null;
   completeness: number;
+  /** Values of the fields this person added as columns, keyed by field key. */
+  extra?: Record<string, string>;
 };
+
+/** The columns, in the order the table draws them when the person has not moved any. */
+export const INVESTOR_DEFAULT_COLUMNS = ["name", "pan", "category", "tier", "segment", "aum", "sip", "kyc", "health", "complete", "status", "actions"];
 
 export type InvestorTableFlags = {
   showPan: boolean;
@@ -79,6 +84,8 @@ export function InvestorsTable({
   allIds = [],
   total = 0,
   massUpdate,
+  colOrder,
+  extraCols = [],
 }: {
   rows: InvestorTableRow[];
   sort: string;
@@ -88,6 +95,10 @@ export function InvestorsTable({
   total?: number;
   /** Choices for "Update a field"; omitted for people who can't bulk-edit. */
   massUpdate?: MassUpdateOptions;
+  /** Column keys in the order to draw them (built-in keys and `x:<field>`); server-decided from the person's cookie. */
+  colOrder?: string[];
+  /** The fields this person added, for their headings. */
+  extraCols?: { key: string; label: string }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -213,6 +224,198 @@ export function InvestorsTable({
     );
   }
 
+  // ── Columns, in the order this person chose ──────────────────────────────
+  // Built-in columns plus any field they added (`x:<field>`); the server reads
+  // their cookie and hands the order down, so nothing reshuffles after paint.
+  const order = (colOrder && colOrder.length ? colOrder : INVESTOR_DEFAULT_COLUMNS).filter(
+    (k) => !k.startsWith("x:") || extraCols.some((c) => `x:${c.key}` === k),
+  );
+  const extraLabel = (k: string) => extraCols.find((c) => `x:${c.key}` === k)?.label ?? k.slice(2);
+
+  const heads: Record<string, ReactNode> = {
+    name: (
+      <th data-col="name" className={`text-left ${py} font-medium`}>
+        {sortHeader("name", "Name")}
+      </th>
+    ),
+    pan: flags.showPan ? <th data-col="pan" className={`text-left ${py} font-medium`}>PAN</th> : null,
+    category: flags.showCategory && hasCategory ? <th data-col="category" className={`text-left ${py} font-medium`}>Category</th> : null,
+    tier: flags.showTier && hasTier ? <th data-col="tier" className={`text-left ${py} font-medium`}>Tier</th> : null,
+    segment: flags.showSegment && hasSegment ? <th data-col="segment" className={`text-left ${py} font-medium`}>Segment</th> : null,
+    aum: flags.showAum ? (
+      <th data-col="aum" className={`text-right ${py} font-medium`}>
+        {sortHeader("aum", "AUM", "right")}
+      </th>
+    ) : null,
+    sip: flags.showSip ? (
+      <th data-col="sip" className={`text-right ${py} font-medium`}>
+        {sortHeader("sip", "SIP / month", "right")}
+      </th>
+    ) : null,
+    kyc: flags.showKyc ? <th data-col="kyc" className={`text-left ${py} font-medium pl-4`}>KYC</th> : null,
+    // Both of these columns are bare numbers with no unit, so say what they
+    // measure on hover — otherwise "100/100" and "13%" mean nothing to someone
+    // opening this list for the first time.
+    health: (
+      <th
+        data-col="health"
+        className={`text-left ${py} font-medium`}
+        title="Relationship health, 0–100. Drops when you haven't been in touch, a review is overdue, KYC/FATCA is expiring, or a nominee, bank or risk profile is missing."
+      >
+        {sortHeader("health", "Health")}
+      </th>
+    ),
+    complete: (
+      <th
+        data-col="complete"
+        className={`text-left ${py} font-medium`}
+        title="How much of the client record is filled in — PAN, date of birth, email, mobile, address, KYC, nominee, bank and risk profile."
+      >
+        Profile
+      </th>
+    ),
+    status: flags.showStatus ? <th data-col="status" className={`text-left ${py} font-medium`}>Status</th> : null,
+    actions: (
+      <th data-col="actions" className={`px-4 ${py} text-right font-medium`}>
+        <span className="sr-only">Actions</span>
+      </th>
+    ),
+  };
+  for (const k of order) {
+    if (k.startsWith("x:")) {
+      heads[k] = (
+        <th data-col={k} className={`text-left ${py} font-medium whitespace-nowrap`}>
+          {extraLabel(k)}
+        </th>
+      );
+    }
+  }
+
+  function cellFor(k: string, i: InvestorTableRow): ReactNode {
+    const cls = healthBandClasses(i.healthBand);
+    switch (k) {
+      case "name":
+        return (
+          <td data-col="name" className={`${py} font-medium`}>
+            <div className="flex items-center gap-2">
+              <Avatar src={i.avatarUrl ? `/api/investors/${i.id}/avatar` : null} name={i.name} size={isCompact ? 22 : 28} />
+              <Link href={`/dashboard/investors/${i.id}`} className="hover:text-primary hover:underline">{i.name}</Link>
+            </div>
+          </td>
+        );
+      case "pan":
+        return flags.showPan ? (
+          <td data-col="pan" className={`${py} font-mono text-muted-foreground ${isCompact ? "text-2xs" : "text-xs"}`}>
+            {i.pan}
+          </td>
+        ) : null;
+      case "category":
+        return flags.showCategory && hasCategory ? (
+          <td data-col="category" className={`${py}`}>
+            {i.clientCategory ? (
+              <span title={`Client category ${i.clientCategory}`}><Badge raw>{i.clientCategory}</Badge></span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </td>
+        ) : null;
+      case "tier":
+        return flags.showTier && hasTier ? (
+          <td data-col="tier" className={`${py}`}>
+            {i.serviceTier ? (
+              <span title={i.serviceTier === "A" ? "Quarterly review" : i.serviceTier === "B" ? "Half-yearly review" : "Annual review"}>
+                <Badge raw>{i.serviceTier}</Badge>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </td>
+        ) : null;
+      case "segment":
+        return flags.showSegment && hasSegment ? (
+          <td data-col="segment" className={`${py}`}>
+            {i.segmentTag && <Badge raw>{i.segmentTag}</Badge>}
+          </td>
+        ) : null;
+      case "aum":
+        return flags.showAum ? (
+          <td data-col="aum" className={`${py} text-right tabular-nums font-semibold`}>
+            {formatINR(i.aum)}
+          </td>
+        ) : null;
+      case "sip":
+        return flags.showSip ? (
+          <td data-col="sip" className={`${py} text-right tabular-nums text-muted-foreground`}>
+            {i.sip > 0 ? formatINR(i.sip) : "—"}
+          </td>
+        ) : null;
+      case "kyc":
+        return flags.showKyc ? (
+          <td data-col="kyc" className={`${py} pl-4`}>
+            {kycTone(i.kycStatus) === "neutral" ? (
+              <span className="text-xs capitalize text-muted-foreground">{i.kycStatus}</span>
+            ) : (
+              <Badge tone={kycTone(i.kycStatus)}>{i.kycStatus ?? "pending"}</Badge>
+            )}
+          </td>
+        ) : null;
+      case "health":
+        return (
+          <td data-col="health" className={`${py}`}>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${cls.chip}`}>
+              {i.healthScore}/100
+            </span>
+          </td>
+        );
+      case "complete":
+        return (
+          <td data-col="complete" className={`${py}`}>
+            <div className="flex items-center gap-1.5">
+              <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-foreground/40 rounded-full" style={{ width: `${i.completeness}%` }} />
+              </div>
+              <span className="text-2xs text-muted-foreground tabular-nums">{i.completeness}%</span>
+            </div>
+          </td>
+        );
+      case "status":
+        return flags.showStatus ? (
+          <td data-col="status" className={`${py}`}>
+            {statusTone(i.status) === "neutral" ? (
+              <span className="text-xs capitalize text-muted-foreground">{(i.status ?? "active").replace(/_/g, " ")}</span>
+            ) : (
+              <Badge tone={statusTone(i.status)}>{i.status ?? "active"}</Badge>
+            )}
+          </td>
+        ) : null;
+      case "actions":
+        return (
+          <td data-col="actions" className={`px-4 ${py} text-right`}>
+            <div className="flex items-center justify-end gap-1" data-no-row-nav>
+              <RowActions
+                itemLabel="client"
+                items={[
+                  { label: "Open client page", href: `/dashboard/investors/${i.id}` },
+                  { label: "Create proposal", href: `/dashboard/proposals/new?investorId=${i.id}` },
+                  { label: "Schedule review", href: `/dashboard/review-meetings/new?investorId=${i.id}` },
+                  { label: "Log service request", href: `/dashboard/service-requests/new?investorId=${i.id}` },
+                ]}
+              />
+            </div>
+          </td>
+        );
+      default: {
+        if (!k.startsWith("x:")) return null;
+        const v = i.extra?.[k.slice(2)];
+        return (
+          <td data-col={k} className={`${py} whitespace-nowrap ${v ? "" : "text-muted-foreground"}`}>
+            {v ?? "—"}
+          </td>
+        );
+      }
+    }
+  }
+
   return (
     <div className="card-surface overflow-hidden relative">
       {/* Phones get card rows — a 12-column table can't shrink to 390px. */}
@@ -256,49 +459,13 @@ export function InvestorsTable({
                   aria-label="Select all"
                 />
               </th>
-              <th data-col="name" className={`text-left ${py} font-medium`}>
-                {sortHeader("name", "Name")}
-              </th>
-              {flags.showPan && <th data-col="pan" className={`text-left ${py} font-medium`}>PAN</th>}
-              {flags.showCategory && hasCategory && <th data-col="category" className={`text-left ${py} font-medium`}>Category</th>}
-              {flags.showTier && hasTier && <th data-col="tier" className={`text-left ${py} font-medium`}>Tier</th>}
-              {flags.showSegment && hasSegment && <th data-col="segment" className={`text-left ${py} font-medium`}>Segment</th>}
-              {flags.showAum && (
-                <th data-col="aum" className={`text-right ${py} font-medium`}>
-                  {sortHeader("aum", "AUM", "right")}
-                </th>
-              )}
-              {flags.showSip && (
-                <th data-col="sip" className={`text-right ${py} font-medium`}>
-                  {sortHeader("sip", "SIP / month", "right")}
-                </th>
-              )}
-              {flags.showKyc && <th data-col="kyc" className={`text-left ${py} font-medium pl-4`}>KYC</th>}
-              {/* Both of these columns are bare numbers with no unit, so say
-                  what they measure on hover — otherwise "100/100" and "13%"
-                  mean nothing to someone opening this list for the first time. */}
-              <th
-                data-col="health"
-                className={`text-left ${py} font-medium`}
-                title="Relationship health, 0–100. Drops when you haven't been in touch, a review is overdue, KYC/FATCA is expiring, or a nominee, bank or risk profile is missing."
-              >
-                {sortHeader("health", "Health")}
-              </th>
-              <th
-                data-col="complete"
-                className={`text-left ${py} font-medium`}
-                title="How much of the client record is filled in — PAN, date of birth, email, mobile, address, KYC, nominee, bank and risk profile."
-              >
-                Profile
-              </th>
-              {flags.showStatus && <th data-col="status" className={`text-left ${py} font-medium`}>Status</th>}
-              <th data-col="actions" className={`px-4 ${py} text-right font-medium`}><span className="sr-only">Actions</span></th>
+              {order.map((k) => (
+                <Fragment key={k}>{heads[k] ?? null}</Fragment>
+              ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((i) => {
-              const cls = healthBandClasses(i.healthBand);
-              const dorm = i.dormDays != null && i.dormDays > 180;
               const isSel = selected.has(i.id);
               return (
                 <tr
@@ -320,103 +487,9 @@ export function InvestorsTable({
                       aria-label={`Select ${i.name}`}
                     />
                   </td>
-                  <td data-col="name" className={`${py} font-medium`}>
-                    <div className="flex items-center gap-2">
-                      <Avatar
-                        src={i.avatarUrl ? `/api/investors/${i.id}/avatar` : null}
-                        name={i.name}
-                        size={isCompact ? 22 : 28}
-                      />
-                      <Link href={`/dashboard/investors/${i.id}`} className="hover:text-primary hover:underline">{i.name}</Link>
-                    </div>
-                  </td>
-                  {flags.showPan && (
-                    <td data-col="pan" className={`${py} font-mono text-muted-foreground ${isCompact ? "text-2xs" : "text-xs"}`}>
-                      {i.pan}
-                    </td>
-                  )}
-                  {flags.showCategory && hasCategory && (
-                    <td data-col="category" className={`${py}`}>
-                      {i.clientCategory ? (
-                        <span title={`Client category ${i.clientCategory}`}><Badge raw>{i.clientCategory}</Badge></span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                  )}
-                  {flags.showTier && hasTier && (
-                    <td data-col="tier" className={`${py}`}>
-                      {i.serviceTier ? (
-                        <span title={i.serviceTier === "A" ? "Quarterly review" : i.serviceTier === "B" ? "Half-yearly review" : "Annual review"}>
-                          <Badge raw>{i.serviceTier}</Badge>
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                  )}
-                  {flags.showSegment && hasSegment && (
-                    <td data-col="segment" className={`${py}`}>
-                      {i.segmentTag && <Badge raw>{i.segmentTag}</Badge>}
-                    </td>
-                  )}
-                  {flags.showAum && (
-                    <td data-col="aum" className={`${py} text-right tabular-nums font-semibold`}>
-                      {formatINR(i.aum)}
-                    </td>
-                  )}
-                  {flags.showSip && (
-                    <td data-col="sip" className={`${py} text-right tabular-nums text-muted-foreground`}>
-                      {i.sip > 0 ? formatINR(i.sip) : "—"}
-                    </td>
-                  )}
-                  {flags.showKyc && (
-                    <td data-col="kyc" className={`${py} pl-4`}>
-                      {kycTone(i.kycStatus) === "neutral" ? (
-                        <span className="text-xs capitalize text-muted-foreground">{i.kycStatus}</span>
-                      ) : (
-                        <Badge tone={kycTone(i.kycStatus)}>{i.kycStatus ?? "pending"}</Badge>
-                      )}
-                    </td>
-                  )}
-                  <td data-col="health" className={`${py}`}>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${cls.chip}`}>
-                      {i.healthScore}/100
-                    </span>
-                  </td>
-                  <td data-col="complete" className={`${py}`}>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-foreground/40 rounded-full"
-                          style={{ width: `${i.completeness}%` }}
-                        />
-                      </div>
-                      <span className="text-2xs text-muted-foreground tabular-nums">{i.completeness}%</span>
-                    </div>
-                  </td>
-                  {flags.showStatus && (
-                    <td data-col="status" className={`${py}`}>
-                      {statusTone(i.status) === "neutral" ? (
-                        <span className="text-xs capitalize text-muted-foreground">{(i.status ?? "active").replace(/_/g, " ")}</span>
-                      ) : (
-                        <Badge tone={statusTone(i.status)}>{i.status ?? "active"}</Badge>
-                      )}
-                    </td>
-                  )}
-                  <td data-col="actions" className={`px-4 ${py} text-right`}>
-                    <div className="flex items-center justify-end gap-1" data-no-row-nav>
-                      <RowActions
-                        itemLabel="client"
-                        items={[
-                          { label: "Open client page", href: `/dashboard/investors/${i.id}` },
-                          { label: "Create proposal", href: `/dashboard/proposals/new?investorId=${i.id}` },
-                          { label: "Schedule review", href: `/dashboard/review-meetings/new?investorId=${i.id}` },
-                          { label: "Log service request", href: `/dashboard/service-requests/new?investorId=${i.id}` },
-                        ]}
-                      />
-                    </div>
-                  </td>
+                  {order.map((k) => (
+                    <Fragment key={k}>{cellFor(k, i)}</Fragment>
+                  ))}
                 </tr>
               );
             })}

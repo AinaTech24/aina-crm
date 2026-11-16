@@ -18,7 +18,10 @@ import { ColumnManager } from "@/components/common/ColumnManager";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { dormancyDays, type HealthBand } from "@/lib/investors/health";
-import { InvestorsTable, type InvestorTableRow } from "@/components/investors/InvestorsTable";
+import { InvestorsTable, INVESTOR_DEFAULT_COLUMNS, type InvestorTableRow } from "@/components/investors/InvestorsTable";
+import { readColumnPrefs } from "@/lib/list-columns/server";
+import { EXTRA_PREFIX, orderKeys } from "@/lib/list-columns/prefs";
+import { allowedExtraKeys, investorExtraOptions, loadInvestorExtra } from "@/lib/list-columns/investor-fields";
 import { InvestorSortSelect } from "@/components/investors/InvestorSortSelect";
 import { buildInvestorWhere } from "@/lib/investors/list-filters";
 import { investorFieldFilterDefs, loadInvestorFilterOptions, type InvestorCustomFieldDef } from "@/lib/investors/field-filters";
@@ -88,6 +91,8 @@ export default async function InvestorsPage({
     // health column is always allowed — it's a derived score, no PII
     return true;
   });
+
+  const colPrefs = await readColumnPrefs("investors");
 
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
@@ -162,7 +167,7 @@ export default async function InvestorsPage({
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const { rows, total, kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount, fieldFilterOptions, customDefs, exitedCount } = await withTenant(session.tenantId, async (tx) => {
+  const { rows, total, kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount, fieldFilterOptions, customDefs, exitedCount, extraOptions, extraKeys, extraValues } = await withTenant(session.tenantId, async (tx) => {
     // The Health column reads the stored score. Re-score anyone not scored
     // since this morning first (days-since-contact moves with the calendar),
     // so the list shows what the client page and the drawer show. A no-op
@@ -360,7 +365,13 @@ export default async function InvestorsPage({
       .where(sql`${customFieldDefs.tenantId} = ${session.tenantId}::uuid AND ${customFieldDefs.entity} = 'investor'`)
       .orderBy(asc(customFieldDefs.sortOrder), asc(customFieldDefs.label));
 
-    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount, fieldFilterOptions, customDefs, exitedCount };
+    // Fields this person added as columns (More fields in the column menu):
+    // only the ones this firm offers, only for the rows on this page.
+    const extraOptions = investorExtraOptions((f) => isFieldAllowed(license, "investor", f), customDefs);
+    const extraKeys = colPrefs.extra.filter((k) => allowedExtraKeys(extraOptions).has(k));
+    const extraValues = view === "kanban" ? {} : await loadInvestorExtra(tx, r.map((x) => x.id), extraKeys, allowedExtraKeys(extraOptions));
+
+    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount, massUpdate, needsDataCount, fieldFilterOptions, customDefs, exitedCount, extraOptions, extraKeys, extraValues };
   }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
   const rmOptions = (rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -404,7 +415,20 @@ export default async function InvestorsPage({
     healthBand: (i.healthBand as HealthBand) ?? "green",
     dormDays: dormancyDays(i as any),
     completeness: clientCompleteness(i as any).score,
+    extra: extraValues[i.id],
   }));
+
+  // The columns in this person's order: the built-in ones this licence allows,
+  // then the fields they added; their saved sequence decides, the name stays
+  // first and the row actions last.
+  const builtInKeys = INVESTOR_DEFAULT_COLUMNS.filter((k) => k === "name" || k === "actions" || allowedColumns.some((c) => c.key === k));
+  const colOrder = orderKeys(
+    [...builtInKeys, ...extraKeys.map((k) => EXTRA_PREFIX + k)],
+    colPrefs.order,
+    ["name"],
+    ["actions"],
+  );
+  const extraCols = extraKeys.map((k) => ({ key: k, label: extraOptions.find((o) => o.key === k)?.label ?? k }));
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -571,7 +595,7 @@ export default async function InvestorsPage({
                 have nothing to act on there. */}
             {view === "table" && <span className="hidden sm:contents"><TableDensitySwitch /></span>}
             {view === "table" && (
-              <span className="hidden sm:contents"><ColumnManager compact moduleKey="investors" columns={allowedColumns} /></span>
+              <span className="hidden sm:contents"><ColumnManager compact moduleKey="investors" columns={allowedColumns} extraFields={extraOptions} prefs={colPrefs} pinFirst={["name"]} pinLast={["actions"]} /></span>
             )}
             <CustomViews
               compact
@@ -671,6 +695,8 @@ export default async function InvestorsPage({
             total={total}
             flags={{ showPan, showCategory: true, showTier, showSegment, showAum, showSip, showKyc, showStatus }}
             massUpdate={massUpdate}
+            colOrder={colOrder}
+            extraCols={extraCols}
           />
           <Pager
             page={page}
