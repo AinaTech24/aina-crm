@@ -32,6 +32,8 @@ export type FamilyPlan = {
   /** Rows with no Family Owner. */
   noFamily: number;
   duplicateIds: number;
+  /** Contact Name by Zoho id, for every row — the name fallback matches on it. */
+  nameOf: Map<string, string>;
 };
 
 export function planFamilies(rows: Record<string, unknown>[]): FamilyPlan {
@@ -88,7 +90,7 @@ export function planFamilies(rows: Record<string, unknown>[]): FamilyPlan {
     }
   }
 
-  const plan: FamilyPlan = { groups: [], headMissing: [], aloneSkipped: 0, noFamily, duplicateIds };
+  const plan: FamilyPlan = { groups: [], headMissing: [], aloneSkipped: 0, noFamily, duplicateIds, nameOf: name };
   for (const [head, set] of members) {
     if (!name.has(head)) {
       plan.headMissing.push({ headZohoId: head, headName: ownerText.get(head) ?? "", rows: set.size });

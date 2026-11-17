@@ -460,6 +460,10 @@ function FamiliesStep() {
             </div>
             <ul className="text-sm space-y-1">
               <li>Members keep their own RM and address — only the family link is added.</li>
+              <li>
+                Clients found by Zoho Record ID: {r.matchedById} · by exact name: {r.matchedByName}
+                {r.matchedByName > 0 && " (they keep the Zoho Record ID from now on)"}
+              </li>
               {r.nestedHeadsJoined > 0 && <li>{r.nestedHeadsJoined} heads listed under another family join that family, with their members.</li>}
               {r.aloneSkipped > 0 && <li>{r.aloneSkipped} Family Owners with nobody else get no family.</li>}
               {r.alreadyInFamily > 0 && <li>{r.alreadyInFamily} clients are already in the right family.</li>}
