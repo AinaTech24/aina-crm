@@ -42,6 +42,13 @@ async function readEntry(entry: FileEntry, password?: string): Promise<Uint8Arra
       // agree on (see zipcrypto.ts). Read the raw entry and let the CRC decide.
       const viaCrc = await tryZipCryptoByCrc(entry, password);
       if (viaCrc) return viaCrc;
+      // A ZipCrypto password is checked by ONE byte, so about 1 wrong password in 256
+      // passes it and then fails as garbage ("invalid block type", a bad CRC). That is a
+      // wrong password, not a damaged file: say so, or the file is filed as "failed" and a
+      // CI test on exactly this flakes. (AES checks two bytes plus a signature: left as is.)
+      if (password && entry.encrypted && !entry.extraFieldAES && !/password/i.test((err as Error)?.message ?? "")) {
+        throw new Error("Invalid password");
+      }
       throw err;
     }
   }

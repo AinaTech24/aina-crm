@@ -60,4 +60,13 @@ describe("ZipCrypto with a check byte zip.js does not expect", () => {
       await expect(extractRtaFileFromZip(zip, "Abc@124")).rejects.toThrow(/password/i);
     });
   }
+
+  it("a wrong password that slips past the 1-byte check is still a password problem, never 'invalid block type'", async () => {
+    // Varying the header's check byte makes the byte a wrong password decrypts to take every value
+    // in turn, so exactly one of these 256 archives gets past zip.js's own check by chance.
+    for (let byte = 0; byte < 256; byte++) {
+      const zip = makeZip("WBR2.txt", TEXT, "Abc@123", byte, true);
+      await expect(extractRtaFileFromZip(zip, "Abc@124")).rejects.toThrow(/password/i);
+    }
+  });
 });
