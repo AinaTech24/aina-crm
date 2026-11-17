@@ -40,7 +40,6 @@ import { syncMfSchemeCatalog, enrichMfSchemes } from "@/lib/finance/mfapi";
 import { describeRun, getLastRun, recordRun } from "./scheduler-state";
 import { recordDailySnapshots } from "./firm-snapshot-recorder";
 import { runDscReminder } from "./dsc-reminder";
-import { runReviewDueReminder } from "./review-due-reminder";
 import { captureError } from "@/lib/observability/capture";
 
 const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho,rta,briefing")
@@ -192,31 +191,11 @@ scheduleDaily("ops", "daily-firm-snapshot", 0, 5, recordDailySnapshots, "FIRM_SN
  */
 scheduleDaily("ops", "dsc-reminder", 7, 0, runDscReminder, "DSC_REMINDER_ON_BOOT");
 
-/**
- * Client review-due reminder — raises a task (7-day lead) AND an in-app bell
- * alert on the due date for each client whose review cadence falls due.
- * Cadence-agnostic: it covers the presets AND a custom "every N days"
- * schedule such as every 100 days.
- *
- * Hourly, not daily, and once on boot: an RM who logs a review today expects
- * the reminder to appear when it comes due, not up to 24h later. Both the task
- * and the notification are idempotent on (client, due date), so a re-run inside
- * the same day is a no-op — the extra ticks cost one indexed query per tenant.
- */
-if (groups.includes("ops")) {
-  const tick = async () => {
-    try {
-      await runReviewDueReminder();
-    } catch (err) {
-      console.error("[review-due] tick failed:", (err as Error).message);
-    }
-  };
-  const interval = setInterval(tick, 60 * 60 * 1000); // hourly
-  interval.unref?.();
-  stops.push(() => clearInterval(interval));
-  void tick();
-  console.log("[review-due] armed (hourly + on boot)");
-}
+// The client review-due reminder (a "Portfolio review due — <client>" task and
+// bell alert for every client whose review date came round) was turned off for
+// every firm on 2026-11-17 at the owner's request; migration 0263 cancelled the
+// open tasks it had raised. The review date itself still shows on the client,
+// the dashboards and the Families "Review due" filter.
 
 /**
  * Monthly compliance checklist — seeds the standard SEBI-flavoured tasks
