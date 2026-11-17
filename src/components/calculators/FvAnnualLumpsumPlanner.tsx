@@ -107,9 +107,9 @@ export function FvAnnualLumpsumPlanner() {
               </thead>
               <tbody>
                 {s1.schedule.map((row, i) => (
-                  <tr key={row.year} className={`border-b border-slate-100 ${row.investment === 0 ? "bg-secondary/40" : ""}`}>
+                  <tr key={row.year} className={`border-b border-slate-100 ${row.year > paymentYears ? "bg-secondary/40" : ""}`}>
                     <td className="px-3 py-1.5">{row.year}</td>
-                    <td className="px-3 py-1.5 text-right">{row.investment > 0 ? inr(row.investment) : "—"}</td>
+                    <td className="px-3 py-1.5 text-right">{row.year <= paymentYears ? inr(row.investment) : "—"}</td>
                     <td className="px-3 py-1.5 text-right font-medium">{inr(row.yearEndValue)}</td>
                     {s2 && <td className="px-3 py-1.5 text-right">{inr(s2.schedule[i]?.yearEndValue ?? 0)}</td>}
                   </tr>

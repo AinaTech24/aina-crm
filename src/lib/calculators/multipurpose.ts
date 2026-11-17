@@ -12,6 +12,15 @@
  * end-of-month (ordinary annuity) — this reproduces the reference Multipurpose
  * Calculator to the rupee (₹1cr @ 12%, age 40→90: ₹289cr fund value; max SWP
  * ₹95,217/mo immediate, ₹1,68,250/mo deferred 5y).
+ *
+ * Display rules the reference report uses (and this engine reproduces):
+ *   • the maximum SWP is TRUNCATED to the rupee (`maxSwpShown` = floor), not
+ *     rounded — ₹1,68,250.95 prints as ₹1,68,250;
+ *   • SWP start ages run now, +5, +10, … while at least 5 years of
+ *     withdrawals remain before the report age;
+ *   • the fund-value table is age +1 then every 5 years to the report age
+ *     ("Periodic"), or every 5 years from +5 when shown beside the SWP table;
+ *     a report age off the 5-year grid gets its own last row.
  */
 
 import { monthlyRate, fvSip, fvLumpsum, fvStepUpSip, stepUpInvested } from "./sip360";
@@ -88,7 +97,16 @@ export function simulateWithdrawal(
 /* ───────────────────────── Aggregate ───────────────────────── */
 
 export type FundRow = { age: number; years: number; invested: number; fundValue: number };
-export type SwpRow = { startAge: number; deferYears: number; corpus: number; maxSwp: number; totalWithdrawn: number };
+export type SwpRow = {
+  startAge: number;
+  deferYears: number;
+  corpus: number;
+  /** Unrounded maximum level monthly SWP. */
+  maxSwp: number;
+  /** The figure to print: truncated to the rupee, as the reference report does. */
+  maxSwpShown: number;
+  totalWithdrawn: number;
+};
 export type CustomRow = {
   startAge: number;
   deferYears: number;
@@ -108,12 +126,23 @@ export type MultiResult = {
   customTable: CustomRow[] | null;
 };
 
-/** Milestone ages for the fund-value table — yearly for short spans, else /5. */
-function milestoneOffsets(totalYears: number): number[] {
+/**
+ * Year offsets for the fund-value table: 1, 5, 10, … (Periodic alone) or
+ * 5, 10, … (beside the SWP table), always ending on the report age.
+ */
+export function milestoneOffsets(totalYears: number, withSwp: boolean): number[] {
   const out: number[] = [];
-  const step = totalYears <= 12 ? 1 : 5;
-  for (let y = 0; y <= totalYears; y += step) out.push(y);
-  if (out[out.length - 1] !== totalYears) out.push(totalYears);
+  if (totalYears <= 0) return out;
+  if (!withSwp) out.push(1);
+  for (let y = 5; y <= totalYears; y += 5) out.push(y);
+  if (out.length === 0 || out[out.length - 1] !== totalYears) out.push(totalYears);
+  return out;
+}
+
+/** SWP start offsets: 0, 5, 10, … while the start age ≤ report age − 5. */
+export function swpStartOffsets(currentAge: number, reportTillAge: number): number[] {
+  const out: number[] = [];
+  for (let d = 0; currentAge + d <= reportTillAge - 5; d += 5) out.push(d);
   return out;
 }
 
@@ -127,7 +156,7 @@ export function computeMultipurpose(input: MultiInput): MultiResult {
 
   let fundProjection: FundRow[] | null = null;
   if (showFund && totalYears > 0) {
-    fundProjection = milestoneOffsets(totalYears).map((y) => ({
+    fundProjection = milestoneOffsets(totalYears, showSwp).map((y) => ({
       age: input.currentAge + y,
       years: y,
       invested: investedAfter(input, y),
@@ -135,9 +164,8 @@ export function computeMultipurpose(input: MultiInput): MultiResult {
     }));
   }
 
-  // Deferral start ages (when withdrawals begin). 0,5,10,15,20 — kept only if at
-  // least 1 year of withdrawals remains before the report age.
-  const deferrals = [0, 5, 10, 15, 20].filter((d) => input.currentAge + d <= input.reportTillAge - 1);
+  // Withdrawal start ages: now, +5, +10, … up to the report age − 5.
+  const deferrals = swpStartOffsets(input.currentAge, input.reportTillAge);
 
   let swpTable: SwpRow[] | null = null;
   let customTable: CustomRow[] | null = null;
@@ -167,7 +195,7 @@ export function computeMultipurpose(input: MultiInput): MultiResult {
         const corpus = corpusAfter(input, d);
         const months = (input.reportTillAge - startAge) * 12;
         const maxSwp = maxMonthlySwp(corpus, input.ratePct, months);
-        return { startAge, deferYears: d, corpus, maxSwp, totalWithdrawn: maxSwp * months };
+        return { startAge, deferYears: d, corpus, maxSwp, maxSwpShown: Math.floor(maxSwp), totalWithdrawn: maxSwp * months };
       });
     }
   }

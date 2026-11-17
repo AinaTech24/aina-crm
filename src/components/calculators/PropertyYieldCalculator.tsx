@@ -95,7 +95,7 @@ export function PropertyYieldCalculator() {
         cells={[
           { label: `Property value after ${years}y`, value: inr(result.futurePropertyValue), tone: "amber" },
           { label: "SIP value from rental surplus", value: inr(result.sipValue), tone: "emerald" },
-          { label: "Total combined wealth", value: inr(result.totalCombined), tone: "emerald" },
+          { label: "Total combined wealth", value: inr(result.totalCombinedDisplay), tone: "emerald" },
           { label: "Overall yield", value: `${result.overallYieldPct.toFixed(2)}%`, tone: "emerald" },
         ]}
       />

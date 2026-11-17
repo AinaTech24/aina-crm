@@ -44,7 +44,6 @@ export function SwpComprehensivePlanner() {
   const [incrementPct, setIncrementPct] = useState(6);
   const [incrementAmount, setIncrementAmount] = useState(1000);
 
-  const isLumpsum = investMode === "lumpsum";
   const needsSip = investMode === "sip" || investMode === "lumpsum_sip";
   const needsLump = investMode === "lumpsum" || investMode === "annual_lumpsum" || investMode === "lumpsum_sip";
   const needsAccum = investMode !== "lumpsum";
@@ -66,7 +65,15 @@ export function SwpComprehensivePlanner() {
   const per = FREQ_LABEL[frequency];
 
   const depleted = result.depletedAtPeriod != null;
-  const tone = depleted ? "rose" : result.finalValue >= result.accumulatedCorpus ? "emerald" : "amber";
+  const tone: "rose" | "emerald" | "amber" = depleted ? "rose" : result.finalValue >= result.accumulatedCorpus ? "emerald" : "amber";
+  // Age when withdrawals start: after any accumulation and deferment years.
+  const useAge = currentAge > 0;
+  const swpStartAge = currentAge + (needsAccum ? Math.round(accumulationYears) : 0) + (deferment ? Math.round(defermentYears) : 0);
+  const allocRows = ([
+    ["Debt", alloc.debtPct, rates.debtPct],
+    ["Hybrid", alloc.hybridPct, rates.hybridPct],
+    ["Equity", alloc.equityPct, rates.equityPct],
+  ] as const).filter(([, a]) => a > 0);
 
   return (
     <div className="card-surface p-5 space-y-5">
@@ -89,6 +96,9 @@ export function SwpComprehensivePlanner() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <Field label="Client name (optional)">
+          <ClientNameField value={clientName} onChange={setClientName} />
+        </Field>
         <NumberField label="Current age (optional)" value={currentAge} setValue={setCurrentAge} step={1} />
         {needsLump && (
           <NumberField
@@ -177,14 +187,28 @@ export function SwpComprehensivePlanner() {
       {clientName && <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span></div>}
 
       {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Stat label="Corpus at SWP start" value={inr(result.accumulatedCorpus)} tone="cyan" />
         <Stat label={`Withdrawal / ${per}`} value={inr(result.basePerPeriodWithdrawal)} />
-        <Stat label={`Max sustainable / ${per}`} value={`${inr(result.maxPerPeriodWithdrawal)}`} tone="emerald" />
-        <Stat label={depleted ? "Final value (depleted)" : "Final value"} value={depleted ? "₹0" : inr(result.finalValue)} tone={tone as any} />
+        <Stat label="Total withdrawal" value={inr(result.totalWithdrawn)} tone="emerald" />
+        <Stat label={depleted ? "End value (depleted)" : "End value"} value={depleted ? "₹0" : inr(result.finalValue)} tone={tone} />
+        <Stat label={`Max sustainable / ${per}`} value={`${inr(result.maxPerPeriodWithdrawal)}`} />
       </div>
 
-      <Insight tone={tone as any}>
+      {allocRows.length > 0 && (
+        <Section n={1} title="Suggested asset allocation">
+          <Table
+            head={["Asset class", "Allocation", "Assumed return"]}
+            rows={[
+              ...allocRows.map(([name, a, r]) => [name, fmtPct(a), fmtPct(r)]),
+              ["Portfolio", fmtPct(allocTotal), `${distReturnPct.toFixed(2)}%`],
+            ]}
+            highlightLastRow
+          />
+        </Section>
+      )}
+
+      <Insight tone={tone}>
         {depleted ? (
           <>At {inr(result.basePerPeriodWithdrawal)}/{per}, the corpus runs out before {swpYears} years. The max sustainable withdrawal is about <strong>{inr(result.maxPerPeriodWithdrawal)}/{per}</strong> ({result.maxAnnualPct.toFixed(1)}%/yr).</>
         ) : result.exceedsMax ? (
@@ -196,17 +220,18 @@ export function SwpComprehensivePlanner() {
 
       {/* Year-by-year */}
       {result.yearRows.length > 0 && (
-        <Section n={1} title="Year-by-year distribution">
+        <Section n={allocRows.length > 0 ? 2 : 1} title="Year-by-year distribution">
           <CalcChart
-            data={result.yearRows.map((r) => ({ year: r.year, balance: r.endBalance }))}
+            data={result.yearRows.map((r) => ({ year: useAge ? swpStartAge + r.year : r.year, balance: r.endBalance }))}
             xKey="year"
+            xUnit={useAge ? "Age" : "Year"}
             series={[{ key: "balance", name: "Corpus balance", color: "#0ea5e9" }]}
           />
           <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
             <Table
-              head={["Year", `Withdrawal / ${per}`, "Withdrawn that year", "Balance at year-end"]}
+              head={[useAge ? "Age" : "Year", `Withdrawal / ${per}`, "Withdrawn that year", "Fund value at year-end"]}
               rows={result.yearRows.map((r) => [
-                `${r.year}`,
+                useAge ? `${swpStartAge + r.year}` : `${r.year}`,
                 inr(r.withdrawalPerPeriod),
                 inr(r.withdrawnThisYear),
                 r.endBalance > 0 ? inr(r.endBalance) : "Exhausted",

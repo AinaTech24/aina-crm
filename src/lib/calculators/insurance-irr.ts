@@ -9,7 +9,30 @@
  * that zeroes the NPV. Verified to the reference case study (₹1L premium × 10y,
  * 15y term, ₹17.5L maturity → IRR 5.36%; same premiums in MF @12% → ₹34.63L;
  * MF contribution to match the ₹17.5L maturity → ₹50,522/yr).
+ *
+ * Year-wise tables (premiums at the START of a year, payouts at the END):
+ *   • the policy's cash flows (year, premium, payout incl. maturity);
+ *   • the MF instalment that matches the policy, ROUNDED TO 2 DECIMALS before
+ *     the table is built (₹50,522.41 — with the unrounded instalment year 5
+ *     prints ₹3,59,477 instead of the reference ₹3,59,476);
+ *   • the same premium in the MF: V(y) = (V(y−1) + premium·[y ≤ PPT]) · (1 + r).
  */
+
+export type ScheduleRow = { year: number; investment: number; yearEndValue: number };
+export type PolicyCashflowRow = { year: number; premium: number; payout: number };
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+function mfSchedule(instalment: number, ppt: number, term: number, r: number): ScheduleRow[] {
+  const rows: ScheduleRow[] = [];
+  let v = 0;
+  for (let y = 1; y <= term; y++) {
+    const investment = y <= ppt ? instalment : 0;
+    v = (v + investment) * (1 + r);
+    rows.push({ year: y, investment, yearEndValue: v });
+  }
+  return rows;
+}
 
 export type PayoutMode = "maturity" | "periodic" | "annuity";
 
@@ -77,6 +100,11 @@ export type InsuranceIrrResult = {
   mfWealthAdvantage: number; // mfMaturity − benefitAtMaturity
   mfAdvantagePct: number | null; // advantage as % of benefitAtMaturity
   mfContributionToMatch: number; // annual MF contribution to reach benefitAtMaturity
+  /** The instalment used in the "MF for a similar payout" table (2 decimals). */
+  mfContributionRounded: number;
+  policySchedule: PolicyCashflowRow[];
+  mfMatchSchedule: ScheduleRow[];
+  mfSameSchedule: ScheduleRow[];
 };
 
 export function computeInsuranceIrr(input: InsuranceIrrInput): InsuranceIrrResult {
@@ -119,6 +147,16 @@ export function computeInsuranceIrr(input: InsuranceIrrInput): InsuranceIrrResul
   const mfAdvantagePct = benefitAtMaturity > 0 ? (mfWealthAdvantage / benefitAtMaturity) * 100 : null;
   const mfContributionToMatch = fvFactorPerRupee > 0 ? benefitAtMaturity / fvFactorPerRupee : 0;
 
+  const mfContributionRounded = round2(mfContributionToMatch);
+  const policySchedule: PolicyCashflowRow[] = [];
+  for (let y = 1; y <= term; y++) {
+    policySchedule.push({
+      year: y,
+      premium: y <= ppt ? input.annualPremium : 0,
+      payout: payouts.filter((p) => p.year === y).reduce((s, p) => s + p.amount, 0) + (y === term ? input.maturityAmount : 0),
+    });
+  }
+
   return {
     totalPremiums,
     totalPayouts,
@@ -132,5 +170,9 @@ export function computeInsuranceIrr(input: InsuranceIrrInput): InsuranceIrrResul
     mfWealthAdvantage,
     mfAdvantagePct,
     mfContributionToMatch,
+    mfContributionRounded,
+    policySchedule,
+    mfMatchSchedule: mfSchedule(mfContributionRounded, ppt, term, R),
+    mfSameSchedule: mfSchedule(input.annualPremium, ppt, term, R),
   };
 }
