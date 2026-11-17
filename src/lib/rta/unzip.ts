@@ -8,6 +8,7 @@
  */
 
 import { ZipReader, Uint8ArrayReader, Uint8ArrayWriter, configure } from "@zip.js/zip.js";
+import { zipCryptoOpen } from "@/lib/rta/zipcrypto";
 
 // No Web Workers in the Node server runtime — decode inline.
 configure({ useWebWorkers: false });
@@ -16,6 +17,11 @@ configure({ useWebWorkers: false });
 type FileEntry = {
   filename: string;
   directory: boolean;
+  encrypted?: boolean;
+  extraFieldAES?: unknown;
+  compressionMethod?: number;
+  signature?: number;
+  uncompressedSize?: number;
   getData?: (writer: unknown, options?: unknown) => Promise<Uint8Array>;
 };
 
@@ -32,8 +38,23 @@ async function readEntry(entry: FileEntry, password?: string): Promise<Uint8Arra
     try {
       return (await entry.getData(new Uint8ArrayWriter(), undefined)) as Uint8Array;
     } catch {
+      // ZipCrypto only: zip.js refuses the archive on a header byte writers do not
+      // agree on (see zipcrypto.ts). Read the raw entry and let the CRC decide.
+      const viaCrc = await tryZipCryptoByCrc(entry, password);
+      if (viaCrc) return viaCrc;
       throw err;
     }
+  }
+}
+
+async function tryZipCryptoByCrc(entry: FileEntry, password?: string): Promise<Uint8Array | null> {
+  if (!password || !entry.encrypted || entry.extraFieldAES || typeof entry.getData !== "function") return null;
+  if (entry.signature === undefined || entry.compressionMethod === undefined) return null;
+  try {
+    const raw = (await entry.getData(new Uint8ArrayWriter(), { passThrough: true })) as Uint8Array;
+    return zipCryptoOpen(raw, password, entry.compressionMethod, entry.signature, entry.uncompressedSize ?? 0);
+  } catch {
+    return null;
   }
 }
 

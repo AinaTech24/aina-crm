@@ -1289,6 +1289,12 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   automatic file was refused afterwards. Only line breaks are stripped now, and each password is tried as held, trimmed, with a
   space put back (for entries the old code already trimmed) and, if non-ASCII, as its UTF-8 bytes (ZipCrypto from a UTF-8 tool).
   The form that opened the archive is the one "Remember" keeps. Never `.trim()` a ZIP password.
+- **zip.js refuses some ZipCrypto archives whatever the password** (2026-11-17, `lib/rta/zipcrypto.ts`,
+  `tests/rta-zipcrypto-check-byte.test.ts`). It judges a ZipCrypto password from one byte of the encryption header and
+  insists it is the CRC's high byte (the DOS time's when the entry has a data descriptor); writers disagree, so a correct
+  password gave "Invalid password" and the file was filed as "rejected — another password". `extractRtaFileFromZip` now
+  falls back for ZipCrypto entries: read the raw entry (`passThrough`), decrypt it ignoring that byte, and accept only if the
+  unpacked data's CRC-32 matches the archive's — a wrong password cannot. AES is unaffected (its 2-byte check is exact).
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.
