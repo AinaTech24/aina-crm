@@ -1306,6 +1306,12 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   open with their password in 7-Zip / WinZip → the CRM has a fault; they refuse there too → the archive was locked with another
   password. An AES archive's password check is exact (2 bytes of the key derivation), so "[ZIP: AES-256 AE-2, deflate]" +
   refused means the passwords tried are not the archive's byte for byte. The reason now names AE-1 / AE-2 and the real method.
+- **Diagnose a refused ZIP from its bytes** (2026-11-17, `lib/rta/zip-diagnose.ts`, `scripts/diagnose-rta-zip.ts`,
+  `tests/rta-zip-diagnose.test.ts`): `docker exec app-worker-1 npx tsx scripts/diagnose-rta-zip.ts --import <id> [--try 'pw']`
+  (or `--file`). For AES it recomputes the archive's exact 2-byte password check for every candidate — the firm's saved ones and
+  any typed — in the forms a writer may have used (as typed, trimmed, UPPER / lower, a space, UTF-8 / Latin-1 / UTF-16) and says
+  which matches. No form matches → another password; one matches yet the importer refused → a CRM fault. Passwords are printed only
+  as a length and a short hash.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.
