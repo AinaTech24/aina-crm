@@ -1,18 +1,19 @@
 "use client";
 
 /**
- * Income Bridge Planner (SIP → SWP).
+ * Income Bridge Planner (SIP → SWP) — "Monthly SWP for SIP".
  *
- * Two-phase retirement reckoner: accumulate a corpus (stepped-up SIP / lumpsum /
- * salary-based), then draw an inflation-rising monthly income (SWP) from it until
- * a chosen age, leaving a target end balance behind.
+ * Two-phase plan: accumulate a corpus (stepped-up SIP / lumpsum / salary-based),
+ * optionally hold it for some years, then draw a monthly income (SWP) that can
+ * rise with inflation until a chosen age, leaving a target end balance behind.
+ * Up to two scenarios, each a pair of returns (building / withdrawing).
  *
  * Works in two directions:
  *   • "How much income?"   — solve the sustainable monthly SWP from a plan.
  *   • "How much to invest?" — back out the SIP / lumpsum needed for a target SWP.
  *
- * Math lives in @/lib/calculators/income-bridge (calibrated to the reference
- * reckoner to the rupee).
+ * Math lives in @/lib/calculators/income-bridge (verified to the rupee — SIP
+ * ₹10,000 × 25y @12% → ₹1,70,22,066; SWP 25y @9% leaving ₹1 cr → ₹1,29,323/mo).
  */
 
 import { useMemo, useState } from "react";
@@ -23,6 +24,8 @@ import {
   type InvestMode,
   type PlanningType,
 } from "@/lib/calculators/income-bridge";
+import { inr, fmtPct, NumberField, Field, TextField, Segmented, Toggle, Section, Stat, Table, Insight } from "./ui";
+import { CalcChart } from "./CalcChart";
 
 const CALC_TYPES: { value: CalcType; label: string }[] = [
   { value: "monthly_swp", label: "How much monthly income?" },
@@ -51,10 +54,10 @@ export function IncomeBridgePlanner() {
 
   // Accumulation
   const [startAge, setStartAge] = useState(35);
-  const [sipTillAge, setSipTillAge] = useState(40);
-  const [retirementAge, setRetirementAge] = useState(50);
-  const [monthlySip, setMonthlySip] = useState(25000);
-  const [topUpPct, setTopUpPct] = useState(5);
+  const [sipTillAge, setSipTillAge] = useState(60);
+  const [retirementAge, setRetirementAge] = useState(60);
+  const [monthlySip, setMonthlySip] = useState(10000);
+  const [topUpPct, setTopUpPct] = useState(0);
   const [lumpsum, setLumpsum] = useState(1000000);
   const [monthlySalary, setMonthlySalary] = useState(150000);
   const [savingsPct, setSavingsPct] = useState(20);
@@ -62,112 +65,100 @@ export function IncomeBridgePlanner() {
   const [accumReturnPct, setAccumReturnPct] = useState(12);
 
   // Distribution
-  const [swpTillAge, setSwpTillAge] = useState(90);
-  const [distReturnPct, setDistReturnPct] = useState(7);
-  const [distInflationPct, setDistInflationPct] = useState(5);
-  const [endBalance, setEndBalance] = useState(0);
+  const [swpTillAge, setSwpTillAge] = useState(85);
+  const [distReturnPct, setDistReturnPct] = useState(9);
+  const [distInflationPct, setDistInflationPct] = useState(0);
+  const [endBalance, setEndBalance] = useState(10000000);
   const [desiredMonthlySwp, setDesiredMonthlySwp] = useState(50000);
+
+  // Scenario 2 — a second pair of returns
+  const [useS2, setUseS2] = useState(false);
+  const [accum2, setAccum2] = useState(10);
+  const [dist2, setDist2] = useState(8);
 
   const usesSip = investMode === "sip" || investMode === "lumpsum_sip";
   const usesLump = investMode === "lumpsum" || investMode === "lumpsum_sip";
   const isSalary = investMode === "salary";
   const isReverse = calcType === "investment_need";
 
-  const result = useMemo(
-    () =>
+  const scenarios = useMemo(() => {
+    const run = (accum: number, dist: number) =>
       computeIncomeBridge({
-        calcType,
-        investMode,
-        planningType,
-        startAge,
-        sipTillAge,
-        retirementAge,
-        swpTillAge,
-        monthlySip,
-        topUpPct,
-        lumpsum,
-        monthlySalary,
-        savingsPct,
-        salaryGrowthPct,
-        accumReturnPct,
-        distReturnPct,
-        distInflationPct,
-        endBalance,
-        desiredMonthlySwp,
-      }),
-    [
-      calcType, investMode, planningType, startAge, sipTillAge, retirementAge, swpTillAge,
-      monthlySip, topUpPct, lumpsum, monthlySalary, savingsPct, salaryGrowthPct,
-      accumReturnPct, distReturnPct, distInflationPct, endBalance, desiredMonthlySwp,
-    ]
-  );
+        calcType, investMode, planningType, startAge, sipTillAge, retirementAge, swpTillAge,
+        monthlySip, topUpPct, lumpsum, monthlySalary, savingsPct, salaryGrowthPct,
+        accumReturnPct: accum, distReturnPct: dist, distInflationPct, endBalance, desiredMonthlySwp,
+      });
+    const first = { accum: accumReturnPct, dist: distReturnPct, result: run(accumReturnPct, distReturnPct) };
+    return useS2 ? [first, { accum: accum2, dist: dist2, result: run(accum2, dist2) }] : [first];
+  }, [
+    calcType, investMode, planningType, startAge, sipTillAge, retirementAge, swpTillAge,
+    monthlySip, topUpPct, lumpsum, monthlySalary, savingsPct, salaryGrowthPct,
+    accumReturnPct, distReturnPct, distInflationPct, endBalance, desiredMonthlySwp, useS2, accum2, dist2,
+  ]);
+
+  const result = scenarios[0].result;
+  const tag = (s: (typeof scenarios)[number]) => (scenarios.length > 1 ? ` @ ${fmtPct(s.accum)} / ${fmtPct(s.dist)}` : "");
 
   return (
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">Income Bridge Planner · SIP → SWP</h2>
-        
       </div>
 
       {/* Step 1 — what to calculate */}
-      <div className="grid md:grid-cols-3 gap-3">
-        <Segmented label="I want to find" value={calcType} onChange={(v) => setCalcType(v as CalcType)} options={CALC_TYPES} />
-        <Segmented label="Build my corpus with" value={investMode} onChange={(v) => setInvestMode(v as InvestMode)} options={INVEST_MODES} />
-        <Segmented label="Planning type" value={planningType} onChange={(v) => setPlanningType(v as PlanningType)} options={PLANNING_TYPES} />
+      <div className="flex flex-wrap gap-4">
+        <Segmented label="I want to find" value={calcType} onChange={setCalcType} options={CALC_TYPES} />
+        <Segmented label="Build my corpus with" value={investMode} onChange={setInvestMode} options={INVEST_MODES} />
+        <Segmented label="Planning type" value={planningType} onChange={setPlanningType} options={PLANNING_TYPES} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Objective">
-          <input value={objective} onChange={(e) => setObjective(e.target.value)} className="input-base text-sm w-full" placeholder="e.g. Retirement income" />
+        <Field label="Client name (optional)">
+          <ClientNameField value={clientName} onChange={setClientName} />
         </Field>
+        <TextField label="Objective" value={objective} setValue={setObjective} placeholder="e.g. Retirement income" />
       </div>
 
       {/* Inputs — two phases */}
       <div className="grid md:grid-cols-2 gap-4">
-        {/* Accumulation */}
-        <section className="border border-border rounded-lg p-4 space-y-3">
-          <div className="text-2xs uppercase tracking-wider font-semibold text-primary">
-            ① Accumulation — build the corpus
-          </div>
+        <div className="rounded-lg border border-border/70 p-4 space-y-3">
+          <div className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">① Accumulation — build the corpus</div>
           <div className="grid grid-cols-2 gap-3">
-            <Num label="Investment start age" value={startAge} setValue={setStartAge} step={1} />
-            {(usesSip || isSalary) && <Num label="SIP till age" value={sipTillAge} setValue={setSipTillAge} step={1} />}
-            <Num label="Retirement age" value={retirementAge} setValue={setRetirementAge} step={1} />
-            <Num label="Return — accumulation (% p.a.)" value={accumReturnPct} setValue={setAccumReturnPct} step={0.5} />
+            <NumberField label="Current age (investment start)" value={startAge} setValue={setStartAge} step={1} />
+            {(usesSip || isSalary) && <NumberField label="SIP till age" value={sipTillAge} setValue={setSipTillAge} step={1} />}
+            <NumberField label="SWP starts at age" value={retirementAge} setValue={setRetirementAge} step={1} />
+            <NumberField label="Return — accumulation (% p.a.)" value={accumReturnPct} setValue={setAccumReturnPct} step={0.5} />
 
             {isSalary ? (
               <>
-                <Num label="Monthly salary (₹)" value={monthlySalary} setValue={setMonthlySalary} />
-                <Num label="Save / invest (% of salary)" value={savingsPct} setValue={setSavingsPct} step={1} />
-                <Num label="Annual salary growth (%)" value={salaryGrowthPct} setValue={setSalaryGrowthPct} step={1} />
+                <NumberField label="Monthly salary (₹)" value={monthlySalary} setValue={setMonthlySalary} />
+                <NumberField label="Save / invest (% of salary)" value={savingsPct} setValue={setSavingsPct} step={1} />
+                <NumberField label="Annual salary growth (%)" value={salaryGrowthPct} setValue={setSalaryGrowthPct} step={1} />
               </>
             ) : (
               <>
-                {usesSip && !isReverse && <Num label="Monthly SIP (₹)" value={monthlySip} setValue={setMonthlySip} />}
-                {usesSip && <Num label="SIP top-up every year (%)" value={topUpPct} setValue={setTopUpPct} step={1} />}
-                {usesLump && <Num label="Lumpsum today (₹)" value={lumpsum} setValue={setLumpsum} />}
+                {usesSip && !isReverse && <NumberField label="Monthly SIP (₹)" value={monthlySip} setValue={setMonthlySip} />}
+                {usesSip && <NumberField label="SIP top-up every year (%)" value={topUpPct} setValue={setTopUpPct} step={1} />}
+                {usesLump && <NumberField label="Lumpsum today (₹)" value={lumpsum} setValue={setLumpsum} />}
               </>
             )}
           </div>
-          {isReverse && (
-            <p className="text-2xs text-muted-foreground">
-              In “How much to invest?” mode the {investMode === "lumpsum" ? "lumpsum" : "monthly SIP"} is calculated for you — see the result below.
-            </p>
-          )}
-        </section>
+          <p className="text-2xs text-muted-foreground">
+            Deferment: the corpus stays invested from the SIP&apos;s last month until the SWP starts
+            ({Math.max(0, retirementAge - (usesSip || isSalary ? sipTillAge : startAge))} yrs now).
+            {isReverse && <> In “How much to invest?” mode the {investMode === "lumpsum" ? "lumpsum" : "monthly SIP"} is calculated for you.</>}
+          </p>
+        </div>
 
-        {/* Distribution */}
-        <section className="border border-border rounded-lg p-4 space-y-3">
-          <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
-            ② Distribution — draw the income
-          </div>
+        <div className="rounded-lg border border-border/70 p-4 space-y-3">
+          <div className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">② Distribution — draw the income</div>
           <div className="grid grid-cols-2 gap-3">
-            <Num label="SWP till age" value={swpTillAge} setValue={setSwpTillAge} step={1} />
-            <Num label="Return — distribution (% p.a.)" value={distReturnPct} setValue={setDistReturnPct} step={0.5} />
-            <Num label="Inflation — distribution (%)" value={distInflationPct} setValue={setDistInflationPct} step={0.5} />
-            {isReverse && <Num label="Desired monthly SWP (₹)" value={desiredMonthlySwp} setValue={setDesiredMonthlySwp} />}
+            <NumberField label="SWP till age" value={swpTillAge} setValue={setSwpTillAge} step={1} />
+            <NumberField label="Return — distribution (% p.a.)" value={distReturnPct} setValue={setDistReturnPct} step={0.5} />
+            <NumberField label="Inflation — distribution (%)" value={distInflationPct} setValue={setDistInflationPct} step={0.5} />
+            {isReverse && <NumberField label="Desired monthly SWP (₹)" value={desiredMonthlySwp} setValue={setDesiredMonthlySwp} />}
             <div className="col-span-2">
-              <Num label="Balance to leave at end of SWP (₹)" value={endBalance} setValue={setEndBalance} />
+              <NumberField label="Balance to leave at end of SWP (₹)" value={endBalance} setValue={setEndBalance} />
               {!isReverse && (
                 <p className="text-2xs text-muted-foreground mt-1">
                   Max — {inr(result.maxEndBalance)} (if you withdraw nothing). Leave ₹0 to spend it all down.
@@ -175,199 +166,123 @@ export function IncomeBridgePlanner() {
               )}
             </div>
           </div>
-        </section>
+        </div>
       </div>
 
-      {result.warning && (
-        <div className="text-2xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">⚠️ {result.warning}</div>
+      <div className="flex flex-wrap items-end gap-4">
+        <Toggle checked={useS2} onChange={setUseS2} label="Compare scenario 2" />
+        {useS2 && (
+          <>
+            <NumberField label="Scenario 2 — accumulation (%)" value={accum2} setValue={setAccum2} step={0.5} />
+            <NumberField label="Scenario 2 — distribution (%)" value={dist2} setValue={setDist2} step={0.5} />
+          </>
+        )}
+      </div>
+
+      {scenarios.map((s, i) =>
+        s.result.warning ? <Insight key={`w-${i}`} tone="rose">{s.result.warning}{tag(s)}</Insight> : null
       )}
 
-      {/* Headline results */}
-      {isReverse ? (
-        <ResultRow
-          cells={[
-            { label: "Corpus you’ll need at retirement", value: inr(result.requiredCorpus ?? result.corpus), tone: "amber" },
-            investMode === "lumpsum"
-              ? { label: "Lumpsum to invest today", value: inr(result.requiredLumpsum ?? 0), tone: "emerald" }
-              : { label: isSalary ? "Monthly investment needed" : "Monthly SIP needed", value: inr(result.requiredMonthlySip ?? 0), tone: "emerald" },
-            { label: "Your monthly income (SWP)", value: inr(result.monthlySwp) },
-            { label: "Total income over SWP period", value: inr(result.totalWithdrawn), tone: "emerald" },
-          ]}
-        />
-      ) : (
-        <ResultRow
-          cells={[
-            { label: "Total accumulated corpus", value: inr(result.corpus), tone: "amber" },
-            { label: "Monthly income (SWP)", value: inr(result.monthlySwp), tone: "emerald" },
-            { label: "Total income over SWP period", value: inr(result.totalWithdrawn), tone: "emerald" },
-            { label: "Balance left at end", value: inr(result.endBalanceActual) },
-          ]}
-        />
+      {clientName && (
+        <div className="text-sm font-medium">
+          Prepared for <span className="text-primary">{clientName}</span>{objective ? ` · ${objective}` : ""}
+        </div>
       )}
+
+      {/* Headline results, one row per scenario */}
+      {scenarios.map((s, i) => {
+        const r = s.result;
+        return isReverse ? (
+          <div key={i} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat label={`Corpus needed at SWP start${tag(s)}`} value={inr(r.requiredCorpus ?? r.corpus)} tone="amber" />
+            {investMode === "lumpsum" ? (
+              <Stat label={`Lumpsum to invest today${tag(s)}`} value={inr(r.requiredLumpsum ?? 0)} tone="emerald" />
+            ) : (
+              <Stat label={`${isSalary ? "Monthly investment needed" : "Monthly SIP needed"}${tag(s)}`} value={inr(r.requiredMonthlySip ?? 0)} tone="emerald" />
+            )}
+            <Stat label="Monthly SWP (first month)" value={inr(r.monthlySwp)} />
+            <Stat label={`Total withdrawal${tag(s)}`} value={inr(r.totalWithdrawn)} tone="emerald" />
+          </div>
+        ) : (
+          <div key={i} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat label={`Accumulated corpus${tag(s)}`} value={inr(r.corpus)} tone="amber" />
+            <Stat label={`${distInflationPct > 0 ? "Monthly SWP (first month)" : "Monthly SWP"}${tag(s)}`} value={inr(r.monthlySwp)} tone="emerald" />
+            <Stat label={`Total withdrawal${tag(s)}`} value={inr(r.totalWithdrawn)} tone="emerald" />
+            <Stat label="Balance left at end" value={inr(r.endBalanceActual)} />
+          </div>
+        );
+      })}
 
       {/* Secondary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Stat label="Total invested" value={inr(result.totalInvested)} />
         <Stat label="Wealth gained (accumulation)" value={inr(result.wealthGain)} />
         <Stat label="First → last monthly SWP" value={`${inr(result.monthlySwp)} → ${inr(result.lastMonthlySwp)}`} />
-        <Stat
-          label="Phases"
-          value={`${result.sipYears + result.holdYears}y build · ${result.distYears}y draw`}
-        />
-        {isSalary && isReverse && result.requiredSavingsPct != null && (
+        {isSalary && isReverse && result.requiredSavingsPct != null ? (
           <Stat label="Required savings rate" value={`${result.requiredSavingsPct.toFixed(1)}% of salary`} />
+        ) : (
+          <Stat label="Phases" value={`${result.sipYears + result.holdYears}y build · ${result.distYears}y draw`} />
         )}
       </div>
 
-      {/* Year-by-year SWP schedule */}
-      {result.schedule.length > 0 && (
-        <details className="border border-border rounded-lg overflow-hidden">
-          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold bg-secondary hover:bg-secondary">
-            Year-by-year withdrawal schedule ({result.schedule.length} years)
-          </summary>
-          <div className="max-h-72 overflow-y-auto scrollbar-thin print:max-h-none print:overflow-visible">
-            <table data-pdf="table" className="w-full text-xs">
-              <thead className="sticky top-0 bg-background border-b">
-                <tr className="text-left text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">Age</th>
-                  <th className="px-4 py-2 font-medium text-right">Monthly SWP</th>
-                  <th className="px-4 py-2 font-medium text-right">Withdrawn that year</th>
-                  <th className="px-4 py-2 font-medium text-right">Corpus at year end</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.schedule.map((row) => (
-                  <tr key={row.age} className="border-b border-slate-100">
-                    <td className="px-4 py-1.5">{row.age}</td>
-                    <td className="px-4 py-1.5 text-right">{inr(row.monthlyWithdrawalThatYear)}</td>
-                    <td className="px-4 py-1.5 text-right">{inr(row.withdrawnThisYear)}</td>
-                    <td className={`px-4 py-1.5 text-right font-medium ${row.endCorpus < 0 ? "text-rose-600" : ""}`}>
-                      {inr(row.endCorpus)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Accumulation table */}
+      {result.accSchedule.length > 0 && (
+        <Section n={1} title="Accumulation — annual investment and year-end value">
+          <CalcChart
+            data={[
+              ...result.accSchedule.map((r, i) => ({ age: r.age, s1: r.value, s2: scenarios[1]?.result.accSchedule[i]?.value ?? 0 })),
+              ...result.schedule.map((r, i) => ({ age: r.age, s1: r.endCorpus, s2: scenarios[1]?.result.schedule[i]?.endCorpus ?? 0 })),
+            ]}
+            xKey="age"
+            xUnit="Age"
+            series={[
+              { key: "s1", name: `Corpus${tag(scenarios[0])}`, color: "#0ea5e9" },
+              ...(scenarios[1] ? [{ key: "s2", name: `Corpus${tag(scenarios[1])}`, color: "#10b981" }] : []),
+            ]}
+          />
+          <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
+            <Table
+              head={["Age", "Annual investment", ...scenarios.map((s) => `Year-end value${tag(s)}`)]}
+              rows={result.accSchedule.map((r, i) => [
+                `${r.age}`,
+                r.invested > 0 ? inr(r.invested) : "—",
+                ...scenarios.map((s) => inr(s.result.accSchedule[i]?.value ?? NaN)),
+              ])}
+              highlightLastRow
+            />
           </div>
-        </details>
+        </Section>
+      )}
+
+      {/* Distribution table */}
+      {result.schedule.length > 0 && (
+        <Section n={2} title="Distribution — monthly withdrawal and year-end value">
+          <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
+            <Table
+              head={[
+                "Age",
+                ...scenarios.flatMap((s) => [`Monthly SWP (avg)${tag(s)}`, `Year-end value${tag(s)}`]),
+                `Withdrawn that year${tag(scenarios[0])}`,
+              ]}
+              rows={result.schedule.map((row, i) => [
+                `${row.age}`,
+                ...scenarios.flatMap((s) => {
+                  const r = s.result.schedule[i];
+                  return [inr(r?.avgMonthlyWithdrawal ?? NaN), inr(r?.endCorpus ?? NaN)];
+                }),
+                inr(row.withdrawnThisYear),
+              ])}
+              highlightLastRow
+            />
+          </div>
+        </Section>
       )}
 
       <p className="text-2xs text-muted-foreground border-t pt-3">
-        * Illustration only. Figures assume constant returns and inflation; actual results vary with market performance.
-        SWP grows with inflation each month; withdrawal at month end · effective monthly rate. Not investment advice.
+        Illustration only. Figures assume constant returns and inflation; actual results vary with market performance.
+        SIP paid at the start of each month; withdrawals taken at month end and raised every month with inflation ·
+        effective monthly rate · the distribution table shows each year&apos;s average monthly withdrawal. Not investment advice.
       </p>
     </div>
   );
-}
-
-/* ───────────────────────── bits ───────────────────────── */
-
-function Segmented({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <div>
-      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
-      <div className="flex flex-wrap gap-1 rounded-lg bg-secondary p-1">
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => onChange(o.value)}
-            className={`text-xs px-2.5 py-1.5 rounded-md transition-colors flex-1 min-w-fit ${
-              value === o.value ? "bg-white shadow-sm font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Num({
-  label,
-  value,
-  setValue,
-  step = 1000,
-}: {
-  label: string;
-  value: number;
-  setValue: (v: number) => void;
-  step?: number;
-}) {
-  return (
-    <Field label={label}>
-      <input
-        type="number"
-        value={value}
-        step={step}
-        min={0}
-        onChange={(e) => {
-          const n = e.target.value === "" ? 0 : Number(e.target.value);
-          setValue(Number.isFinite(n) && n >= 0 ? n : 0);
-        }}
-        className="input-base text-sm w-full"
-      />
-    </Field>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border border-border rounded-md p-3">
-      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
-      <div className="text-sm font-semibold mt-0.5">{value}</div>
-    </div>
-  );
-}
-
-function ResultRow({
-  cells,
-}: {
-  cells: Array<{ label: string; value: string; tone?: "emerald" | "amber" | "rose" }>;
-}) {
-  return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))` }}>
-      {cells.map((c, i) => {
-        const tone =
-          c.tone === "emerald"
-            ? "border-emerald-200 bg-emerald-50/60"
-            : c.tone === "amber"
-              ? "border-amber-200 bg-amber-50/60"
-              : c.tone === "rose"
-                ? "border-rose-200 bg-rose-50/60"
-                : "";
-        return (
-          <div key={i} className={`border rounded-md p-3 ${tone}`}>
-            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
-            <div className="text-lg font-semibold mt-0.5">{c.value}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function inr(n: number): string {
-  if (!Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 }
