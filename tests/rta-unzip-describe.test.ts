@@ -10,8 +10,8 @@ async function zip(opts: Record<string, unknown>) {
 
 describe("describeZip — what a refused archive looks like", () => {
   it("names AES-256, AES-128, ZipCrypto and plain archives", async () => {
-    expect(await describeZip(await zip({ password: "p", encryptionStrength: 3 }))).toBe("AES-256, 1 file");
-    expect(await describeZip(await zip({ password: "p", encryptionStrength: 1 }))).toBe("AES-128, 1 file");
+    expect(await describeZip(await zip({ password: "p", encryptionStrength: 3 }))).toMatch(/^AES-256 AE-\d, deflate, 1 file$/);
+    expect(await describeZip(await zip({ password: "p", encryptionStrength: 1 }))).toMatch(/^AES-128 AE-\d, deflate, 1 file$/);
     expect(await describeZip(await zip({ password: "p", zipCrypto: true }))).toBe("ZipCrypto, 1 file");
     expect(await describeZip(await zip({}))).toBe("not encrypted, 1 file");
   });

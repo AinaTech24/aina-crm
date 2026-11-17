@@ -1301,6 +1301,11 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   now also queues one rescan per firm that has a password-refused ZIP from the last 60 days, and the worker does it once at
   boot after this fix (`scheduler_state` marker `rta-rescan-rejected-opener-2026-11-17`). Only archives that really open are
   re-queued; the rest stay `rejected` and counted. A new fix to how archives are opened needs the same one-off marker.
+- **A refused ZIP can be downloaded and tried on the person's own computer** (2026-11-17, `GET /api/rta-imports/[id]/file`,
+  the download icon on a rejected row; audited as `rta_import.file_downloaded`). It is the decisive test: the stored bytes
+  open with their password in 7-Zip / WinZip → the CRM has a fault; they refuse there too → the archive was locked with another
+  password. An AES archive's password check is exact (2 bytes of the key derivation), so "[ZIP: AES-256 AE-2, deflate]" +
+  refused means the passwords tried are not the archive's byte for byte. The reason now names AE-1 / AE-2 and the real method.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.

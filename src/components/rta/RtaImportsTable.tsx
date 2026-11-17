@@ -10,7 +10,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Trash2, RotateCcw, RefreshCw, KeyRound } from "lucide-react";
+import { Loader2, Trash2, RotateCcw, RefreshCw, KeyRound, Download } from "lucide-react";
 import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
 import { formatRelative, formatDate } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -325,6 +325,16 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                                 ? <Loader2 className="size-3.5 animate-spin" />
                                 : <RefreshCw className="size-3.5" />}
                             </button>
+                          )}
+                          {r.status === "rejected" && (
+                            <a
+                              href={`/api/rta-imports/${r.id}/file`}
+                              className="btn-icon"
+                              title="Download the file exactly as received — to try it on your computer with your password"
+                              aria-label="Download the stored file"
+                            >
+                              <Download className="size-3.5" />
+                            </a>
                           )}
                           {r.status === "rejected" && (
                             <button

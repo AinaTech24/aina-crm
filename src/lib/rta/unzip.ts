@@ -107,15 +107,23 @@ export async function describeZip(buf: Uint8Array): Promise<string> {
       const entries = ((await reader.getEntries()) as unknown as Array<{
         directory: boolean;
         encrypted?: boolean;
-        extraFieldAES?: { strength?: number };
+        compressionMethod?: number;
+        dataDescriptor?: boolean;
+        extraFieldAES?: { strength?: number; vendorVersion?: number; compressionMethod?: number };
       }>).filter((e) => !e.directory);
       if (!entries.length) return "empty archive";
       const kinds = new Set(
-        entries.map((e) =>
-          !e.encrypted ? "not encrypted"
-            : e.extraFieldAES ? `AES-${({ 1: 128, 2: 192, 3: 256 } as Record<number, number>)[e.extraFieldAES.strength ?? 3] ?? 256}`
-            : "ZipCrypto"
-        )
+        entries.map((e) => {
+          if (!e.encrypted) return "not encrypted";
+          const aes = e.extraFieldAES;
+          if (aes) {
+            const bits = ({ 1: 128, 2: 192, 3: 256 } as Record<number, number>)[aes.strength ?? 3] ?? 256;
+            // AE-1 / AE-2 and the real compression method behind AES's "99", for whoever reads it.
+            const m = aes.compressionMethod === 8 ? "deflate" : aes.compressionMethod === 0 ? "stored" : `method ${aes.compressionMethod}`;
+            return `AES-${bits} AE-${aes.vendorVersion ?? "?"}, ${m}`;
+          }
+          return `ZipCrypto${e.dataDescriptor ? ", data descriptor" : ""}`;
+        })
       );
       return `${[...kinds].join(" + ")}, ${entries.length} file${entries.length === 1 ? "" : "s"}`;
     } finally {
