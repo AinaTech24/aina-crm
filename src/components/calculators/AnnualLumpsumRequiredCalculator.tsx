@@ -83,21 +83,34 @@ export function AnnualLumpsumRequiredCalculator() {
         </Insight>
       )}
 
-      {/* Accumulation schedule (scenario 1) */}
-      <Section n={1} title={`Accumulation schedule @ ${fmtPct(s1.ratePct)}`}>
+      {/* Accumulation schedule — one column pair per scenario; "—" after the payment period */}
+      <Section n={1} title={s2 ? "Projected annual investment value" : `Projected annual investment value @ ${fmtPct(s1.ratePct)}`}>
         <CalcChart
-          data={s1.schedule.map((r) => ({ year: r.year, value: r.yearEndValue }))}
+          data={s1.schedule.map((r, i) => ({ year: r.year, s1: r.yearEndValue, ...(s2 ? { s2: s2.schedule[i]?.yearEndValue ?? 0 } : {}) }))}
           xKey="year"
-          series={[{ key: "value", name: "Corpus", color: "#0ea5e9" }]}
+          series={[
+            { key: "s1", name: `@ ${fmtPct(s1.ratePct)}`, color: "#0ea5e9" },
+            ...(s2 ? [{ key: "s2", name: `@ ${fmtPct(s2.ratePct)}`, color: "#10b981" }] : []),
+          ]}
         />
         <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
           <Table
-            head={["Year", "Investment", "Corpus at year-end"]}
-            rows={s1.schedule.map((r) => [
-              `${r.year}`,
-              r.investment > 0 ? inr(r.investment) : "—",
-              inr(r.yearEndValue),
-            ])}
+            head={[
+              "Year",
+              s2 ? `Investment @ ${fmtPct(s1.ratePct)}` : "Investment",
+              `Year-end value @ ${fmtPct(s1.ratePct)}`,
+              ...(s2 ? [`Investment @ ${fmtPct(s2.ratePct)}`, `Year-end value @ ${fmtPct(s2.ratePct)}`] : []),
+            ]}
+            rows={s1.schedule.map((r, i) => {
+              const paying = r.year <= paymentYears;
+              const r2 = s2?.schedule[i];
+              return [
+                `${r.year}`,
+                paying ? inr(r.investment) : "—",
+                inr(r.yearEndValue),
+                ...(s2 && r2 ? [paying ? inr(r2.investment) : "—", inr(r2.yearEndValue)] : []),
+              ];
+            })}
             highlightLastRow
           />
         </div>

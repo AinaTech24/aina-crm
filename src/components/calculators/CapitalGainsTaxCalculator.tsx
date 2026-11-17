@@ -3,16 +3,18 @@
 /**
  * Capital Gains Tax Calculator — assets purchased before / after FY 2001-02,
  * with CII indexation for long-term gains. Math: src/lib/calculators/capital-gains.ts
- * (verified to the reference case → LTCG ₹15,15,177, tax @20% ₹3,03,035).
+ * (verified to the reference report → improvement entered for FY2008-09, indexed
+ * cost ₹56,01,834, LTCG ₹12,98,166, tax @20% ₹2,59,633, no cess). The cess is an
+ * opt-in toggle, off by default so the default matches the reference.
  */
 
 import { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import {
-  computeCapitalGains, CII, fyLabel, fyStartYear, ciiFor,
+  computeCapitalGains, CII, fyLabel, fyStartYear,
   type AssetType, type AcquisitionBasis, type Improvement,
 } from "@/lib/calculators/capital-gains";
-import { inr, fmtPct, clampNum, NumberField, Field, Segmented, Section, Stat, Table, Insight } from "./ui";
+import { inr, fmtPct, clampNum, NumberField, Field, Segmented, Section, Stat, Table, Insight, Toggle } from "./ui";
 import { DateField } from "@/components/ui/DateField";
 
 const ASSET_TYPES: { value: AssetType; label: string }[] = [
@@ -32,21 +34,22 @@ export function CapitalGainsTaxCalculator() {
   const [purchasePrice, setPurchasePrice] = useState(1500000);
   const [purchaseDate, setPurchaseDate] = useState("2004-06-15");
   const [fmv2001, setFmv2001] = useState(0);
-  const [improvements, setImprovements] = useState<Improvement[]>([{ fyStartYear: 2010, cost: 500000 }]);
+  const [improvements, setImprovements] = useState<Improvement[]>([{ fyStartYear: 2008, cost: 500000 }]);
   const [salePrice, setSalePrice] = useState(7000000);
   const [salesExpenses, setSalesExpenses] = useState(100000);
   const [saleDate, setSaleDate] = useState("2022-11-01");
   const [expectedSaleCII, setExpectedSaleCII] = useState<number>(0);
   const [incomeTaxSlabPct, setIncomeTaxSlabPct] = useState(30);
+  const [includeCess, setIncludeCess] = useState(false);
 
   const result = useMemo(
     () =>
       computeCapitalGains({
         acquisitionBasis: basis, assetType, purchasePrice, purchaseDate, fmv2001,
         improvements, salePrice, salesExpenses, saleDate,
-        expectedSaleCII: expectedSaleCII > 0 ? expectedSaleCII : null, incomeTaxSlabPct,
+        expectedSaleCII: expectedSaleCII > 0 ? expectedSaleCII : null, incomeTaxSlabPct, includeCess,
       }),
-    [basis, assetType, purchasePrice, purchaseDate, fmv2001, improvements, salePrice, salesExpenses, saleDate, expectedSaleCII, incomeTaxSlabPct]
+    [basis, assetType, purchasePrice, purchaseDate, fmv2001, improvements, salePrice, salesExpenses, saleDate, expectedSaleCII, incomeTaxSlabPct, includeCess]
   );
 
   function setImp(i: number, patch: Partial<Improvement>) {
@@ -55,8 +58,6 @@ export function CapitalGainsTaxCalculator() {
   function addImp() { setImprovements((prev) => [...prev, { fyStartYear: fyStartYear(saleDate) ?? 2022, cost: 0 }]); }
   function removeImp(i: number) { setImprovements((prev) => prev.filter((_, idx) => idx !== i)); }
 
-  const purchaseFy = fyStartYear(purchaseDate);
-  const saleFy = fyStartYear(saleDate);
 
   return (
     <div className="card-surface p-5 space-y-5">
@@ -124,6 +125,9 @@ export function CapitalGainsTaxCalculator() {
         </Field>
         <NumberField label="Expected sale-year CII (optional)" value={expectedSaleCII} setValue={setExpectedSaleCII} step={1} />
         <NumberField label="Income-tax slab of assessee (%)" value={incomeTaxSlabPct} setValue={setIncomeTaxSlabPct} step={5} />
+        <div className="flex items-end pb-2">
+          <Toggle checked={includeCess} onChange={setIncludeCess} label="Add 4% health & education cess" />
+        </div>
       </div>
 
       {/* Summary */}
@@ -143,13 +147,22 @@ export function CapitalGainsTaxCalculator() {
                   [`Sale price`, inr(salePrice)],
                   [`Less: sales expenses`, `(${inr(salesExpenses)})`],
                   [`Net sale consideration`, inr(result.netConsideration)],
+                  [basis === "before_2001" ? `Cost of purchase (higher of cost and FMV on 01-04-2001)` : `Cost of purchase`, inr(result.costBase)],
+                  ...(result.indexed
+                    ? [[`CII — year of purchase (${fyLabel(basis === "before_2001" ? 2001 : result.purchaseFY ?? 2001)})`, `${result.ciiPurchase}`]]
+                    : []),
+                  ...result.improvementCii
+                    .filter((im) => im.cost > 0)
+                    .map((im) => [`Cost of improvement in FY ${fyLabel(im.fyStartYear)}${result.indexed ? ` (CII ${im.cii})` : ""}`, inr(im.cost)]),
+                  ...(result.indexed
+                    ? [[`CII — year of sale${result.saleFY != null ? ` (${fyLabel(result.saleFY)})` : ""}`, `${result.ciiSale}`]]
+                    : []),
                   result.indexed
-                    ? [`Indexed cost of acquisition (CII ${result.ciiSale}/${ciiFor(result.purchaseFY ?? 2001)})`, `(${inr(result.indexedAcquisition)})`]
-                    : [`Less: cost of acquisition`, `(${inr(result.indexedAcquisition)})`],
-                  [result.indexed ? `Indexed cost of improvement` : `Less: cost of improvement`, `(${inr(result.indexedImprovements)})`],
-                  [`Long-term capital gain`, inr(result.gain)],
+                    ? [`Less: indexed cost of acquisition (purchase + improvements)`, `(${inr(result.indexedCostTotal)})`]
+                    : [`Less: cost of acquisition + improvements`, `(${inr(result.indexedCostTotal)})`],
+                  [`Taxable long-term capital gain`, inr(result.gain)],
                   [`Tax @ ${fmtPct(result.ltcgRatePct)} (${result.indexed ? "with" : "without"} indexation)`, inr(result.baseTax)],
-                  [`Health & education cess @ 4%`, inr(result.cess)],
+                  ...(includeCess ? [[`Health & education cess @ 4%`, inr(result.cess)]] : []),
                   [`Total tax payable`, inr(result.totalTax)],
                 ]
               : [
@@ -158,7 +171,7 @@ export function CapitalGainsTaxCalculator() {
                   [`Less: cost of improvement`, `(${inr(result.totalImprovementsRaw)})`],
                   [`Short-term capital gain`, inr(result.gain)],
                   [`Tax @ slab ${fmtPct(incomeTaxSlabPct)}`, inr(result.baseTax)],
-                  [`Health & education cess @ 4%`, inr(result.cess)],
+                  ...(includeCess ? [[`Health & education cess @ 4%`, inr(result.cess)]] : []),
                   [`Total tax payable`, inr(result.totalTax)],
                 ]
           }
@@ -170,7 +183,15 @@ export function CapitalGainsTaxCalculator() {
           <strong>{inr(result.totalTax)}</strong>
           {result.gain > 0 && ` (effective ${result.effectiveRatePct.toFixed(1)}% of the gain)`}.
           {result.isLongTerm && result.indexed && " Indexation raises the cost base to today's value, sharply reducing the taxable gain."}
+          {!includeCess && " Cess is not included."}
         </Insight>
+        {result.isLongTerm && result.indexed && (
+          <p className="text-2xs text-muted-foreground">
+            Indexed cost = purchase {inr(result.indexedAcquisition)} ({inr(result.costBase)} × {result.ciiSale} / {result.ciiPurchase})
+            {result.improvementCii.filter((im) => im.cost > 0).map((im) => ` + improvement FY ${fyLabel(im.fyStartYear)} ${inr(im.indexedCost)} (${inr(im.cost)} × ${result.ciiSale} / ${im.cii})`).join("")}
+            , each part rounded to the rupee.
+          </p>
+        )}
       </Section>
     </div>
   );

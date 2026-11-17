@@ -5,7 +5,9 @@
  * Calculator". Computes the real IRR of a traditional/guaranteed insurance
  * policy and contrasts it with the same premiums invested in a mutual fund.
  *
- * Math: src/lib/calculators/insurance-irr.ts (verified to the rupee).
+ * Math: src/lib/calculators/insurance-irr.ts (verified to the rupee, including
+ * the three year-wise tables; the matching MF instalment is rounded to 2
+ * decimals before its table is built, as the reference does).
  */
 
 import { useMemo, useState } from "react";
@@ -54,8 +56,9 @@ export function InsuranceReturnAnalyzer() {
     setPayouts((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  const irrTone =
+  const irrTone: "amber" | "rose" | "emerald" =
     result.irrPct == null ? "amber" : result.irrPct < 6 ? "rose" : result.irrPct < 9 ? "amber" : "emerald";
+  const ppt = Math.max(0, Math.round(premiumPaymentTerm));
 
   return (
     <div className="card-surface p-5 space-y-5">
@@ -147,12 +150,12 @@ export function InsuranceReturnAnalyzer() {
         <Stat
           label="Policy IRR"
           value={result.irrPct == null ? "—" : `${result.irrPct.toFixed(2)}%`}
-          tone={irrTone as any}
+          tone={irrTone}
         />
       </div>
 
       {result.irrPct != null && (
-        <Insight tone={irrTone as any}>
+        <Insight tone={irrTone}>
           This policy returns <strong>{result.irrPct.toFixed(2)}% IRR</strong>
           {result.irrPct < expectedReturnPct
             ? ` — below the ${fmtPct(expectedReturnPct)} a mutual fund is assumed to deliver, and likely below long-term inflation.`
@@ -184,6 +187,48 @@ export function InsuranceReturnAnalyzer() {
           </Insight>
         </Section>
       )}
+
+      {/* Year-wise tables */}
+      <Section n={showMfCompare ? 2 : 1} title="Year-wise cash flows">
+        <p className="text-2xs text-muted-foreground">
+          Premiums and investments are made at the start of each year; payouts and values are at the end of the year.
+        </p>
+        <div className={`grid gap-4 ${showMfCompare ? "lg:grid-cols-3" : ""}`}>
+          <div className="space-y-1">
+            <div className="text-xs font-semibold">Policy</div>
+            <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
+              <Table
+                head={["Year", "Premium", "Payout"]}
+                rows={result.policySchedule.map((r) => [`${r.year}`, r.premium > 0 ? inr(r.premium) : "—", r.payout > 0 ? inr(r.payout) : "—"])}
+              />
+            </div>
+          </div>
+          {showMfCompare && (
+            <>
+              <div className="space-y-1">
+                <div className="text-xs font-semibold">MF for the same payout · {inr(result.mfContributionRounded)}/yr × {ppt} yrs</div>
+                <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
+                  <Table
+                    head={["Year", "Investment", "Value at year end"]}
+                    rows={result.mfMatchSchedule.map((r) => [`${r.year}`, r.investment > 0 ? inr(r.investment) : "—", inr(r.yearEndValue)])}
+                    highlightLastRow
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs font-semibold">Same premium in an MF @ {fmtPct(expectedReturnPct)}</div>
+                <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
+                  <Table
+                    head={["Year", "Investment", "Value at year end"]}
+                    rows={result.mfSameSchedule.map((r) => [`${r.year}`, r.investment > 0 ? inr(r.investment) : "—", inr(r.yearEndValue)])}
+                    highlightLastRow
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </Section>
 
       {/* MF maturity value (standalone) */}
       {showMfMaturity && !showMfCompare && (

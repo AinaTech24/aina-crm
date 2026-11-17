@@ -4,10 +4,20 @@
  * Long-term gains use indexation against the Cost Inflation Index (CII, base
  * FY2001-02 = 100): indexed cost = cost × CII(saleFY) / CII(costFY). Short-term
  * gains use the actual cost (no indexation) and are taxed at the assessee's
- * slab. Verified to the reference case (house: buy ₹15L FY2004-05, improve ₹5L
- * FY2010-11, sell ₹70L less ₹1L expenses FY2022-23 → indexed acquisition
- * ₹43,93,805, indexed improvement ₹9,91,018, LTCG ₹15,15,177, tax @20%
- * ₹3,03,035, +4% cess ₹3,15,157).
+ * slab.
+ *
+ * Verified to the reference report (house: bought ₹15,00,000 on 15-06-2004,
+ * FY2004-05 CII 113; improvement ₹5,00,000 entered for FY2008-09, CII 137; sold
+ * ₹70,00,000 less ₹1,00,000 expenses on 01-11-2022, assumed CII 331 →
+ * net consideration ₹69,00,000, indexed cost of acquisition ₹56,01,834,
+ * long-term gain ₹12,98,166, tax @20% ₹2,59,633 — NO cess).
+ *   • The indexed cost is shown COMBINED (purchase + improvements) and each
+ *     indexed part is rounded to the rupee before summing (43,93,805 +
+ *     12,08,029); the gain is taken on that rupee figure.
+ *   • The reference adds no health & education cess. Cess is an opt-in here
+ *     (`includeCess`, default off) so the default matches the reference.
+ *   (An earlier note here quoted FY2010-11 / ₹3,03,035 / ₹3,15,157 with cess as
+ *   the reference; the printed reference uses FY2008-09 and no cess.)
  *
  * Budget 2024 — sales on/after 23-Jul-2024: LTCG 12.5% WITHOUT indexation; land
  * / building bought before that date (resident individual) pays the lower of
@@ -104,7 +114,11 @@ export type CapitalGainsInput = {
   saleDate: string; // ISO
   expectedSaleCII: number | null; // override for the sale year's CII
   incomeTaxSlabPct: number; // for short-term gains
+  /** Add the 4% health & education cess (reference: off). */
+  includeCess?: boolean;
 };
+
+export type ImprovementCii = { fyStartYear: number; cost: number; cii: number; indexedCost: number };
 
 export type CapitalGainsResult = {
   holdingMonths: number;
@@ -112,10 +126,16 @@ export type CapitalGainsResult = {
   saleFY: number | null;
   purchaseFY: number | null;
   ciiSale: number;
+  /** CII used for the cost (purchase FY, or 2001-02 for the before-2001 basis). */
+  ciiPurchase: number;
+  /** CII used for each improvement (footnote). */
+  improvementCii: ImprovementCii[];
   netConsideration: number;
   costBase: number; // purchase price or FMV (before_2001)
   indexedAcquisition: number;
   indexedImprovements: number;
+  /** Cost of acquisition + improvements as deducted (indexed when indexation applied), rupee-rounded parts. */
+  indexedCostTotal: number;
   totalImprovementsRaw: number;
   gain: number;
   ltcgRatePct: number; // rate applied to a long-term gain
@@ -156,12 +176,18 @@ export function computeCapitalGains(input: CapitalGainsInput): CapitalGainsResul
   let ltcgRatePct = LTCG_RATE_PCT;
   let indexed = false;
 
+  const ciiPurchase = ciiFor(costFY);
+  // Each indexed part is rounded to the rupee before summing (reference parity).
+  const improvementCii: ImprovementCii[] = input.improvements.map((im) => ({
+    fyStartYear: im.fyStartYear,
+    cost: im.cost,
+    cii: ciiFor(im.fyStartYear),
+    indexedCost: Math.round((im.cost * ciiSale) / ciiFor(im.fyStartYear)),
+  }));
+
   if (isLongTerm) {
-    const idxAcq = (costBase * ciiSale) / ciiFor(costFY);
-    const idxImp = input.improvements.reduce(
-      (s, im) => s + (im.cost * ciiSale) / ciiFor(im.fyStartYear),
-      0
-    );
+    const idxAcq = Math.round((costBase * ciiSale) / ciiPurchase);
+    const idxImp = improvementCii.reduce((s, im) => s + im.indexedCost, 0);
     const idxGain = netConsideration - idxAcq - idxImp;
     const idxTax = Math.max(0, idxGain) * (LTCG_RATE_PCT / 100);
     const plainGain = netConsideration - costBase - totalImprovementsRaw;
@@ -188,7 +214,7 @@ export function computeCapitalGains(input: CapitalGainsInput): CapitalGainsResul
     baseTax = Math.max(0, gain) * (input.incomeTaxSlabPct / 100);
   }
 
-  const cess = baseTax * (CESS_PCT / 100);
+  const cess = input.includeCess ? baseTax * (CESS_PCT / 100) : 0;
   const totalTax = baseTax + cess;
 
   return {
@@ -197,10 +223,13 @@ export function computeCapitalGains(input: CapitalGainsInput): CapitalGainsResul
     saleFY,
     purchaseFY,
     ciiSale,
+    ciiPurchase,
+    improvementCii,
     netConsideration,
     costBase,
     indexedAcquisition,
     indexedImprovements,
+    indexedCostTotal: indexedAcquisition + indexedImprovements,
     totalImprovementsRaw,
     gain,
     ltcgRatePct,

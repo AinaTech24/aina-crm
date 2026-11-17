@@ -7,7 +7,10 @@
  * increment. Projects the wealth created by retirement — or, in reverse, the
  * saving rate needed to hit a target wealth.
  *
- * Math lives in @/lib/calculators/salary-wealth.
+ * Math lives in @/lib/calculators/salary-wealth (verified to the reference
+ * case → total salary ₹13,72,87,915, new investment ₹1,37,28,791, total wealth
+ * ₹7,27,62,939; saving mode ₹17,594 = 14.66% of salary). The new-investment
+ * figure excludes the existing investment, which has its own return.
  */
 
 import { useMemo, useState } from "react";
@@ -23,16 +26,17 @@ export function SalaryWealthBuilder() {
   const [clientName, setClientName] = useState("");
 
   const [mode, setMode] = useState<SalaryWealthMode>("wealth");
-  const [currentAge, setCurrentAge] = useState(30);
+  const [currentAge, setCurrentAge] = useState(32);
   const [retirementAge, setRetirementAge] = useState(60);
-  const [currentMonthlySalary, setCurrentMonthlySalary] = useState(100000);
-  const [sipPctOfSalary, setSipPctOfSalary] = useState(20);
-  const [annualIncrementPct, setAnnualIncrementPct] = useState(10);
+  const [currentMonthlySalary, setCurrentMonthlySalary] = useState(120000);
+  const [sipPctOfSalary, setSipPctOfSalary] = useState(10);
+  const [annualIncrementPct, setAnnualIncrementPct] = useState(8);
   const [investTillAge, setInvestTillAge] = useState(60);
   const [assumedReturnPct, setAssumedReturnPct] = useState(12);
-  const [includeExisting, setIncludeExisting] = useState(false);
-  const [existingInvestment, setExistingInvestment] = useState(500000);
-  const [targetWealth, setTargetWealth] = useState(50000000);
+  const [includeExisting, setIncludeExisting] = useState(true);
+  const [existingInvestment, setExistingInvestment] = useState(600000);
+  const [existingReturnPct, setExistingReturnPct] = useState(12);
+  const [targetWealth, setTargetWealth] = useState(100000000);
 
   const isSaving = mode === "saving";
 
@@ -49,12 +53,13 @@ export function SalaryWealthBuilder() {
         assumedReturnPct,
         includeExisting,
         existingInvestment,
+        existingReturnPct,
         targetWealth,
       }),
     [
       mode, currentAge, retirementAge, currentMonthlySalary, sipPctOfSalary,
       annualIncrementPct, investTillAge, assumedReturnPct, includeExisting,
-      existingInvestment, targetWealth,
+      existingInvestment, existingReturnPct, targetWealth,
     ]
   );
 
@@ -91,9 +96,14 @@ export function SalaryWealthBuilder() {
           <input type="radio" checked={!includeExisting} onChange={() => setIncludeExisting(false)} /> No
         </label>
         {includeExisting && (
-          <div className="w-48">
-            <Num label="Existing investment (₹)" value={existingInvestment} setValue={setExistingInvestment} />
-          </div>
+          <>
+            <div className="w-48">
+              <Num label="Existing investment (₹)" value={existingInvestment} setValue={setExistingInvestment} />
+            </div>
+            <div className="w-48">
+              <Num label="Return on it (%)" value={existingReturnPct} setValue={setExistingReturnPct} step={0.5} />
+            </div>
+          </>
         )}
       </div>
 
@@ -101,21 +111,35 @@ export function SalaryWealthBuilder() {
       {isSaving ? (
         <ResultRow
           cells={[
-            { label: "Monthly SIP you must save", value: inr(result.requiredMonthlySip ?? 0), tone: "emerald" },
-            { label: "That's % of your salary", value: Number.isFinite(result.requiredSipPct ?? 0) ? `${(result.requiredSipPct ?? 0).toFixed(1)}%` : "—", tone: "amber" },
+            { label: "Starting monthly SIP needed", value: inr(result.requiredMonthlySip ?? 0), tone: "emerald" },
+            { label: "As % of monthly salary", value: Number.isFinite(result.requiredSipPct ?? 0) ? `${(result.requiredSipPct ?? 0).toFixed(2)}%` : "—", tone: "amber" },
             { label: "Target wealth", value: inr(result.targetWealth ?? 0) },
-            { label: "Total you'll invest", value: inr(result.totalInvested) },
+            { label: `New investment till age ${investTillAge}`, value: inr(result.newInvestment) },
           ]}
         />
       ) : (
-        <ResultRow
-          cells={[
-            { label: "Wealth created at retirement", value: inr(result.wealth), tone: "emerald" },
-            { label: "Total invested", value: inr(result.totalInvested) },
-            { label: "Wealth gained", value: inr(result.wealthGain), tone: "emerald" },
-            { label: "Starting monthly SIP", value: inr(result.monthlySip), tone: "amber" },
-          ]}
-        />
+        <>
+          <ResultRow
+            cells={[
+              { label: "Total salary received", value: inr(result.totalSalaryReceived) },
+              { label: "New investment through SIP", value: inr(result.newInvestment) },
+              { label: "Wealth from the SIP", value: inr(result.sipWealth), tone: "emerald" },
+            ]}
+          />
+          <ResultRow
+            cells={[
+              { label: "Wealth from existing investment", value: includeExisting ? inr(result.existingFutureValue) : "—" },
+              { label: `Total wealth at ${retirementAge}`, value: inr(result.wealth), tone: "emerald" },
+              { label: "Starting monthly SIP", value: inr(result.monthlySip), tone: "amber" },
+            ]}
+          />
+          {Number.isFinite(result.pctToMatchSalary) && result.totalSalaryReceived > 0 && (
+            <p className="text-xs text-muted-foreground">
+              To build, through the SIP alone, as much as the {inr(result.totalSalaryReceived)} of salary received, invest about{" "}
+              <strong>{result.pctToMatchSalary.toFixed(2)}%</strong> of the monthly salary (rising with it) until age {investTillAge}.
+            </p>
+          )}
+        </>
       )}
 
       {/* Secondary stats */}
