@@ -124,8 +124,10 @@ export function FundPicker({
   return (
     <div className="space-y-1">
       <Field label={label}>
+        {/* Research looks at any fund, not only the firm's Scheme Master. */}
         <SchemeAutocomplete
           size="sm"
+          source="universe"
           defaultValue={value?.schemeName ?? ""}
           placeholder="Search a scheme…"
           onSelect={(s) => onChange({ schemeCode: s.schemeCode, schemeName: s.schemeName })}
