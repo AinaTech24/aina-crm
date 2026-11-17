@@ -23,11 +23,13 @@ export function HumanLifeValueCalculator() {
   const [currentAge, setCurrentAge] = useState(30);
   const [retirementAge, setRetirementAge] = useState(60);
   const [discountPct, setDiscountPct] = useState(6);
-  const [currentAnnualIncome, setCurrentAnnualIncome] = useState(1500000);
+  const [currentAnnualIncome, setCurrentAnnualIncome] = useState(1800000);
   const [annualPersonalExpenses, setAnnualPersonalExpenses] = useState(300000);
   const [incrementPct, setIncrementPct] = useState(8);
   const [existingCover, setExistingCover] = useState(10000000);
-  const [basis, setBasis] = useState<CoverBasis>("gross");
+  // Net of own expenses is the standard income-replacement basis (reference:
+  // ₹18 L income − ₹3 L expenses → ₹5,64,00,788); gross is an option.
+  const [basis, setBasis] = useState<CoverBasis>("net");
 
   // Need Analysis
   const [outstandingLiabilities, setOutstandingLiabilities] = useState(5000000);
@@ -92,8 +94,8 @@ export function HumanLifeValueCalculator() {
             value={basis}
             onChange={setBasis}
             options={[
-              { value: "gross", label: "Replace gross income" },
               { value: "net", label: "Net of own expenses" },
+              { value: "gross", label: "Replace gross income" },
             ]}
           />
 

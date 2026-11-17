@@ -4,12 +4,13 @@
  * STP Comprehensive Planner.
  *
  * Future value of a lumpsum routed Debt → Equity via a Systematic Transfer Plan,
- * with Capital-Appreciation or Fixed-Amount transfer modes and any frequency
- * (daily … annually). Shows the year-by-year debt/equity split and the blended
- * annualised return.
+ * with Capital-Appreciation or Fixed transfers (a ₹ amount or a % of the
+ * initial investment) at any frequency (daily … annually). Shows the
+ * year-by-year debt/equity split and the blended annualised return.
  *
  * Math lives in @/lib/calculators/stp-comprehensive (calibrated to the reference
- * case study to the rupee).
+ * case study to the rupee). A fixed transfer the debt fund cannot cover in full
+ * is skipped, not swept — the remainder stays in debt.
  */
 
 import { useMemo, useState } from "react";
@@ -17,8 +18,10 @@ import { ClientNameField } from "./ClientNameField";
 import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
 import { SelectField } from "@/components/ui/SelectField";
 import {
-  computeStpComprehensive, STP_FREQUENCIES, type StpFrequency, type StpTransferMode,
+  computeStpComprehensive, STP_FREQUENCIES, type StpFixedBasis, type StpFrequency, type StpTransferMode,
 } from "@/lib/calculators/stp-comprehensive";
+import { inr, NumberField, Field, Segmented, Stat, Insight } from "./ui";
+import { StpYearTable } from "./StpParts";
 
 export function StpComprehensivePlanner() {
   const [addClientName, setAddClientName] = useState(false);
@@ -30,9 +33,11 @@ export function StpComprehensivePlanner() {
   const [debtReturnPct, setDebtReturnPct] = useState(5);
   const [equityReturnPct, setEquityReturnPct] = useState(12);
   const [transferMode, setTransferMode] = useState<StpTransferMode>("fixed");
+  const [fixedBasis, setFixedBasis] = useState<StpFixedBasis>("amount");
   const [frequency, setFrequency] = useState<StpFrequency>("weekly");
   const [numInstallments, setNumInstallments] = useState(50);
   const [fixedTransferAmount, setFixedTransferAmount] = useState(50000);
+  const [fixedTransferPct, setFixedTransferPct] = useState(2);
 
   const [periodUnit, setPeriodUnit] = useState<"years" | "months">("years");
   const [periodValue, setPeriodValue] = useState(10);
@@ -44,41 +49,55 @@ export function StpComprehensivePlanner() {
     () =>
       computeStpComprehensive({
         initialInvestment, debtReturnPct, equityReturnPct, transferMode, frequency,
-        numInstallments, fixedTransferAmount, totalMonths,
+        numInstallments, fixedBasis, fixedTransferAmount, fixedTransferPct, totalMonths,
       }),
-    [initialInvestment, debtReturnPct, equityReturnPct, transferMode, frequency, numInstallments, fixedTransferAmount, totalMonths]
+    [initialInvestment, debtReturnPct, equityReturnPct, transferMode, frequency, numInstallments, fixedBasis, fixedTransferAmount, fixedTransferPct, totalMonths]
   );
+  const freqLabel = STP_FREQUENCIES.find((f) => f.value === frequency)?.label.toLowerCase();
+  const short = transferMode === "fixed" && result.exhaustedAtPeriod != null;
 
   return (
     <div className="card-surface p-5 space-y-4">
       <div>
         <h2 className="text-base font-semibold">STP Comprehensive Planner{addClientName && clientName ? ` · ${clientName}` : ""}</h2>
-        
       </div>
 
       {/* Core inputs */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Num label="Initial investment (₹)" value={initialInvestment} setValue={setInitialInvestment} />
-        <Num label="Debt fund return (% p.a.)" value={debtReturnPct} setValue={setDebtReturnPct} step={0.5} />
-        <Num label="Equity fund return (% p.a.)" value={equityReturnPct} setValue={setEquityReturnPct} step={0.5} />
+        <NumberField label="Initial investment (₹)" value={initialInvestment} setValue={setInitialInvestment} />
+        <NumberField label="Debt fund return (% p.a.)" value={debtReturnPct} setValue={setDebtReturnPct} step={0.5} />
+        <NumberField label="Equity fund return (% p.a.)" value={equityReturnPct} setValue={setEquityReturnPct} step={0.5} />
       </div>
 
       {/* Transfer mode */}
       <div className="grid md:grid-cols-2 gap-4">
-        <div>
-          <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">Transfer mode</span>
-          <div className="flex flex-wrap gap-3">
-            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input type="radio" checked={transferMode === "appreciation"} onChange={() => setTransferMode("appreciation")} /> Capital Appreciation
-            </label>
-            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input type="radio" checked={transferMode === "fixed"} onChange={() => setTransferMode("fixed")} /> Fixed Amount
-            </label>
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-end gap-3">
+            <Segmented
+              label="Transfer mode"
+              value={transferMode}
+              onChange={setTransferMode}
+              options={[
+                { value: "appreciation", label: "Capital appreciation" },
+                { value: "fixed", label: "Fixed transfer" },
+              ]}
+            />
+            {transferMode === "fixed" && (
+              <Segmented
+                label="Fixed by"
+                value={fixedBasis}
+                onChange={setFixedBasis}
+                options={[
+                  { value: "amount", label: "₹ amount" },
+                  { value: "pctOfInitial", label: "% of initial" },
+                ]}
+              />
+            )}
           </div>
-          <p className="text-2xs text-muted-foreground mt-1">
+          <p className="text-2xs text-muted-foreground">
             {transferMode === "appreciation"
               ? "Only the debt fund's gains move to equity — the principal stays in debt."
-              : "A fixed ₹ amount moves to equity each period, for the chosen number of installments."}
+              : "A fixed transfer moves to equity each period, for the chosen number of instalments, while the debt fund can cover it."}
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -89,12 +108,17 @@ export function StpComprehensivePlanner() {
               ))}
             </SelectField>
           </Field>
-          <Num label="No. of installments" value={numInstallments} setValue={setNumInstallments} step={1} />
+          <NumberField label="No. of instalments" value={numInstallments} setValue={setNumInstallments} step={1} />
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 items-end">
-        {transferMode === "fixed" && <Num label="Each transfer amount (₹)" value={fixedTransferAmount} setValue={setFixedTransferAmount} />}
+        {transferMode === "fixed" && fixedBasis === "amount" && (
+          <NumberField label="Each transfer amount (₹)" value={fixedTransferAmount} setValue={setFixedTransferAmount} />
+        )}
+        {transferMode === "fixed" && fixedBasis === "pctOfInitial" && (
+          <NumberField label="Each transfer (% of initial)" value={fixedTransferPct} setValue={setFixedTransferPct} step={0.25} />
+        )}
         <Field label="Total investment period">
           <div className="flex gap-2">
             <input
@@ -127,7 +151,7 @@ export function StpComprehensivePlanner() {
           </label>
           {addClientName && <div className="mt-1 w-56"><ClientNameField value={clientName} onChange={setClientName} /></div>}
         </div>
-        <div className="flex-1 min-w-[240px]">
+        <div className="flex-1 min-w-60">
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={addSchemes} onChange={(e) => setAddSchemes(e.target.checked)} /> Add suggested schemes
           </label>
@@ -150,53 +174,26 @@ export function StpComprehensivePlanner() {
       </div>
 
       {/* Results */}
-      <ResultRow
-        cells={[
-          { label: "Debt fund value", value: inr(result.debtFinalValue) },
-          { label: "Equity fund value", value: inr(result.equityFinalValue), tone: "emerald" },
-          { label: "Total fund value", value: inr(result.totalFinalValue), tone: "emerald" },
-          { label: "Annualised return", value: `${result.annualisedReturnPct.toFixed(2)}%`, tone: "emerald" },
-        ]}
-      />
-      <div className="text-2xs text-muted-foreground">
-        Total transferred to equity: <strong>{inr(result.totalTransferred)}</strong> over {result.totalPeriods}{" "}
-        {STP_FREQUENCIES.find((f) => f.value === frequency)?.label.toLowerCase()} period(s).
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Stat label="Debt fund value" value={inr(result.debtFinalValue)} />
+        <Stat label="Equity fund value" value={inr(result.equityFinalValue)} tone="emerald" />
+        <Stat label="Total fund value" value={inr(result.totalFinalValue)} tone="emerald" />
+        <Stat label="Annualised return" value={`${result.annualisedReturnPct.toFixed(2)}%`} tone="emerald" />
       </div>
+      <div className="text-2xs text-muted-foreground">
+        {transferMode === "fixed" && <>Each transfer: <strong>{inr(result.transferAmount)}</strong>. </>}
+        Total transferred to equity: <strong>{inr(result.totalTransferred)}</strong> in {result.transfersMade} {freqLabel}{" "}
+        transfer(s) over {result.totalPeriods} period(s).
+      </div>
+      {short && (
+        <Insight tone="amber">
+          The debt fund covers only {result.transfersMade} of the {numInstallments} instalments; the remaining{" "}
+          {inr(result.debtFinalValue)} is left in debt rather than moved as a part transfer.
+        </Insight>
+      )}
 
       {/* Year-by-year (Detail) */}
-      {reportDetail && result.schedule.length > 0 && (
-        <details className="border border-border rounded-lg overflow-hidden" open>
-          <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold bg-secondary hover:bg-secondary">
-            Projected annual investment value ({result.schedule.length} years)
-          </summary>
-          <div className="max-h-80 overflow-y-auto scrollbar-thin print:max-h-none print:overflow-visible">
-            <table data-pdf="table" className="w-full text-xs">
-              <thead className="sticky top-0 bg-background border-b">
-                <tr className="text-left text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">Year</th>
-                  <th className="px-3 py-2 font-medium text-right">Debt (begin)</th>
-                  <th className="px-3 py-2 font-medium text-right">Transferred</th>
-                  <th className="px-3 py-2 font-medium text-right">Equity (end)</th>
-                  <th className="px-3 py-2 font-medium text-right">Total (end)</th>
-                  <th className="px-3 py-2 font-medium text-right">Annualised</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.schedule.map((row) => (
-                  <tr key={row.year} className="border-b border-slate-100">
-                    <td className="px-3 py-1.5">{row.year}</td>
-                    <td className="px-3 py-1.5 text-right">{inr(row.debtBeginning)}</td>
-                    <td className="px-3 py-1.5 text-right">{row.transferredToEquity > 0 ? inr(row.transferredToEquity) : "—"}</td>
-                    <td className="px-3 py-1.5 text-right">{inr(row.equityEnd)}</td>
-                    <td className="px-3 py-1.5 text-right font-medium">{inr(row.totalEnd)}</td>
-                    <td className="px-3 py-1.5 text-right">{row.annualisedReturnPct.toFixed(2)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      )}
+      {reportDetail && <StpYearTable result={result} title="Projected annual investment value" />}
 
       <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only, on the assumptions you enter. The plan is simulated at the transfer frequency (effective rate);
@@ -204,75 +201,4 @@ export function StpComprehensivePlanner() {
       </p>
     </div>
   );
-}
-
-/* ───────────────────────── bits ───────────────────────── */
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Num({
-  label,
-  value,
-  setValue,
-  step = 1000,
-}: {
-  label: string;
-  value: number;
-  setValue: (v: number) => void;
-  step?: number;
-}) {
-  return (
-    <Field label={label}>
-      <input
-        type="number"
-        value={value}
-        step={step}
-        min={0}
-        onChange={(e) => {
-          const n = e.target.value === "" ? 0 : Number(e.target.value);
-          setValue(Number.isFinite(n) && n >= 0 ? n : 0);
-        }}
-        className="input-base text-sm w-full"
-      />
-    </Field>
-  );
-}
-
-function ResultRow({
-  cells,
-}: {
-  cells: Array<{ label: string; value: string; tone?: "emerald" | "amber" | "rose" }>;
-}) {
-  return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))` }}>
-      {cells.map((c, i) => {
-        const tone =
-          c.tone === "emerald"
-            ? "border-emerald-200 bg-emerald-50/60"
-            : c.tone === "amber"
-              ? "border-amber-200 bg-amber-50/60"
-              : c.tone === "rose"
-                ? "border-rose-200 bg-rose-50/60"
-                : "";
-        return (
-          <div key={i} className={`border rounded-md p-3 ${tone}`}>
-            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
-            <div className="text-lg font-semibold mt-0.5">{c.value}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function inr(n: number): string {
-  if (!Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 }
