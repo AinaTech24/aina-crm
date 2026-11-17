@@ -21,6 +21,7 @@ export type FdFormValue = {
   interestRate: string;
   payout: string;
   compounding: string;
+  interestPayoutDate: string;
   maturityAmount: string;
   holding: string;
   jointHolders: string;
@@ -40,7 +41,7 @@ export function emptyFd(over: Partial<FdFormValue> = {}): FdFormValue {
   return {
     investorId: "", investorName: "", rmId: "", issuer: "", issuerType: "bank", schemeName: "", fdNumber: "",
     depositDate: today, maturityDate: maturityDateFor(today, 12, 0), principal: "", interestRate: "", payout: "cumulative",
-    compounding: "quarterly", maturityAmount: "", holding: "single", jointHolders: "", nomineeName: "",
+    compounding: "quarterly", interestPayoutDate: "", maturityAmount: "", holding: "single", jointHolders: "", nomineeName: "",
     seniorCitizen: false, taxForm: "none", autoRenew: false, status: "active", commissionRate: "", commissionAmount: "",
     remarks: "", ...over,
   };

@@ -212,7 +212,10 @@ export async function GET(req: NextRequest) {
       // The pan column can hold an import key (MINOR:<guardian PAN>:<NAME>);
       // what leaves the server is the masked own PAN, as on the Clients list.
       const investorsOut = (investors as Array<Record<string, unknown>>).map(({ pan, ...r }) => ({
-        ...r, pan_display: displayPan(pan as string | null), minor: isMinorKey(pan as string | null),
+        // `pan` is the MASKED own PAN (never the stored value): the pickers that read
+        // `pan` to label a client (FD, policy, goal, discovery…) showed "—" for every
+        // client once the raw column stopped being sent.
+        ...r, pan: displayPan(pan as string | null), pan_display: displayPan(pan as string | null), minor: isMinorKey(pan as string | null),
       }));
 
       return { investors: investorsOut, leads, families, folios, sips, policies, tasks, meetings, serviceRequests, documents };

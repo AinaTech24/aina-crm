@@ -42,6 +42,7 @@ export default async function EditFixedDepositPage({ params }: { params: Promise
     interestRate: amt(fd.interestRate),
     payout: fd.payout,
     compounding: fd.compounding,
+    interestPayoutDate: fd.interestPayoutDate ? String(fd.interestPayoutDate) : "",
     maturityAmount: fd.maturityAmountEntered ? amt(fd.maturityAmount) : "",
     holding: fd.holding,
     jointHolders: s(fd.jointHolders),

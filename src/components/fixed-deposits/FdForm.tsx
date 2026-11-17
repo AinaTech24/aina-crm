@@ -7,7 +7,7 @@
  * unless the receipt's figure is typed in.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Calculator } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -20,7 +20,7 @@ import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { formatMoney } from "@/lib/format";
 import {
   COMPOUNDING_LABELS, HOLDING_LABELS, ISSUER_TYPE_LABELS, PAYOUT_LABELS, STATUS_LABELS, TAX_FORM_LABELS,
-  computeMaturity, indiaToday, isLive, maturityDateFor, tenureBetween,
+  computeMaturity, firstPayoutDate, indiaToday, isLive, maturityDateFor, tenureBetween,
 } from "@/lib/fixed-deposits/terms";
 import type { FdFormValue } from "@/lib/fixed-deposits/form";
 
@@ -73,6 +73,16 @@ export function FdForm({
     if (date && (Number(months) > 0 || Number(days) > 0)) set("maturityDate", maturityDateFor(date, Number(months) || 0, Number(days) || 0));
   }
 
+  // The interest payout date follows the deposit, maturity and payout choice —
+  // the first interest date of a payout FD, the maturity date of a cumulative
+  // one — until the person types a date of their own.
+  const [payoutTouched, setPayoutTouched] = useState(!!initial.interestPayoutDate);
+  useEffect(() => {
+    if (payoutTouched) return;
+    const next = firstPayoutDate(v.depositDate, v.maturityDate, v.payout);
+    setV((p) => (p.interestPayoutDate === next ? p : { ...p, interestPayoutDate: next }));
+  }, [v.depositDate, v.maturityDate, v.payout, payoutTouched]);
+
   const figures = useMemo(() => computeMaturity({
     principal: Number(v.principal), rate: Number(v.interestRate), depositDate: v.depositDate, maturityDate: v.maturityDate,
     payout: v.payout, compounding: v.compounding,
@@ -95,6 +105,9 @@ export function FdForm({
     if (v.interestRate.trim() === "" || !(Number(v.interestRate) >= 0)) err.interestRate = "Enter the interest rate";
     if (!v.depositDate) err.depositDate = "Pick the deposit date";
     if (!v.maturityDate || v.maturityDate <= v.depositDate) err.maturityDate = "Maturity must be after the deposit date";
+    if (v.interestPayoutDate && v.depositDate && v.maturityDate && (v.interestPayoutDate < v.depositDate || v.interestPayoutDate > v.maturityDate)) {
+      err.interestPayoutDate = "Must fall between the deposit and maturity dates";
+    }
     if (receiptTooLow) err.maturityAmount = "Cannot be less than the amount deposited";
     setErrors(err);
     if (Object.keys(err).length) { notify.error("Some details are missing"); return; }
@@ -111,6 +124,7 @@ export function FdForm({
       interestRate: Number(v.interestRate),
       payout: v.payout,
       compounding: v.compounding,
+      interestPayoutDate: v.interestPayoutDate || null,
       maturityAmount: v.payout === "cumulative" ? n(v.maturityAmount) : null,
       holding: v.holding,
       jointHolders: v.holding === "single" ? null : v.jointHolders.trim() || null,
@@ -240,6 +254,15 @@ export function FdForm({
             <SelectField id={id} aria-describedby={d} value={v.payout} onChange={(e) => set("payout", e.target.value)} className="w-full">
               {Object.entries(PAYOUT_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </SelectField>
+          )}
+        </Field>
+        <Field label="Interest payout date" optional error={errors.interestPayoutDate}
+          hint={v.payout === "cumulative"
+            ? "A cumulative FD pays its interest with the principal on the maturity date."
+            : `The date of the first ${PAYOUT_LABELS[v.payout]?.split(" ")[0].toLowerCase()} interest payment; change it if the receipt shows another.`}>
+          {(id) => (
+            <DateField id={id} value={v.interestPayoutDate} min={v.depositDate || undefined} max={v.maturityDate || undefined}
+              onChange={(e) => { setPayoutTouched(true); set("interestPayoutDate", e.target.value); }} />
           )}
         </Field>
         {v.payout === "cumulative" && (

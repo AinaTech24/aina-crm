@@ -667,6 +667,10 @@ Bank / corporate / NBFC / post-office FDs a client placed through the firm —
   cancelled / deleted cancels it. An ACTIVE FD sets Cross-sell `fd_bonds_ncd` to
   held_with_us and wins the client's open FD opportunity (`onProductBooked`);
   any FD on record passes the opportunity's "Executed" step.
+- **Interest payout date** (2026-11-17, migration 0260, `fixed_deposits.interest_payout_date`): the date interest is
+  paid — a payout FD's first / next interest date, a cumulative FD's maturity date. The form fills it from the deposit,
+  maturity and payout choice (`firstPayoutDate`, terms.ts) until a date is typed; it must fall between deposit and
+  maturity (API and form); the FD page shows it.
 - **Renewal** is `/new?renew=<id>`: the new row carries `renewed_from_id` and
   the old one becomes `renewed`.
 - **Access follows the client** (`investorScopeSql` / `loadViewableInvestor`);
@@ -704,6 +708,21 @@ practice and now pinned by `tests/insurance-extract.test.ts`:
   included.
 - When the model reader fails the route falls back to the basic reader AND says so
   in the draft's warnings — a quiet fallback looked like "the upload fills wrong".
+
+## The New policy form — family, section order, expiry (2026-11-17)
+
+`/dashboard/insurance/new`. Section order is **1 Policyholder · 2 Plan · 3 Schedule · 4 Policyholder details & address ·
+5 Life assured / insured · 6 cover-specific block (Riders, Vehicle, Trip, Property, Health cover) · 7 Nominees**, then the
+rest; `nType` numbers them so a kind without people skips no number.
+
+- **Family panel** (`components/insurance/PolicyFamilyPanel.tsx`, `GET /api/families/lookup`, `lib/families/lookup.ts`):
+  find a household (name, code or any member) and pick who holds the policy, or open a client and see their household.
+  Each member is one tap from being the life assured / insured or a nominee, with name, gender, date of birth and age
+  filled. Members are cut to the viewer's book (`investorScopeSql`); the relation is filled only when the holder is the
+  head (the mapping stores relations against the head). A client with a mapped family is never shown a member they cannot open.
+- **The first life-assured row is the client** (Self), once per client and only into an empty table.
+- **Expiry = start + term − 1 day** (`lib/insurance/term.ts` `expiryFromTerm`: 30 years from 17 Nov 2026 ends 16 Nov
+  2056). It follows start / term until a date is typed or read off the document; "Auto from start + term" forces it.
 
 ## KYC status from the KRA (NSE MF Invest)
 
@@ -970,6 +989,9 @@ the imports and every label; never copy the enum again.
   (`taxStatusOptions`, defaulted on a type change), marital status, income
   range, household type (Individual · Family · Company · HUF). `withCurrent`
   keeps an imported value the list lacks.
+- **A client picker shows the masked PAN** — `/api/search` sends `pan` as the MASKED own PAN (and `pan_display`), never
+  the stored column; pickers that read `pan` showed "—" for every client once the raw column stopped being sent. The
+  `InvestorLookup` pill and rows now say PAN · mobile · RM.
 - **Pincode → city / state fills BLANKS only** (the owner's request of
   2026-11-14; it replaces the 2026-10-14 rule "forms never fill from the
   pincode", which followed a day of form auto-fill that OVERWROTE typed cities

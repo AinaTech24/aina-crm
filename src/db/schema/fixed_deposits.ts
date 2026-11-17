@@ -44,6 +44,8 @@ export const fixedDeposits = pgTable(
     interestRate: numeric("interest_rate", { precision: 6, scale: 3 }).notNull(),
     payout: text("payout", { enum: FD_PAYOUTS }).notNull().default("cumulative"),
     compounding: text("compounding", { enum: FD_COMPOUNDING }).notNull().default("quarterly"),
+    /** The date interest is paid: a payout FD's next / first interest date; a cumulative FD pays on maturity. */
+    interestPayoutDate: date("interest_payout_date"),
     maturityAmount: numeric("maturity_amount", { precision: 18, scale: 2 }),
     /** True when the amount was typed from the receipt rather than computed. */
     maturityAmountEntered: boolean("maturity_amount_entered").notNull().default(false),

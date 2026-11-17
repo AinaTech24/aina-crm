@@ -78,6 +78,7 @@ export default async function FixedDepositPage({ params }: { params: Promise<{ i
     ["Tenure", tenureLabel(fd.tenureMonths, fd.tenureDays)],
     ["Maturity date", formatDate(String(fd.maturityDate))],
     ["Interest payout", PAYOUT_LABELS[fd.payout] ?? fd.payout],
+    ["Interest payout date", fd.interestPayoutDate ? formatDate(String(fd.interestPayoutDate)) : fd.payout === "cumulative" ? `${formatDate(String(fd.maturityDate))} (on maturity)` : "—"],
     ...(fd.payout === "cumulative" ? [["Compounding", COMPOUNDING_LABELS[fd.compounding] ?? fd.compounding] as [string, React.ReactNode]] : []),
     ["Holding", HOLDING_LABELS[fd.holding] + (fd.holding !== "single" && fd.jointHolders ? ` — ${fd.jointHolders}` : "")],
     ["Nominee", fd.nomineeName || "—"],

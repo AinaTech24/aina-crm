@@ -21,6 +21,8 @@ export const FdBody = z.object({
   interestRate: z.number().min(0).max(30),
   payout: z.enum(FD_PAYOUTS).default("cumulative"),
   compounding: z.enum(FD_COMPOUNDING).default("quarterly"),
+  /** The date interest is paid. */
+  interestPayoutDate: day.nullable().optional(),
   /** From the receipt. Omit (or null) to have it computed. */
   maturityAmount: z.number().min(0).max(1e13).nullable().optional(),
   holding: z.enum(FD_HOLDINGS).default("single"),
@@ -36,6 +38,8 @@ export const FdBody = z.object({
   commissionAmount: z.number().min(0).max(1e12).nullable().optional(),
   remarks: text(4000),
 }).refine((b) => b.maturityDate > b.depositDate, { message: "Maturity must be after the deposit date", path: ["maturityDate"] })
+  .refine((b) => !b.interestPayoutDate || (b.interestPayoutDate >= b.depositDate && b.interestPayoutDate <= b.maturityDate),
+    { message: "The interest payout date must fall between the deposit and maturity dates", path: ["interestPayoutDate"] })
   .refine((b) => b.payout !== "cumulative" || b.maturityAmount == null || b.maturityAmount === 0 || b.maturityAmount >= b.principal,
     { message: "The maturity amount cannot be less than the amount deposited", path: ["maturityAmount"] });
 
@@ -53,6 +57,7 @@ export const FdPatchBody = z.object({
   interestRate: z.number().min(0).max(30).optional(),
   payout: z.enum(FD_PAYOUTS).optional(),
   compounding: z.enum(FD_COMPOUNDING).optional(),
+  interestPayoutDate: day.nullable().optional(),
   maturityAmount: z.number().min(0).max(1e13).nullable().optional(),
   holding: z.enum(FD_HOLDINGS).optional(),
   jointHolders: text(300),

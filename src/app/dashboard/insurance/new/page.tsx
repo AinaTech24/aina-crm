@@ -33,6 +33,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
+import { PolicyFamilyPanel } from "@/components/insurance/PolicyFamilyPanel";
+import { ageFromDob } from "@/lib/insurance/family-panel";
+import { expiryFromTerm } from "@/lib/insurance/term";
+import type { FamilyMemberLite } from "@/lib/families/lookup";
 import { SelectField } from "@/components/ui/SelectField";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { ExtractionTimeline } from "@/components/insurance/ExtractionTimeline";
@@ -153,6 +157,9 @@ function NewInsuranceForm() {
   const editId = searchParams.get("edit");
 
   const [investor, setInvestor] = useState<{ id: string; name: string } | null>(null);
+  /** The picked client's own details, for the life assured / insured "Self" row. */
+  const [clientInfo, setClientInfo] = useState<{ id: string; name: string; dob: string; gender: string } | null>(null);
+  const selfAdded = useRef<Set<string>>(new Set());
   const [form, setForm] = useState({
     policyNumber: "",
     insurer: "",
@@ -201,6 +208,8 @@ function NewInsuranceForm() {
   // vehicle or a building.
   const showNominee = kind === "life" || kind === "health" || kind === "accident" || kind === "travel";
   const hasPeople = kind === "health" || kind === "life" || kind === "travel" || kind === "accident";
+  /** Section number of the cover-specific block: after 1 Policyholder · 2 Plan · 3 Schedule · 4 Holder details (· 5 People). */
+  const nType = hasPeople ? 6 : 5;
   const sumLabel = isMotor ? "IDV (₹)" : isLife ? "Sum assured (₹)" : "Sum insured (₹)";
 
   const toYmd = (d: any) => (d ? String(d).substring(0, 10) : "");
@@ -263,6 +272,33 @@ function NewInsuranceForm() {
   const rowsOf = (k: string): Record<string, any>[] =>
     Array.isArray(details[k]) ? (details[k] as Record<string, any>[]) : [];
 
+  // ── Family mapping: a household member becomes the life assured / a nominee ──
+  const hasName = (r: Record<string, any> | undefined) => String(r?.name ?? "").trim() !== "";
+  function addInsuredFromFamily(m: FamilyMemberLite, relation: string) {
+    const row = { name: m.name, gender: m.gender ?? "", dob: m.dob ?? "", age: ageFromDob(m.dob), relation };
+    setDetails((s) => {
+      const cur = (Array.isArray(s.insuredMembers) ? s.insuredMembers : []).filter(hasName);
+      return { ...s, insuredMembers: [...cur, row] };
+    });
+  }
+  function addNomineeFromFamily(m: FamilyMemberLite, relation: string) {
+    setDetails((s) => {
+      const cur = (Array.isArray(s.nominees) ? s.nominees : []).filter(hasName);
+      return { ...s, nominees: [...cur, { name: m.name, relation, share: cur.length ? "" : "100", dob: m.dob ?? "", email: "" }] };
+    });
+  }
+  // A policy usually covers its holder: the first life-assured / insured row is the
+  // client themselves (name, gender, date of birth, age), once, and only into an empty table.
+  useEffect(() => {
+    if (!clientInfo || !hasPeople || selfAdded.current.has(clientInfo.id)) return;
+    selfAdded.current.add(clientInfo.id);
+    setDetails((s) => {
+      const cur = Array.isArray(s.insuredMembers) ? s.insuredMembers : [];
+      if (cur.some(hasName) || !clientInfo.name) return s;
+      return { ...s, insuredMembers: [{ name: clientInfo.name, gender: clientInfo.gender, dob: clientInfo.dob, age: ageFromDob(clientInfo.dob), relation: "Self" }] };
+    });
+  }, [clientInfo, hasPeople]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Gross premium is the total of the premium rows and keeps up as rows are
   // added, edited or removed — until someone types a different figure, which
   // is then left alone.
@@ -291,6 +327,10 @@ function NewInsuranceForm() {
       if (!res.ok) return;
       const inv = (await res.json())?.investor;
       if (!inv) return;
+      setClientInfo({
+        id, name: String(inv.name ?? ""), dob: inv.dob ? String(inv.dob).slice(0, 10) : "",
+        gender: inv.gender === "M" ? "Male" : inv.gender === "F" ? "Female" : inv.gender === "O" ? "Other" : "",
+      });
       const addr = (inv.address ?? {}) as Record<string, string | undefined>;
       const vals: Record<string, string> = {
         email: inv.email ?? "",
@@ -466,11 +506,25 @@ function NewInsuranceForm() {
     return amt ? annualFrom(amt, form.premiumFrequency) : null;
   }, [form.premiumAmount, form.premiumFrequency]);
 
+  // The expiry follows start + term (the day before the anniversary) until the
+  // person types an expiry of their own — a typed or read-off date is never overwritten.
+  const autoExpiry = useRef<string>("");
+  useEffect(() => {
+    const next = expiryFromTerm(form.policyStartDate, form.policyTermYears);
+    if (!next) return;
+    setForm((f) => {
+      const free = f.maturityDate === "" || f.maturityDate === autoExpiry.current;
+      if (!free || f.maturityDate === next) { if (f.maturityDate === next) autoExpiry.current = next; return f; }
+      autoExpiry.current = next;
+      return { ...f, maturityDate: next };
+    });
+  }, [form.policyStartDate, form.policyTermYears]);
+
   function autoMaturity() {
-    if (!form.policyStartDate || !form.policyTermYears) return;
-    const start = new Date(form.policyStartDate);
-    start.setFullYear(start.getFullYear() + Number(form.policyTermYears));
-    set("maturityDate", start.toISOString().slice(0, 10));
+    const next = expiryFromTerm(form.policyStartDate, form.policyTermYears);
+    if (!next) return;
+    autoExpiry.current = next;
+    set("maturityDate", next);
   }
 
   async function save() {
@@ -624,9 +678,20 @@ function NewInsuranceForm() {
             setInvestor({ id, name });
             void fillFromClient(id);
           }}
-          onClear={() => setInvestor(null)}
+          onClear={() => { setInvestor(null); setClientInfo(null); }}
           placeholder="Search client by name, PAN, mobile…"
           required
+        />
+        <PolicyFamilyPanel
+          holderId={investor?.id ?? null}
+          onPickHolder={(id, name) => { setInvestor({ id, name }); void fillFromClient(id); }}
+          onAddInsured={addInsuredFromFamily}
+          onAddNominee={addNomineeFromFamily}
+          insuredNames={rowsOf("insuredMembers").map((r) => String(r?.name ?? ""))}
+          nomineeNames={rowsOf("nominees").map((r) => String(r?.name ?? ""))}
+          canInsured={hasPeople}
+          canNominee={showNominee}
+          insuredLabel={kind === "life" ? "life assured" : kind === "travel" ? "traveller" : kind === "accident" ? "insured person" : "insured member"}
         />
       </Section>
 
@@ -759,9 +824,84 @@ function NewInsuranceForm() {
         </div>
       </Section>
 
-      {/* 4. Type-specific details */}
+      {/* Policyholder details & address */}
+      <Section title="4. Policyholder details & address">
+        {/* No second "Policyholder name" box: the policyholder is the client
+            picked in section 1, saved as details.holderName on submit. Contact
+            and address fill from that client record (editable). */}
+        {investor && (
+          <p className="text-xs text-muted-foreground">
+            Policyholder: <span className="font-medium text-foreground">{investor.name}</span> — contact and address are taken from the client record; change them here only if the policy shows different details.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Email ID" type="email" placeholder="" value={d("email")} setValue={(v) => setD("email", v)} />
+          <Field label="Mobile no" placeholder="" value={d("mobile")} setValue={(v) => setD("mobile", v)} />
+        </div>
+        <Field label="Address — street / line 1" placeholder="" value={d("addressLine1")} setValue={(v) => setD("addressLine1", v)} />
+        <div className="grid grid-cols-4 gap-3">
+          <Field label="City" placeholder="" value={d("city")} setValue={(v) => setD("city", v)} />
+          <Field label="State" placeholder="" value={d("state")} setValue={(v) => setD("state", v)} />
+          <Field label="Postal code" placeholder="" value={d("postalCode")} setValue={(v) => setD("postalCode", v)} />
+          <Field label="Country" placeholder="India" value={d("country") || "India"} setValue={(v) => setD("country", v)} />
+        </div>
+      </Section>
+
+      {/* The people the policy covers — columns follow the kind of policy. */}
+      {hasPeople && (
+      <Section
+        title={`5. ${kind === "life" ? "Life assured" : kind === "travel" ? "Travellers" : kind === "accident" ? "Insured persons" : "Insured member details"}`}
+      >
+        <TableEditor
+          columns={
+            kind === "life"
+              ? [
+                  { key: "name", label: "Life assured" },
+                  { key: "gender", label: "Gender", width: "w-20" },
+                  { key: "dob", label: "DOB", width: "w-28" },
+                  { key: "age", label: "Age", width: "w-16" },
+                  { key: "relation", label: "Relation to policyholder", width: "w-40" },
+                ]
+              : kind === "travel"
+                ? [
+                    { key: "name", label: "Traveller" },
+                    { key: "gender", label: "Gender", width: "w-20" },
+                    { key: "dob", label: "DOB", width: "w-28" },
+                    { key: "passportNo", label: "Passport no.", width: "w-32" },
+                    { key: "relation", label: "Relation", width: "w-24" },
+                  ]
+                : kind === "accident"
+                  ? [
+                      { key: "name", label: "Insured person" },
+                      { key: "gender", label: "Gender", width: "w-20" },
+                      { key: "dob", label: "DOB", width: "w-28" },
+                      { key: "occupation", label: "Occupation", width: "w-32" },
+                      { key: "relation", label: "Relation", width: "w-24" },
+                      { key: "sumInsured", label: "Sum insured (₹)", width: "w-32" },
+                    ]
+                  : [
+                      { key: "name", label: "Member name" },
+                      { key: "customerId", label: "Customer ID", width: "w-28" },
+                      { key: "planOpted", label: "Plan opted", width: "w-28" },
+                      { key: "subPlanOpted", label: "Sub plan opted", width: "w-28" },
+                      { key: "gender", label: "Gender", width: "w-20" },
+                      { key: "dob", label: "DOB", width: "w-28" },
+                      { key: "age", label: "Age", width: "w-16" },
+                      { key: "relation", label: "Relation", width: "w-24" },
+                      { key: "firstInceptionDate", label: "First policy inception", width: "w-32" },
+                      { key: "insuredAddress", label: "Insured address", width: "w-44", type: "textarea" },
+                      { key: "nominee", label: "Nominee & relation" },
+                    ]
+          }
+          rows={rowsOf("insuredMembers")}
+          onChange={(r) => setD("insuredMembers", r)}
+        />
+      </Section>
+      )}
+
+      {/* 6. Type-specific details (riders, vehicle, trip, property, health cover…) */}
       {isMotor && (
-        <Section title="4. Vehicle & motor cover">
+        <Section title={`${nType}. Vehicle & motor cover`}>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Vehicle reg. no." placeholder="GJ01AB1234" value={d("vehicleRegNo")} setValue={(v) => setD("vehicleRegNo", v)} />
             <Field label="Make / model" placeholder="Maruti Swift" value={d("makeModel")} setValue={(v) => setD("makeModel", v)} />
@@ -827,7 +967,7 @@ function NewInsuranceForm() {
       )}
 
       {kind === "life" && (
-        <Section title="4. Riders">
+        <Section title={`${nType}. Riders`}>
           <TableEditor
             columns={[
               { key: "name", label: "Rider" },
@@ -843,7 +983,7 @@ function NewInsuranceForm() {
       )}
 
       {kind === "travel" && (
-        <Section title="4. Trip details">
+        <Section title={`${nType}. Trip details`}>
           <div className="grid grid-cols-4 gap-3">
             <div className="col-span-2">
               <Field label="Destination(s)" placeholder="Schengen, USA…" value={d("destination")} setValue={(v) => setD("destination", v)} />
@@ -861,7 +1001,7 @@ function NewInsuranceForm() {
       )}
 
       {kind === "property" && (
-        <Section title="4. Property details">
+        <Section title={`${nType}. Property details`}>
           <div className="grid grid-cols-3 gap-3">
             <Select label="Property type" value={d("propertyType")} setValue={(v) => setD("propertyType", v)}>
               <option value="">Select…</option>
@@ -880,7 +1020,7 @@ function NewInsuranceForm() {
       )}
 
       {isHealth && (
-        <Section title="4. Health cover details">
+        <Section title={`${nType}. Health cover details`}>
           <div className="grid grid-cols-3 gap-3">
             <Field
               label="Lives covered"
@@ -911,7 +1051,7 @@ function NewInsuranceForm() {
       )}
 
       {(kind === "general" || kind === "travel" || kind === "property" || kind === "accident") && (
-        <Section title={kind === "general" || kind === "accident" ? "4. Coverage details" : "Coverage notes"}>
+        <Section title={kind === "general" || kind === "accident" ? `${nType}. Coverage details` : "Coverage notes"}>
           <label className="block">
             <div className="text-xs font-medium mb-1">Coverage notes</div>
             <textarea
@@ -925,11 +1065,11 @@ function NewInsuranceForm() {
         </Section>
       )}
 
-      {/* 5. Nominees — multiple, hidden for motor. First row is the primary
+      {/* Nominees — multiple, hidden for motor. First row is the primary
           nominee (written to the policy's nominee columns); all rows are kept
           in details.nominees. Share % across nominees should total 100. */}
       {showNominee && (
-        <Section title="5. Nominees">
+        <Section title={`${nType + 1}. Nominees`}>
           <TableEditor
             columns={[
               { key: "name", label: "Nominee name" },
@@ -945,81 +1085,6 @@ function NewInsuranceForm() {
             Add one row per nominee. The first row is the primary nominee; shares should total 100%.
           </p>
         </Section>
-      )}
-
-      {/* Policyholder details & address */}
-      <Section title="Policyholder details & address">
-        {/* No second "Policyholder name" box: the policyholder is the client
-            picked in section 1, saved as details.holderName on submit. Contact
-            and address fill from that client record (editable). */}
-        {investor && (
-          <p className="text-xs text-muted-foreground">
-            Policyholder: <span className="font-medium text-foreground">{investor.name}</span> — contact and address are taken from the client record; change them here only if the policy shows different details.
-          </p>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Email ID" type="email" placeholder="" value={d("email")} setValue={(v) => setD("email", v)} />
-          <Field label="Mobile no" placeholder="" value={d("mobile")} setValue={(v) => setD("mobile", v)} />
-        </div>
-        <Field label="Address — street / line 1" placeholder="" value={d("addressLine1")} setValue={(v) => setD("addressLine1", v)} />
-        <div className="grid grid-cols-4 gap-3">
-          <Field label="City" placeholder="" value={d("city")} setValue={(v) => setD("city", v)} />
-          <Field label="State" placeholder="" value={d("state")} setValue={(v) => setD("state", v)} />
-          <Field label="Postal code" placeholder="" value={d("postalCode")} setValue={(v) => setD("postalCode", v)} />
-          <Field label="Country" placeholder="India" value={d("country") || "India"} setValue={(v) => setD("country", v)} />
-        </div>
-      </Section>
-
-      {/* The people the policy covers — columns follow the kind of policy. */}
-      {hasPeople && (
-      <Section
-        title={kind === "life" ? "Life assured" : kind === "travel" ? "Travellers" : kind === "accident" ? "Insured persons" : "Insured member details"}
-      >
-        <TableEditor
-          columns={
-            kind === "life"
-              ? [
-                  { key: "name", label: "Life assured" },
-                  { key: "gender", label: "Gender", width: "w-20" },
-                  { key: "dob", label: "DOB", width: "w-28" },
-                  { key: "age", label: "Age", width: "w-16" },
-                  { key: "relation", label: "Relation to policyholder", width: "w-40" },
-                ]
-              : kind === "travel"
-                ? [
-                    { key: "name", label: "Traveller" },
-                    { key: "gender", label: "Gender", width: "w-20" },
-                    { key: "dob", label: "DOB", width: "w-28" },
-                    { key: "passportNo", label: "Passport no.", width: "w-32" },
-                    { key: "relation", label: "Relation", width: "w-24" },
-                  ]
-                : kind === "accident"
-                  ? [
-                      { key: "name", label: "Insured person" },
-                      { key: "gender", label: "Gender", width: "w-20" },
-                      { key: "dob", label: "DOB", width: "w-28" },
-                      { key: "occupation", label: "Occupation", width: "w-32" },
-                      { key: "relation", label: "Relation", width: "w-24" },
-                      { key: "sumInsured", label: "Sum insured (₹)", width: "w-32" },
-                    ]
-                  : [
-                      { key: "name", label: "Member name" },
-                      { key: "customerId", label: "Customer ID", width: "w-28" },
-                      { key: "planOpted", label: "Plan opted", width: "w-28" },
-                      { key: "subPlanOpted", label: "Sub plan opted", width: "w-28" },
-                      { key: "gender", label: "Gender", width: "w-20" },
-                      { key: "dob", label: "DOB", width: "w-28" },
-                      { key: "age", label: "Age", width: "w-16" },
-                      { key: "relation", label: "Relation", width: "w-24" },
-                      { key: "firstInceptionDate", label: "First policy inception", width: "w-32" },
-                      { key: "insuredAddress", label: "Insured address", width: "w-44", type: "textarea" },
-                      { key: "nominee", label: "Nominee & relation" },
-                    ]
-          }
-          rows={rowsOf("insuredMembers")}
-          onChange={(r) => setD("insuredMembers", r)}
-        />
-      </Section>
       )}
 
       {/* Sum insured & cover details (table) — health only: per-member covers,
@@ -1127,7 +1192,7 @@ function NewInsuranceForm() {
       </Section>
 
       {/* 6. Proposer (if different) + Status + remarks */}
-      <Section title="6. Proposer, status & remarks">
+      <Section title={`${nType + (showNominee ? 2 : 1)}. Proposer, status & remarks`}>
         <div className="grid grid-cols-3 gap-3">
           <Field
             label="Proposer name"

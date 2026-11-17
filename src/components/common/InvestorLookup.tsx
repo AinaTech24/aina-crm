@@ -25,7 +25,10 @@ type Kind = "investor" | "lead";
 type Investor = {
   id: string;
   name: string;
+  /** Masked PAN the search API returns (the raw `pan` column is never sent). */
+  pan_display?: string | null;
   pan?: string | null;
+  rm_name?: string | null;
   phone: string | null;
   email: string | null;
   segment_tag?: string | null;
@@ -59,6 +62,8 @@ export function InvestorLookup({
   const [results, setResults] = useState<Investor[]>([]);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  /** The record just picked, so the pill can say who it is (PAN · mobile · RM), not only the name. */
+  const [picked, setPicked] = useState<Investor | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Click outside closes
@@ -110,7 +115,11 @@ export function InvestorLookup({
           </div>
           <div className="min-w-0 flex-1">
             <div className="font-semibold text-sm truncate">{displayName}</div>
-            <div className="text-2xs text-muted-foreground">{displayKind === "lead" ? "Linked from Leads" : "Linked from Clients"}</div>
+            <div className="text-2xs text-muted-foreground truncate">
+              {picked && picked.id === value
+                ? [picked.pan_display ?? picked.pan, picked.phone, picked.rm_name && `RM ${picked.rm_name}`].filter(Boolean).join(" · ") || (displayKind === "lead" ? "Linked from Leads" : "Linked from Clients")
+                : displayKind === "lead" ? "Linked from Leads" : "Linked from Clients"}
+            </div>
           </div>
           <Check className="size-4 text-emerald-600 flex-shrink-0" />
         </div>
@@ -119,6 +128,7 @@ export function InvestorLookup({
           onClick={() => {
             setQ("");
             setResults([]);
+            setPicked(null);
             onClear?.();
           }}
           className="btn-icon"
@@ -165,6 +175,7 @@ export function InvestorLookup({
                   <button
                     type="button"
                     onClick={() => {
+                      setPicked(r);
                       onSelect(r.id, r.name, r.kind);
                       setQ("");
                       setResults([]);
@@ -195,7 +206,7 @@ export function InvestorLookup({
                       <div className="text-2xs text-muted-foreground truncate font-mono">
                         {r.kind === "lead"
                           ? `${r.stage ? r.stage.replace(/_/g, " ") : "lead"} · ${r.phone ?? "—"}`
-                          : `${r.pan ?? "—"} · ${r.phone ?? "—"}`}
+                          : [r.pan_display ?? r.pan ?? "—", r.phone ?? "—", r.rm_name && `RM ${r.rm_name}`].filter(Boolean).join(" · ")}
                       </div>
                     </div>
                   </button>

@@ -72,6 +72,7 @@ export async function createFd(tx: Tx, session: SessionUser, input: FdInput) {
     interestRate: String(input.interestRate),
     payout: input.payout,
     compounding: input.compounding,
+    interestPayoutDate: input.interestPayoutDate || null,
     ...derive(input),
     holding: input.holding,
     jointHolders: input.holding === "single" ? null : input.jointHolders || null,
@@ -125,6 +126,10 @@ export async function updateFd(tx: Tx, session: SessionUser, id: string, patch: 
       : before.maturityAmountEntered ? Number(before.maturityAmount) : null,
   };
   if (merged.maturityDate <= merged.depositDate) return { error: "Maturity must be after the deposit date", status: 400 as const };
+  const payoutOn = patch.interestPayoutDate !== undefined ? patch.interestPayoutDate : before.interestPayoutDate ? String(before.interestPayoutDate) : null;
+  if (payoutOn && (payoutOn < merged.depositDate || payoutOn > merged.maturityDate)) {
+    return { error: "The interest payout date must fall between the deposit and maturity dates", status: 400 as const };
+  }
   if (merged.payout === "cumulative" && merged.maturityAmount != null && merged.maturityAmount > 0 && merged.maturityAmount < merged.principal) {
     return { error: "The maturity amount cannot be less than the amount deposited", status: 400 as const };
   }
@@ -132,7 +137,7 @@ export async function updateFd(tx: Tx, session: SessionUser, id: string, patch: 
   const set: Record<string, unknown> = { updatedAt: new Date(), ...derive(merged) };
   for (const k of ["rmId", "issuer", "issuerType", "schemeName", "fdNumber", "depositDate", "maturityDate", "payout",
     "compounding", "holding", "jointHolders", "nomineeName", "seniorCitizen", "taxForm", "autoRenew", "status",
-    "closedOn", "remarks"] as const) {
+    "closedOn", "remarks", "interestPayoutDate"] as const) {
     if (patch[k] !== undefined) set[k] = patch[k] === "" ? null : patch[k];
   }
   for (const k of ["principal", "interestRate", "commissionRate", "commissionAmount"] as const) {
