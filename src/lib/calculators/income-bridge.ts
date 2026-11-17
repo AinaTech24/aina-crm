@@ -26,6 +26,15 @@
  *     corpus = ₹68,83,098 · max end balance = ₹10,30,70,663 · SWP = ₹19,154.
  *   Do NOT switch to a nominal rate or change the withdrawal timing without
  *   re-checking these figures.
+ *
+ *   Also reproduced to the rupee (tests/ms-calc-c.test.ts):
+ *     • SIP ₹10,000 · 35→60 @12% → ₹1,70,22,066 (and every year-end value);
+ *       SWP 60→85 @9% leaving ₹1 cr → ₹1,29,323/mo, ₹3,87,96,786 in all.
+ *     • Salary ₹1,00,000 · 25% · +8%/yr · SIP 35→50, held to 60 @12% →
+ *       ₹5,70,32,643, invested ₹81,45,634; SWP to 80 @8%, 5% inflation, leave
+ *       ₹1 cr → first month ₹3,00,712, ₹12,20,30,233 withdrawn.
+ *   The year table also carries each year's AVERAGE monthly withdrawal — what
+ *   the reference reports print when the SWP rises with inflation.
  */
 
 export type CalcType = "monthly_swp" | "investment_need";
@@ -62,7 +71,10 @@ export type IncomeBridgeInput = {
 
 export type DistYearRow = {
   age: number;
+  /** Withdrawal in the year's first month. */
   monthlyWithdrawalThatYear: number;
+  /** Average of the year's monthly withdrawals (what the reference reports print). */
+  avgMonthlyWithdrawal: number;
   withdrawnThisYear: number;
   endCorpus: number;
 };
@@ -98,7 +110,11 @@ export type IncomeBridgeResult = {
   warning?: string;
 
   schedule: DistYearRow[];
+  /** Year-end value of the accumulation phase, one row per year from the start age. */
+  accSchedule: AccYearRow[];
 };
+
+export type AccYearRow = { age: number; invested: number; value: number };
 
 /* ───────────────────────── rate helpers ───────────────────────── */
 
@@ -167,6 +183,7 @@ function simulateDistribution(
   const schedule: DistYearRow[] = [];
   let yearWithdraw = 0;
   let yearStartMonthly = firstMonthly;
+  let yearMonths = 0;
 
   for (let mo = 0; mo < distMonths; mo++) {
     bal = bal * (1 + m);
@@ -175,18 +192,57 @@ function simulateDistribution(
     totalWithdrawn += w;
     lastMonthly = w;
     yearWithdraw += w;
+    yearMonths++;
     if (mo % 12 === 0) yearStartMonthly = w;
     if (mo % 12 === 11 || mo === distMonths - 1) {
       schedule.push({
         age: startAge + Math.floor(mo / 12) + 1,
         monthlyWithdrawalThatYear: yearStartMonthly,
+        avgMonthlyWithdrawal: yearMonths > 0 ? yearWithdraw / yearMonths : 0,
         withdrawnThisYear: yearWithdraw,
         endCorpus: bal,
       });
       yearWithdraw = 0;
+      yearMonths = 0;
     }
   }
   return { schedule, totalWithdrawn, lastMonthly, endBalance: bal };
+}
+
+/**
+ * Year-end values of the accumulation phase: a stepped-up SIP paid begin-mode
+ * for `sipYears` (contribution `monthly`·(1+s)^y in year y), then held, plus a
+ * lumpsum invested at the start — all at the effective monthly rate.
+ */
+function accumulationSchedule(
+  startAge: number,
+  monthly: number,
+  stepUpPct: number,
+  lumpsum: number,
+  sipYears: number,
+  accumYears: number,
+  ratePct: number
+): AccYearRow[] {
+  const m = effM(ratePct);
+  const s = stepUpPct / 100;
+  const nSip = Math.round(sipYears * 12);
+  const nAll = Math.round(accumYears * 12);
+  const rows: AccYearRow[] = [];
+  let value = lumpsum;
+  let yearInvested = lumpsum;
+  for (let mo = 0; mo < nAll; mo++) {
+    if (mo < nSip) {
+      const pay = monthly * Math.pow(1 + s, Math.floor(mo / 12));
+      value += pay;
+      yearInvested += pay;
+    }
+    value *= 1 + m;
+    if (mo % 12 === 11 || mo === nAll - 1) {
+      rows.push({ age: startAge + Math.floor(mo / 12) + 1, invested: yearInvested, value });
+      yearInvested = 0;
+    }
+  }
+  return rows;
 }
 
 /* ───────────────────────── main compute ───────────────────────── */
@@ -295,5 +351,14 @@ export function computeIncomeBridge(input: IncomeBridgeInput): IncomeBridgeResul
     feasible,
     warning,
     schedule: sim.schedule,
+    accSchedule: accumulationSchedule(
+      input.startAge,
+      usesSip ? (input.calcType === "monthly_swp" ? effectiveMonthlySip : requiredMonthlySip ?? 0) : 0,
+      effStep,
+      usesLump ? (input.calcType === "monthly_swp" ? input.lumpsum : requiredLumpsum ?? 0) : 0,
+      sipYears,
+      accumYears,
+      input.accumReturnPct
+    ),
   };
 }

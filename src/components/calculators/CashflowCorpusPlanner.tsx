@@ -158,7 +158,7 @@ export function CashflowCorpusPlanner() {
             rows={result.swpTable.map((r) => [
               r.deferYears === 0 ? `Now (age ${r.startAge})` : `Age ${r.startAge} (+${r.deferYears}y)`,
               inr(r.corpus),
-              inr(r.maxSwp),
+              inr(r.maxSwpShown),
               inr(r.totalWithdrawn),
             ])}
           />

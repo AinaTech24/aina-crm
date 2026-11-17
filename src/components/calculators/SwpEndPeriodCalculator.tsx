@@ -3,7 +3,8 @@
 /**
  * SWP End Period Calculator — estimates how long a lumpsum or SIP-accumulated
  * corpus lasts when drawn down via SWP (fixed amount or % of corpus, optionally
- * inflation-adjusted). Math: src/lib/calculators/swp-end-period.ts.
+ * inflation-adjusted). Math: src/lib/calculators/swp-end-period.ts (verified to
+ * the rupee — SIP ₹25,000 × 20y @12%, SWP ₹2,00,000 @9% → 20 years 5 months).
  */
 
 import { useMemo, useState } from "react";
@@ -48,10 +49,13 @@ export function SwpEndPeriodCalculator() {
   const durationLabel = result.perpetual
     ? `${result.capYears}+ years (sustains indefinitely)`
     : result.monthsLasted != null
-      ? `${Math.floor(result.monthsLasted / 12)} yrs ${result.monthsLasted % 12} mo`
+      ? `${Math.floor(result.monthsLasted / 12)} years ${result.monthsLasted % 12} months`
       : "—";
 
-  const tone = result.perpetual ? "emerald" : (result.monthsLasted ?? 0) >= 360 ? "emerald" : (result.monthsLasted ?? 0) >= 180 ? "amber" : "rose";
+  const tone: "emerald" | "amber" | "rose" =
+    result.perpetual || (result.monthsLasted ?? 0) >= 360 ? "emerald" : (result.monthsLasted ?? 0) >= 180 ? "amber" : "rose";
+  const lastRow = result.yearRows[result.yearRows.length - 1];
+  const extraMonths = result.monthsLasted != null ? result.monthsLasted % 12 : 0;
 
   return (
     <div className="card-surface p-5 space-y-5">
@@ -72,6 +76,9 @@ export function SwpEndPeriodCalculator() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <Field label="Client name (optional)">
+          <ClientNameField value={clientName} onChange={setClientName} />
+        </Field>
         <NumberField
           label={isSip ? "Monthly SIP (₹)" : "Initial investment (₹)"}
           value={initialInvestment}
@@ -131,41 +138,68 @@ export function SwpEndPeriodCalculator() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Accumulated value (SWP start)" value={inr(result.accumulatedValue)} tone="cyan" />
         <Stat label={swpMode === "amount" ? "Monthly withdrawal" : "Monthly withdrawal (derived)"} value={inr(result.baseMonthlyWithdrawal)} />
-        <Stat label="Money lasts" value={durationLabel} tone={tone as any} />
+        <Stat label="SWP period" value={durationLabel} tone={tone} />
         <Stat label="Total withdrawn" value={inr(result.totalWithdrawn)} />
       </div>
 
-      <Insight tone={tone as any}>
+      <Insight tone={tone}>
         {result.perpetual ? (
           <>At {inr(result.baseMonthlyWithdrawal)}/month, withdrawals stay below the {fmtPct(swpRatePct)} growth — the corpus is effectively never exhausted (sustains {result.capYears}+ years).</>
         ) : (
           <>The {inr(result.accumulatedValue)} corpus sustains {inr(result.baseMonthlyWithdrawal)}/month
-            {includeInflation ? " (rising with inflation)" : ""} for about <strong>{durationLabel}</strong> at a {fmtPct(swpRatePct)} SWP-period return.</>
+            {includeInflation ? " (rising with inflation)" : ""} for <strong>{durationLabel}</strong> at a {fmtPct(swpRatePct)} SWP-period return
+            {result.leftover > 0 ? <>, leaving {inr(result.leftover)} — not enough for one more withdrawal</> : ""}.</>
         )}
       </Insight>
 
+      {/* Accumulation */}
+      {result.accRows.length > 0 && (
+        <Section n={1} title="Accumulation — annual investment and year-end value">
+          <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
+            <Table
+              head={["Year", "Annual investment", "Year-end value"]}
+              rows={result.accRows.map((r) => [
+                `${r.year}`,
+                r.annualInvestment > 0 ? inr(r.annualInvestment) : "—",
+                inr(r.yearEndValue),
+              ])}
+              highlightLastRow
+            />
+          </div>
+        </Section>
+      )}
+
       {/* Year-by-year drawdown */}
       {result.yearRows.length > 0 && (
-        <Section n={1} title="Year-by-year drawdown">
+        <Section n={result.accRows.length > 0 ? 2 : 1} title="Distribution — monthly SWP and year-end balance">
           <CalcChart
-            data={result.yearRows.map((r) => ({ year: r.year, balance: r.endBalance }))}
+            data={result.yearRows.map((r) => ({ year: r.planYear, balance: r.endBalance }))}
             xKey="year"
             series={[{ key: "balance", name: "Corpus balance", color: "#0ea5e9" }]}
           />
           <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
             <Table
-              head={["Year", "Monthly withdrawal", "Withdrawn that year", "Balance at year-end"]}
+              head={["Year", "Monthly SWP", "Withdrawn that year", "Balance at year-end"]}
               rows={result.yearRows.map((r) => [
-                `${r.year}`,
+                `${r.planYear}`,
                 inr(r.monthlyWithdrawal),
                 inr(r.withdrawnThisYear),
-                r.endBalance > 0 ? inr(r.endBalance) : "Exhausted",
+                inr(r.endBalance),
               ])}
             />
           </div>
+          {lastRow && extraMonths > 0 && (
+            <p className="text-2xs text-muted-foreground">
+              The {inr(lastRow.endBalance)} left after year {lastRow.planYear} pays {extraMonths} more monthly withdrawal
+              {extraMonths === 1 ? "" : "s"}, not a full year.
+            </p>
+          )}
         </Section>
       )}
-      <p className="text-2xs text-muted-foreground">Withdrawal at month start · effective monthly rate.</p>
+      <p className="text-2xs text-muted-foreground">
+        SIP paid at the start of each month; the corpus is rounded to the rupee when the SWP starts; withdrawals are taken on
+        the last day of each month and only full withdrawals are counted · effective monthly rate.
+      </p>
     </div>
   );
 }
