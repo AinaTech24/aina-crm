@@ -302,7 +302,10 @@ export async function importZohoContacts(
         result.families.aloneNotCreated++;
         continue;
       }
-      const familyId = await headFamily(tx, actor, head, settings!, result);
+      const hf = await headFamily(tx, actor, head, settings!);
+      if (hf.outcome === "created") result.families.created++;
+      if (hf.outcome === "existing") result.families.joinedExisting++;
+      const familyId = hf.familyId;
       if (!familyId) {
         result.families.inAnotherFamily += memberIds.length;
         continue;
@@ -435,25 +438,31 @@ type HeadRow = {
   primary_investor_id: string | null;
 };
 
-/** The family the head already heads, else a new one built from the head. Null when the head is a member of someone else's family. */
-async function headFamily(
+export type HeadFamilyOutcome = { familyId: string | null; outcome: "created" | "existing" | "head_in_other" | "no_head" };
+
+/**
+ * The family the head already heads, else a new one built from the head (FAM-####,
+ * RM / branch / category / review from the head). Shared by the Contacts import
+ * and the family-sheet step (run-families.ts). familyId is null when the head is
+ * a member of someone else's family.
+ */
+export async function headFamily(
   tx: Tx,
   actor: ImportActor,
   head: { id: string; name: string },
   settings: Awaited<ReturnType<typeof loadFamilySettings>>,
-  result: ContactImportResult
-): Promise<string | null> {
+  notes = "Created by the Zoho CRM import (Family Owner)."
+): Promise<HeadFamilyOutcome> {
   const h = (await tx.execute(sql`
     SELECT i.family_id, i.rm_id, i.branch_id, i.segment_tag, i.review_frequency, i.next_review_at,
            f.primary_investor_id
       FROM investors i LEFT JOIN families f ON f.id = i.family_id
      WHERE i.id = ${head.id}::uuid AND i.tenant_id = ${actor.tenantId}::uuid
   `)).rows[0] as HeadRow | undefined;
-  if (!h) return null;
+  if (!h) return { familyId: null, outcome: "no_head" };
   if (h.family_id) {
-    if (h.primary_investor_id && h.primary_investor_id !== head.id) return null;
-    result.families.joinedExisting++;
-    return String(h.family_id);
+    if (h.primary_investor_id && h.primary_investor_id !== head.id) return { familyId: null, outcome: "head_in_other" };
+    return { familyId: String(h.family_id), outcome: "existing" };
   }
   const id = uuid();
   const details = familyDetailsFromHead({
@@ -482,7 +491,7 @@ async function headFamily(
     reviewFrequency: details.reviewFrequency,
     firstMeetingDate: details.firstMeetingDate,
     nextReviewAt: details.nextReviewAt,
-    notes: "Created by the Zoho CRM import (Family Owner).",
+    notes,
     ...familyHealthFields({ primaryInvestorId: head.id, rmId: details.rmId, lastReviewAt: null, nextReviewAt: details.nextReviewAt }, []),
   });
   await tx.execute(sql`
@@ -498,8 +507,7 @@ async function headFamily(
     entityId: id,
     after: { headName: head.name, familyCode, source: "zoho_import" },
   });
-  result.families.created++;
-  return id;
+  return { familyId: id, outcome: "created" };
 }
 
 /** What each judgement column's values become — shown in the preview. */

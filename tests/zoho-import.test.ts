@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { idDamagedByExcel, istInstant, isoDate, mobile, yesNo, zohoId } from "@/lib/imports/zoho/values";
 import { BASE_LEAD_SOURCES, BASE_SALUTATIONS, PICKLISTS, leadSourceOption, leadSourceOptions, mapZohoContact, picklistOption, picklistOptions, reviewFrequencyFromZoho, riskFromZoho } from "@/lib/imports/zoho/contacts";
 import { mapZohoMeeting, meetingModeFromZoho, meetingTypeFromZoho } from "@/lib/imports/zoho/meetings";
+import { planFamilies } from "@/lib/imports/zoho/family-groups";
 
 const NOW = new Date("2026-11-14T10:00:00+05:30");
 
@@ -247,5 +248,42 @@ describe("Zoho Meetings → review meeting", () => {
     expect(meetingModeFromZoho("Zoom", "")).toBe("online");
     expect(meetingModeFromZoho("Our Office", "")).toBe("office");
     expect(meetingModeFromZoho("", "Phone")).toBe("phone");
+  });
+});
+
+describe("Zoho family sheet → households", () => {
+  const row = (id: string, name: string, owner = "", ownerName = "") => ({ "Record Id": `zcrm_${id}`, "Contact Name": name, "Family Owner.id": owner ? `zcrm_${owner}` : "", "Family Owner": ownerName });
+
+  it("groups members under their Family Owner and skips a family of one", () => {
+    const p = planFamilies([
+      row("1", "Ramesh", "1", "Ramesh"),
+      row("2", "Sunita", "1", "Ramesh"),
+      row("3", "Aarav", "1", "Ramesh"),
+      row("4", "Alone", "4", "Alone"),
+      row("5", "Nobody"),
+    ]);
+    expect(p.groups).toEqual([{ headZohoId: "1", headName: "Ramesh", memberZohoIds: ["2", "3"], nestedHeads: 0 }]);
+    expect(p.aloneSkipped).toBe(1);
+    expect(p.noFamily).toBe(1);
+  });
+
+  it("a head listed under another family joins that family with their members", () => {
+    const p = planFamilies([
+      row("1", "Grandfather", "1"),
+      row("2", "Son", "1"),
+      row("3", "Grandson", "2"),
+      row("4", "Son's wife", "2"),
+    ]);
+    expect(p.groups).toHaveLength(1);
+    expect(p.groups[0].headZohoId).toBe("1");
+    expect(p.groups[0].memberZohoIds.sort()).toEqual(["2", "3", "4"]);
+    expect(p.groups[0].nestedHeads).toBe(1);
+  });
+
+  it("a loop stops where it closes; a missing head is reported", () => {
+    const p = planFamilies([row("1", "A", "2"), row("2", "B", "1"), row("3", "C", "9", "Not Here")]);
+    expect(p.groups).toHaveLength(1);
+    expect(p.groups[0].memberZohoIds).toHaveLength(1);
+    expect(p.headMissing).toEqual([{ headZohoId: "9", headName: "Not Here", rows: 1 }]);
   });
 });

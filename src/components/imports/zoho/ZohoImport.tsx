@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/Badge";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import type { ContactImportResult } from "@/lib/imports/zoho/run-contacts";
 import type { MeetingImportResult } from "@/lib/imports/zoho/run-meetings";
+import type { FamilyImportResult } from "@/lib/imports/zoho/run-families";
 
 type Kind = "contacts" | "meetings";
 
@@ -25,6 +26,7 @@ export function ZohoImport({ mayContacts, mayMeetings }: { mayContacts: boolean;
       {mayContacts && <ClientFields />}
       <Step kind="contacts" n={1} title="Clients — Zoho Contacts export" allowed={mayContacts} />
       <Step kind="meetings" n={2} title="Meetings — Zoho Meetings export" allowed={mayMeetings} />
+      {mayContacts && <FamiliesStep />}
     </div>
   );
 }
@@ -364,5 +366,137 @@ function Done({ kind, result }: { kind: Kind; result: ContactImportResult | Meet
       <RowList title="Skipped rows" rows={r.skipped} />
       <Link className="underline" href="/dashboard/review-meetings">Open Meetings</Link>
     </div>
+  );
+}
+
+/**
+ * Step 3 — families from a Zoho family sheet (Record Id, Contact Name, Family
+ * Owner.id, Family Owner) for clients already imported. Preview first; members
+ * keep their own RM and address.
+ */
+function FamiliesStep() {
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState<"preview" | "import" | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [preview, setPreview] = useState<FamilyImportResult | null>(null);
+  const [done, setDone] = useState<FamilyImportResult | null>(null);
+
+  async function send(f: File, dryRun: boolean) {
+    setBusy(dryRun ? "preview" : "import");
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("dryRun", dryRun ? "1" : "0");
+      const res = await fetch("/api/imports/zoho/families", { method: "POST", body: fd });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(j.error ?? "Something went wrong.");
+        return;
+      }
+      if (dryRun) setPreview(j);
+      else {
+        setDone(j);
+        setPreview(null);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function apply() {
+    if (!file || !preview) return;
+    const ok = await confirmDialog({
+      title: "Create these families?",
+      message: `${preview.created} new families, ${preview.membersLinked} clients linked. Members keep their own RM and address.`,
+      confirmLabel: "Create families",
+    });
+    if (ok) await send(file, false);
+  }
+
+  const r = done ?? preview;
+  return (
+    <Card>
+      <CardHeader
+        title={<span className="flex items-center gap-2"><Badge tone="neutral">Step 3</Badge>Families — Zoho family sheet</span>}
+        action={done ? <Badge tone="success" dot>Done</Badge> : undefined}
+      />
+      <CardBody className="space-y-4">
+        {!done && (
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex">
+              <span className={buttonClass("secondary", "md", "cursor-pointer")}>
+                {busy === "preview" ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet className="size-4" />}
+                {file ? "Choose another file" : "Choose the family sheet (.xlsx / .csv)"}
+              </span>
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="sr-only"
+                disabled={!!busy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!f) return;
+                  setFile(f);
+                  setPreview(null);
+                  void send(f, true);
+                }}
+              />
+            </label>
+            {file && <span className="text-sm text-muted-foreground truncate max-w-xs">{file.name}</span>}
+          </div>
+        )}
+        {err && <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{err}</div>}
+        {r && (
+          <>
+            {!done && <p className="text-xs text-muted-foreground">Preview — nothing has been saved yet.</p>}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              <Stat label="Families in the sheet" value={r.familiesInSheet} />
+              <Stat label={done ? "Families created" : "New families"} value={r.created} />
+              <Stat label="Existing families" value={r.existing} />
+              <Stat label={done ? "Clients linked" : "Clients to link"} value={r.membersLinked} />
+              <Stat label="Not placed" value={r.problems.reduce((n, p) => n + p.count, 0)} tone="warn" />
+            </div>
+            <ul className="text-sm space-y-1">
+              <li>Members keep their own RM and address — only the family link is added.</li>
+              {r.nestedHeadsJoined > 0 && <li>{r.nestedHeadsJoined} heads listed under another family join that family, with their members.</li>}
+              {r.aloneSkipped > 0 && <li>{r.aloneSkipped} Family Owners with nobody else get no family.</li>}
+              {r.alreadyInFamily > 0 && <li>{r.alreadyInFamily} clients are already in the right family.</li>}
+            </ul>
+            {r.problems.length > 0 && (
+              <ValueTable title="Not placed" items={r.problems.map((p) => ({ value: p.reason, to: "left as is", count: p.count }))} />
+            )}
+            {r.details.length > 0 && (
+              <details className="text-sm">
+                <summary className="cursor-pointer font-medium">Names ({r.details.length}{r.details.length >= 300 ? "+" : ""})</summary>
+                <div className="mt-2 max-h-72 overflow-auto">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {r.details.map((d, i) => (
+                        <tr key={i}>
+                          <td>{d.head}</td>
+                          <td>{d.member ?? ""}</td>
+                          <td className="text-muted-foreground">{d.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
+            {!done && (
+              <div className="flex justify-end">
+                <Button variant="primary" disabled={!!busy || r.membersLinked === 0} onClick={apply}>
+                  {busy === "import" ? <Loader2 className="size-4 animate-spin" /> : null}
+                  Create families
+                </Button>
+              </div>
+            )}
+            {done && <Link className="underline text-sm" href="/dashboard/families">Open Families</Link>}
+          </>
+        )}
+      </CardBody>
+    </Card>
   );
 }

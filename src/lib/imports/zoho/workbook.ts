@@ -11,9 +11,14 @@ import * as XLSX from "xlsx";
 import { MAX_IMPORT_BYTES, MAX_IMPORT_ROWS } from "@/lib/investors/import-limits";
 import { CONTACT_SIGNATURE } from "./contacts";
 import { MEETING_SIGNATURE } from "./meetings";
+import { FAMILY_SIGNATURE } from "./family-groups";
 import { idDamagedByExcel } from "./values";
 
-export type ZohoKind = "contacts" | "meetings";
+export type ZohoKind = "contacts" | "meetings" | "families";
+
+const SIGNATURE: Record<ZohoKind, string[]> = { contacts: CONTACT_SIGNATURE, meetings: MEETING_SIGNATURE, families: FAMILY_SIGNATURE };
+const NAME: Record<ZohoKind, string> = { contacts: "Contacts", meetings: "Meetings", families: "family sheet" };
+const STEP: Record<ZohoKind, string> = { contacts: "Clients", meetings: "Meetings", families: "Families" };
 
 export class ZohoFileError extends Error {
   status = 400;
@@ -35,22 +40,22 @@ export async function readZohoFile(file: unknown, kind: ZohoKind): Promise<{ hea
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: true });
   const headers = (XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, range: 0, blankrows: false })[0] ?? []).map((h) => String(h ?? "").trim());
 
-  const signature = kind === "contacts" ? CONTACT_SIGNATURE : MEETING_SIGNATURE;
-  const missing = signature.filter((h) => !headers.includes(h));
+  const missing = SIGNATURE[kind].filter((h) => !headers.includes(h));
+  // A Contacts export also carries the family columns, so it is a valid family
+  // sheet; only a Meetings export in another step is called out by name.
   if (missing.length) {
-    const other = kind === "contacts" ? MEETING_SIGNATURE : CONTACT_SIGNATURE;
-    const wrongFile = other.every((h) => headers.includes(h));
+    const other = (Object.keys(SIGNATURE) as ZohoKind[]).find((k) => k !== kind && k !== "families" && SIGNATURE[k].every((h) => headers.includes(h)));
     throw new ZohoFileError(
-      wrongFile
-        ? `This looks like the Zoho ${kind === "contacts" ? "Meetings" : "Contacts"} export. Upload it in the ${kind === "contacts" ? "Meetings" : "Clients"} step.`
-        : `This is not a Zoho ${kind === "contacts" ? "Contacts" : "Meetings"} export — missing column${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}.`
+      other
+        ? `This looks like the Zoho ${NAME[other]} export. Upload it in the ${STEP[other]} step.`
+        : `This is not a Zoho ${NAME[kind]} — missing column${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}.`
     );
   }
   if (!rows.length) throw new ZohoFileError("The file has headers but no rows.");
   if (rows.length > MAX_IMPORT_ROWS) throw new ZohoFileError(`Too many rows (max ${MAX_IMPORT_ROWS.toLocaleString("en-IN")}).`);
 
   // Excel destroys 19-digit ids (5.72577E+18). Linking on them would join the wrong records.
-  const idCols = kind === "contacts" ? ["Record Id", "Family Owner.id", "Referal Client Name.id"] : ["Record Id", "Contact Name.id"];
+  const idCols = kind === "contacts" ? ["Record Id", "Family Owner.id", "Referal Client Name.id"] : kind === "families" ? ["Record Id", "Family Owner.id"] : ["Record Id", "Contact Name.id"];
   for (const col of idCols) {
     if (rows.some((r) => idDamagedByExcel(r[col]))) {
       throw new ZohoFileError(
