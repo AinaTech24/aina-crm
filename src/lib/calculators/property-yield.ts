@@ -18,8 +18,11 @@
  *
  *   Worked example (₹1 Cr · 5% appreciation · ₹30,000 rent − ₹2,500 maintenance
  *   = ₹27,500 surplus · 3% increment · 12% SIP return · 10 years):
- *     property = ₹1,62,88,946 · SIP = ₹68,73,075 · total = ₹2,31,62,021 ·
+ *     property = ₹1,62,88,946 · SIP = ₹68,73,075 · total = ₹2,31,62,020 ·
  *     overall yield = 8.76%.
+ *   The two parts print ROUNDED (…946.27 → 946, …074.70 → 075) but the total
+ *   prints TRUNCATED (2,31,62,020.97 → 2,31,62,020), as the reference does —
+ *   show `totalCombinedDisplay`, not a rounded `totalCombined`.
  */
 
 export type PropertyYieldInput = {
@@ -50,6 +53,8 @@ export type PropertyYieldResult = {
   totalInvestedSurplus: number;
   sipGain: number;
   totalCombined: number;
+  /** The total as the reference prints it: truncated to the rupee. */
+  totalCombinedDisplay: number;
   overallYieldPct: number;
   propertyOnlyCagrPct: number;
   annualRentalYieldPct: number; // first-year net rent ÷ market value
@@ -106,6 +111,7 @@ export function computePropertyYield(input: PropertyYieldInput): PropertyYieldRe
     totalInvestedSurplus: totalInvested,
     sipGain: sipValue - totalInvested,
     totalCombined,
+    totalCombinedDisplay: Math.floor(totalCombined),
     overallYieldPct,
     propertyOnlyCagrPct: input.appreciationPct,
     annualRentalYieldPct: input.marketValue > 0 ? (netMonthlySurplus * 12 * 100) / input.marketValue : 0,
