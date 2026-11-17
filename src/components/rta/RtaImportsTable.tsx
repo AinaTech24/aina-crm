@@ -118,7 +118,11 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
       if (!res.ok) { setReimportMsg(j.error ?? "Could not re-import this file"); return; }
       // The worker picks it up within a second or two; the in-flight poller
       // above then refreshes until it reaches a terminal state.
-      setReimportMsg("Re-import queued — this row will update shortly.");
+      setReimportMsg(
+        extra && j.alreadySaved
+          ? "Queued — but that password is already saved, so nothing new is being tried. If the file is refused again it was locked with a different password."
+          : "Re-import queued — this row will update shortly.",
+      );
       router.refresh();
     } finally {
       setReimporting(null);
@@ -202,6 +206,21 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
               waiting files import on their own — or press the key button on a row to open just that file. Using the same password on
               every request avoids this.
             </div>
+            <div>
+              If other files from the same registrar are importing, the saved password is right for those — these were requested with a
+              different one. Type that password once below: it opens every waiting file that uses it, and is kept for the next ones.
+            </div>
+            <button
+              type="button"
+              disabled={busy || !!reimporting}
+              onClick={() => {
+                const first = recent.find((r) => r.status === "rejected" && (r.source === "cams" || r.source === "kfintech"));
+                if (first) void reimportWithPassword(first.id, true);
+              }}
+              className="btn-secondary text-xs mt-1"
+            >
+              <KeyRound className="size-3.5" /> Enter the password for these files
+            </button>
           </div>
         )}
 
@@ -287,7 +306,7 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                     <td className="py-2.5 pl-4">
                       <StatusBadge status={r.status} />
                       {r.remarks && (r.status === "failed" || r.status === "partial" || r.status === "rejected") && (
-                        <div className="text-2xs text-rose-600 mt-0.5 max-w-[20rem] truncate" title={r.remarks}>{r.remarks}</div>
+                        <div className="text-2xs text-rose-600 mt-0.5 max-w-[24rem] line-clamp-3 whitespace-normal" title={r.remarks}>{r.remarks}</div>
                       )}
                     </td>
                     <td className="py-2.5 text-xs text-muted-foreground">{r.uploaded_by_name ?? "—"}</td>

@@ -116,5 +116,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   });
 
-  return NextResponse.json({ ok: true, importId: row.id, status: "queued" });
+  // A typed password equal to one already saved adds nothing: say so, so a file that
+  // is refused again is not read as "the password I typed was tried and is wrong here".
+  const alreadySaved = !!typed && passwordsToTry(cfg, row.source).includes(typed);
+  return NextResponse.json({ ok: true, importId: row.id, status: "queued", alreadySaved });
 }
