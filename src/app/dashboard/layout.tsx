@@ -34,6 +34,7 @@ import {
   PieChart,
   Calculator,
   Wallet,
+  ReceiptText,
   // palette-only pages (PALETTE_ONLY)
   Zap, Activity, Megaphone, FileCheck, ScrollText, ClipboardCheck, Stamp, Network, Package, Copy, Trash2,
   // ── unique-icon replacements for the de-duplicated sidebar ──
@@ -54,7 +55,7 @@ import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { tenants, users, tenantUiLayouts } from "@/db/schema";
 import { requireSession, requirePageSession } from "@/lib/auth/session";
-import { primaryRoleLabel, can } from "@/lib/auth/rbac";
+import { primaryRoleLabel, can, type Capability } from "@/lib/auth/rbac";
 import { loadTenantLicense, isPathAllowedWhenRestricted } from "@/lib/auth/license";
 import { tenantAccessibleNavKeys, isGatableNav, gatedNavKeyForPath } from "@/config/nav-access";
 import { pickLogo } from "@/lib/branding/logo";
@@ -92,6 +93,8 @@ type NavItem = {
   roles?: string[];
   /** Required module key — gated by tenant package. */
   module?: string;
+  /** Required capability (any of) — for pages a role grant cannot express (payroll). */
+  caps?: Capability[];
   /** Always tag as Beta, regardless of the platform Module Controls setting. */
   beta?: boolean;
   /** The key access is granted by, when it differs from `href` — a page that
@@ -228,6 +231,10 @@ const NAV: NavSection[] = [
       // everyone; the admin views (grid, settings, approvals) are gated in-page.
       { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
       { href: "/dashboard/leave-applications", label: "Leave", icon: CalendarOff },
+      // Payroll: amounts are owner-only unless granted (payroll.manage / payroll.view).
+      { href: "/dashboard/payroll", label: "Payroll", icon: Wallet, caps: ["payroll.manage", "payroll.view"] },
+      // Each person's own payslips.
+      { href: "/dashboard/my-pay", label: "My pay", icon: ReceiptText },
       { href: "/dashboard/induction", label: "Induction", icon: GraduationCap },
       { href: "/dashboard/announcements", label: "Announcements", icon: BellRing },
     ],
@@ -556,6 +563,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // everyone, whether it is switched off by its own href or its access key.
     if (moduleControls[key] === "disabled" || moduleControls[i.href] === "disabled") return false;
     if (i.roles && !session.roles.some((r) => i.roles!.includes(r) || r === "owner")) return false;
+    if (i.caps && !i.caps.some((c) => can(session.roles, c, session.permissions))) return false;
     if (isGatableNav(key)) {
       // Admin → MFD: the firm must have access to this sidebar item.
       if (!tenantAllowedSet.has(key)) return false;

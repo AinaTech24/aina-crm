@@ -71,6 +71,13 @@ export type RiskProfilePdfData = {
   nextReviewAt?: string | null; // yyyy-mm-dd
   age?: number | null;
   verificationMethod?: string | null;
+  /** Assigned without the client's answers and not yet confirmed by them
+   *  (risk_profile_responses.provisional, e.g. suggested from age). */
+  provisional?: boolean | null;
+  /** The adviser's note on the record (risk_profile_responses.rm_remarks) —
+   *  printed only for a profile with no answers, where it says where the
+   *  category came from (e.g. "Imported from Zoho CRM"). */
+  note?: string | null;
   /** Per-question breakdown, as stored in risk_profile_responses.responses. */
   responses: Array<{ key?: string; question?: string; answer?: string; score?: number | null }>;
   /** The firm's template bands — drives the gauge and the scoring ladder. */
@@ -197,9 +204,16 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
     firmName,
   };
 
+  // A CATEGORY-ONLY profile: no questionnaire answers on record (set directly by
+  // the adviser, imported from another CRM, or suggested from age). Its stored
+  // score is a placeholder for the band (lib/risk-profile/apply.ts), not a total
+  // of answers, so the report says it was not scored, shows no empty
+  // questionnaire and never prints a client signature the client never gave.
+  const categoryOnly = !(profile.responses ?? []).some((r) => String(r?.answer ?? "").trim());
+
   // ── Resolve the band ladder + the client's position on it ────────────────
   const rawBands = (profile.bands ?? []).slice().sort((a, b) => a.minScore - b.minScore);
-  const score = profile.totalScore;
+  const score = categoryOnly ? null : profile.totalScore;
   const bands: ResolvedBand[] = rawBands.map((b, i) => ({
     ...b,
     tone: hexToRgbOr(b.color, hexToRgb(BAND_FALLBACK[Math.min(i, BAND_FALLBACK.length - 1)])),
@@ -217,7 +231,7 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   const bandLabel = current?.label ?? (profile.category ? titleCase(profile.category) : "Not categorised");
   const scoreMax =
     profile.maxScore ?? (bands.length ? Math.max(...bands.map((b) => b.maxScore)) : null);
-  const scoreText = score != null ? (scoreMax ? `${score} / ${scoreMax}` : String(score)) : "-";
+  const scoreText = score != null ? (scoreMax ? `${score} / ${scoreMax}` : String(score)) : categoryOnly ? "Not scored" : "-";
 
   // ── Page machinery ───────────────────────────────────────────────────────
   let page = doc.addPage([W, H]);
@@ -307,14 +321,37 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   y = sectionRule(page, ctx, y, "QUESTIONNAIRE RESPONSES");
   y -= 18;
 
+  if (categoryOnly) {
+    const lines = [
+      "No questionnaire answers are on record for this profile.",
+      profile.provisional
+        ? "The category is PROVISIONAL: it was assigned without the client's answers and the client has not confirmed it."
+        : "The category was recorded directly by the adviser, without the client answering the questionnaire.",
+      // The system's own default remark repeats the line above, so only a real note is printed.
+      ...(profile.note?.trim() && !/^Category set directly/i.test(profile.note.trim()) ? [`Note: ${profile.note.trim()}`] : []),
+      "To record the client's own answers and confirmation, send the client the risk profile link.",
+    ].flatMap((t) => wrap(ascii(t), helv, 9.5, CONTENT_W - 28));
+    const boxH = 20 + lines.length * 14;
+    ensure(boxH + 10);
+    page.drawRectangle({ x: MARGIN, y: y - boxH + 10, width: CONTENT_W, height: boxH, color: PAPER, borderColor: LINE, borderWidth: 0.8 });
+    page.drawRectangle({ x: MARGIN, y: y - boxH + 10, width: 3, height: boxH, color: SLATE });
+    let ny = y - 6;
+    lines.forEach((ln, i) => {
+      page.drawText(ln, { x: MARGIN + 14, y: ny, size: 9.5, font: i === 0 ? bold : helv, color: i === 0 ? INK : SLATE });
+      ny -= 14;
+    });
+    y -= boxH + 12;
+  }
+
   const answered = new Map<string, string>();
   for (const r of profile.responses ?? []) {
     if (r?.key) answered.set(String(r.key), String(r.answer ?? "").trim());
     if (r?.question) answered.set(`q:${String(r.question).trim()}`, String(r.answer ?? "").trim());
   }
 
-  const questions: RiskPdfQuestion[] =
-    profile.questions && profile.questions.length
+  const questions: RiskPdfQuestion[] = categoryOnly
+    ? []
+    : profile.questions && profile.questions.length
       ? profile.questions
       : // No template on file (an older profile): fall back to just what was chosen.
         (profile.responses ?? []).map((r, i) => ({
@@ -403,8 +440,9 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   });
 
   // ── Scoring & risk category ──────────────────────────────────────────────
-  const explain =
-    `Your risk score is the total of the points from each questionnaire answer (shown at the right of every option). ` +
+  const explain = categoryOnly
+    ? `Your risk score is normally the total of the points from each questionnaire answer. This profile has no answers, so it was not scored; the ${bandLabel} band below is the category recorded.`
+    : `Your risk score is the total of the points from each questionnaire answer (shown at the right of every option). ` +
     `A higher total reflects a higher capacity for risk.` +
     (score != null ? ` Your total of ${scoreText} places you in the ${bandLabel} band shown below:` : "");
   const explainLines = wrap(ascii(explain), helv, 9, CONTENT_W);
@@ -504,7 +542,13 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
         ? { title: "SUBMITTED ONLINE BY THE CLIENT", tone: primary, rows: [["Submitted on", fmtDateTimeIst(profile.signedAt)], ["IP address", v.ip ?? ""]] }
         : method === "client_physical"
           ? { title: "SIGNED PHYSICAL FORM", tone: primary, rows: [["Signed on", stampText(signedAtTs, signedOn)]] }
-          : { title: "RECORDED BY THE ADVISER", tone: SLATE, rows: [["Recorded on", stampText(signedAtTs, signedOn)]] };
+          : categoryOnly
+            ? {
+                title: profile.provisional ? "PROVISIONAL - NOT CONFIRMED BY THE CLIENT" : "RECORDED BY THE ADVISER",
+                tone: SLATE,
+                rows: [["Recorded on", stampText(signedAtTs, signedOn)], ["Basis", "Category only - no answers"]],
+              }
+            : { title: "RECORDED BY THE ADVISER", tone: SLATE, rows: [["Recorded on", stampText(signedAtTs, signedOn)]] };
   proof.rows = proof.rows.filter(([, val]) => val && val !== "-");
 
   const colGap = 18;
@@ -523,14 +567,23 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   } else if (method === "client_otp") {
     page.drawText("Confirmed electronically", { x: MARGIN, y: top - sigBoxH + 8, size: 10, font: helv, color: MUTED });
   }
+  // No answers, no signature and not a client-side method: the client did not
+  // confirm this record, so there is no signature line to print.
+  const unconfirmed = categoryOnly && !sigImg && !String(method).startsWith("client_");
   let ly = top - sigBoxH - 4;
-  page.drawRectangle({ x: MARGIN, y: ly, width: colW - 10, height: 0.8, color: SLATE });
-  ly -= 13;
-  page.drawText("Client's signature", { x: MARGIN, y: ly, size: 8, font: helv, color: MUTED });
-  ly -= 14;
-  page.drawText(ascii(truncate(clientName, bold, 10.5, colW - 10)), { x: MARGIN, y: ly, size: 10.5, font: bold, color: INK });
-  ly -= 13;
-  page.drawText(ascii(`Date: ${stampText(signedAtTs, signedOn)}`), { x: MARGIN, y: ly, size: 9, font: helv, color: SLATE });
+  if (unconfirmed) {
+    page.drawText("Not confirmed by the client", { x: MARGIN, y: top - 20, size: 10.5, font: bold, color: SLATE });
+    const hint = wrap(ascii(`${clientName} has not answered or signed this risk profile.`), helv, 9, colW - 10);
+    hint.forEach((ln, i) => page.drawText(ln, { x: MARGIN, y: top - 36 - i * 12, size: 9, font: helv, color: MUTED }));
+  } else {
+    page.drawRectangle({ x: MARGIN, y: ly, width: colW - 10, height: 0.8, color: SLATE });
+    ly -= 13;
+    page.drawText("Client's signature", { x: MARGIN, y: ly, size: 8, font: helv, color: MUTED });
+    ly -= 14;
+    page.drawText(ascii(truncate(clientName, bold, 10.5, colW - 10)), { x: MARGIN, y: ly, size: 10.5, font: bold, color: INK });
+    ly -= 13;
+    page.drawText(ascii(`Date: ${stampText(signedAtTs, signedOn)}`), { x: MARGIN, y: ly, size: 9, font: helv, color: SLATE });
+  }
 
   // Right: how it was confirmed.
   const px = MARGIN + colW + colGap;
@@ -568,7 +621,15 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   y -= 12;
 
   // ── Disclaimer ───────────────────────────────────────────────────────────
-  const discBlocks = DISCLAIMER_PARAGRAPHS.map((p) => wrap(ascii(p), helv, 7.2, CONTENT_W));
+  // A profile with no answers is not "based on the responses recorded above".
+  const discParas = categoryOnly
+    ? DISCLAIMER_PARAGRAPHS.map((p) =>
+        p.startsWith("This risk profile is based on the responses")
+          ? "This risk profile records a category only: the client has not answered the questionnaire or confirmed it. It should be completed by the client before it is relied on to assess the suitability of schemes, and reviewed at least annually and whenever the client's circumstances, goals or investment horizon change."
+          : p
+      )
+    : DISCLAIMER_PARAGRAPHS;
+  const discBlocks = discParas.map((p) => wrap(ascii(p), helv, 7.2, CONTENT_W));
   ensure(26 + discBlocks.reduce((s, b) => s + b.length * 9 + 7, 0));
 
   page.drawText("DISCLAIMER", { x: MARGIN, y, size: 9, font: bold, color: primary });

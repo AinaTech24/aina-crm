@@ -194,7 +194,10 @@ export type Capability =
   | "settings.masters"
   | "settings.dashboard"
   | "settings.security"
-  | "settings.desks";
+  | "settings.desks"
+  // Payroll — salaries are owner-only unless granted (docs/PAYROLL_MODULE_DESIGN.md)
+  | "payroll.manage"
+  | "payroll.view";
 
 
 /**
@@ -378,6 +381,9 @@ const MATRIX: Record<Capability, Role[]> = {
   // Master lookup lists are operational data the back-office/compliance team
   // legitimately maintains, so they're delegable.
   "settings.users": [],
+  // Payroll: nobody but the owner sees salaries until the owner grants it.
+  "payroll.manage": [],
+  "payroll.view": [],
   "settings.billing": [],
   "settings.masters": ["compliance", "back_office", "ops"],
   "settings.security": ["compliance"],

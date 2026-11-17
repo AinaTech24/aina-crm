@@ -42,6 +42,8 @@ export const NAV_LABELS: Record<string, string> = {
   "/dashboard/leads": "Leads",
   "/dashboard/opportunities": "Opportunities",
   "/dashboard/leave-applications": "Leave",
+  "/dashboard/payroll": "Payroll",
+  "/dashboard/my-pay": "My pay",
   "/dashboard/legal-registrations": "Legal Registrations",
   "/dashboard/merge-clients": "Merge Clients",
   "/dashboard/portfolio-intelligence": "Portfolio Insights",

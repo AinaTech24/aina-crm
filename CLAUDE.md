@@ -675,6 +675,11 @@ Bank / corporate / NBFC / post-office FDs a client placed through the firm —
   the old one becomes `renewed`.
 - **Access follows the client** (`investorScopeSql` / `loadViewableInvestor`);
   writes need `investor.edit.*`. Soft delete (`deleted_at`).
+- **Every firm sees it** (the owner's instruction, 2026-11-16): migration 0262
+  added `/dashboard/fixed-deposits` to every SAVED sidebar list that predated
+  it — firm grants, package feature lists, and team members' grants that hold
+  Business Entries. A saved list grants only what it names, so a sidebar item
+  added later is hidden from every firm on one until a list is updated.
 
 ## Insurance premium — typed per payment, stored annual
 
@@ -893,6 +898,34 @@ clients and leads; this CRM is its processor. Step 1 of the plan (2026-10-31):
   2FA is refused while the firm requires it.
 - **Still to build** (the plan): DPAs between AinaTech and each firm
   (paperwork, step 5).
+
+## Payroll (phase 1)
+
+Team → Payroll (owner, or anyone granted `payroll.manage` / `payroll.view`)
+and Team → My pay (everyone's own payslips). Design and later phases:
+`docs/PAYROLL_MODULE_DESIGN.md`. Migration 0261.
+
+- **The employee is the `users` row.** Payroll adds `payroll_profiles` (PAN
+  and bank account encrypted with `lib/crypto`, last digits in clear; work
+  state; PF / ESI switches; exit date; the year's opening salary and TDS for a
+  mid-year start) and `employee_salaries` (a new row per revision, never an
+  edit). Settings are `tenants.payroll_settings` (`lib/payroll/settings.ts`).
+- **One engine, `lib/payroll/calc.ts`** — pure, tested
+  (`tests/payroll-calc.test.ts`), and run in the browser for the salary
+  preview. Every line carries a "why". Statutory rates are dated tables in
+  `lib/payroll/statutory.ts` (PF, ESI, PT by state, new-regime tax, the Code
+  on Wages 50% check): a change in law is a new entry with its date, never an
+  edit — a past month must still work out on the old rule.
+- **Days without pay** come from approved UNPAID leave plus attendance marked
+  absent / half-day that no approved leave covers (`lopForMonth`). An admin
+  override needs a reason and survives recalculation.
+- **A pay run** (`lib/payroll/run.ts`): draft → approved (maker-checker: the
+  preparer cannot approve unless they are the owner) → paid (locked). An
+  approved run's items are frozen JSON; fix mistakes next month. The bank
+  file (full account numbers) needs `payroll.manage`, an approved run, and is
+  audited.
+- Salaries are never visible outside payroll: not on the team list, not to
+  branch heads, not to the AI.
 
 ## Creating a family
 
