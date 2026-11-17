@@ -28,13 +28,21 @@ const bands = [
 
 const render = (profile: Partial<RiskProfilePdfData>) =>
   renderRiskProfilePdf({
-    profile: { category: "aggressive", totalScore: 35, responses: [], questions, bands, verificationMethod: "rm_entry", recordedAt: "2026-11-14T12:28:00Z", ...profile },
+    profile: { category: "aggressive", totalScore: 35, responses: [], questions, bands, verificationMethod: "rm_entry", markNoAnswers: true, recordedAt: "2026-11-14T12:28:00Z", ...profile },
     investor: { name: "Harsh Test" },
     brand: { displayName: "Test Wealth", arn: "123456" } as any,
     generatedAt: "2026-11-16T00:00:00Z",
   });
 
 describe("risk profile PDF", () => {
+  it("a firm WITHOUT the riskPdfNoAnswers flag keeps the original report", async () => {
+    const t = await text(await render({ markNoAnswers: false }));
+    expect(t).toContain("How much experience do you have");
+    expect(t).toContain("Client's signature");
+    expect(t).not.toContain("No questionnaire answers");
+    expect(t).not.toContain("Not scored");
+  });
+
   it("a category-only profile says so — no empty questionnaire, no score, no client signature", async () => {
     const t = await text(await render({ note: "Imported from Zoho CRM. Confirm it with the client." }));
     expect(t).toContain("No questionnaire answers are on record");

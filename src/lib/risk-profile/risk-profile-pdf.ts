@@ -74,6 +74,9 @@ export type RiskProfilePdfData = {
   /** Assigned without the client's answers and not yet confirmed by them
    *  (risk_profile_responses.provisional, e.g. suggested from age). */
   provisional?: boolean | null;
+  /** The firm has the "riskPdfNoAnswers" flag (config/feature-flags.ts): a profile
+   *  with no answers is printed as what it is. Off = the original report. */
+  markNoAnswers?: boolean | null;
   /** The adviser's note on the record (risk_profile_responses.rm_remarks) —
    *  printed only for a profile with no answers, where it says where the
    *  category came from (e.g. "Imported from Zoho CRM"). */
@@ -209,7 +212,9 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   // score is a placeholder for the band (lib/risk-profile/apply.ts), not a total
   // of answers, so the report says it was not scored, shows no empty
   // questionnaire and never prints a client signature the client never gave.
-  const categoryOnly = !(profile.responses ?? []).some((r) => String(r?.answer ?? "").trim());
+  // Only for a firm with the flag (We Care Freedom Wealth, 2026-11-17); every
+  // other firm keeps the original report.
+  const categoryOnly = !!profile.markNoAnswers && !(profile.responses ?? []).some((r) => String(r?.answer ?? "").trim());
 
   // ── Resolve the band ladder + the client's position on it ────────────────
   const rawBands = (profile.bands ?? []).slice().sort((a, b) => a.minScore - b.minScore);

@@ -10,6 +10,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
+import { loadTenantLicense } from "@/lib/auth/license";
 import { renderRiskProfilePdf } from "@/lib/risk-profile/risk-profile-pdf";
 import { loadActiveTemplate } from "@/lib/risk-profile/template";
 import { loadSignatureImage } from "@/lib/risk-profile/signature-image";
@@ -99,6 +100,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           verificationMethod: row.verification_method ?? null,
           // A profile with no answers says how it was recorded instead of
           // printing an empty questionnaire and a client signature.
+          markNoAnswers: (await loadTenantLicense(session.tenantId, session.roles)).featureFlags?.riskPdfNoAnswers === true,
           provisional: row.provisional === true,
           note: row.rm_remarks ?? null,
           verification: {
