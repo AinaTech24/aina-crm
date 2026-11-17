@@ -716,9 +716,11 @@ practice and now pinned by `tests/insurance-extract.test.ts`:
 
 ## The New policy form — family, section order, expiry (2026-11-17)
 
-`/dashboard/insurance/new`. Section order is **1 Policyholder · 2 Plan · 3 Schedule · 4 Policyholder details & address ·
-5 Life assured / insured · 6 cover-specific block (Riders, Vehicle, Trip, Property, Health cover) · 7 Nominees**, then the
-rest; `nType` numbers them so a kind without people skips no number.
+`/dashboard/insurance/new`. Section order (the firm's, 2026-11-17) is **1 Policyholder · 2 Plan · 3 Schedule ·
+4 Proposer, status & remarks · 5 Life assured / insured · 6 cover-specific block (Riders, Vehicle, Trip, Property,
+Health cover) · 7 Nominees**, then everything else as before — Policyholder details & address, Sum insured, Optional
+covers, Premium, Exclusions, Agency, Receipt. Nothing was removed; `nType` numbers the cover block and Nominees so a kind
+without people skips no number.
 
 - **Family panel** (`components/insurance/PolicyFamilyPanel.tsx`, `GET /api/families/lookup`, `lib/families/lookup.ts`):
   find a household (name, code or any member) and pick who holds the policy, or open a client and see their household.

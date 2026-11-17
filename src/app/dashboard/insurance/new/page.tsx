@@ -824,26 +824,76 @@ function NewInsuranceForm() {
         </div>
       </Section>
 
-      {/* Policyholder details & address */}
-      <Section title="4. Policyholder details & address">
-        {/* No second "Policyholder name" box: the policyholder is the client
-            picked in section 1, saved as details.holderName on submit. Contact
-            and address fill from that client record (editable). */}
-        {investor && (
-          <p className="text-xs text-muted-foreground">
-            Policyholder: <span className="font-medium text-foreground">{investor.name}</span> — contact and address are taken from the client record; change them here only if the policy shows different details.
-          </p>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Email ID" type="email" placeholder="" value={d("email")} setValue={(v) => setD("email", v)} />
-          <Field label="Mobile no" placeholder="" value={d("mobile")} setValue={(v) => setD("mobile", v)} />
+      {/* 4. Proposer (if different) + Status + remarks */}
+      <Section title="4. Proposer, status & remarks">
+        <div className="grid grid-cols-3 gap-3">
+          <Field
+            label="Proposer name"
+            placeholder="If different from policyholder"
+            value={d("proposerName")}
+            setValue={(v) => setD("proposerName", v)}
+          />
+          <Select label="Status" value={form.status} setValue={(v) => set("status", v)}>
+            <option value="proposed">Proposed</option>
+            <option value="in_underwriting">In underwriting</option>
+            <option value="active">Active</option>
+            <option value="lapsed">Lapsed</option>
+            <option value="matured">Matured</option>
+            <option value="surrendered">Surrendered</option>
+            <option value="cancelled">Cancelled</option>
+          </Select>
+          <Field label="Proposer customer ID" placeholder="If different" value={d("proposerCustomerId")} setValue={(v) => setD("proposerCustomerId", v)} />
+          <Field label="Proposer phone" placeholder="" value={d("proposerPhone")} setValue={(v) => setD("proposerPhone", v)} />
+          <Field label="Proposer email" type="email" placeholder="" value={d("proposerEmail")} setValue={(v) => setD("proposerEmail", v)} />
         </div>
-        <Field label="Address — street / line 1" placeholder="" value={d("addressLine1")} setValue={(v) => setD("addressLine1", v)} />
-        <div className="grid grid-cols-4 gap-3">
-          <Field label="City" placeholder="" value={d("city")} setValue={(v) => setD("city", v)} />
-          <Field label="State" placeholder="" value={d("state")} setValue={(v) => setD("state", v)} />
-          <Field label="Postal code" placeholder="" value={d("postalCode")} setValue={(v) => setD("postalCode", v)} />
-          <Field label="Country" placeholder="India" value={d("country") || "India"} setValue={(v) => setD("country", v)} />
+
+        {/* Same-address toggle */}
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={!!details.proposerSameAddress}
+            onChange={(e) => setD("proposerSameAddress", e.target.checked)}
+          />
+          Proposer address same as policyholder
+        </label>
+        {!details.proposerSameAddress && (
+          <>
+            <Field label="Proposer address — line 1" value={d("proposerAddressLine1")} setValue={(v) => setD("proposerAddressLine1", v)} />
+            <div className="grid grid-cols-4 gap-3">
+              <Field label="City" value={d("proposerCity")} setValue={(v) => setD("proposerCity", v)} />
+              <Field label="State" value={d("proposerState")} setValue={(v) => setD("proposerState", v)} />
+              <Field label="Postal code" value={d("proposerPostalCode")} setValue={(v) => setD("proposerPostalCode", v)} />
+              <Field label="Country" value={d("proposerCountry") || "India"} setValue={(v) => setD("proposerCountry", v)} />
+            </div>
+          </>
+        )}
+
+        <Field
+          label="Remarks"
+          placeholder="Notes — surrender value, rider details, claim history…"
+          value={form.remarks}
+          setValue={(v) => set("remarks", v)}
+        />
+
+        {err && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">
+            {err}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2 border-t border-border">
+          <Link href={editId ? `/dashboard/insurance/${editId}` : "/dashboard/insurance"} className="btn-secondary">
+            Cancel
+          </Link>
+          <button
+            type="button"
+            onClick={save}
+            disabled={busy || extracting || !investor || !form.insurer || !form.planName}
+            className="btn-primary"
+          >
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            {busy ? "Saving…" : editId ? "Update policy" : "Save policy"}
+          </button>
         </div>
       </Section>
 
@@ -1087,6 +1137,29 @@ function NewInsuranceForm() {
         </Section>
       )}
 
+      {/* Policyholder details & address */}
+      <Section title="Policyholder details & address">
+        {/* No second "Policyholder name" box: the policyholder is the client
+            picked in section 1, saved as details.holderName on submit. Contact
+            and address fill from that client record (editable). */}
+        {investor && (
+          <p className="text-xs text-muted-foreground">
+            Policyholder: <span className="font-medium text-foreground">{investor.name}</span> — contact and address are taken from the client record; change them here only if the policy shows different details.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Email ID" type="email" placeholder="" value={d("email")} setValue={(v) => setD("email", v)} />
+          <Field label="Mobile no" placeholder="" value={d("mobile")} setValue={(v) => setD("mobile", v)} />
+        </div>
+        <Field label="Address — street / line 1" placeholder="" value={d("addressLine1")} setValue={(v) => setD("addressLine1", v)} />
+        <div className="grid grid-cols-4 gap-3">
+          <Field label="City" placeholder="" value={d("city")} setValue={(v) => setD("city", v)} />
+          <Field label="State" placeholder="" value={d("state")} setValue={(v) => setD("state", v)} />
+          <Field label="Postal code" placeholder="" value={d("postalCode")} setValue={(v) => setD("postalCode", v)} />
+          <Field label="Country" placeholder="India" value={d("country") || "India"} setValue={(v) => setD("country", v)} />
+        </div>
+      </Section>
+
       {/* Sum insured & cover details (table) — health only: per-member covers,
           cumulative bonus and limits are a health schedule's layout. */}
       {isHealth && (
@@ -1191,78 +1264,6 @@ function NewInsuranceForm() {
         />
       </Section>
 
-      {/* 6. Proposer (if different) + Status + remarks */}
-      <Section title={`${nType + (showNominee ? 2 : 1)}. Proposer, status & remarks`}>
-        <div className="grid grid-cols-3 gap-3">
-          <Field
-            label="Proposer name"
-            placeholder="If different from policyholder"
-            value={d("proposerName")}
-            setValue={(v) => setD("proposerName", v)}
-          />
-          <Select label="Status" value={form.status} setValue={(v) => set("status", v)}>
-            <option value="proposed">Proposed</option>
-            <option value="in_underwriting">In underwriting</option>
-            <option value="active">Active</option>
-            <option value="lapsed">Lapsed</option>
-            <option value="matured">Matured</option>
-            <option value="surrendered">Surrendered</option>
-            <option value="cancelled">Cancelled</option>
-          </Select>
-          <Field label="Proposer customer ID" placeholder="If different" value={d("proposerCustomerId")} setValue={(v) => setD("proposerCustomerId", v)} />
-          <Field label="Proposer phone" placeholder="" value={d("proposerPhone")} setValue={(v) => setD("proposerPhone", v)} />
-          <Field label="Proposer email" type="email" placeholder="" value={d("proposerEmail")} setValue={(v) => setD("proposerEmail", v)} />
-        </div>
-
-        {/* Same-address toggle */}
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={!!details.proposerSameAddress}
-            onChange={(e) => setD("proposerSameAddress", e.target.checked)}
-          />
-          Proposer address same as policyholder
-        </label>
-        {!details.proposerSameAddress && (
-          <>
-            <Field label="Proposer address — line 1" value={d("proposerAddressLine1")} setValue={(v) => setD("proposerAddressLine1", v)} />
-            <div className="grid grid-cols-4 gap-3">
-              <Field label="City" value={d("proposerCity")} setValue={(v) => setD("proposerCity", v)} />
-              <Field label="State" value={d("proposerState")} setValue={(v) => setD("proposerState", v)} />
-              <Field label="Postal code" value={d("proposerPostalCode")} setValue={(v) => setD("proposerPostalCode", v)} />
-              <Field label="Country" value={d("proposerCountry") || "India"} setValue={(v) => setD("proposerCountry", v)} />
-            </div>
-          </>
-        )}
-
-        <Field
-          label="Remarks"
-          placeholder="Notes — surrender value, rider details, claim history…"
-          value={form.remarks}
-          setValue={(v) => set("remarks", v)}
-        />
-
-        {err && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">
-            {err}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 pt-2 border-t border-border">
-          <Link href={editId ? `/dashboard/insurance/${editId}` : "/dashboard/insurance"} className="btn-secondary">
-            Cancel
-          </Link>
-          <button
-            type="button"
-            onClick={save}
-            disabled={busy || extracting || !investor || !form.insurer || !form.planName}
-            className="btn-primary"
-          >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            {busy ? "Saving…" : editId ? "Update policy" : "Save policy"}
-          </button>
-        </div>
-      </Section>
     </div>
   );
 }
