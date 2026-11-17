@@ -1485,6 +1485,21 @@ or report design.
 - A new effective-rate module must be added to the EFFECTIVE list in
   `scripts/check-math-imports.mjs`.
 
+## Fund Research — returns of real schemes (2026-11)
+
+The "Fund Research" calculators (SIP / lumpsum / STP / STP profit-transfer /
+SWP return of a scheme, rolling returns, point-to-point comparison,
+calendar-year and monthly returns) run on the scheme's full NAV history from
+mfapi.in through `GET /api/mf/schemes/[schemeCode]/nav` (session required, no
+tenant data, cached 6 h in memory). Math is pure, in `src/lib/fund-research/`:
+
+- A purchase, SIP instalment, STP leg or SWP withdrawal on a date with no NAV
+  uses the NEXT available NAV; "value as on" a date uses the latest NAV on or
+  before it. Instalments before launch are skipped. Units are not rounded; no
+  stamp duty, exit load or tax is deducted. CAGR only for periods of a year or more.
+- No benchmark index data exists here, so there is no alpha / beta and no
+  "vs benchmark / vs category" rolling return — say so rather than estimate.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

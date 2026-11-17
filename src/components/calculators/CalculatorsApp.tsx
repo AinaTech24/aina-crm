@@ -23,6 +23,8 @@ import {
   Siren, Rocket, Trophy, Coffee, PiggyBank, Home, Gauge, Layers, Wallet,
   Lightbulb, Sparkles, LifeBuoy, Wand2, Split, Umbrella, Building, Sailboat, Gem, Car, ShieldAlert, Boxes, CirclePause, Brain, History, CopyPlus, SquareStack, Compass, HeartHandshake, KeyRound, WalletCards,
   FolderPlus, FileSpreadsheet,
+  // AdvisorKhoj-equivalent calculators and Fund Research (2026-11)
+  ArrowBigRightDash, ArrowDownToLine, ArrowRightLeft, BadgeIndianRupee, BriefcaseBusiness, CalendarFold, ChartColumnStacked, ChartNoAxesColumnIncreasing, Microscope, ReceiptIndianRupee, Repeat1, Sigma, Telescope, TreeDeciduous, Waves,
   // MasterStroke-equivalent calculators (2026-11)
   ArrowDownUp, BadgePercent, Blend, CalendarCheck, CalendarHeart, CalendarOff, ChartLine, ChartNoAxesCombined, Columns3, Combine, GitMerge, Grid2x2, Grid3x3, IndianRupee, LayoutGrid, LocateFixed, MapPin, Mountain, Repeat2, Scale3d, ShieldPlus, Table, Table2, TableProperties, Vault,
   type LucideIcon,
@@ -97,6 +99,18 @@ import { RealStatement } from "./RealStatement";
 import { MoneyPersonalityQuiz } from "./MoneyPersonalityQuiz";
 import { InflationTimeMachine } from "./InflationTimeMachine";
 import { WealthDoublingCalculator } from "./WealthDoublingCalculator";
+import { CiiCalculator } from "./CiiCalculator";
+import { CompoundingCalculator } from "./CompoundingCalculator";
+import { EpfCalculator } from "./EpfCalculator";
+import { FundLumpsumReturn } from "./FundLumpsumReturn";
+import { FundCalendarReturns, FundMonthlyReturns } from "./FundPeriodReturns";
+import { FundPointToPoint } from "./FundPointToPoint";
+import { FundRollingReturns } from "./FundRollingReturns";
+import { FundSipReturn } from "./FundSipReturn";
+import { FundStpProfitTransfer, FundStpReturn } from "./FundStpReturn";
+import { FundSwpReturn } from "./FundSwpReturn";
+import { LoanEmiCalculator } from "./LoanEmiCalculator";
+import { PpfCalculator } from "./PpfCalculator";
 import { CapitalGainsBondCalculator } from "./CapitalGainsBondCalculator";
 import { LimitedSipFvCalculator } from "./LimitedSipFvCalculator";
 import { LimitedSipNeedCalculator } from "./LimitedSipNeedCalculator";
@@ -229,7 +243,21 @@ type TabKey =
   | "sipswp"
   | "cgbond"
   | "termsip"
-  | "portproj";
+  | "portproj"
+  | "loanemi"
+  | "ppf"
+  | "epf"
+  | "compounding"
+  | "cii"
+  | "frsip"
+  | "frlumpsum"
+  | "frstp"
+  | "frstpprofit"
+  | "frswp"
+  | "frrolling"
+  | "frp2p"
+  | "frcalendar"
+  | "frmonthly";
 
 type CalcMeta = { key: TabKey; name: string; icon: LucideIcon; desc: string };
 type CalcGroup = { title: string; icon: LucideIcon; items: CalcMeta[] };
@@ -250,6 +278,7 @@ const CATALOG: CalcGroup[] = [
       { key: "stepupfv", name: "Step-Up SIP Future Value", icon: ChartNoAxesCombined, desc: "A SIP raised by a % every year: yearly instalments and value" },
       { key: "limitedfv", name: "Limited-Period SIP Value", icon: CalendarOff, desc: "SIP for a few years, then stay invested: the value it reaches" },
       { key: "sipstp", name: "SIP + STP Future Value", icon: Combine, desc: "A monthly SIP plus a lumpsum whose debt-fund gain is moved to equity" },
+      { key: "compounding", name: "Compound Interest", icon: Sigma, desc: "Growth at any compounding frequency, regular additions and the effective annual rate" },
     ],
   },
   {
@@ -270,6 +299,8 @@ const CATALOG: CalcGroup[] = [
       { key: "lstarget", name: "Lumpsum for a Target", icon: MapPin, desc: "One-time amount today that grows to the target, two scenarios" },
       { key: "sipstpgoal", name: "SIP / STP for Target", icon: GitMerge, desc: "Monthly SIP (or STP lumpsum) needed alongside an STP to reach a goal" },
       { key: "stpgoal", name: "STP for Target", icon: LocateFixed, desc: "Lumpsum to park in debt and move to equity by STP to reach a goal" },
+      { key: "ppf", name: "PPF Maturity", icon: TreeDeciduous, desc: "Fixed or year-by-year PPF deposits over 15 years, with 5-year extensions" },
+      { key: "epf", name: "EPF Corpus", icon: BriefcaseBusiness, desc: "Provident Fund at retirement from rising salary, employee and employer shares" },
     ],
   },
   {
@@ -300,6 +331,19 @@ const CATALOG: CalcGroup[] = [
     ],
   },
   {
+    title: "Fund Research", icon: Microscope, items: [
+      { key: "frsip", name: "SIP Return of a Scheme", icon: Repeat1, desc: "A SIP in a real scheme: invested, value, XIRR and every instalment's NAV and units" },
+      { key: "frlumpsum", name: "Lumpsum Return of Schemes", icon: ChartNoAxesColumnIncreasing, desc: "One amount in up to 5 real schemes: value, profit, CAGR and absolute return" },
+      { key: "frstp", name: "STP Return of Two Schemes", icon: ArrowRightLeft, desc: "A fixed STP between two real schemes: both legs' units, values, profit and XIRR" },
+      { key: "frstpprofit", name: "STP Return — Profit Transfer", icon: ArrowBigRightDash, desc: "Move only the gain above the initial investment each period, on real NAVs" },
+      { key: "frswp", name: "SWP Return of a Scheme", icon: ArrowDownToLine, desc: "Withdrawals from a real scheme: value left, XIRR and FIFO gain on each withdrawal" },
+      { key: "frrolling", name: "Rolling Returns", icon: Waves, desc: "Daily 1–10 year rolling returns of up to 5 schemes: average, range and bands" },
+      { key: "frp2p", name: "Point-to-Point Comparison", icon: Telescope, desc: "Up to 5 schemes over one period: growth, CAGR, volatility and Sharpe ratio" },
+      { key: "frcalendar", name: "Calendar-Year Returns", icon: CalendarFold, desc: "Each calendar year's return for up to 5 schemes, side by side" },
+      { key: "frmonthly", name: "Monthly & Quarterly Returns", icon: ChartColumnStacked, desc: "A scheme's return in every month or quarter, year by year" },
+    ],
+  },
+  {
     title: "Insurance & Protection", icon: ShieldCheck, items: [
       { key: "insurance", name: "Insurance IRR", icon: Shield, desc: "A policy's real return vs mutual funds" },
       { key: "surrender", name: "Surrender vs Invest", icon: Scale, desc: "Keep a policy, or surrender and invest?" },
@@ -315,6 +359,7 @@ const CATALOG: CalcGroup[] = [
       { key: "harvest", name: "LTCG Tax-Harvesting", icon: Scissors, desc: "Bank the ₹1.25L tax-free gain every year" },
       { key: "captax", name: "Capital Gains Tax", icon: Calculator, desc: "LTCG/STCG with CII indexation" },
       { key: "cgbond", name: "54EC Bond vs Other Investment", icon: BadgePercent, desc: "Park a capital gain in a 54EC bond or pay the tax and invest: post-tax value and IRR" },
+      { key: "cii", name: "Cost Inflation Index", icon: ReceiptIndianRupee, desc: "The CII table from FY 2001-02 and a cost indexed from one year to another" },
     ],
   },
   {
@@ -323,6 +368,7 @@ const CATALOG: CalcGroup[] = [
       { key: "debtfund", name: "Debt Fund Hold/Sell", icon: BarChart3, desc: "Hold or sell a debt fund, post-tax" },
       { key: "emisip", name: "EMI → SIP", icon: Recycle, desc: "Turn an EMI into wealth instead" },
       { key: "assetalloc", name: "Asset Allocation FV", icon: PieChart, desc: "Future value of a Debt/Equity mix" },
+      { key: "loanemi", name: "Loan EMI", icon: BadgeIndianRupee, desc: "Home, personal, car or education loan: EMI, interest split, amortisation and part-prepayment" },
     ],
   },
   {
@@ -746,6 +792,20 @@ export function CalculatorsApp({ firmName, assumptions }: { firmName?: string; a
         {tab === "cgbond" && <CapitalGainsBondCalculator />}
         {tab === "termsip" && <TermPlusSipCalculator />}
         {tab === "portproj" && <PortfolioProjectionReport />}
+        {tab === "loanemi" && <LoanEmiCalculator />}
+        {tab === "ppf" && <PpfCalculator />}
+        {tab === "epf" && <EpfCalculator />}
+        {tab === "compounding" && <CompoundingCalculator />}
+        {tab === "cii" && <CiiCalculator />}
+        {tab === "frsip" && <FundSipReturn />}
+        {tab === "frlumpsum" && <FundLumpsumReturn />}
+        {tab === "frstp" && <FundStpReturn />}
+        {tab === "frstpprofit" && <FundStpProfitTransfer />}
+        {tab === "frswp" && <FundSwpReturn />}
+        {tab === "frrolling" && <FundRollingReturns />}
+        {tab === "frp2p" && <FundPointToPoint />}
+        {tab === "frcalendar" && <FundCalendarReturns />}
+        {tab === "frmonthly" && <FundMonthlyReturns />}
       </div>
       </CalcAssumptionsCtx.Provider>
 
