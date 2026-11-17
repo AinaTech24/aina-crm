@@ -1278,6 +1278,11 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   "N = 1" after typing a password means the file wants one the CRM does not hold. The old message said
   "the only one saved" and hid that. zip.js reads AES-128/192/256 and ZipCrypto (plain and streamed);
   `tests/rta-unzip-describe.test.ts` pins it, so a file that still refuses is a password we do not have.
+- **A firm's ZIP passwords are its own** (2026-11-17, `tests/mailback-passwords-per-firm.test.ts`): stored per tenant
+  (`tenant_integrations`, provider `rta_mailback`, encrypted), and the mail poller, upload, re-import and the rejected-file
+  rescan each load the passwords of the firm the file belongs to. There is no platform-wide or shared password. Within one
+  firm a saved CAMS and KFintech password are both tried on either registrar's archive (`passwordsToTry`) — one firm's CAMS
+  files opened only with the password saved under KFintech — but never across firms.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.
