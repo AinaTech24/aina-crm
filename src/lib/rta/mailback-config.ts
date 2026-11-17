@@ -19,6 +19,7 @@ import { withSystem, type Tx } from "@/db/client";
 import { tenantIntegrations } from "@/db/schema/tenant_integrations";
 import { rtaForwardAddresses } from "@/db/schema/rta_forward_addresses";
 import { decrypt, encrypt } from "@/lib/crypto";
+import { cleanTypedPassword } from "@/lib/rta/password-variants";
 import { getInboundDomain } from "./inbox-config";
 
 const PROVIDER = "rta_mailback" as const;
@@ -166,8 +167,9 @@ export type MailbackPasswordsInput = {
 function cleanEntryList(arr: PasswordEntryInput[] | undefined): PasswordEntry[] {
   const out: PasswordEntry[] = [];
   for (const e of arr ?? []) {
-    const password = (e?.password ?? "").trim();
-    if (!password) continue;
+    // Kept exactly as typed: a password may truly begin or end with a space.
+    const password = cleanTypedPassword(e?.password ?? "");
+    if (!password.trim()) continue;
     const label = (e?.label ?? "").trim().slice(0, 60) || `Password ${out.length + 1}`;
     out.push({ label, password });
     if (out.length >= MAX_PASSWORD_ENTRIES) break;
@@ -193,7 +195,8 @@ export async function saveMailbackPasswords(tx: Tx, tenantId: string, input: Mai
     merged.camsPasswords = cleanEntryList(input.camsPasswords);
     delete merged.camsPassword;
   } else if (input.camsPassword !== undefined) {
-    merged.camsPasswords = input.camsPassword.trim() ? [{ label: "Primary", password: input.camsPassword.trim() }] : [];
+    const one = cleanTypedPassword(input.camsPassword);
+    merged.camsPasswords = one.trim() ? [{ label: "Primary", password: one }] : [];
     delete merged.camsPassword;
   }
 
@@ -201,9 +204,8 @@ export async function saveMailbackPasswords(tx: Tx, tenantId: string, input: Mai
     merged.kfintechPasswords = cleanEntryList(input.kfintechPasswords);
     delete merged.kfintechPassword;
   } else if (input.kfintechPassword !== undefined) {
-    merged.kfintechPasswords = input.kfintechPassword.trim()
-      ? [{ label: "Primary", password: input.kfintechPassword.trim() }]
-      : [];
+    const one = cleanTypedPassword(input.kfintechPassword);
+    merged.kfintechPasswords = one.trim() ? [{ label: "Primary", password: one }] : [];
     delete merged.kfintechPassword;
   }
 
@@ -243,8 +245,8 @@ export async function appendMailbackPassword(
   // Operate on the FULL stored list (not password-deduped) so a second ARN's
   // entry is kept even when it reuses an already-saved password under a new label.
   const current = listPasswordEntries(cfg, source);
-  const password = (entry.password ?? "").trim();
-  if (!password) return current;
+  const password = cleanTypedPassword(entry.password ?? "");
+  if (!password.trim()) return current;
   const label = (entry.label ?? "").trim().slice(0, 60) || `Password ${current.length + 1}`;
   // Only skip an EXACT duplicate (same label AND password) — i.e. a double-click
   // or re-submit. Same password under a different label is a legitimate second ARN.

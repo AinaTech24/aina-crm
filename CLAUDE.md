@@ -1283,6 +1283,12 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   rescan each load the passwords of the firm the file belongs to. There is no platform-wide or shared password. Within one
   firm a saved CAMS and KFintech password are both tried on either registrar's archive (`passwordsToTry`) — one firm's CAMS
   files opened only with the password saved under KFintech — but never across firms.
+- **A ZIP password is kept exactly as typed** (2026-11-17, `lib/rta/password-variants.ts`, `tests/rta-password-variants.test.ts`).
+  The upload dialog sent it untrimmed while Settings, the key button and "Remember this password" `.trim()`med it, so a password
+  with a leading / trailing (or pasted non-breaking) space opened a MANUAL upload and was then saved without it — every
+  automatic file was refused afterwards. Only line breaks are stripped now, and each password is tried as held, trimmed, with a
+  space put back (for entries the old code already trimmed) and, if non-ASCII, as its UTF-8 bytes (ZipCrypto from a UTF-8 tool).
+  The form that opened the archive is the one "Remember" keeps. Never `.trim()` a ZIP password.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.

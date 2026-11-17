@@ -16,6 +16,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
 import { appendMailbackPassword, getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
+import { cleanTypedPassword } from "@/lib/rta/password-variants";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { Q } from "@/workers/queues";
 import { enqueueRejectedRescan } from "@/workers/rta-import-worker";
@@ -62,9 +63,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // the same password opens by itself. (A registrar lets a password be set on
   // each request, so one firm can hold several.)
   const body = (await req.json().catch(() => ({}))) as { password?: unknown; save?: unknown };
-  const typed = typeof body.password === "string" ? body.password.trim().slice(0, 200) : "";
-  const passwords = [...new Set([...(typed ? [typed] : []), ...passwordsToTry(cfg, row.source)])];
-  const savePassword = !!typed && body.save === true && (row.source === "cams" || row.source === "kfintech");
+  const typed = typeof body.password === "string" ? cleanTypedPassword(body.password).slice(0, 200) : "";
+  const hasTyped = !!typed.trim();
+  const passwords = [...new Set([...(hasTyped ? [typed] : []), ...passwordsToTry(cfg, row.source)])];
+  const savePassword = hasTyped && body.save === true && (row.source === "cams" || row.source === "kfintech");
   if (savePassword && !passwordsToTry(cfg, row.source).includes(typed)) {
     await withTenant(session.tenantId, async (tx) => {
       await appendMailbackPassword(tx, session.tenantId, row.source, { label: "Added from RTA imports", password: typed });
@@ -111,13 +113,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       entityId: row.id,
       before: { status: row.status },
       // Never the password itself — only that one was typed, and whether it was kept.
-      after: { queued: true, typedPassword: !!typed, savedPassword: savePassword },
+      after: { queued: true, typedPassword: hasTyped, savedPassword: savePassword },
       ...clientMetaFromHeaders(req.headers),
     });
   });
 
   // A typed password equal to one already saved adds nothing: say so, so a file that
   // is refused again is not read as "the password I typed was tried and is wrong here".
-  const alreadySaved = !!typed && passwordsToTry(cfg, row.source).includes(typed);
+  const alreadySaved = hasTyped && passwordsToTry(cfg, row.source).includes(typed);
   return NextResponse.json({ ok: true, importId: row.id, status: "queued", alreadySaved });
 }

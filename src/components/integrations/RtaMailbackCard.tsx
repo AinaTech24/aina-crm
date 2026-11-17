@@ -156,7 +156,7 @@ export function RtaMailbackCard() {
       const r = await fetch("/api/integrations/rta-mailback", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ [key]: [{ label: label.trim() || undefined, password: password.trim() }] }),
+        body: JSON.stringify({ [key]: [{ label: label.trim() || undefined, password }] }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {

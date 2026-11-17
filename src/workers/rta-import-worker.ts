@@ -40,6 +40,7 @@ import { RICH_KINDS, classifyMailback } from "@/lib/rta/classify-mailback";
 import { appendMailbackPassword, getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
 import { materialiseSipRejectionsAfterImport } from "@/lib/rta/sip-rejection-rows";
+import { passwordVariants } from "@/lib/rta/password-variants";
 import { retireEmptyPlaceholdersAfterImport } from "@/lib/rta/placeholder-sweep";
 import { restoreTrashedHoldersAfterImport } from "@/lib/investors/holds-money";
 import { reactivateReturningClientsAfterImport } from "@/lib/investors/client-return";
@@ -161,22 +162,36 @@ async function openWithAnyPassword(
   buf: Buffer,
   passwords: string[]
 ): Promise<
-  | { ok: true; data: Uint8Array; filename: string; others: Array<{ filename: string; data: Uint8Array }>; usedPassword?: string }
+  | {
+      ok: true;
+      data: Uint8Array;
+      filename: string;
+      others: Array<{ filename: string; data: Uint8Array }>;
+      /** The password as held (typed / saved). */
+      usedPassword?: string;
+      /** The exact form of it that opened the archive (see passwordVariants). */
+      usedExact?: string;
+    }
   | { ok: false; error: any; triedCount: number }
 > {
-  const tryList = passwords.length ? passwords : [undefined];
+  // Each password is tried as held and in the few other forms it may really be
+  // in (trailing space, UTF-8 bytes — see passwordVariants). `triedCount` still
+  // counts DIFFERENT passwords, not forms, so the message to the person is unchanged.
+  const tryList: Array<{ base: string | undefined; exact: string | undefined }> = passwords.length
+    ? passwords.flatMap((base) => passwordVariants(base).map((exact) => ({ base, exact })))
+    : [{ base: undefined, exact: undefined }];
   let lastNonPasswordErr: any = null;
   let lastErr: any = null;
-  for (const pw of tryList) {
+  for (const { base, exact } of tryList) {
     try {
-      const r = await extractRtaFileFromZip(new Uint8Array(buf), pw);
-      return { ok: true, data: r.data, filename: r.filename, others: r.others, usedPassword: pw };
+      const r = await extractRtaFileFromZip(new Uint8Array(buf), exact);
+      return { ok: true, data: r.data, filename: r.filename, others: r.others, usedPassword: base, usedExact: exact };
     } catch (e: any) {
       lastErr = e;
       if (!isWrongPasswordError(e?.message)) lastNonPasswordErr = e;
     }
   }
-  return { ok: false, error: lastNonPasswordErr ?? lastErr, triedCount: tryList.length };
+  return { ok: false, error: lastNonPasswordErr ?? lastErr, triedCount: passwords.length || 1 };
 }
 
 /** Build the right message/status for an unzip failure, aware of how many passwords were tried. */
@@ -217,14 +232,17 @@ async function rememberTypedPassword(
   job: { tenantId?: string; password?: string; passwords?: string[]; rememberPassword?: boolean },
   source: string | undefined,
   used: string | undefined,
+  usedExact?: string,
 ): Promise<void> {
   if (!job.rememberPassword || !job.password || !job.tenantId || used !== job.password) return;
-  if ((job.passwords ?? []).includes(job.password)) return;
+  // Keep the form that actually opened the archive (it can differ from what was typed).
+  const toKeep = usedExact ?? job.password;
+  if ((job.passwords ?? []).includes(toKeep)) return;
   if (source !== "cams" && source !== "kfintech") return;
   const tenantId = job.tenantId;
   try {
     await withTenant(tenantId, async (tx) => {
-      await appendMailbackPassword(tx, tenantId, source, { label: "Remembered from an upload", password: job.password! });
+      await appendMailbackPassword(tx, tenantId, source, { label: "Remembered from an upload", password: toKeep });
     });
     await enqueueRejectedRescan(tenantId, source);
   } catch (e) {
@@ -354,7 +372,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
       else await markFailed(job, verdict.message, extra);
       return;
     }
-    await rememberTypedPassword(job, (job as any).source, opened.usedPassword);
+    await rememberTypedPassword(job, (job as any).source, opened.usedPassword, opened.usedExact);
     dataBuf = Buffer.from(opened.data);
     innerName = opened.filename;
     if (opened.others.length) {
@@ -778,7 +796,7 @@ async function computeRichImport(
       const verdict = classifyUnzipFailure(opened.error, opened.triedCount, passwords.length > 0, await describeZip(new Uint8Array(buf)));
       return { ok: false, notOurs: verdict.rejected, error: verdict.message };
     }
-    await rememberTypedPassword(job, (job as any).rta, opened.usedPassword);
+    await rememberTypedPassword(job, (job as any).rta, opened.usedPassword, opened.usedExact);
     data = opened.data;
     innerName = opened.filename;
   }
