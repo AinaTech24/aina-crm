@@ -1434,6 +1434,34 @@ GROSS brokerage, before TDS / GST, firm-wide. Three things made it wrong
 Rows stored before this are fixed by re-importing the statement
 (RTA Imports → the file → Re-import).
 
+## Calculators — figures pinned to MasterStroke's case studies
+
+Every MasterStroke calculator (masterstrokeonline.com/calculators/all, 53 in
+2026-11) has an equivalent here whose numbers equal their published case study
+to the rupee: `tests/ms-calc-{a1,a2,b,c,d}.test.ts` pin every case figure. We
+match the CALCULATION — inputs, options, outputs — never their wording, layout
+or report design.
+
+- **Effective monthly rate everywhere** (`(1+r)^(1/12)−1`, `sip360.ts`), but the
+  TIMING differs by calculator and is deliberate: SIPs at month START (most),
+  the Goal Planner's SIP at month END, SWP withdrawals at month END rising
+  monthly with inflation (`swp-target.ts`, SWP End Period), STP transfers at
+  month END (`stp-comprehensive.ts`: appreciation sweep, fixed ₹, fixed % of
+  initial — a fixed transfer is SKIPPED when the debt fund holds less than one),
+  Retirement Need Based at month START. Do not "harmonise" them: each one is what
+  reproduces its case study.
+- **Ready reckoners** show rates as rows and years as columns, in ₹ lakh to 2
+  decimals (SIP-needed in rupees); the SIP + Step-Up reckoner rounds to ₹1,000.
+- The old inline Quick SIP / Goal / Delay / STP / SWP / Retirement calculators
+  (nominal r/12) are gone; their tab keys now open the new calculators so saved
+  scenarios keep working.
+- What no case study shows (e.g. SWP End Period's % and inflation modes, 54EC
+  with indexation, #51's deferred annuity) follows the standard formula and is
+  marked as such in the module header. Capital-gains cess is a toggle, OFF by
+  default as theirs.
+- A new effective-rate module must be added to the EFFECTIVE list in
+  `scripts/check-math-imports.mjs`.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

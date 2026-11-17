@@ -29,7 +29,7 @@ const PALETTE =
 /** Count grandfathered as of 2026-06-11, ratcheted 115 -> 94 on 2026-09-03, 94 -> 93 on 2026-09-21 when
  *  the shared layers moved their rose/slate literals onto the destructive,
  *  border, muted and muted-foreground tokens. Ratchet DOWN as files migrate. */
-const BASELINE = 93;
+const BASELINE = 88;
 
 function* walk(dir) {
   for (const e of readdirSync(dir)) {

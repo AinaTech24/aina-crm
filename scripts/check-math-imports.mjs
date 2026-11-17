@@ -30,7 +30,7 @@ const GP = /from\s+["']@\/lib\/goal-planning\/calc["']/;
 // EFFECTIVE-rate engine modules (they define or import sip360's monthlyRate).
 // NOTE: lib/calculators also hosts nominal-convention helpers (conversion.ts,
 // advisory.ts wrap goal-planning/calc) — those are deliberately NOT listed.
-const EFFECTIVE = /from\s+["'][^"']*(sip360|stepup-reckoner|multipurpose|swp-end-period|swp-comprehensive|swp-periodic|stp-comprehensive|goal-planner|goal-collision|goal-feasibility|child-education|crash-stress|fire|hlv|insurance-irr|tax-harvesting|expense-drag|annual-lumpsum-required|income-bridge|salary-wealth)["']/;
+const EFFECTIVE = /from\s+["'][^"']*(sip360|stepup-reckoner|multipurpose|swp-end-period|swp-comprehensive|swp-periodic|stp-comprehensive|goal-planner|goal-collision|goal-feasibility|child-education|crash-stress|fire|hlv|insurance-irr|tax-harvesting|expense-drag|annual-lumpsum-required|income-bridge|salary-wealth|ready-reckoner|sip-suite|swp-target|swp-rebalance|capital-gains-bond|term-plus-sip|retirement-need|portfolio-projection)["']/;
 
 const offenders = [];
 for (const f of walk("src")) {

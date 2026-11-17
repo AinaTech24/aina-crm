@@ -23,6 +23,8 @@ import {
   Siren, Rocket, Trophy, Coffee, PiggyBank, Home, Gauge, Layers, Wallet,
   Lightbulb, Sparkles, LifeBuoy, Wand2, Split, Umbrella, Building, Sailboat, Gem, Car, ShieldAlert, Boxes, CirclePause, Brain, History, CopyPlus, SquareStack, Compass, HeartHandshake, KeyRound, WalletCards,
   FolderPlus, FileSpreadsheet,
+  // MasterStroke-equivalent calculators (2026-11)
+  ArrowDownUp, BadgePercent, Blend, CalendarCheck, CalendarHeart, CalendarOff, ChartLine, ChartNoAxesCombined, Columns3, Combine, GitMerge, Grid2x2, Grid3x3, IndianRupee, LayoutGrid, LocateFixed, MapPin, Mountain, Repeat2, Scale3d, ShieldPlus, Table, Table2, TableProperties, Vault,
   type LucideIcon,
 } from "lucide-react";
 import { captureCalcResults } from "./capture";
@@ -67,7 +69,6 @@ import { XirrCalculator } from "./XirrCalculator";
 import { RebalanceCalculator } from "./RebalanceCalculator";
 import { GoalFeasibilityScore } from "./GoalFeasibilityScore";
 import { ExpenseDragCalculator } from "./ExpenseDragCalculator";
-import { FundReturnPicker } from "./FundReturnPicker";
 import { CrorepatiCountdown } from "./CrorepatiCountdown";
 import { HabitCorpusCalculator } from "./HabitCorpusCalculator";
 import { FdVsEquityGap } from "./FdVsEquityGap";
@@ -96,18 +97,36 @@ import { RealStatement } from "./RealStatement";
 import { MoneyPersonalityQuiz } from "./MoneyPersonalityQuiz";
 import { InflationTimeMachine } from "./InflationTimeMachine";
 import { WealthDoublingCalculator } from "./WealthDoublingCalculator";
+import { CapitalGainsBondCalculator } from "./CapitalGainsBondCalculator";
+import { LimitedSipFvCalculator } from "./LimitedSipFvCalculator";
+import { LimitedSipNeedCalculator } from "./LimitedSipNeedCalculator";
+import { LumpsumForSwpCalculator } from "./LumpsumForSwpCalculator";
+import { LumpsumForTargetCalculator } from "./LumpsumForTargetCalculator";
+import { LumpsumFvCalculator } from "./LumpsumFvCalculator";
+import { LumpsumSipFvCalculator } from "./LumpsumSipFvCalculator";
+import { PortfolioProjectionReport } from "./PortfolioProjectionReport";
+import { LumpsumFvReckoner, LumpsumNeedReckoner, SipFvReckoner, SipNeedReckoner } from "./ReadyReckoner";
+import { RetirementNeedCalculator } from "./RetirementNeedCalculator";
+import { SipForSwpCalculator } from "./SipForSwpCalculator";
+import { SipForTargetCalculator } from "./SipForTargetCalculator";
+import { SipFvCalculator } from "./SipFvCalculator";
+import { SipLumpsumForTargetCalculator } from "./SipLumpsumForTargetCalculator";
+import { SipStpFutureValueCalculator } from "./SipStpFutureValueCalculator";
+import { SipStpTargetCalculator } from "./SipStpTargetCalculator";
+import { SipSwpReckoner } from "./SipSwpReckoner";
+import { StepUpSipForTargetCalculator } from "./StepUpSipForTargetCalculator";
+import { StepUpSipFvCalculator } from "./StepUpSipFvCalculator";
+import { StpFutureValueCalculator } from "./StpFutureValueCalculator";
+import { StpFvReckoner } from "./StpFvReckoner";
+import { StpNeedReckoner } from "./StpNeedReckoner";
+import { StpTargetCalculator } from "./StpTargetCalculator";
+import { SwpFromLumpsumCalculator } from "./SwpFromLumpsumCalculator";
+import { SwpRebalanceCalculator } from "./SwpRebalanceCalculator";
+import { TermPlusSipCalculator } from "./TermPlusSipCalculator";
 import {
-  fvSip,
-  fvLumpsum,
-  requiredSip,
   inflatedTarget,
-  fvStepUpSip,
   growingSipSchedule,
   vacationPlan,
-  costOfDelay,
-  retirementCorpus,
-  swpDeplete,
-  stpCalculate,
   cagrCalculate,
 } from "@/lib/goal-planning/calc";
 
@@ -186,7 +205,31 @@ type TabKey =
   | "swp"
   | "prosperity"
   | "stp"
-  | "cagr";
+  | "cagr"
+  | "lumpsumfv"
+  | "sipfv"
+  | "stepupfv"
+  | "limitedfv"
+  | "sipstp"
+  | "limitedneed"
+  | "stepuptarget"
+  | "siplstarget"
+  | "lstarget"
+  | "sipstpgoal"
+  | "stpgoal"
+  | "swpneed"
+  | "sipforswp"
+  | "swprebal"
+  | "lsreckoner"
+  | "lsneedreckoner"
+  | "sipreckoner"
+  | "sipneedreckoner"
+  | "stpreckoner"
+  | "stpneedreckoner"
+  | "sipswp"
+  | "cgbond"
+  | "termsip"
+  | "portproj";
 
 type CalcMeta = { key: TabKey; name: string; icon: LucideIcon; desc: string };
 type CalcGroup = { title: string; icon: LucideIcon; items: CalcMeta[] };
@@ -200,8 +243,13 @@ const CATALOG: CalcGroup[] = [
       { key: "salary", name: "Salary → Wealth", icon: Briefcase, desc: "Invest a % of salary that rises with increments" },
       { key: "fvannual", name: "FV of Annual Lumpsum", icon: CalendarClock, desc: "Future value of a yearly lumpsum investment" },
       { key: "annualreq", name: "Annual Lumpsum for Target", icon: Crosshair, desc: "Yearly lumpsum needed to reach a goal" },
-      { key: "sip", name: "SIP + Lumpsum Calculator", icon: Droplets, desc: "Future value of a monthly SIP plus a one-time lumpsum" },
+      { key: "sip", name: "Lumpsum + SIP Future Value", icon: Droplets, desc: "A lumpsum plus a monthly SIP, each at its own return, year by year" },
       { key: "cagr", name: "CAGR", icon: Percent, desc: "Annualised growth rate between two values" },
+      { key: "lumpsumfv", name: "Lumpsum Future Value", icon: IndianRupee, desc: "What a one-time investment grows to, two scenarios, year by year" },
+      { key: "sipfv", name: "SIP Future Value", icon: Repeat2, desc: "Monthly SIP value in two scenarios, against a % or ₹ step-up" },
+      { key: "stepupfv", name: "Step-Up SIP Future Value", icon: ChartNoAxesCombined, desc: "A SIP raised by a % every year: yearly instalments and value" },
+      { key: "limitedfv", name: "Limited-Period SIP Value", icon: CalendarOff, desc: "SIP for a few years, then stay invested: the value it reaches" },
+      { key: "sipstp", name: "SIP + STP Future Value", icon: Combine, desc: "A monthly SIP plus a lumpsum whose debt-fund gain is moved to equity" },
     ],
   },
   {
@@ -213,10 +261,15 @@ const CATALOG: CalcGroup[] = [
       { key: "childsip", name: "Early-Start Child SIP", icon: Baby, desc: "Invest in the early years, then let it compound for life" },
       { key: "collision", name: "Goal-Collision Timeline", icon: CalendarRange, desc: "Spot the years your goals overlap & peak" },
       { key: "feasibility", name: "Goal-Feasibility Score", icon: BadgeCheck, desc: "0–100 score — are the goals on track?" },
-      { key: "goal", name: "Goal Calculator", icon: Flag, desc: "Monthly SIP to reach a target amount" },
       { key: "inflation", name: "Inflation", icon: Thermometer, desc: "What today's cost becomes in the future" },
-      { key: "delay", name: "Cost of Delay", icon: Hourglass, desc: "What waiting to invest really costs" },
-      { key: "retirement", name: "Retirement", icon: Armchair, desc: "The corpus you'll need to retire" },
+      { key: "delay", name: "SIP for a Target & Cost of Delay", icon: Hourglass, desc: "Monthly SIP for a target, step-up option and what each year's delay costs" },
+      { key: "retirement", name: "Retirement Need Based", icon: Armchair, desc: "Corpus for today's lifestyle, the gap, and SIP / lumpsum ways to fill it" },
+      { key: "limitedneed", name: "Limited-Period SIP for a Target", icon: CalendarCheck, desc: "Monthly SIP needed when it runs a few years and then stays invested" },
+      { key: "stepuptarget", name: "Step-Up SIP for a Target", icon: Mountain, desc: "Starting SIP that, raised every year, reaches the target" },
+      { key: "siplstarget", name: "SIP or Lumpsum for a Target", icon: Scale3d, desc: "SIP needed beside a lumpsum, or lumpsum needed beside a SIP" },
+      { key: "lstarget", name: "Lumpsum for a Target", icon: MapPin, desc: "One-time amount today that grows to the target, two scenarios" },
+      { key: "sipstpgoal", name: "SIP / STP for Target", icon: GitMerge, desc: "Monthly SIP (or STP lumpsum) needed alongside an STP to reach a goal" },
+      { key: "stpgoal", name: "STP for Target", icon: LocateFixed, desc: "Lumpsum to park in debt and move to equity by STP to reach a goal" },
     ],
   },
   {
@@ -227,9 +280,23 @@ const CATALOG: CalcGroup[] = [
       { key: "swpcomp", name: "SWP Comprehensive", icon: ScrollText, desc: "Full SWP — any mode, frequency & increment" },
       { key: "stpcomp", name: "STP Comprehensive", icon: RefreshCw, desc: "Move debt → equity systematically" },
       { key: "opm", name: "OPM House (SWP)", icon: House, desc: "Fund a home using an SWP income stream" },
-      { key: "swp", name: "SWP Calculator", icon: Banknote, desc: "Simple systematic withdrawal plan" },
-      { key: "stp", name: "STP Calculator", icon: ArrowLeftRight, desc: "Systematic transfer plan" },
+      { key: "swp", name: "Monthly SWP from Lumpsum", icon: Banknote, desc: "Monthly income a lumpsum supports, with tax projection" },
+      { key: "stp", name: "Future Value of STP", icon: ArrowLeftRight, desc: "Debt → equity each month: capital appreciation, fixed ₹ or fixed % of initial" },
       { key: "prosperity", name: "Prosperity Multiplier", icon: InfinityIcon, desc: "SIP → growing income for life, corpus keeps compounding" },
+      { key: "swpneed", name: "Lumpsum for Monthly SWP", icon: Vault, desc: "One-time investment that funds a target monthly SWP" },
+      { key: "sipforswp", name: "SIP for Monthly SWP", icon: CalendarHeart, desc: "Corpus and monthly SIP needed for a target SWP" },
+      { key: "swprebal", name: "SWP Rebalance", icon: Blend, desc: "Withdraw from debt, refill it from a balanced fund's gains" },
+    ],
+  },
+  {
+    title: "Ready Reckoners", icon: Table, items: [
+      { key: "lsreckoner", name: "Lumpsum Growth Reckoner", icon: Grid3x3, desc: "Grid of what one lumpsum grows to — up to 3 returns × 5 periods" },
+      { key: "lsneedreckoner", name: "Lumpsum Needed Reckoner", icon: Grid2x2, desc: "Grid of the lumpsum needed today for a target — returns × periods" },
+      { key: "sipreckoner", name: "SIP Growth Reckoner", icon: TableProperties, desc: "Grid of SIP future values — up to 3 returns × 5 periods" },
+      { key: "sipneedreckoner", name: "SIP Needed Reckoner", icon: LayoutGrid, desc: "Grid of the monthly SIP needed for a target — returns × periods" },
+      { key: "stpreckoner", name: "STP Growth Reckoner", icon: Table2, desc: "Grid of STP future values — 3 debt | equity scenarios × 5 periods" },
+      { key: "stpneedreckoner", name: "STP Needed Reckoner", icon: Columns3, desc: "Grid of the lumpsum an STP needs for a target — scenarios × periods" },
+      { key: "sipswp", name: "SIP–SWP Ready Reckoner", icon: ArrowDownUp, desc: "Top-up or salary-linked SIP, then an inflation-rising SWP" },
     ],
   },
   {
@@ -237,6 +304,7 @@ const CATALOG: CalcGroup[] = [
       { key: "insurance", name: "Insurance IRR", icon: Shield, desc: "A policy's real return vs mutual funds" },
       { key: "surrender", name: "Surrender vs Invest", icon: Scale, desc: "Keep a policy, or surrender and invest?" },
       { key: "hlv", name: "Human Life Value", icon: Users, desc: "Term cover your family actually needs" },
+      { key: "termsip", name: "Term Insurance + SIP", icon: ShieldPlus, desc: "Term cover plus a monthly SIP: from a budget, for a goal, or against a traditional policy" },
     ],
   },
   {
@@ -246,6 +314,7 @@ const CATALOG: CalcGroup[] = [
       { key: "nps", name: "NPS Retirement & Tax", icon: Landmark, desc: "Corpus, pension and the 80CCD(1B) benefit" },
       { key: "harvest", name: "LTCG Tax-Harvesting", icon: Scissors, desc: "Bank the ₹1.25L tax-free gain every year" },
       { key: "captax", name: "Capital Gains Tax", icon: Calculator, desc: "LTCG/STCG with CII indexation" },
+      { key: "cgbond", name: "54EC Bond vs Other Investment", icon: BadgePercent, desc: "Park a capital gain in a 54EC bond or pay the tax and invest: post-tax value and IRR" },
     ],
   },
   {
@@ -278,6 +347,7 @@ const CATALOG: CalcGroup[] = [
       { key: "review", name: "Review of Investments", icon: ClipboardList, desc: "Compare your funds' performance side by side" },
       { key: "allocreview", name: "Asset Allocation Review", icon: ClipboardCheck, desc: "Existing vs suggested portfolio — 5y & 10y projection + asset mix" },
       { key: "realstatement", name: "REAL Statement (Net Worth & Cashflow)", icon: FileSpreadsheet, desc: "Full discovery snapshot — income, expenses, surplus, assets, liabilities & net worth" },
+      { key: "portproj", name: "Portfolio Projection", icon: ChartLine, desc: "Portfolio + yearly lumpsum + SIP projected, current vs increased investing" },
     ],
   },
   {
@@ -643,15 +713,39 @@ export function CalculatorsApp({ firmName, assumptions }: { firmName?: string; a
         {tab === "quiz" && <MoneyPersonalityQuiz />}
         {tab === "timemachine" && <InflationTimeMachine />}
         {tab === "doubling" && <WealthDoublingCalculator />}
-        {tab === "sip" && <SipCalc />}
-        {tab === "goal" && <GoalCalc />}
+        {tab === "sip" && <LumpsumSipFvCalculator />}
+        {tab === "goal" && <GoalPlannerCalculator />}
         {tab === "inflation" && <InflationCalc />}
-        {tab === "delay" && <DelayCalc />}
-        {tab === "retirement" && <RetirementCalc />}
-        {tab === "swp" && <SwpCalc />}
-        {tab === "stp" && <StpCalc />}
+        {tab === "delay" && <SipForTargetCalculator />}
+        {tab === "retirement" && <RetirementNeedCalculator />}
+        {tab === "swp" && <SwpFromLumpsumCalculator />}
+        {tab === "stp" && <StpFutureValueCalculator />}
         {tab === "prosperity" && <ProsperityMultiplier />}
         {tab === "cagr" && <CagrCalc />}
+        {tab === "lumpsumfv" && <LumpsumFvCalculator />}
+        {tab === "sipfv" && <SipFvCalculator />}
+        {tab === "stepupfv" && <StepUpSipFvCalculator />}
+        {tab === "limitedfv" && <LimitedSipFvCalculator />}
+        {tab === "sipstp" && <SipStpFutureValueCalculator />}
+        {tab === "limitedneed" && <LimitedSipNeedCalculator />}
+        {tab === "stepuptarget" && <StepUpSipForTargetCalculator />}
+        {tab === "siplstarget" && <SipLumpsumForTargetCalculator />}
+        {tab === "lstarget" && <LumpsumForTargetCalculator />}
+        {tab === "sipstpgoal" && <SipStpTargetCalculator />}
+        {tab === "stpgoal" && <StpTargetCalculator />}
+        {tab === "swpneed" && <LumpsumForSwpCalculator />}
+        {tab === "sipforswp" && <SipForSwpCalculator />}
+        {tab === "swprebal" && <SwpRebalanceCalculator />}
+        {tab === "lsreckoner" && <LumpsumFvReckoner />}
+        {tab === "lsneedreckoner" && <LumpsumNeedReckoner />}
+        {tab === "sipreckoner" && <SipFvReckoner />}
+        {tab === "sipneedreckoner" && <SipNeedReckoner />}
+        {tab === "stpreckoner" && <StpFvReckoner />}
+        {tab === "stpneedreckoner" && <StpNeedReckoner />}
+        {tab === "sipswp" && <SipSwpReckoner />}
+        {tab === "cgbond" && <CapitalGainsBondCalculator />}
+        {tab === "termsip" && <TermPlusSipCalculator />}
+        {tab === "portproj" && <PortfolioProjectionReport />}
       </div>
       </CalcAssumptionsCtx.Provider>
 
@@ -803,94 +897,8 @@ function CalcCard({ c, onPick }: { c: CalcMeta; onPick: (k: TabKey) => void }) {
 }
 
 /* ───────────────────────── 1. SIP ───────────────────────── */
-function SipCalc() {
-  const [clientName, setClientName] = useState("");
-  const [objective, setObjective] = useState("");
-  const [presentValue, setPresentValue] = useState(0);
-  const [sipAmount, setSipAmount] = useState(10000);
-  const [years, setYears] = useState(10);
-  const [returnPct, setReturnPct] = useState(useContext(CalcAssumptionsCtx).returnPct);
-
-  const months = years * 12;
-  const fvOfPv = fvLumpsum(presentValue, returnPct, months);
-  const fvOfSip = fvSip(sipAmount, returnPct, months);
-  const total = fvOfPv + fvOfSip;
-  const invested = presentValue + sipAmount * months;
-
-  return (
-    <CalcShell
-      title="SIP + Lumpsum Calculator"
-      purpose="Future value of a monthly SIP and a one-time lumpsum, combined — with the breakup of each."
-    >
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Investment objective">
-          <input
-            value={objective}
-            onChange={(e) => setObjective(e.target.value)}
-            className="input-base text-sm w-full"
-          />
-        </Field>
-        <NumberField label="Lumpsum amount (₹)" value={presentValue} setValue={setPresentValue} />
-        <NumberField
-          label="Monthly SIP (₹)"
-          value={sipAmount}
-          setValue={setSipAmount}
-        />
-        <NumberField label="Years" value={years} setValue={setYears} step={1} />
-        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
-      </div>
-      <div className="max-w-xs"><FundReturnPicker onPick={setReturnPct} /></div>
-      <ResultRow
-        cells={[
-          { label: "Amount invested", value: inr(invested) },
-          { label: "Future value", value: inr(total), tone: "emerald" },
-          { label: "Wealth gain", value: inr(total - invested), tone: "emerald" },
-        ]}
-      />
-      {presentValue > 0 && sipAmount > 0 && (
-        <ResultRow
-          cells={[
-            { label: "Lumpsum grows to", value: inr(fvOfPv) },
-            { label: "SIP grows to", value: inr(fvOfSip) },
-          ]}
-        />
-      )}
-    </CalcShell>
-  );
-}
 
 /* ───────────────────────── 3. Goal ───────────────────────── */
-function GoalCalc() {
-  const [clientName, setClientName] = useState("");
-  const [goalName, setGoalName] = useState("");
-  const [goalAmount, setGoalAmount] = useState(10000000);
-  const [years, setYears] = useState(15);
-  const [returnPct, setReturnPct] = useState(useContext(CalcAssumptionsCtx).returnPct);
-
-  // 0 years ⇒ no SIP can reach the goal: NaN renders "—" (requiredSip returns 0).
-  const monthly = years > 0 ? requiredSip(goalAmount, 0, returnPct, years * 12) : NaN;
-
-  return (
-    <CalcShell title="Goal Calculator" purpose="Monthly SIP required to reach a target goal amount.">
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Goal name">
-          <input value={goalName} onChange={(e) => setGoalName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
-        <NumberField label="Goal amount (₹)" value={goalAmount} setValue={setGoalAmount} />
-        <NumberField label="Years to goal" value={years} setValue={setYears} step={1} />
-        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
-      </div>
-      <div className="max-w-xs"><FundReturnPicker onPick={setReturnPct} /></div>
-      <ResultRow
-        cells={[
-          { label: "Goal amount", value: inr(goalAmount) },
-          { label: "Monthly SIP required", value: inr(monthly), tone: "emerald" },
-          { label: "Total invested over goal", value: inr(monthly * years * 12) },
-        ]}
-      />
-    </CalcShell>
-  );
-}
 
 /* ───────────────────────── 4. Inflation ───────────────────────── */
 function InflationCalc() {
@@ -924,175 +932,11 @@ function InflationCalc() {
 }
 
 /* ───────────────────────── 5. Cost of Delay ───────────────────────── */
-function DelayCalc() {
-  const [startAgeNow, setStartAgeNow] = useState(25);
-  const [startAgeLater, setStartAgeLater] = useState(35);
-  const [endAge, setEndAge] = useState(60);
-  const [lumpsum, setLumpsum] = useState(0);
-  const [sip, setSip] = useState(10000);
-  const [returnPct, setReturnPct] = useState(useContext(CalcAssumptionsCtx).returnPct);
 
-  const res = costOfDelay({
-    sipAmount: sip,
-    lumpsum,
-    startAgeNow,
-    startAgeLater,
-    endAge,
-    returnPct,
-  });
-
-  return (
-    <CalcShell title="Cost of Delay Calculator" purpose="Wealth difference between starting now vs later.">
-      <div className="grid grid-cols-3 gap-3">
-        <NumberField label="SIP starting age (now)" value={startAgeNow} setValue={setStartAgeNow} step={1} />
-        <NumberField label="SIP starting age (later)" value={startAgeLater} setValue={setStartAgeLater} step={1} />
-        <NumberField label="SIP ending age" value={endAge} setValue={setEndAge} step={1} />
-        <NumberField label="Lumpsum (₹)" value={lumpsum} setValue={setLumpsum} />
-        <NumberField label="Monthly SIP (₹)" value={sip} setValue={setSip} />
-        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
-      </div>
-      <div className="grid grid-cols-2 gap-3 mt-3">
-        <DelayColumn label="Invest now" body={res.now} />
-        <DelayColumn label="Invest later" body={res.later} />
-      </div>
-      <ResultRow
-        cells={[
-          {
-            label: "Cost of delay",
-            value: inr(res.costOfDelay),
-            tone: "rose",
-          },
-        ]}
-      />
-    </CalcShell>
-  );
-}
-
-function DelayColumn({
-  label,
-  body,
-}: {
-  label: string;
-  body: { years: number; invested: number; finalValue: number; gain: number };
-}) {
-  return (
-    <div className="border border-border rounded-md p-3 space-y-1.5">
-      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
-        {label}
-      </div>
-      <Row k="Years invested" v={body.years.toString()} />
-      <Row k="Invested" v={inr(body.invested)} />
-      <Row k="Final value" v={inr(body.finalValue)} />
-      <Row k="Gain" v={inr(body.gain)} />
-    </div>
-  );
-}
 
 /* ───────────────────────── 6. Retirement ───────────────────────── */
-function RetirementCalc() {
-  const [currentAge, setCurrentAge] = useState(35);
-  const [retirementAge, setRetirementAge] = useState(60);
-  const [lifeExpectancy, setLifeExpectancy] = useState(85);
-  const [monthlyIncome, setMonthlyIncome] = useState(100000);
-  const [inflationPct, setInflationPct] = useState(useContext(CalcAssumptionsCtx).inflationPct);
-  const [preReturnPct, setPreReturnPct] = useState(12);
-  const [postReturnPct, setPostReturnPct] = useState(7);
-  const [existingFund, setExistingFund] = useState(0);
-
-  const res = retirementCorpus({
-    currentAge,
-    retirementAge,
-    lifeExpectancy,
-    monthlyIncomeTodayInr: monthlyIncome,
-    inflationPct,
-    preReturnPct,
-    postReturnPct,
-    existingFundInr: existingFund,
-  });
-
-  return (
-    <CalcShell title="Retirement Planning Calculator" purpose="Corpus required + monthly savings to fund retirement.">
-      <div className="grid grid-cols-3 gap-3">
-        <NumberField label="Current age" value={currentAge} setValue={setCurrentAge} step={1} />
-        <NumberField label="Retirement age" value={retirementAge} setValue={setRetirementAge} step={1} />
-        <NumberField label="Life expectancy" value={lifeExpectancy} setValue={setLifeExpectancy} step={1} />
-        <NumberField label="Monthly income today (₹)" value={monthlyIncome} setValue={setMonthlyIncome} />
-        <NumberField label="Inflation rate (% p.a.)" value={inflationPct} setValue={setInflationPct} step={0.1} />
-        <NumberField label="Existing fund (₹)" value={existingFund} setValue={setExistingFund} />
-        <NumberField label="Pre-retirement return (%)" value={preReturnPct} setValue={setPreReturnPct} step={0.1} />
-        <NumberField label="Post-retirement return (%)" value={postReturnPct} setValue={setPostReturnPct} step={0.1} />
-      </div>
-      <ResultRow
-        cells={[
-          {
-            label: "Monthly income at retirement",
-            value: inr(res.monthlyIncomeAtRetirement),
-            tone: "amber",
-          },
-          {
-            label: "Corpus required",
-            value: inr(res.corpusRequired),
-            tone: "amber",
-          },
-          {
-            label: "FV of existing fund",
-            value: inr(res.fvOfExistingFund),
-          },
-          {
-            label: "Monthly savings required",
-            // No years left to save but a shortfall ⇒ "—", not ₹0.
-            value: res.preRetirementYears <= 0 && res.corpusRequired > res.fvOfExistingFund ? "—" : inr(res.monthlySavingsRequired),
-            tone: "emerald",
-          },
-        ]}
-      />
-    </CalcShell>
-  );
-}
 
 /* ───────────────────────── 8. SWP ───────────────────────── */
-function SwpCalc() {
-  const [corpus, setCorpus] = useState(500000);
-  const [withdrawal, setWithdrawal] = useState(10000);
-  const [returnPct, setReturnPct] = useState(8);
-  const [years, setYears] = useState(5);
-
-  const res = swpDeplete({
-    corpusInr: corpus,
-    monthlyWithdrawalInr: withdrawal,
-    returnPct,
-    years,
-  });
-
-  return (
-    <CalcShell title="SWP Calculator" purpose="Monthly withdrawal from a corpus over a period.">
-      <div className="grid grid-cols-2 gap-3">
-        <NumberField label="Total investment (₹)" value={corpus} setValue={setCorpus} />
-        <NumberField label="Monthly withdrawal (₹)" value={withdrawal} setValue={setWithdrawal} />
-        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
-        <NumberField label="Years" value={years} setValue={setYears} step={1} />
-      </div>
-      <ResultRow
-        cells={[
-          { label: "Invested", value: inr(res.invested) },
-          { label: "Total withdrawn", value: inr(res.totalWithdrawn), tone: "amber" },
-          {
-            label: "Final value",
-            value: inr(res.finalValue),
-            tone: res.finalValue > 0 ? "emerald" : "rose",
-          },
-        ]}
-      />
-      {res.monthsBeforeDepletion != null && (
-        <div className="text-2xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2 mt-2">
-          ⚠️ Corpus depletes after {Math.floor(res.monthsBeforeDepletion / 12)}{" "}
-          years {res.monthsBeforeDepletion % 12} months.
-        </div>
-      )}
-      <p className="text-2xs text-muted-foreground">Withdrawal at month start · monthly rate = annual ÷ 12.</p>
-    </CalcShell>
-  );
-}
 
 /* ───────────────────────── ★ Growing SIP vs SIP ───────────────────────── */
 function GrowingSipCalc() {
@@ -1523,99 +1367,6 @@ function inrCompact(n: number): string {
 }
 
 /* ───────────────────────── 9. STP ───────────────────────── */
-function StpCalc() {
-  const [clientName, setClientName] = useState("");
-  const [lumpsum, setLumpsum] = useState(1000000);
-  const [transfer, setTransfer] = useState(50000);
-  const [sourceReturn, setSourceReturn] = useState(6);
-  const [targetReturn, setTargetReturn] = useState(12);
-  const [years, setYears] = useState(5);
-
-  const res = stpCalculate({
-    lumpsum,
-    transferAmount: transfer,
-    sourceReturnPct: sourceReturn,
-    targetReturnPct: targetReturn,
-    years,
-  });
-
-  // Comparison logic: what if they kept the whole lumpsum in source debt fund?
-  const sourceOnlyFV = fvLumpsum(lumpsum, sourceReturn, years * 12);
-  // What if they put the whole lumpsum in target equity fund immediately?
-  const targetOnlyFV = fvLumpsum(lumpsum, targetReturn, years * 12);
-
-  return (
-    <CalcShell
-      title="Systematic Transfer Plan (STP) Calculator"
-      purpose="Transfer funds systematically from a source debt fund to a target equity fund."
-    >
-      <div className="grid grid-cols-2 gap-3">
-        <NumberField label="Initial lumpsum amount (₹)" value={lumpsum} setValue={setLumpsum} />
-        <NumberField label="Monthly transfer amount (₹)" value={transfer} setValue={setTransfer} />
-        <NumberField label="Source expected return (% p.a.)" value={sourceReturn} setValue={setSourceReturn} step={0.1} />
-        <NumberField label="Target expected return (% p.a.)" value={targetReturn} setValue={setTargetReturn} step={0.1} />
-        <NumberField label="Duration (years)" value={years} setValue={setYears} step={1} />
-      </div>
-
-      <div className="grid grid-cols-3 gap-3 mt-3">
-        <div className="border border-border rounded-md p-3 space-y-1.5">
-          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
-            Debt fund remaining
-          </div>
-          <div className="text-base font-semibold">{inr(res.sourceFinalValue)}</div>
-          <p className="text-2xs text-muted-foreground">Un-transferred balance earning {sourceReturn}%</p>
-        </div>
-        <div className="border border-border rounded-md p-3 space-y-1.5">
-          <div className="text-2xs uppercase tracking-wide text-primary font-semibold">
-            Equity fund value
-          </div>
-          <div className="text-base font-semibold">{inr(res.targetFinalValue)}</div>
-          <p className="text-2xs text-muted-foreground">Transferred installments compounding at {targetReturn}%</p>
-        </div>
-        <div className="border border-border rounded-md p-3 space-y-1.5 bg-emerald-50/20 border-emerald-100">
-          <div className="text-2xs uppercase tracking-wide text-emerald-700 font-semibold">
-            Total STP value
-          </div>
-          <div className="text-base font-semibold text-emerald-700">{inr(res.totalFinalValue)}</div>
-          <p className="text-2xs text-emerald-600">Combined maturity corpus</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 mt-3">
-        <div className="border border-slate-100 rounded-md p-3 space-y-1 text-xs">
-          <div className="font-semibold text-2xs uppercase tracking-wider text-muted-foreground mb-1">
-            STP vs Lumpsum Debt (Low risk)
-          </div>
-          <Row k="Total STP Value" v={inr(res.totalFinalValue)} />
-          <Row k="Lumpsum in Debt Only" v={inr(sourceOnlyFV)} />
-          <div className="border-t pt-1 font-semibold text-emerald-600 flex justify-between">
-            <span>STP Outperformance</span>
-            <span>{inr(res.totalFinalValue - sourceOnlyFV)}</span>
-          </div>
-        </div>
-        <div className="border border-slate-100 rounded-md p-3 space-y-1 text-xs">
-          <div className="font-semibold text-2xs uppercase tracking-wider text-muted-foreground mb-1">
-            STP vs Lumpsum Equity (High risk)
-          </div>
-          <Row k="Lumpsum in Equity Only" v={inr(targetOnlyFV)} />
-          <Row k="Total STP Value" v={inr(res.totalFinalValue)} />
-          <div className="border-t pt-1 font-semibold text-muted-foreground flex justify-between">
-            <span>STP Risk-Mitigated shortfall</span>
-            <span>{inr(targetOnlyFV - res.totalFinalValue)}</span>
-          </div>
-        </div>
-      </div>
-
-      <ResultRow
-        cells={[
-          { label: "Amount invested", value: inr(lumpsum) },
-          { label: "Total return corpus", value: inr(res.totalFinalValue), tone: "emerald" },
-          { label: res.gain < 0 ? "Net loss" : "Net wealth gain", value: inr(Math.abs(res.gain)), tone: res.gain < 0 ? "rose" : "emerald" },
-        ]}
-      />
-    </CalcShell>
-  );
-}
 
 /* ───────────────────────── 10. CAGR ───────────────────────── */
 function CagrCalc() {
