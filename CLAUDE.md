@@ -648,6 +648,15 @@ The meeting page has no notes box and no Outcome card (removed at the firm's
 request), so completing a meeting no longer creates a "write up your notes"
 task. The columns and the server's outcome → lead-journey logic are untouched.
 
+## Client review reminders — turned off
+
+The automatic "Portfolio review due — <client>" task and bell alert (the
+hourly `review-due-reminder` worker) were turned off for every firm on
+2026-11-17 at the owner's request; migration 0263 cancelled its open tasks
+(remarks marker `[review-due:…]`) and marked its alerts read. The review date
+(`next_review_at`) still shows on the client, the dashboards and the Families
+"Review due" filter. Do not put the worker back.
+
 ## Fixed deposits
 
 Bank / corporate / NBFC / post-office FDs a client placed through the firm —
