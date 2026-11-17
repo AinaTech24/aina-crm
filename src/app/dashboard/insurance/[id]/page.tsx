@@ -12,7 +12,8 @@ import {
   Pencil,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { investors } from "@/db/schema";
+import { families, investors } from "@/db/schema";
+import { requireFamilyView } from "@/lib/families/access";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { dataWallAppliesFor } from "@/lib/investors/access";
@@ -68,10 +69,17 @@ export default async function InsuranceDetailPage({
     const inv = (
       await tx.select().from(investors).where(eq(investors.id, p.investorId)).limit(1)
     )[0];
-    return { p, inv };
+    // The household the policyholder belongs to ("Panchal Family"), so a policy reads as the family's.
+    const fam = inv?.familyId
+      ? (await tx.select({ id: families.id, name: families.familyName, head: families.headName }).from(families).where(eq(families.id, inv.familyId)).limit(1))[0]
+      : undefined;
+    return { p, inv, fam };
   });
   if (!data) notFound();
-  const { p, inv } = data;
+  const { p, inv, fam } = data;
+  let familyLink = false;
+  try { requireFamilyView(session); familyLink = true; } catch { /* no access to the Families pages: show the name only */ }
+  const familyName = fam ? (fam.name || (fam.head ? `${fam.head} Family` : "Family")) : null;
   const dueSoon =
     p.status === "active" &&
     p.nextPremiumDueDate &&
@@ -125,6 +133,18 @@ export default async function InsuranceDetailPage({
                 >
                   {inv?.name}
                 </Link>
+                {fam && familyName && (
+                  <>
+                    <span className="text-white/40">·</span>
+                    {familyLink ? (
+                      <Link href={`/dashboard/families/${fam.id}`} className="hover:underline" title="The family this policyholder belongs to">
+                        {familyName}
+                      </Link>
+                    ) : (
+                      <span title="The family this policyholder belongs to">{familyName}</span>
+                    )}
+                  </>
+                )}
               </div>
             </div>
             <span

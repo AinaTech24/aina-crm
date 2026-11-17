@@ -875,26 +875,6 @@ function NewInsuranceForm() {
           setValue={(v) => set("remarks", v)}
         />
 
-        {err && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">
-            {err}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 pt-2 border-t border-border">
-          <Link href={editId ? `/dashboard/insurance/${editId}` : "/dashboard/insurance"} className="btn-secondary">
-            Cancel
-          </Link>
-          <button
-            type="button"
-            onClick={save}
-            disabled={busy || extracting || !investor || !form.insurer || !form.planName}
-            className="btn-primary"
-          >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            {busy ? "Saving…" : editId ? "Update policy" : "Save policy"}
-          </button>
-        </div>
       </Section>
 
       {/* The people the policy covers — columns follow the kind of policy. */}
@@ -1264,6 +1244,33 @@ function NewInsuranceForm() {
         />
       </Section>
 
+      {/* Save — at the very bottom, after every section, and kept in reach while scrolling */}
+      <div className="sticky bottom-0 z-20 -mx-1 border-t border-border bg-background/95 px-1 py-3 backdrop-blur">
+        {err && (
+          <div className="mb-2 rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">
+            {err}
+          </div>
+        )}
+        <div className="flex items-center justify-end gap-2">
+          {(!investor || !form.insurer || !form.planName) && (
+            <span className="mr-auto text-xs text-muted-foreground">
+              To save: pick the client{!form.insurer ? ", the insurer" : ""}{!form.planName ? " and the plan name" : ""}.
+            </span>
+          )}
+          <Link href={editId ? `/dashboard/insurance/${editId}` : "/dashboard/insurance"} className="btn-secondary">
+            Cancel
+          </Link>
+          <button
+            type="button"
+            onClick={save}
+            disabled={busy || extracting || !investor || !form.insurer || !form.planName}
+            className="btn-primary"
+          >
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            {busy ? "Saving…" : editId ? "Update policy" : "Save policy"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

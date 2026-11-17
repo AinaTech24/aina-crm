@@ -727,6 +727,9 @@ without people skips no number.
   Each member is one tap from being the life assured / insured or a nominee, with name, gender, date of birth and age
   filled. Members are cut to the viewer's book (`investorScopeSql`); the relation is filled only when the holder is the
   head (the mapping stores relations against the head). A client with a mapped family is never shown a member they cannot open.
+- **Save / Cancel sit at the very bottom** of the form in a sticky bar (it used to end the Proposer section, which is now
+  section 4); a disabled Save says what is missing. The policy page's header names the policyholder's family
+  ("Panchal Family", linked when the viewer may open Families).
 - **The first life-assured row is the client** (Self), once per client and only into an empty table.
 - **Expiry = start + term − 1 day** (`lib/insurance/term.ts` `expiryFromTerm`: 30 years from 17 Nov 2026 ends 16 Nov
   2056). It follows start / term until a date is typed or read off the document; "Auto from start + term" forces it.
