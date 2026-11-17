@@ -39,6 +39,7 @@ import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { RICH_KINDS, classifyMailback } from "@/lib/rta/classify-mailback";
 import { appendMailbackPassword, getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
+import { materialiseSipRejectionsAfterImport } from "@/lib/rta/sip-rejection-rows";
 import { retireEmptyPlaceholdersAfterImport } from "@/lib/rta/placeholder-sweep";
 import { restoreTrashedHoldersAfterImport } from "@/lib/investors/holds-money";
 import { reactivateReturningClientsAfterImport } from "@/lib/investors/client-return";
@@ -1205,6 +1206,7 @@ export function startRtaImportWorker() {
           // hundreds a day on a busy shared address. Only after real data now.
           if (summary.ok && !(job.data as RichImportJob).dryRun) {
             await matchBookedBusinessAfterImport((job.data as any)?.tenantId);
+            await materialiseSipRejectionsAfterImport((job.data as any)?.tenantId);
             await syncRtaJourneysAfterImport((job.data as any)?.tenantId);
             await retireEmptyPlaceholdersAfterImport((job.data as any)?.tenantId);
             await restoreTrashedHoldersAfterImport((job.data as any)?.tenantId);
@@ -1225,6 +1227,8 @@ export function startRtaImportWorker() {
         // New RTA rows can confirm or reject business the team booked
         // (lib/business/rta-match.ts). Best effort — never fails the import.
         await matchBookedBusinessAfterImport((job.data as RtaImportJob).tenantId);
+        // …and give every bounced SIP instalment its row on the SIP Rejections page.
+        await materialiseSipRejectionsAfterImport((job.data as RtaImportJob).tenantId);
         // …and settle clients whose physical forms are with the RTA (lib/blueprints/rta-route.ts).
         await syncRtaJourneysAfterImport((job.data as RtaImportJob).tenantId);
         // …and retire PAN-less placeholders the import left holding nothing

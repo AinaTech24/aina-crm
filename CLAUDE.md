@@ -1281,6 +1281,12 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.
+- **A bounced SIP in the transaction feed gets its SIP Rejections row** (2026-11-17, `lib/rta/sip-rejection-rows.ts`).
+  Most firms receive no separate rejection report, only the transaction feed (type sip, status rejected / failed). The row
+  was made only by the 07:30 scan, looking back two days by import time, so a new firm's history or a missed day never
+  reached the page. It now also runs after every RTA import and looks back 90 days; idempotent (same transaction, or same
+  client / date / amount from the report, never twice), and a bounce older than three days is stamped escalated so catching
+  up sends no "overdue" alerts.
 - **SIP rejection report** (`processSipRejectionReport`): clients are found with
   the transaction feed's own index (`buildInvestorIndex`: folio with case / spaces
   / slashes ignored, the row's AMC picks between clients holding the same number),

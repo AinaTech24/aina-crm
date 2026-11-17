@@ -361,6 +361,10 @@ export function SipRejectionsTable({
       {rows.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">
           <p className="text-sm font-medium">No SIP rejections found.</p>
+          <p className="mx-auto mt-1 max-w-md text-xs">
+            A bounced SIP appears here after the registrar&apos;s transaction feed or SIP rejection report is imported
+            (RTA File Imports). Imports that skipped a row because its client was missing are placed again after the next client master import.
+          </p>
         </div>
       ) : (
         <div className="table-scroll">

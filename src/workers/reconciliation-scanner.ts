@@ -29,6 +29,7 @@
 
 import { sql } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
+import { materialiseSipRejectionRows, SIP_REJECTION_LOOKBACK_DAYS } from "@/lib/rta/sip-rejection-rows";
 
 export interface ReconResult {
   tenantId: string;
@@ -142,43 +143,9 @@ export async function reconcileTenant(
       // Dedup: skip if a row already exists for this transaction (re-runs) OR for
       // the same (investor, date, amount) — which catches a rejection that also
       // arrived via the rejection-report path, so the two feeds never double-count.
-      const rowRes = await tx.execute(sql`
-        INSERT INTO sip_rejections (
-          tenant_id, investor_id, transaction_id, rejection_date, rejection_amount,
-          rejection_reason, scheme_name, folio_number, amc_name, assigned_rm_id,
-          follow_up_date, recovery_status, reason_category, dedup_key
-        )
-        SELECT t.tenant_id, t.investor_id, t.id, t.order_date::date, t.amount,
-          t.reason_description, t.scheme_name, t.folio_number, t.amc_name, i.rm_id,
-          (t.order_date::date + 2), 'pending',
-          CASE
-            WHEN lower(coalesce(t.reason_description, '') || ' ' || coalesce(t.reason_code, ''))
-                 ~ 'insufficient|balance|funds|nsf|inqufd' THEN 'insufficient_balance'
-            WHEN lower(coalesce(t.reason_description, '') || ' ' || coalesce(t.reason_code, ''))
-                 ~ 'mandate|expired|umrn|nach|debit not|not registered' THEN 'mandate_expired'
-            ELSE 'technical'
-          END,
-          'tx:' || t.id::text
-        FROM transactions t
-        JOIN investors i ON i.id = t.investor_id
-        WHERE t.type = 'sip'
-          AND t.status IN ('rejected', 'failed')
-          AND t.created_at >= now() - interval '${since}'
-          AND NOT EXISTS (
-            SELECT 1 FROM sip_rejections sr
-            WHERE sr.tenant_id = t.tenant_id AND sr.transaction_id = t.id
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM sip_rejections sr
-            WHERE sr.tenant_id = t.tenant_id
-              AND sr.investor_id = t.investor_id
-              AND sr.rejection_date = t.order_date::date
-              AND sr.rejection_amount = t.amount
-          )
-        ON CONFLICT (tenant_id, transaction_id) WHERE transaction_id IS NOT NULL DO NOTHING
-        RETURNING 1
-      `);
-      result.sipRejectionRows = rowRes.rows.length;
+      // 90 days back whatever the event window is: it is idempotent, and a
+      // two-day look-back lost every bounce a missed day or a new firm skipped.
+      result.sipRejectionRows = await materialiseSipRejectionRows(tx, Math.max(days, SIP_REJECTION_LOOKBACK_DAYS));
 
       // ── 2c. SLA escalation — rejections unrecovered > 2 days ─────────────
       // The page flags "SLA breached" passively; this makes it act. For each
