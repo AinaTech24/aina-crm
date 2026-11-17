@@ -23,7 +23,8 @@ export function PageHeaderCard({
 }) {
   return (
     <header className="page-heading space-y-4">
-      <div className="min-w-0 max-w-full">
+      {/* Not printed: a page printed or saved as PDF carries its title and content, not its navigation. */}
+      <div className="min-w-0 max-w-full print:hidden">
         {breadcrumb ? (
           <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-xs">
             <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
@@ -53,7 +54,7 @@ export function PageHeaderCard({
           {subtitle && <p className="page-subtitle mt-2 max-w-2xl">{subtitle}</p>}
           {children}
         </div>
-        {actions && <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
+        {actions && <div className="flex max-w-full flex-wrap items-center gap-2 print:hidden">{actions}</div>}
       </div>
     </header>
   );

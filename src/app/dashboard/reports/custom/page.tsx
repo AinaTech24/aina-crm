@@ -106,7 +106,7 @@ export default function CustomReportsPage() {
 
   return (
     <div className="space-y-4">
-      <Link href="/dashboard/reports" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
+      <Link href="/dashboard/reports" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 print:hidden">
         <ChevronLeft className="size-4" /> Back to reports
       </Link>
 

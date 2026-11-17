@@ -1462,7 +1462,7 @@ export default async function ReportPage({ params }: { params: Promise<{ key: st
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <Link href="/dashboard/reports" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
+      <Link href="/dashboard/reports" className="text-sm text-muted-foreground hover:underline flex items-center gap-1 print:hidden">
         <ChevronLeft className="size-4" /> Back to reports
       </Link>
 
