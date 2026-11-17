@@ -10,7 +10,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Trash2, RotateCcw, RefreshCw, KeyRound, Download } from "lucide-react";
+import { Loader2, Trash2, RotateCcw, RefreshCw, KeyRound, Download, Stethoscope } from "lucide-react";
 import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
 import { formatRelative, formatDate } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -104,6 +104,39 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
         })
       : false;
     await reimport(id, { password: typed, save });
+  }
+
+  /** "Why won't this open?" — what the archive is and whether any password passes its exact check. */
+  const [diag, setDiag] = useState<Record<string, string>>({});
+  const [diagBusy, setDiagBusy] = useState<string | null>(null);
+  async function diagnose(id: string) {
+    const typed = await promptDialog({
+      title: "Check this file against a password",
+      message: "Type the password you believe locks this file. It is only tested here — never saved or shown. The saved passwords are tested too.",
+      label: "Password",
+      secret: true,
+      confirmLabel: "Check the file",
+    });
+    if (typed === null) return;
+    setDiagBusy(id);
+    try {
+      const res = await fetch(`/api/rta-imports/${id}/diagnose`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: typed }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setDiag((d) => ({ ...d, [id]: j.error ?? "Could not check this file." })); return; }
+      const lines = [
+        `${j.file} — ${(j.sizeBytes / 1024).toFixed(0)} KB, ${j.startsWithPK ? "a ZIP" : "NOT a ZIP"}. Tested ${j.typedTried ? "your password + " : ""}${j.savedTried} saved password(s).`,
+        ...j.entries.map((e: { name: string; kind: string; method: string; matches: Array<{ who: string; form: string }> }) =>
+          `• ${e.name}: ${e.kind}, ${e.method}${e.matches.length ? ` — OPENED by ${e.matches.map((m) => `${m.who} (${m.form})`).join(", ")}` : e.kind.startsWith("AES") ? " — no tested password fits" : ""}`),
+        `Result: ${j.verdict}`,
+      ];
+      setDiag((d) => ({ ...d, [id]: lines.join("\n") }));
+    } finally {
+      setDiagBusy(null);
+    }
   }
 
   async function reimport(id: string, extra?: { password: string; save: boolean }) {
@@ -308,6 +341,9 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                       {r.remarks && (r.status === "failed" || r.status === "partial" || r.status === "rejected") && (
                         <div className="text-2xs text-rose-600 mt-0.5 max-w-[24rem] line-clamp-3 whitespace-normal" title={r.remarks}>{r.remarks}</div>
                       )}
+                      {diag[r.id] && (
+                        <pre className="mt-1 max-w-[34rem] whitespace-pre-wrap rounded-md border border-border bg-secondary/50 p-2 text-2xs text-foreground font-sans">{diag[r.id]}</pre>
+                      )}
                     </td>
                     <td className="py-2.5 text-xs text-muted-foreground">{r.uploaded_by_name ?? "—"}</td>
                     <td className="py-2.5 pr-4 text-right">
@@ -327,6 +363,16 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                             </button>
                           )}
                           {r.status === "rejected" && (
+                            <>
+                            <button
+                              onClick={() => diagnose(r.id)}
+                              disabled={busy || diagBusy === r.id}
+                              className="btn-icon"
+                              title="Why won't this open? Test a password against the file"
+                              aria-label="Check this file against a password"
+                            >
+                              {diagBusy === r.id ? <Loader2 className="size-3.5 animate-spin" /> : <Stethoscope className="size-3.5" />}
+                            </button>
                             <a
                               href={`/api/rta-imports/${r.id}/file`}
                               className="btn-icon"
@@ -335,6 +381,7 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                             >
                               <Download className="size-3.5" />
                             </a>
+                            </>
                           )}
                           {r.status === "rejected" && (
                             <button

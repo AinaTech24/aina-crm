@@ -65,7 +65,7 @@ export function aesVerificationMatches(password: Buffer, strength: number, salt:
   return derived[keyLen * 2] === verifier[0] && derived[keyLen * 2 + 1] === verifier[1];
 }
 
-const fingerprint = (s: string) => `len ${s.length}, sha ${createHash("sha256").update(s).digest("hex").slice(0, 6)}`;
+export const fingerprint = (s: string) => `len ${s.length}, sha ${createHash("sha256").update(s).digest("hex").slice(0, 6)}`;
 
 export type ZipReport = {
   bytes: number;

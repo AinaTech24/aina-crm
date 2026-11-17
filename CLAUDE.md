@@ -1312,6 +1312,10 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   any typed — in the forms a writer may have used (as typed, trimmed, UPPER / lower, a space, UTF-8 / Latin-1 / UTF-16) and says
   which matches. No form matches → another password; one matches yet the importer refused → a CRM fault. Passwords are printed only
   as a length and a short hash.
+- **"Why won't this open?" on the page** (2026-11-17, `POST /api/rta-imports/[id]/diagnose`, the stethoscope icon on a
+  rejected row, `tests/rta-diagnose-route.test.ts`): the page-side twin of the diagnose script for people with no server shell.
+  Type the password you believe is right; it names who supplied a match ("the password you typed now" / "saved password #N") and
+  which form matched, or says no tested password fits. Read-only, audited as `rta_import.diagnosed`, never returns a password.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.
