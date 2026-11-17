@@ -23,7 +23,7 @@ import { startCampaignDispatcherWorker } from "./campaign-dispatcher";
 import { startImapPollerWorker } from "./imap-poller";
 import { startRtaInboxPollerWorker } from "./rta-inbox-poller";
 import { startZohoSyncWorker } from "./zoho-sync";
-import { startRtaImportWorker, enqueueRerunsForAllFirms } from "./rta-import-worker";
+import { startRtaImportWorker, enqueueRerunsForAllFirms, enqueueRescansForAllFirms } from "./rta-import-worker";
 import { startDailyBriefingWorker } from "./daily-briefing";
 import { startWeeklyDigestWorker } from "./weekly-digest";
 import { runDailyOpsScan } from "./daily-ops-scanner";
@@ -145,6 +145,20 @@ scheduleDaily("rta", "rta-rerun", 21, 45, enqueueRerunsForAllFirms);
 
 if (groups.includes("rta")) {
   stops.push(startRtaImportWorker());
+  // Once after the ZIP opener was fixed (password kept as typed, its other forms
+  // tried, ZipCrypto read by CRC — 2026-11-17): retry every firm's already-refused
+  // ZIPs with the passwords it has saved, instead of waiting for someone to save one.
+  void (async () => {
+    const job = "rta-rescan-rejected-opener-2026-11-17";
+    if (await getLastRun(job)) return;
+    try {
+      const r = await enqueueRescansForAllFirms();
+      console.log(`[rta-rescan] queued a rescan of refused ZIPs for ${r.firms} firm(s)`);
+      await recordRun(job, "ok", `${r.firms} firm(s)`);
+    } catch (err) {
+      captureError("[rta-rescan] one-off rescan failed to queue", err);
+    }
+  })();
   // FP mailback import shares the "rta" worker group (same import surface).
 }
 // Morning briefing — 8 AM IST digest (in-app + email) per RM/owner. The worker

@@ -1026,7 +1026,7 @@ export async function runRejectedRescanJob(
       await tx.execute(sql`
         UPDATE rta_file_imports
         SET status = 'uploaded', parsed_at = NULL, errors = NULL,
-            remarks = 'Re-queued after a new mailback password was saved'
+            remarks = 'Re-queued: the saved passwords open it now'
         WHERE id = ${r.id}::uuid`);
     });
 
@@ -1041,12 +1041,43 @@ export async function runRejectedRescanJob(
 }
 
 /** Queue a rescan of a firm's rejected archives for one registrar. */
-export async function enqueueRejectedRescan(tenantId: string, source: RtaSource): Promise<void> {
+export async function enqueueRejectedRescan(tenantId: string, source: RtaSource, opts: { jobId?: string } = {}): Promise<void> {
   await Q.rtaImport().add(
     "rescan",
     { mode: "rescan", tenantId, source } satisfies RtaRescanJob,
-    { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 }, priority: RTA_BACKGROUND_PRIORITY }
+    {
+      attempts: 1,
+      removeOnComplete: true,
+      removeOnFail: { age: 3600 },
+      priority: RTA_BACKGROUND_PRIORITY,
+      // One waiting rescan per firm (BullMQ ignores an add whose jobId is queued).
+      ...(opts.jobId ? { jobId: opts.jobId } : {}),
+    }
   );
+}
+
+/**
+ * Queue a rescan of the rejected ZIPs of every firm that has any, whatever
+ * password change happened or not. A rescan used to run only when someone SAVED a
+ * password, so files refused by an older opener (a password saved without its
+ * trailing space, a ZipCrypto archive zip.js refused over its header byte) stayed
+ * "rejected" for ever although the saved passwords open them now. It is safe to
+ * repeat: only archives that actually open are re-queued, the rest are left
+ * `rejected` and counted. One job per firm — it reads the firm's saved passwords
+ * for both registrars, so the source named here does not limit it.
+ */
+export async function enqueueRescansForAllFirms(): Promise<{ firms: number }> {
+  const tenants = await withSystem(async (tx) => {
+    const r = await tx.execute(sql`
+      SELECT DISTINCT tenant_id FROM rta_file_imports
+       WHERE deleted_at IS NULL AND file_key IS NOT NULL
+         AND created_at > now() - interval '60 days'
+         AND (status = 'rejected'
+              OR (status = 'failed' AND (remarks ILIKE '%password%' OR remarks ILIKE 'Could not open the zip%')))`);
+    return (r.rows as Array<{ tenant_id: string }>).map((x) => String(x.tenant_id));
+  });
+  for (const t of tenants) await enqueueRejectedRescan(t, "cams", { jobId: `rta-rescan-${t}` });
+  return { firms: tenants.length };
 }
 
 /**
@@ -1143,6 +1174,8 @@ export async function enqueueRerunsForAllFirms(): Promise<{ firms: number }> {
     return (r.rows as Array<{ tenant_id: string }>).map((x) => String(x.tenant_id));
   });
   for (const t of tenants) await enqueueRerun(t, 0);
+  // …and give every firm's password-refused ZIPs another try with the passwords it holds now.
+  await enqueueRescansForAllFirms().catch((e) => captureError("[rta-import] nightly rescan enqueue failed", e));
   return { firms: tenants.length };
 }
 

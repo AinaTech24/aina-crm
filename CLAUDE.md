@@ -1295,6 +1295,12 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   password gave "Invalid password" and the file was filed as "rejected — another password". `extractRtaFileFromZip` now
   falls back for ZipCrypto entries: read the raw entry (`passThrough`), decrypt it ignoring that byte, and accept only if the
   unpacked data's CRC-32 matches the archive's — a wrong password cannot. AES is unaffected (its 2-byte check is exact).
+- **Files refused by an older opener are retried on their own** (2026-11-17, `enqueueRescansForAllFirms`,
+  `tests/rta-rescan-old-rejected.test.ts`). A rescan used to run only when someone SAVED a password, so a file refused before
+  the opener was fixed stayed `rejected` for ever although the saved passwords open it now. The nightly `rta-rerun` (03:15 IST)
+  now also queues one rescan per firm that has a password-refused ZIP from the last 60 days, and the worker does it once at
+  boot after this fix (`scheduler_state` marker `rta-rescan-rejected-opener-2026-11-17`). Only archives that really open are
+  re-queued; the rest stay `rejected` and counted. A new fix to how archives are opened needs the same one-off marker.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.
