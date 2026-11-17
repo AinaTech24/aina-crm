@@ -49,6 +49,15 @@ export function fvStepUpAmountSip(
   return fv;
 }
 
+/**
+ * The reference report's display rounding: every grid figure (amount invested
+ * AND future value) to the nearest ₹1,000 — e.g. 19,12,491 → 19,12,000. A
+ * display step only; the engine keeps exact rupees.
+ */
+export function roundToThousand(x: number): number {
+  return Math.round(x / 1000) * 1000;
+}
+
 /* ───────────────────────── Aggregate ───────────────────────── */
 
 export type ReckonerInput = {

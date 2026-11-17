@@ -4,13 +4,17 @@
  * Step-Up SIP Reckoner — compares Regular vs %-step-up vs ₹-step-up growth from
  * one starting SIP, across several timeframes at once. Renamed from the
  * reference "SIP + Step-Up SIP Ready Reckoner". Math:
- * src/lib/calculators/stepup-reckoner.ts (verified to the rupee).
+ * src/lib/calculators/stepup-reckoner.ts (verified to the rupee). The grid
+ * shows figures rounded to the nearest ₹1,000 by default, as the reference
+ * report does; "Exact rupees" shows the unrounded engine values.
  */
 
 import { useMemo, useState } from "react";
 import { ClientNameField } from "./ClientNameField";
-import { computeReckoner } from "@/lib/calculators/stepup-reckoner";
-import { inr, clampNum, fmtPct, Field, NumberField, Section, Table, Insight } from "./ui";
+import { computeReckoner, roundToThousand } from "@/lib/calculators/stepup-reckoner";
+import { CHART_SERIES } from "@/lib/dashboard/chart-palette";
+import { CalcChart } from "./CalcChart";
+import { inr, clampNum, fmtPct, NumberField, Section, Segmented, Table, Insight } from "./ui";
 
 const MAX_PERIODS = 5;
 
@@ -21,6 +25,7 @@ export function StepUpReckoner() {
   const [stepUpPct, setStepUpPct] = useState(10);
   const [stepUpAmount, setStepUpAmount] = useState(2000);
   const [clientName, setClientName] = useState("");
+  const [precision, setPrecision] = useState<"thousand" | "exact">("thousand");
 
   const result = useMemo(
     () => computeReckoner({ monthly, ratePct, periods, stepUpPct, stepUpAmount }),
@@ -44,14 +49,22 @@ export function StepUpReckoner() {
     ...(result.hasStepAmt ? [{ key: "stepAmt" as const, label: `Step-up ${inr(stepUpAmount)}/yr` }] : []),
   ];
 
+  const show = (v: number) => inr(precision === "thousand" ? roundToThousand(v) : v);
   const corpusRows = result.rows.map((r) => [
     `${r.years} yrs`,
-    ...strategyCols.map((c) => (r[c.key] ? inr(r[c.key]!.corpus) : "—")),
+    ...strategyCols.map((c) => (r[c.key] ? show(r[c.key]!.corpus) : "—")),
   ]);
   const investedRows = result.rows.map((r) => [
     `${r.years} yrs`,
-    ...strategyCols.map((c) => (r[c.key] ? inr(r[c.key]!.invested) : "—")),
+    ...strategyCols.map((c) => (r[c.key] ? show(r[c.key]!.invested) : "—")),
   ]);
+
+  const chartData = result.rows.map((r) => {
+    const point: Record<string, number> = { years: r.years };
+    for (const c of strategyCols) if (r[c.key]) point[c.key] = r[c.key]!.corpus;
+    return point;
+  });
+  const chartSeries = strategyCols.map((c, i) => ({ key: c.key, name: c.label, color: CHART_SERIES[i] }));
 
   // Highlight the strongest strategy column (by corpus at the longest tenure).
   const longest = result.rows[result.rows.length - 1];
@@ -120,6 +133,16 @@ export function StepUpReckoner() {
         </p>
       </div>
 
+      <Segmented
+        label="Figures shown"
+        value={precision}
+        onChange={setPrecision}
+        options={[
+          { value: "thousand", label: "Nearest ₹1,000" },
+          { value: "exact", label: "Exact rupees" },
+        ]}
+      />
+
       {clientName && (
         <div className="text-sm font-medium">
           Prepared for <span className="text-primary">{clientName}</span>
@@ -133,6 +156,10 @@ export function StepUpReckoner() {
           rows={corpusRows}
           highlightCol={bestColIdx > 0 ? bestColIdx : undefined}
         />
+        {precision === "thousand" && (
+          <p className="text-2xs text-muted-foreground">Every figure is rounded to the nearest ₹1,000.</p>
+        )}
+        <CalcChart data={chartData} xKey="years" xUnit="Horizon (yrs)" series={chartSeries} />
         {(result.hasStepPct || result.hasStepAmt) && (
           <Insight>
             Increasing your SIP every year — even modestly — compounds into far greater wealth than a flat SIP over long horizons.
