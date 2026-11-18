@@ -1148,6 +1148,7 @@ function VacationPlannerCalc() {
         cells={[
           { label: "Growing SIP — monthly (mo 1)", value: fullyFunded ? "—" : inr(res.monthlySip), tone: "emerald" },
           { label: "Growing SIP — annual (yr 1)", value: fullyFunded ? "—" : inr(res.annualSip), tone: "emerald" },
+          { label: "Or one-time lumpsum today", value: fullyFunded ? "—" : inr(res.lumpsumToday), tone: "emerald" },
           { label: "Total vacation spend (nominal)", value: inrCompact(res.totalNominalSpend) },
         ]}
       />
@@ -1175,7 +1176,8 @@ function VacationPlannerCalc() {
         The corpus is the present value (one year out) of {numVacations} annual vacations — each escalating {inflationPct}% and
         withdrawn at the start of the year, with the remaining balance earning {returnPct}%. The growing SIP steps up {growthPct}%
         every year for {sipYears} years. The SIP figures grow the actual initial investment by one year (the workbook’s monthly
-        path does the same), so the monthly value matches the source sheet to the rupee.
+        path does the same), so the monthly value matches the source sheet to the rupee. Instead of the SIP, a one-time lumpsum
+        today (on top of the initial investment) closes the gap: the gap discounted one year at {returnPct}%.
       </p>
     </CalcShell>
   );

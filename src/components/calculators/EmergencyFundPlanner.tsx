@@ -57,10 +57,11 @@ export function EmergencyFundPlanner() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Target fund" value={inrShort(res.target)} tone="cyan" />
         <Stat label="Still needed" value={funded ? "Fully funded ✓" : inrShort(res.gap)} tone={funded ? "emerald" : "amber"} />
         <Stat label="Monthly SIP" value={funded || noPeriod ? "—" : `${inr(Math.round(res.requiredSip))}/mo`} tone="emerald" />
+        <Stat label="Or one-time lumpsum today" value={funded ? "—" : inr(Math.round(res.lumpsumToday))} tone="emerald" />
       </div>
 
       <Insight tone={funded ? "emerald" : "cyan"}>
@@ -70,11 +71,12 @@ export function EmergencyFundPlanner() {
             can begin with confidence.
           </>
         ) : noPeriod ? (
-          <>Set a build period to spread the {inrShort(res.gap)} gap.</>
+          <>Set a build period to spread the {inrShort(res.gap)} gap — or set it aside today in one go.</>
         ) : (
           <>
             A {buffer}-month safety net is <strong>{inrShort(res.target)}</strong>. {clientName || "Your client"} can build the{" "}
-            {inrShort(res.gap)} gap with about <strong>{inr(Math.round(res.requiredSip))}/month</strong> over {buildMonths} months.
+            {inrShort(res.gap)} gap with about <strong>{inr(Math.round(res.requiredSip))}/month</strong> over {buildMonths} months — or
+            a one-time <strong>{inr(Math.round(res.lumpsumToday))}</strong> parked today.
           </>
         )}
       </Insight>

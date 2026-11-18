@@ -96,9 +96,10 @@ export function SipForSwpCalculator() {
       )}
 
       {scenarios.map((s, i) => (
-        <div key={i} className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div key={i} className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Stat label={`Corpus needed @ ${tag(s)}`} value={inr(s.corpus)} />
           <Stat label={`Monthly SIP needed @ ${tag(s)}`} value={inr(s.monthlySip)} tone={i === 0 ? "cyan" : "emerald"} />
+          <Stat label={`One-time lumpsum today @ ${tag(s)}`} value={inr(s.lumpsumToday)} />
           <Stat label={`Total withdrawal @ ${tag(s)}`} value={inr(s.totalWithdrawal)} />
         </div>
       ))}
@@ -107,7 +108,8 @@ export function SipForSwpCalculator() {
         A SIP of <strong>{inr(s1.monthlySip)}</strong> a month for {sipYears} years at {fmtPct(s1.accPct)} builds{" "}
         {inr(s1.corpus)}{defer ? ` by the time withdrawals start ${deferYears} years later` : ""} — enough to draw{" "}
         {inr(monthlySwp)} a month{useInflation ? ` (rising with ${fmtPct(inflationPct)} inflation)` : ""} for {swpYears} years at{" "}
-        {fmtPct(s1.distPct)} and leave {inr(endBalance)}. You invest {inr(s1.totalInvested)} in all.
+        {fmtPct(s1.distPct)} and leave {inr(endBalance)}. You invest {inr(s1.totalInvested)} in all — or a one-time lumpsum of{" "}
+        <strong>{inr(s1.lumpsumToday)}</strong> invested today at {fmtPct(s1.accPct)} grows to the same corpus by then.
       </Insight>
       {sameRate && (
         <Insight tone="amber">The SWP-phase return equals inflation, so the withdrawal grows as fast as the money it is drawn from.</Insight>

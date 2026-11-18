@@ -180,6 +180,9 @@ export type VacationPlanResult = {
   amountStillNeeded: number; // max(0, corpus − grown initial)
   annualSip: number; // first-year growing annual SIP
   monthlySip: number; // first-month growing monthly SIP
+  /** One-time lumpsum today (on top of the initial investment) that grows to
+   *  the gap by the first vacation, a year out: amountStillNeeded ÷ (1 + r). */
+  lumpsumToday: number;
   totalNominalSpend: number; // sum of all escalated vacation costs
   drawdown: VacationDrawdownRow[];
 };
@@ -209,6 +212,9 @@ export function vacationPlan(input: VacationPlanInput): VacationPlanResult {
   const noSip = amountStillNeeded > 0 ? NaN : 0;
   const annualSip = pv100Annual > 0 ? (amountStillNeeded / pv100Annual) * 100 : noSip;
   const monthlySip = pv100Monthly > 0 ? (amountStillNeeded / pv100Monthly) * 100 : noSip;
+  // The gap is measured a year out (where the initial investment is grown to),
+  // so the lumpsum that closes it today is one year's discount at the same r.
+  const lumpsumToday = amountStillNeeded / (1 + r);
 
   // Drawdown trajectory — validates the corpus (it depletes to ≈0 after n vacations).
   const drawdown: VacationDrawdownRow[] = [];
@@ -228,6 +234,7 @@ export function vacationPlan(input: VacationPlanInput): VacationPlanResult {
     amountStillNeeded,
     annualSip,
     monthlySip,
+    lumpsumToday,
     totalNominalSpend,
     drawdown,
   };

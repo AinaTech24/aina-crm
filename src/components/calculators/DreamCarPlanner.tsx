@@ -52,9 +52,10 @@ export function DreamCarPlanner() {
         <NumberField label="Auto-loan tenure (yrs)" value={loanYears} setValue={setLoanYears} step={1} />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Stat label={`Car price in ${yearsToBuy} yrs`} value={inrShort(res.futurePrice)} tone="amber" />
         <Stat label="Invest-first SIP" value={`${inr(Math.round(res.sipToBuyCash))}/mo`} tone="emerald" />
+        <Stat label="Or invest-first lumpsum today" value={inr(Math.round(res.lumpsumToBuyCash))} tone="emerald" />
         <Stat label="Auto-loan EMI" value={`${inr(Math.round(res.emi))}/mo`} tone="cyan" />
         <Stat label="Loan interest paid" value={inrShort(res.loanInterest)} tone="rose" />
       </div>
@@ -74,7 +75,8 @@ export function DreamCarPlanner() {
         Buying on loan today costs <strong>{inrShort(res.loanTotal)}</strong> ({inrShort(res.loanInterest)} of it pure interest on a
         depreciating asset). Investing <strong>{inr(Math.round(res.sipToBuyCash))}/month</strong> for {yearsToBuy} years lets{" "}
         {clientName || "your client"} buy the {inrShort(res.futurePrice)} car in cash for just{" "}
-        <strong>{inrShort(res.investedCash)}</strong> invested — and arrive debt-free.
+        <strong>{inrShort(res.investedCash)}</strong> invested — and arrive debt-free. A one-time lumpsum of{" "}
+        <strong>{inr(Math.round(res.lumpsumToBuyCash))}</strong> invested today does the same with no monthly SIP.
       </Insight>
       )}
     </div>

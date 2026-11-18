@@ -87,16 +87,18 @@ export function GoalFeasibilityScore() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Stat label="Required monthly (all goals)" value={inr(result.requiredMonthlyTotal)} />
         <Stat label="Covered by existing corpus" value={inr(result.corpusCoversMonthlyEquivalent)} />
         <Stat label="Net required / available" value={`${inr(result.netRequiredMonthly)} / ${inr(result.availableMonthly)}`} />
         <Stat label="Monthly gap" value={inr(result.gapMonthly)} tone={result.gapMonthly > 0 ? "rose" : "emerald"} />
+        <Stat label="Or one-time lumpsum today (after corpus)" value={inr(result.netLumpsumToday)} />
       </div>
 
       <Insight tone={tone}>
         {result.gapMonthly > 0
-          ? <>To fully fund every goal, the plan needs about <strong>{inr(result.netRequiredMonthly)}/month</strong> but only{" "}
+          ? <>To fully fund every goal, the plan needs about <strong>{inr(result.netRequiredMonthly)}/month</strong> (or a one-time{" "}
+            <strong>{inr(result.netLumpsumToday)}</strong> invested today) but only{" "}
             <strong>{inr(result.availableMonthly)}</strong> is being invested — a <strong>{inr(result.gapMonthly)}/month</strong> gap.
             Closing it (or extending timelines / trimming goals) lifts the score.</>
           : result.dueNowUncovered > 0

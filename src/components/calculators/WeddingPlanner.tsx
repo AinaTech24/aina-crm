@@ -62,14 +62,16 @@ export function WeddingPlanner() {
         <div className="text-xs text-muted-foreground mt-1">for {years} years to fund the big day, stress-free</div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Stat label={`Cost in ${years} yrs`} value={inrShort(res.futureCost)} tone="amber" />
         <Stat label="Monthly SIP needed" value={inr(Math.round(res.requiredSip))} tone="emerald" />
+        <Stat label="Or one-time lumpsum today" value={inr(Math.round(res.lumpsumToday))} tone="emerald" />
       </div>
 
       <Insight tone="emerald">
         A {inrShort(cost)} wedding today becomes <strong>{inrShort(res.futureCost)}</strong> in {years} years at {inflation}% inflation.
-        A SIP of <strong>{inr(Math.round(res.requiredSip))}/month</strong> funds it calmly — instead of breaking an FD or taking a loan at the last minute.
+        A SIP of <strong>{inr(Math.round(res.requiredSip))}/month</strong> — or a one-time lumpsum of{" "}
+        <strong>{inr(Math.round(res.lumpsumToday))}</strong> invested today — funds it calmly, instead of breaking an FD or taking a loan at the last minute.
       </Insight>
     </div>
   );

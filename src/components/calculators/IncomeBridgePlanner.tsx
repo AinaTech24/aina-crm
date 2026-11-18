@@ -98,6 +98,9 @@ export function IncomeBridgePlanner() {
 
   const result = scenarios[0].result;
   const tag = (s: (typeof scenarios)[number]) => (scenarios.length > 1 ? ` @ ${fmtPct(s.accum)} / ${fmtPct(s.dist)}` : "");
+  // Reverse mode with a SIP: the one-time lumpsum today that builds the same corpus instead.
+  const showLumpsumAlt = isReverse && investMode !== "lumpsum";
+  const lumpsumAltLabel = investMode === "lumpsum_sip" ? "Or extra lumpsum today, no SIP" : "Or one-time lumpsum today";
 
   return (
     <div className="card-surface p-5 space-y-4">
@@ -193,13 +196,14 @@ export function IncomeBridgePlanner() {
       {scenarios.map((s, i) => {
         const r = s.result;
         return isReverse ? (
-          <div key={i} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div key={i} className={`grid grid-cols-2 gap-3 ${showLumpsumAlt ? "md:grid-cols-3" : "md:grid-cols-4"}`}>
             <Stat label={`Corpus needed at SWP start${tag(s)}`} value={inr(r.requiredCorpus ?? r.corpus)} tone="amber" />
             {investMode === "lumpsum" ? (
               <Stat label={`Lumpsum to invest today${tag(s)}`} value={inr(r.requiredLumpsum ?? 0)} tone="emerald" />
             ) : (
               <Stat label={`${isSalary ? "Monthly investment needed" : "Monthly SIP needed"}${tag(s)}`} value={inr(r.requiredMonthlySip ?? 0)} tone="emerald" />
             )}
+            {showLumpsumAlt && <Stat label={`${lumpsumAltLabel}${tag(s)}`} value={inr(r.lumpsumInsteadOfSip ?? 0)} />}
             <Stat label="Monthly SWP (first month)" value={inr(r.monthlySwp)} />
             <Stat label={`Total withdrawal${tag(s)}`} value={inr(r.totalWithdrawn)} tone="emerald" />
           </div>
@@ -212,6 +216,15 @@ export function IncomeBridgePlanner() {
           </div>
         );
       })}
+
+      {showLumpsumAlt && (
+        <Insight tone="cyan">
+          A corpus of <strong>{inr(result.requiredCorpus ?? result.corpus)}</strong> at age {retirementAge} needs{" "}
+          {isSalary ? "a monthly investment" : "a SIP"} of <strong>{inr(result.requiredMonthlySip ?? 0)}/month</strong> to start
+          {investMode === "lumpsum_sip" ? <> beside the {inr(lumpsum)} lumpsum — or, instead of the SIP, one more lumpsum of</> : <> — or a one-time lumpsum of</>}{" "}
+          <strong>{inr(result.lumpsumInsteadOfSip ?? 0)}</strong> invested today at {fmtPct(accumReturnPct)} and left to grow.
+        </Insight>
+      )}
 
       {/* Secondary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

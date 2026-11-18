@@ -38,6 +38,9 @@ export type EmiSipResult = {
   interestRepayment: number | null;
   totalRepayment: number;
   monthlySipRequired: number;
+  /** One-time lumpsum invested today that grows to the total repayment by the
+   *  end of the tenure (same effective rate, same months as the SIP). */
+  lumpsumRequired: number;
   sipAsPctOfEmi: number;
   sipTotalInvested: number;
   sipWealthGain: number;
@@ -50,6 +53,13 @@ export function computeEmi(principal: number, annualRatePct: number, months: num
   if (r === 0) return principal / months;
   const f = Math.pow(1 + r, months);
   return (principal * r * f) / (f - 1);
+}
+
+/** One-time lumpsum today (effective monthly rate) that grows to `target` in `months`. */
+export function lumpsumNeededToday(target: number, annualRatePct: number, months: number): number {
+  if (target <= 0) return 0;
+  const m = Math.pow(1 + annualRatePct / 100, 1 / 12) - 1;
+  return target / Math.pow(1 + m, Math.max(0, months));
 }
 
 /** Monthly SIP (begin-mode, effective rate) needed to accumulate `target`. */
@@ -83,6 +93,7 @@ export function computeEmiSip(input: EmiSipInput): EmiSipResult {
   }
 
   const monthlySipRequired = requiredSipBegin(totalRepayment, input.sipReturnPct, n);
+  const lumpsumRequired = lumpsumNeededToday(totalRepayment, input.sipReturnPct, n);
   const sipAsPctOfEmi = monthlyEmi > 0 ? (monthlySipRequired / monthlyEmi) * 100 : 0;
   const sipTotalInvested = monthlySipRequired * n;
 
@@ -92,6 +103,7 @@ export function computeEmiSip(input: EmiSipInput): EmiSipResult {
     interestRepayment,
     totalRepayment,
     monthlySipRequired,
+    lumpsumRequired,
     sipAsPctOfEmi,
     sipTotalInvested,
     sipWealthGain: totalRepayment - sipTotalInvested,

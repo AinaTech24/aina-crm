@@ -170,11 +170,17 @@ export function SipSwpReckoner() {
           investMode === "lumpsum" ? (
             <Stat label="Lumpsum needed today" value={inr(result.requiredLumpsum ?? NaN)} tone="cyan" />
           ) : (
-            <Stat
-              label={isSalary ? "Monthly SIP needed (first year)" : "Monthly SIP needed"}
-              value={inr(result.requiredMonthlySip ?? NaN)}
-              tone="cyan"
-            />
+            <>
+              <Stat
+                label={isSalary ? "Monthly SIP needed (first year)" : "Monthly SIP needed"}
+                value={inr(result.requiredMonthlySip ?? NaN)}
+                tone="cyan"
+              />
+              <Stat
+                label={investMode === "lumpsum_sip" ? "Or extra lumpsum today, no SIP" : "Or one-time lumpsum today"}
+                value={inr(result.lumpsumInsteadOfSip ?? NaN)}
+              />
+            </>
           )
         ) : (
           <Stat label={distInflationPct > 0 ? "Monthly SWP (first month)" : "Monthly SWP"} value={inr(result.monthlySwp)} tone="cyan" />
@@ -194,6 +200,13 @@ export function SipSwpReckoner() {
         <strong>{inr(result.monthlySwp)}</strong> in the first month
         {distInflationPct > 0 ? `, rising every month to ${inr(result.lastMonthlySwp)}` : ""}, until age {swpTillAge}, and leaves{" "}
         {inr(result.endBalanceActual)}.
+        {isReverse && investMode !== "lumpsum" && (
+          <>
+            {" "}Instead of the {inr(result.requiredMonthlySip ?? NaN)}/month {isSalary ? "salary-linked SIP" : "SIP"},{" "}
+            {investMode === "lumpsum_sip" ? <>one more lumpsum of</> : <>a one-time lumpsum of</>}{" "}
+            <strong>{inr(result.lumpsumInsteadOfSip ?? NaN)}</strong> invested today at {fmtPct(accumReturnPct)} builds the same corpus.
+          </>
+        )}
       </Insight>
 
       {result.accSchedule.length > 0 && (

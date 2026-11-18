@@ -12,6 +12,8 @@
  *   • sipForTarget         — SIP needed for a target (+ step-up, cost of delay)
  *   • sipLumpsumForTarget  — SIP for a given lumpsum, or lumpsum for a given SIP
  *   • lumpsumForTarget     — one-time amount needed for a target, 1–2 scenarios
+ *   • lumpsumNeededToday   — the one-time lumpsum TODAY beside every "SIP needed"
+ *                            figure above (same target, rate and date)
  *
  * CONVENTION — the same as sip360.ts (whose primitives this module reuses):
  *   effective monthly rate m = (1 + annual)^(1/12) − 1, SIPs paid at the START
@@ -46,6 +48,17 @@ export function scenarioRates(r1: number, r2: number | null | undefined): number
 /** FV after `years` whole years of a lumpsum at an annual rate. */
 function growLumpsum(amount: number, ratePct: number, years: number): number {
   return fvLumpsum(amount, ratePct, years * 12);
+}
+
+/**
+ * One-time lumpsum invested TODAY that grows to `target` in `years` whole years
+ * — the alternative shown beside every "SIP needed" figure. The inverse of
+ * growLumpsum: annual compounding, identical to the effective monthly rate over
+ * whole years. Never negative; a target due now needs the target itself.
+ */
+export function lumpsumNeededToday(target: number, ratePct: number, years: number): number {
+  if (!(target > 0)) return 0;
+  return target / Math.pow(1 + ratePct / 100, Math.max(0, years));
 }
 
 /* ───────────────────────── #9 Lumpsum FV ───────────────────────── */
@@ -260,6 +273,8 @@ export type LimitedNeedScenario = {
   monthlySip: number;
   /** Unrounded SIP × 12 × SIP years. */
   totalInvestment: number;
+  /** One-time lumpsum today that, left invested for the SIP + deferment years, reaches the target. */
+  lumpsumToday: number;
   rows: { year: number; monthly: number; annual: number; value: number }[];
 };
 
@@ -269,13 +284,14 @@ export function limitedSipNeed(input: { target: number; sipYears: number; deferY
   const s = wholeYears(input.sipYears);
   const d = wholeYears(input.deferYears);
   return input.ratesPct.map((ratePct) => {
-    if (s <= 0) return { ratePct, monthlySip: NaN, totalInvestment: NaN, rows: [] };
+    const lumpsumToday = lumpsumNeededToday(input.target, ratePct, s + d);
+    if (s <= 0) return { ratePct, monthlySip: NaN, totalInvestment: NaN, lumpsumToday, rows: [] };
     const atStop = input.target / Math.pow(1 + ratePct / 100, d);
     const sip = requiredSip(atStop, ratePct, s * 12);
     const rows = limitedRows([sip], s, s + d, [ratePct]).map((r) => ({
       year: r.year, monthly: r.monthly, annual: r.annual, value: r.values[0],
     }));
-    return { ratePct, monthlySip: sip, totalInvestment: sip * 12 * s, rows };
+    return { ratePct, monthlySip: sip, totalInvestment: sip * 12 * s, lumpsumToday, rows };
   });
 }
 
@@ -285,6 +301,8 @@ export type StepUpTargetScenario = {
   ratePct: number;
   startSip: number;
   total: number;
+  /** One-time lumpsum today that reaches the same target over the same years. */
+  lumpsumToday: number;
   rows: { year: number; monthly: number; annual: number; value: number }[];
 };
 
@@ -298,6 +316,7 @@ function stepUpTargetScenario(target: number, years: number, stepUpPct: number, 
     ratePct,
     startSip,
     total: proj.invested,
+    lumpsumToday: lumpsumNeededToday(target, ratePct, years),
     rows: proj.rows.map((r) => ({ year: r.year, monthly: r.monthly, annual: r.annual, value: r.values[0] })),
   };
 }
@@ -314,6 +333,8 @@ export type SipTargetScenario = {
   ratePct: number;
   sip: number;
   total: number;
+  /** One-time lumpsum today that reaches the same target over the same years. */
+  lumpsumToday: number;
   rows: { year: number; annual: number; value: number }[];
   stepUp: StepUpTargetScenario | null;
   /** Delay d = 1…n−1 years: SIP over the n−d years left, and its total. */
@@ -347,6 +368,7 @@ export function sipForTarget(input: {
       ratePct,
       sip,
       total: sip * 12 * n,
+      lumpsumToday: lumpsumNeededToday(input.target, ratePct, n),
       rows,
       stepUp: input.stepUpPct != null ? stepUpTargetScenario(input.target, n, input.stepUpPct, ratePct) : null,
       delay,

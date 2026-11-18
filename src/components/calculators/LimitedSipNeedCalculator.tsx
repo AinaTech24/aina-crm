@@ -52,6 +52,9 @@ export function LimitedSipNeedCalculator() {
           <Stat key={`m${i}`} label={`Monthly SIP needed @ ${fmtPct(sc.ratePct)}`} value={inr(sc.monthlySip)} tone={i === 0 ? "cyan" : "emerald"} />
         ))}
         {res.map((sc, i) => (
+          <Stat key={`l${i}`} label={`One-time lumpsum today @ ${fmtPct(sc.ratePct)}`} value={inr(sc.lumpsumToday)} />
+        ))}
+        {res.map((sc, i) => (
           <Stat key={`t${i}`} label={`Total invested @ ${fmtPct(sc.ratePct)}`} value={inr(sc.totalInvestment)} />
         ))}
       </div>
@@ -59,7 +62,8 @@ export function LimitedSipNeedCalculator() {
       {s1 && Number.isFinite(s1.monthlySip) ? (
         <Insight tone="cyan">
           A SIP of <strong>{inr(s1.monthlySip)}/month</strong> for {s} years — {inr(s1.totalInvestment)} in all — then left
-          invested for {total - s} more years reaches <strong>{inr(target)}</strong> at {fmtPct(s1.ratePct)}.
+          invested for {total - s} more years reaches <strong>{inr(target)}</strong> at {fmtPct(s1.ratePct)} — as would a
+          one-time lumpsum of <strong>{inr(s1.lumpsumToday)}</strong> invested today and left for all {total} years.
         </Insight>
       ) : (
         <Insight tone="amber">Enter a SIP period of at least one year.</Insight>

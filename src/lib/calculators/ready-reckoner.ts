@@ -92,6 +92,10 @@ export type ReadyReckonerResult = {
   years: number[];
   /** cells[rateIndex][yearIndex], exact rupees. */
   cells: number[][];
+  /** sip_need only: the one-time lumpsum TODAY for the same target, rate and
+   *  period (lumpsumNeeded — the Lumpsum Need reckoner's cell), exact rupees,
+   *  shown in ₹ lakh like that reckoner. null for every other mode. */
+  lumpsumCells: number[][] | null;
   /** False when the amount is ≤ 0 or no rate / period is usable. */
   valid: boolean;
 };
@@ -103,7 +107,10 @@ export function computeReadyReckoner(input: ReadyReckonerInput): ReadyReckonerRe
   const cells = valid
     ? rates.map((r) => years.map((y) => reckonerCell(input.mode, input.amount, r, y)))
     : [];
-  return { mode: input.mode, unit: CELL_UNIT[input.mode], rates, years, cells, valid };
+  const lumpsumCells = valid && input.mode === "sip_need"
+    ? rates.map((r) => years.map((y) => lumpsumNeeded(input.amount, r, y)))
+    : null;
+  return { mode: input.mode, unit: CELL_UNIT[input.mode], rates, years, cells, lumpsumCells, valid };
 }
 
 /**

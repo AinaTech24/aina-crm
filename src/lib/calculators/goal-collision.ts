@@ -5,7 +5,9 @@
  * demands, year by year. Every SIP starts now and stops when its goal is due,
  * so the commitment is highest now (year 1) and eases as goals are reached.
  *
- * Required monthly SIP per goal uses an effective-monthly annuity-due factor.
+ * Required monthly SIP per goal uses an effective-monthly annuity-due factor;
+ * the one-time lumpsum today beside it discounts the same cost at the same
+ * effective monthly rate over the same months.
  */
 
 import { monthlyRate } from "./sip360";
@@ -30,7 +32,16 @@ export function requiredMonthlySip(futureCost: number, ratePct: number, years: n
   return factor > 0 ? futureCost / factor : 0;
 }
 
-export type CollisionGoalResult = CollisionGoal & { monthlySip: number };
+/** One-time lumpsum invested today that grows to `futureCost` in `years` at
+ *  `ratePct` — the same effective monthly rate and the same whole months as
+ *  requiredMonthlySip. A goal due now needs its whole cost. */
+export function lumpsumNeededToday(futureCost: number, ratePct: number, years: number): number {
+  if (!(futureCost > 0)) return 0;
+  const months = Math.max(0, Math.round(years * 12));
+  return futureCost / Math.pow(1 + monthlyRate(ratePct), months);
+}
+
+export type CollisionGoalResult = CollisionGoal & { monthlySip: number; lumpsumToday: number };
 
 export type CollisionYear = {
   year: number;
@@ -44,12 +55,15 @@ export type GoalCollisionResult = {
   peakMonthly: number;
   peakYear: number;
   horizon: number;
+  /** Σ of every goal's one-time lumpsum today. */
+  totalLumpsumToday: number;
 };
 
 export function computeGoalCollision(goals: CollisionGoal[]): GoalCollisionResult {
   const withSip: CollisionGoalResult[] = goals.map((g) => ({
     ...g,
     monthlySip: requiredMonthlySip(g.futureCost, g.returnPct, g.yearsAway),
+    lumpsumToday: lumpsumNeededToday(g.futureCost, g.returnPct, g.yearsAway),
   }));
 
   const horizon = Math.max(1, ...withSip.map((g) => Math.ceil(g.yearsAway)));
@@ -74,5 +88,6 @@ export function computeGoalCollision(goals: CollisionGoal[]): GoalCollisionResul
     timeline.push({ year, totalMonthly, activeGoals });
   }
 
-  return { goals: withSip, timeline, peakMonthly, peakYear, horizon };
+  const totalLumpsumToday = withSip.reduce((s, g) => s + g.lumpsumToday, 0);
+  return { goals: withSip, timeline, peakMonthly, peakYear, horizon, totalLumpsumToday };
 }

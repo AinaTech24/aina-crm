@@ -78,10 +78,11 @@ export function PassiveIncomeBuilder() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label={`Income in ${yearsToFreedom} yrs`} value={`${inr(Math.round(res.futureMonthly))}/mo`} tone="cyan" />
         <Stat label="Corpus needed" value={noPerpetuity ? "—" : inrShort(res.corpusNeeded)} tone="emerald" />
         <Stat label="Monthly SIP" value={noPerpetuity ? "—" : inr(Math.round(res.requiredSip))} tone="emerald" />
+        <Stat label="Or one-time lumpsum today" value={noPerpetuity ? "—" : inr(Math.round(res.lumpsumToday))} tone="emerald" />
       </div>
 
       {noPerpetuity ? (
@@ -90,7 +91,8 @@ export function PassiveIncomeBuilder() {
       <Insight tone="emerald">
         To draw <strong>{inr(targetMonthly)}/month</strong> (≈ {inr(Math.round(res.futureMonthly))}/mo after {inflation}% inflation){" "}
         {Number(payout) === 0 ? "forever, without ever touching the principal" : `for ${payout} years`}, {clientName || "your client"} needs a corpus of{" "}
-        <strong>{inrShort(res.corpusNeeded)}</strong> — built with about <strong>{inr(Math.round(res.requiredSip))}/month</strong> for {yearsToFreedom} years.
+        <strong>{inrShort(res.corpusNeeded)}</strong> — built with about <strong>{inr(Math.round(res.requiredSip))}/month</strong> for {yearsToFreedom} years,
+        or a one-time lumpsum of about <strong>{inr(Math.round(res.lumpsumToday))}</strong> invested today.
       </Insight>
       )}
     </div>

@@ -109,14 +109,27 @@ export function SalaryWealthBuilder() {
 
       {/* Headline results */}
       {isSaving ? (
-        <ResultRow
-          cells={[
-            { label: "Starting monthly SIP needed", value: inr(result.requiredMonthlySip ?? 0), tone: "emerald" },
-            { label: "As % of monthly salary", value: Number.isFinite(result.requiredSipPct ?? 0) ? `${(result.requiredSipPct ?? 0).toFixed(2)}%` : "—", tone: "amber" },
-            { label: "Target wealth", value: inr(result.targetWealth ?? 0) },
-            { label: `New investment till age ${investTillAge}`, value: inr(result.newInvestment) },
-          ]}
-        />
+        <>
+          <ResultRow
+            cells={[
+              { label: "Starting monthly SIP needed", value: inr(result.requiredMonthlySip ?? 0), tone: "emerald" },
+              { label: "As % of monthly salary", value: Number.isFinite(result.requiredSipPct ?? 0) ? `${(result.requiredSipPct ?? 0).toFixed(2)}%` : "—", tone: "amber" },
+              { label: "Target wealth", value: inr(result.targetWealth ?? 0) },
+              { label: `New investment till age ${investTillAge}`, value: inr(result.newInvestment) },
+            ]}
+          />
+          <ResultRow
+            cells={[
+              { label: "Or one-time lumpsum today", value: inr(result.requiredLumpsumToday ?? NaN), tone: "emerald" },
+              { label: "Left invested for", value: `${result.totalYears} yrs, till age ${retirementAge}` },
+            ]}
+          />
+          <p className="text-xs text-muted-foreground">
+            Instead of a starting SIP of {inr(result.requiredMonthlySip ?? NaN)} rising with the salary, a one-time lumpsum of{" "}
+            <strong>{inr(result.requiredLumpsumToday ?? NaN)}</strong> invested today at {assumedReturnPct}% reaches the{" "}
+            {inr(result.targetWealth ?? 0)} target by age {retirementAge}{includeExisting ? ", together with the existing investment" : ""}.
+          </p>
+        </>
       ) : (
         <>
           <ResultRow

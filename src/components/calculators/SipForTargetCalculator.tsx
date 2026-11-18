@@ -69,6 +69,9 @@ export function SipForTargetCalculator() {
             {res.map((sc, i) => (
               <Stat key={`n${i}`} label={`Monthly SIP @ ${fmtPct(sc.ratePct)}`} value={inr(sc.sip)} tone={i === 0 ? "cyan" : undefined} />
             ))}
+            {res.map((sc, i) => (
+              <Stat key={`l${i}`} label={`One-time lumpsum today @ ${fmtPct(sc.ratePct)}`} value={inr(sc.lumpsumToday)} />
+            ))}
             {hasStep && res.map((sc, i) => (
               <Stat key={`s${i}`} label={`Starting step-up SIP @ ${fmtPct(sc.ratePct)}`} value={inr(sc.stepUp!.startSip)} tone="emerald" />
             ))}
@@ -83,6 +86,12 @@ export function SipForTargetCalculator() {
                 : []),
             ]}
           />
+
+          <Insight tone="cyan">
+            To reach <strong>{inr(target)}</strong> in {n} years at {fmtPct(s1.ratePct)}: a SIP of <strong>{inr(s1.sip)}/month</strong>{" "}
+            — or a one-time lumpsum of <strong>{inr(s1.lumpsumToday)}</strong> invested today
+            {res[1] && <> ({inr(res[1].sip)}/month or {inr(res[1].lumpsumToday)} today at {fmtPct(res[1].ratePct)})</>}.
+          </Insight>
 
           {delay1 && (
             <Insight tone="amber">
