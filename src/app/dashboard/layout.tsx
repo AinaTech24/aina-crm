@@ -868,7 +868,7 @@ function RestrictedNotice({ license }: { license: any }) {
         {license.reason ?? "Your subscription needs attention before you can continue using the app."}
       </p>
       <div className="mt-6 space-y-2 text-sm text-left bg-secondary/60 rounded-xl p-4 border border-border/60">
-        <Row label="Package" value={license.packageKey ?? "—"} />
+        <Row label="Plan" value={license.aumPriced ? `AUM-based · ${license.maxUsers} user${license.maxUsers === 1 ? "" : "s"}` : license.packageKey ?? "—"} />
         <Row label="Status" value={license.status} />
         <Row label="License end" value={license.licenseEndAt?.toLocaleDateString("en-IN") ?? "—"} />
       </div>
