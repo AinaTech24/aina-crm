@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { resolvePeriod, minusYear, fyStartOf, fiscalYearKey, formatRange } from "@/lib/dashboards/system/period";
+import { resolvePeriod, minusYear, fyStartOf, fiscalYearKey, formatRange, PERIOD_KEYS } from "@/lib/dashboards/system/period";
 import {
   filterStateToParams, hasFilterParams, parseFilterState, sanitizeFilterState, activeFilterKeys,
 } from "@/lib/dashboards/system/filters";
@@ -76,6 +76,18 @@ describe("Period — India dates, same period last year", () => {
     const pace = resolvePeriod("fy", { today: TODAY }).fyPace;
     expect(pace).toBeGreaterThan(0.49);
     expect(pace).toBeLessThan(0.51);
+  });
+});
+
+describe("Period — All time (per-firm option)", () => {
+  it("runs from before any record to today, compared with the same up to a year ago", () => {
+    const p = resolvePeriod("all", { today: TODAY });
+    expect([p.key, p.from, p.to]).toEqual(["all", "2000-01-01", TODAY]);
+    expect(p.prev).toEqual({ from: "1999-01-01", to: minusYear(TODAY) });
+    expect(p.label).toBe(`All time (up to ${formatRange(TODAY, TODAY)})`);
+  });
+  it("is not in the default period menu", () => {
+    expect((PERIOD_KEYS as readonly string[]).includes("all")).toBe(false);
   });
 });
 

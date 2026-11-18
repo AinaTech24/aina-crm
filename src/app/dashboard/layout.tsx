@@ -57,6 +57,7 @@ import { tenants, users, tenantUiLayouts } from "@/db/schema";
 import { requireSession, requirePageSession } from "@/lib/auth/session";
 import { primaryRoleLabel, can, type Capability } from "@/lib/auth/rbac";
 import { loadTenantLicense, isPathAllowedWhenRestricted } from "@/lib/auth/license";
+import { isPathAllowedDuringSetup, onboardingGate } from "@/lib/legal/documents";
 import { tenantAccessibleNavKeys, isGatableNav, gatedNavKeyForPath } from "@/config/nav-access";
 import { pickLogo } from "@/lib/branding/logo";
 import type { Metadata } from "next";
@@ -395,6 +396,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const reqHeaders = await headers();
   const pathname = reqHeaders.get("x-pathname") ?? "";
   const pathAllowed = isPathAllowedWhenRestricted(pathname);
+
+  // A firm that bought online finishes the setup wizard (firm details, Terms,
+  // the NDA) before the CRM opens; a firm with a NEW Terms / NDA version
+  // accepts it first (the owner — others carry on). Billing and Support stay
+  // open throughout (lib/legal/documents.ts).
+  if (!license.isRestricted && !session.isPlatformAdmin) {
+    const gate = await onboardingGate(session.tenantId);
+    const mustGo =
+      gate.mode === "setup" || (gate.mode === "reaccept" && can(session.roles, "settings.billing", session.permissions));
+    if (mustGo && !isPathAllowedDuringSetup(pathname)) redirect("/onboarding/setup");
+  }
 
   const tenantP = getShellTenant(session.tenantId);
   const { userModules, avatarUrl, twoFaEnabled, navBadges, branchList, firmLayoutRows } = await withTenant(session.tenantId, async (tx) => {
@@ -759,6 +771,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
           ) : (
             <>
               {license.isRestricted && pathAllowed && <RestrictedBanner license={license} />}
+              {!license.isRestricted && license.renewal?.phase === "grace" && (
+                <RenewalDueBanner
+                  daysLeft={license.renewal.daysLeft ?? 0}
+                  graceEndsOn={license.renewal.graceEndsOn}
+                  canRenew={can(session.roles, "settings.billing", session.permissions)}
+                />
+              )}
               {children}
             </>
           )}
@@ -780,6 +799,38 @@ export default async function DashboardLayout({ children }: { children: React.Re
     </div>
     </ConfirmProvider>
     </ToastProvider>
+  );
+}
+
+/**
+ * A renewal not paid on its due date: 7 days' grace with full access (the
+ * owner's rule A). The owner and anyone who manages billing get a persistent
+ * banner with a Renew button; everyone else a softer notice.
+ */
+function RenewalDueBanner({ daysLeft, graceEndsOn, canRenew }: { daysLeft: number; graceEndsOn: string; canRenew: boolean }) {
+  const left = daysLeft === 0 ? "today is the last day" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
+  if (!canRenew) {
+    return (
+      <div role="status" className="mb-4 rounded-xl border border-border bg-secondary/70 px-3.5 py-2.5 text-sm text-muted-foreground print:hidden">
+        Your firm&apos;s subscription renewal is due — the owner has been asked to renew ({left}).
+      </div>
+    );
+  }
+  return (
+    <div role="alert" className="mb-6 rounded-xl border border-warning/50 bg-warning/5 p-3.5 flex flex-wrap items-center gap-3 text-sm print:hidden">
+      <div className="size-9 rounded-lg bg-warning/10 grid place-items-center flex-shrink-0">
+        <AlertTriangle className="size-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <span className="font-semibold">Your subscription renewal is due — renew now.</span>{" "}
+        <span className="text-muted-foreground">
+          {left[0].toUpperCase() + left.slice(1)} of full access (until {formatDate(graceEndsOn)}). Renewing in this time costs nothing extra.
+        </span>
+      </div>
+      <Link href="/dashboard/billing" className="btn-primary text-xs whitespace-nowrap">
+        Renew
+      </Link>
+    </div>
   );
 }
 
@@ -817,7 +868,7 @@ function RestrictedNotice({ license }: { license: any }) {
         {license.reason ?? "Your subscription needs attention before you can continue using the app."}
       </p>
       <div className="mt-6 space-y-2 text-sm text-left bg-secondary/60 rounded-xl p-4 border border-border/60">
-        <Row label="Package" value={license.packageKey ?? "—"} />
+        <Row label="Plan" value={license.aumPriced ? `AUM-based · ${license.maxUsers} user${license.maxUsers === 1 ? "" : "s"}` : license.packageKey ?? "—"} />
         <Row label="Status" value={license.status} />
         <Row label="License end" value={license.licenseEndAt?.toLocaleDateString("en-IN") ?? "—"} />
       </div>

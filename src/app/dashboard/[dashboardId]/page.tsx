@@ -91,6 +91,7 @@ export default async function DashboardById({
             options={p.options}
             bar={p.bar}
             usingSaved={p.usingSaved}
+            allTime={p.allTime}
           />
         }
       />

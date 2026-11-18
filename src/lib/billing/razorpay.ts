@@ -185,7 +185,7 @@ export async function razorpayPublicKeyId(): Promise<string> {
   return (await loadRazorpayConfig()).keyId ?? "";
 }
 
-async function razorpayApi<T = any>(path: string, method: "GET" | "POST", body?: unknown): Promise<T> {
+async function razorpayApi<T = any>(path: string, method: "GET" | "POST" | "PATCH", body?: unknown): Promise<T> {
   const { keyId, keySecret } = await loadRazorpayConfig();
   if (!keyId || !keySecret) {
     throw new Error("Razorpay is not configured. Set the keys in Aina Admin → Settings → Razorpay.");
@@ -263,6 +263,12 @@ export async function createRazorpaySubscription(params: {
   customerNotify?: boolean;
   startAtUnix?: number;
   notes?: Record<string, string>;
+  /**
+   * One-time charges collected WITH the authorisation, before `start_at` — how
+   * the AUM checkout charges the cycle being bought now while the plan's first
+   * recurring debit falls on the next renewal (Razorpay's "upfront amount").
+   */
+  addons?: Array<{ name: string; amountPaise: number }>;
 }): Promise<{ id: string; short_url?: string; status?: string }> {
   if (!(await razorpayConfigured())) {
     return { id: `sub_stub_${Date.now()}`, status: "created" };
@@ -273,7 +279,25 @@ export async function createRazorpaySubscription(params: {
     quantity: 1,
     customer_notify: params.customerNotify ? 1 : 0,
     ...(params.startAtUnix ? { start_at: params.startAtUnix } : {}),
+    ...(params.addons?.length
+      ? { addons: params.addons.map((a) => ({ item: { name: a.name.slice(0, 120), amount: a.amountPaise, currency: "INR" } })) }
+      : {}),
     notes: params.notes,
+  });
+}
+
+/**
+ * Move a subscription to another plan FROM ITS NEXT CYCLE (never mid-cycle):
+ * Razorpay's "update subscription" with schedule_change_at = cycle_end. Razorpay
+ * allows this only for some payment methods (cards); for a UPI / e-mandate it
+ * refuses, and the caller then asks the owner to re-authorise.
+ */
+export async function updateRazorpaySubscriptionPlan(id: string, planId: string): Promise<{ id: string; status?: string }> {
+  if (!(await razorpayConfigured())) return { id, status: "active" };
+  return razorpayApi(`/v1/subscriptions/${id}`, "PATCH", {
+    plan_id: planId,
+    schedule_change_at: "cycle_end",
+    customer_notify: 1,
   });
 }
 

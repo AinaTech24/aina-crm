@@ -9,7 +9,7 @@
  * 1:1 with tenants (one active subscription per tenant at a time).
  */
 
-import { boolean, decimal, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, decimal, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 
 /**
@@ -114,7 +114,7 @@ export const subscriptions = pgTable(
       .notNull()
       .default("trial"),
 
-    billingCycle: text("billing_cycle", { enum: ["monthly", "yearly", "custom"] }).default("yearly"),
+    billingCycle: text("billing_cycle", { enum: ["monthly", "half_yearly", "yearly", "commitment", "custom"] }).default("yearly"),
 
     /** License window */
     licenseStartAt: timestamp("license_start_at", { withTimezone: true }).defaultNow(),
@@ -157,6 +157,34 @@ export const subscriptions = pgTable(
     failedPaymentCount: integer("failed_payment_count").notNull().default(0),
     lastPaymentAt: timestamp("last_payment_at", { withTimezone: true }),
     lastPaymentPaise: integer("last_payment_paise"),
+    /** What the Razorpay plan in force debits each cycle, incl. GST (migration 0268) — after a commitment, the monthly. */
+    razorpayPlanPaise: integer("razorpay_plan_paise"),
+
+    /**
+     * AUM-based pricing (lib/billing/aum-pricing.ts, migration 0265). Null
+     * `pricingModel` = a legacy package-priced subscription.
+     */
+    pricingModel: text("pricing_model"),
+    /** The AUM the firm declared when it bought (sets the FIRST cycle only). */
+    declaredAumCrore: decimal("declared_aum_crore", { precision: 12, scale: 2 }),
+    /** The AUM the tier in force was decided from, where it came from, and when. */
+    aumCroreInForce: decimal("aum_crore_in_force", { precision: 12, scale: 2 }),
+    aumSource: text("aum_source"),
+    aumAsOf: date("aum_as_of"),
+    aumTierKey: text("aum_tier_key"),
+    /** Maintenance + users × per-user, monthly, before discount (the late-fee base). */
+    monthlyBasePaise: integer("monthly_base_paise"),
+    /** What one cycle costs, incl. GST. */
+    cycleTotalPaise: integer("cycle_total_paise"),
+    /** The full quote (lib/billing/aum-pricing CycleQuote) of the cycle in force — the invoice's lines. */
+    cycleQuote: jsonb("cycle_quote").$type<Record<string, unknown>>(),
+    quoteId: uuid("quote_id"),
+    /** The Razorpay checkout in flight — what is being bought (server-computed). */
+    pendingCheckout: jsonb("pending_checkout").$type<Record<string, unknown>>(),
+    /** The renewal review's decision for the coming cycle. */
+    nextCycle: jsonb("next_cycle").$type<Record<string, unknown>>(),
+    /** The owner's re-quote, applied from the next renewal. */
+    scheduledChange: jsonb("scheduled_change").$type<Record<string, unknown>>(),
 
     /** Set by AINA when manually intervening */
     suspendedAt: timestamp("suspended_at", { withTimezone: true }),

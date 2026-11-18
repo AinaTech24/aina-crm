@@ -24,7 +24,8 @@ import {
   EXTRA_FILTERS, FILTER_FIELDS, activeFilterKeys, hasFilterParams, parseFilterState,
   type FilterConfig, type FilterKey, type FilterState,
 } from "@/lib/dashboards/system/filters";
-import { resolvePeriod, type ResolvedPeriod } from "@/lib/dashboards/system/period";
+import { ALL_TIME, resolvePeriod, type ResolvedPeriod } from "@/lib/dashboards/system/period";
+import { loadTenantLicense } from "@/lib/auth/license";
 import { SYSTEM_WIDGETS_BY_KEY, type LayoutItem } from "@/lib/dashboards/system/catalog";
 import type { FilterOptions } from "@/lib/dashboards/system/options";
 import type { CentreKind } from "@/lib/dashboards/system/definitions";
@@ -48,6 +49,8 @@ export type PreparedDashboard = {
   saved: FilterState | null;
   /** The saved filter is what is showing (the URL set nothing). */
   usingSaved: boolean;
+  /** The firm has the "dashboardAllTime" flag: the Period menu offers "All time". */
+  allTime: boolean;
   period: ResolvedPeriod;
   access: DataAccess;
   showing: string;
@@ -91,6 +94,7 @@ type Params = Record<string, string | string[] | undefined>;
 export async function prepareDashboard(
   session: SessionUser, id: string, sp: Params, opts: { touch?: boolean } = {},
 ): Promise<PreparedDashboard | PreparedCentre | { notFound: true }> {
+  const allTime = (await loadTenantLicense(session.tenantId, session.roles)).featureFlags?.dashboardAllTime === true;
   return withTenant(session.tenantId, async (tx) => {
     await ensureSystemDashboards(tx, session.tenantId);
     const v = await viewerFacts(tx, session);
@@ -125,6 +129,8 @@ export async function prepareDashboard(
     // URL first; else the viewer's saved filter; else the dashboard's defaults.
     const base = explicit ? { period: defaults.period, values: {} } : prefs.saved ?? defaults;
     let state = parseFilterState(sp, base);
+    // "All time" is a per-firm option; anyone else gets the default period.
+    if (state.period === ALL_TIME && !allTime) state = { ...state, period: defaults.period ?? "fy", from: undefined, to: undefined };
 
     // Every card follows the viewer's record access (with their team, when
     // anyone reports to them), whatever dashboard it is on.
@@ -162,6 +168,7 @@ export async function prepareDashboard(
       state,
       saved: prefs.saved,
       usingSaved: !explicit && !!prefs.saved,
+      allTime,
       period,
       access,
       showing: accessLabel(access, branchName),

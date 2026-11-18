@@ -62,6 +62,8 @@ const PUBLIC_PATHS = new Set([
   "/terms",
   "/privacy",
   "/refund",
+  // "Get pricing" — the public quote and online purchase (lib/billing/aum-pricing.ts).
+  "/pricing",
   // Public Knowledge Base hub (the KAIZEN series). Individual articles are
   // covered by the "/knowledge-base/" prefix below. The whole KB is public —
   // scenario, walkthrough and screenshots — with no login anywhere.

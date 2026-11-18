@@ -27,7 +27,7 @@ import { notify } from "@/components/ui/Toast";
 import {
   FILTER_FIELDS, MAX_EXTRA_FILTERS, filterStateToParams, type FilterKey, type FilterState,
 } from "@/lib/dashboards/system/filters";
-import { PERIOD_KEYS, PERIOD_NAMES, indiaToday, resolvePeriod, type PeriodKey } from "@/lib/dashboards/system/period";
+import { ALL_TIME, PERIOD_KEYS, PERIOD_NAMES, indiaToday, resolvePeriod, type PeriodKey } from "@/lib/dashboards/system/period";
 import type { FilterOptions } from "@/lib/dashboards/system/options";
 import { DateRangeField } from "@/components/ui/DateRangeField";
 import { formatDateLabel } from "@/lib/dates/typed-date";
@@ -59,6 +59,7 @@ export function DashboardFilterBar({
   usingSaved,
   /** The Operations page saves under its own dashboard id but lives at its own path. */
   savePath,
+  allTime = false,
 }: {
   dashboardId: string;
   state: FilterState;
@@ -69,6 +70,8 @@ export function DashboardFilterBar({
   bar: { rm: boolean; branch: boolean; extras: FilterKey[]; pinned: FilterKey[] };
   usingSaved: boolean;
   savePath?: string;
+  /** The firm has the "dashboardAllTime" flag: offer "All time" as a period. */
+  allTime?: boolean;
 }) {
   const nav = useDashboardNav();
   const pathname = usePathname();
@@ -215,7 +218,7 @@ export function DashboardFilterBar({
                 </div>
               ) : (
                 <>
-                  {PERIOD_KEYS.filter((k) => k !== "custom").map((k) => (
+                  {[...PERIOD_KEYS.filter((k) => k !== "custom"), ...(allTime ? [ALL_TIME] : [])].map((k) => (
                     <button
                       key={k}
                       type="button"

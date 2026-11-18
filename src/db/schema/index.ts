@@ -121,3 +121,5 @@ export * from "./kyc_checks";
 export * from "./practice";
 export * from "./privacy";
 export * from "./payroll";
+export * from "./billing";
+export * from "./legal";

@@ -16,7 +16,7 @@ import {
   BarChart3, Building2, Package, LifeBuoy, Settings, Users as UsersIcon,
   Activity, Bot, PieChart, ChevronUp, LogOut,
   Loader2, ShieldCheck, RefreshCw, Mail, SlidersHorizontal, ServerCog,
-  LayoutTemplate, Inbox, BookOpen, MailSearch,
+  LayoutTemplate, Inbox, BookOpen, MailSearch, IndianRupee, ScrollText, Receipt,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
@@ -30,6 +30,9 @@ const NAV: NavItem[] = [
   { href: "/super-admin/landing-packages", label: "Landing packages", icon: LayoutTemplate },
   { href: "/super-admin/kb-articles", label: "Knowledge Base", icon: BookOpen },
   { href: "/super-admin/subscriptions", label: "Subscriptions", icon: Activity },
+  { href: "/super-admin/pricing", label: "Pricing & billing", icon: IndianRupee },
+  { href: "/super-admin/invoices", label: "Tax invoices", icon: Receipt },
+  { href: "/super-admin/legal", label: "Legal documents", icon: ScrollText },
   { href: "/super-admin/support", label: "Support tickets", icon: LifeBuoy },
   { href: "/super-admin/users", label: "Admins", icon: UsersIcon },
   { href: "/super-admin/ai", label: "AI & Models", icon: Bot },

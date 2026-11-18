@@ -35,6 +35,8 @@ export default async function ChoosePlanPage() {
   // else (already active, or no subscription) goes to the dashboard, where the
   // normal license gate applies.
   if (!sub || sub.status !== "pending") redirect("/dashboard");
+  // Bought online at an AUM price: the package is chosen — pay from Billing.
+  if (sub.pricingModel === "aum") redirect("/dashboard/billing");
 
   const plans: Plan[] = pkgs.map((p) => ({
     id: p.id,
