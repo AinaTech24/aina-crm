@@ -34,3 +34,20 @@ describe("a SIP row's status", () => {
     expect(statusOf("Units allotted")).toBe("successful");
   });
 });
+
+describe("a bounce written in the transaction's type text", () => {
+  const H2 = "PAN|FOLIO_NO|AMC_CODE|PRODUCT_CODE|SCHEME_NAME|TRXN_TYPE|TRXN_DATE|AMOUNT|UNITS|NAV|STATUS";
+  const r = (type: string, status = "ALLOTTED") => `ABCDE1234F|1234567|C|PC1|Some Fund|${type}|17/11/2026|5000|50.0|100.0|${status}`;
+  const out = (type: string, status?: string) => parseReverseFeed([H2, r(type, status)].join("\n"), "t")[0];
+
+  it("reads a SIP row whose type says rejection as rejected, though the status column says allotted", () => {
+    expect(out("SIP Rejection").type).toBe("sip");
+    expect(out("SIP Rejection").status).toBe("rejected");
+    expect(out("Systematic Investment - Dishonoured").status).toBe("failed");
+  });
+
+  it("leaves an ordinary SIP instalment alone", () => {
+    expect(out("SIP").status).toBe("successful");
+    expect(out("Systematic Investment Purchase").status).toBe("successful");
+  });
+});

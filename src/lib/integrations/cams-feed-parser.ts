@@ -274,6 +274,24 @@ function normaliseFeedStatus(s: string): CanonicalTransaction["status"] {
 }
 
 /**
+ * Some feeds carry a bounce in the transaction's own TYPE text ("SIP Rejection", "Systematic
+ * Investment - Dishonoured", "NACH Return") and leave the status column saying processed.
+ * Read as processed, a bounced SIP never reached the SIP Rejections page. Only a row the status
+ * column left at "successful" is changed, and never a reversal (it has its own handling).
+ */
+const TYPE_TEXT_BOUNCE = /REJECT|DISHON|BOUNC|NACH\s*RETURN|RETURNED\s*(BY|FROM)?\s*BANK|UNSUCCESS|PAYMENT\s*FAIL/;
+export function statusWithTypeText(
+  status: CanonicalTransaction["status"],
+  typeText: string,
+  isReversal: boolean,
+): CanonicalTransaction["status"] {
+  if (status !== "successful" || isReversal) return status;
+  const u = typeText.toUpperCase();
+  if (/REJECT/.test(u)) return "rejected";
+  return TYPE_TEXT_BOUNCE.test(u) ? "failed" : status;
+}
+
+/**
  * Unified reverse-feed parser. The decoder normalises every upload (CAMS xls,
  * KFin csv/xlsx, etc.) to pipe-delimited text, so we auto-detect the delimiter
  * (pipe / comma / tab), find the header row, build a column map from the
@@ -381,7 +399,11 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
       units: unitsSigned,
       nav: parseFloat(val("nav").replace(/[, ]/g, "")) || 0,
       orderDate,
-      status: normaliseFeedStatus(val("status")),
+      status: statusWithTypeText(
+        normaliseFeedStatus(val("status")),
+        `${val("type")} ${val("typeDesc")} ${val("typeSub")}`,
+        isReversal,
+      ),
       reasonCode: val("reasonCode") || undefined,
       isReversal,
       raw: {
