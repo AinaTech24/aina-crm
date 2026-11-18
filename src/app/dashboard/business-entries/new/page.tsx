@@ -7,6 +7,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { visibleClientSql } from "@/lib/transactions/client-scope";
 import { BusinessEntryForm } from "@/components/business/BusinessEntryForm";
+import { zohoImportEnabled } from "@/lib/imports/zoho/access";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export default async function NewBusinessEntryPage({
 
   return (
     <PageHeaderCard title={<>New business closing entry</>}>
-<BusinessEntryForm members={members} currentUserId={session.userId} prefillClient={prefillClient} />
+<BusinessEntryForm members={members} currentUserId={session.userId} prefillClient={prefillClient} zohoTypes={await zohoImportEnabled(session.tenantId, session.roles)} />
 </PageHeaderCard>
   );
 }

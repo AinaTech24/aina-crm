@@ -104,6 +104,9 @@ export type IncomeBridgeResult = {
   requiredCorpus?: number;
   requiredMonthlySip?: number;
   requiredLumpsum?: number;
+  /** Reverse mode with a SIP: the one-time lumpsum today that builds the same
+   *  corpus instead of the SIP (beyond any lumpsum already in the plan). */
+  lumpsumInsteadOfSip?: number;
   requiredSavingsPct?: number; // salary mode
 
   feasible: boolean;
@@ -278,6 +281,7 @@ export function computeIncomeBridge(input: IncomeBridgeInput): IncomeBridgeResul
   let requiredCorpus: number | undefined;
   let requiredMonthlySip: number | undefined;
   let requiredLumpsum: number | undefined;
+  let lumpsumInsteadOfSip: number | undefined;
   let requiredSavingsPct: number | undefined;
 
   if (input.calcType === "monthly_swp") {
@@ -308,10 +312,12 @@ export function computeIncomeBridge(input: IncomeBridgeInput): IncomeBridgeResul
       const remainder = Math.max(0, requiredCorpus - fromLump);
       requiredMonthlySip = sipFactor > 0 ? remainder / sipFactor : 0;
       requiredLumpsum = input.lumpsum;
+      lumpsumInsteadOfSip = lumpFactor > 0 ? remainder / lumpFactor : 0;
       totalInvested = input.lumpsum + sipInvested(requiredMonthlySip, effStep, sipYears);
     } else {
       // sip or salary
       requiredMonthlySip = sipFactor > 0 ? requiredCorpus / sipFactor : 0;
+      lumpsumInsteadOfSip = lumpFactor > 0 ? requiredCorpus / lumpFactor : 0;
       totalInvested = sipInvested(requiredMonthlySip, effStep, sipYears);
       if (input.investMode === "salary" && input.monthlySalary > 0) {
         requiredSavingsPct = (requiredMonthlySip / input.monthlySalary) * 100;
@@ -347,6 +353,7 @@ export function computeIncomeBridge(input: IncomeBridgeInput): IncomeBridgeResul
     requiredCorpus,
     requiredMonthlySip,
     requiredLumpsum,
+    lumpsumInsteadOfSip,
     requiredSavingsPct,
     feasible,
     warning,

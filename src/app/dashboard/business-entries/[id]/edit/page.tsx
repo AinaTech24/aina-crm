@@ -9,6 +9,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { isClientVisible } from "@/lib/transactions/client-scope";
 import { BusinessEntryForm } from "@/components/business/BusinessEntryForm";
+import { zohoImportEnabled } from "@/lib/imports/zoho/access";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,7 @@ export default async function EditBusinessEntryPage({ params }: { params: Promis
         initialLines={data.lines}
         members={data.members}
         currentUserId={session.userId}
+        zohoTypes={await zohoImportEnabled(session.tenantId, session.roles)}
       />
 </div>
   );

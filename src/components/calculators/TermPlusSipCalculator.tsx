@@ -128,8 +128,9 @@ export function TermPlusSipCalculator({ initialMode = "budget" }: { initialMode?
 
       {mode === "goal" && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat label={`Monthly SIP needed @ ${fmtPct(returnPct)}`} value={inr(goal.sipMonthly)} tone="cyan" />
+            <Stat label={`Or one-time lumpsum today @ ${fmtPct(returnPct)}`} value={inr(goal.lumpsumToday)} />
             <Stat label="Yearly outlay (premium + SIP)" value={inr(goal.annualOutlay)} />
             <Stat label={`Minimum payout, alive at ${goal.finalAge} or not`} value={inr(sumAssured)} tone="emerald" />
           </div>
@@ -137,7 +138,9 @@ export function TermPlusSipCalculator({ initialMode = "budget" }: { initialMode?
             <Insight tone="cyan">
               A {inr(sumAssured)} term plan plus a SIP of <strong>{inr(goal.sipMonthly)}/month</strong> means at least{" "}
               <strong>{inr(sumAssured)}</strong> for the family either way: as the SIP fund at age {goal.finalAge}, or as the
-              cover (plus whatever the SIP has built) earlier — subject to the SIP earning {fmtPct(returnPct)}.
+              cover (plus whatever the SIP has built) earlier — subject to the SIP earning {fmtPct(returnPct)}. A one-time
+              lumpsum of <strong>{inr(goal.lumpsumToday)}</strong> invested today instead of the SIP reaches the same{" "}
+              {inr(sumAssured)} by age {goal.finalAge}.
             </Insight>
           )}
         </>

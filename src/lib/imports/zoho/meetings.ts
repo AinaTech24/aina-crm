@@ -29,6 +29,8 @@ export type MappedMeeting = {
   start: Date | null;
   durationMinutes: number;
   meetingType: MeetingType;
+  /** The CRM's meeting category: Zoho "New" → new, everything else → review. */
+  category: "review" | "new";
   meetingMode: MeetingMode;
   locationOrLink: string | null;
   status: ImportedMeetingStatus;
@@ -121,7 +123,13 @@ export function mapZohoMeeting(row: Record<string, unknown>, now: Date = new Dat
     subject: title ? title.slice(0, 300) : null,
     start,
     durationMinutes: Math.max(durationMinutes, 5),
-    meetingType: meetingTypeFromZoho(g("Meeting Type") || title),
+    // We Care's Meeting Type says what kind of CLIENT it was with (2026-11-18):
+    // Existing → Review / Portfolio review, New → New / New client kickoff.
+    ...(/^existing$/i.test(g("Meeting Type"))
+      ? { meetingType: "portfolio_review" as const, category: "review" as const }
+      : /^new$/i.test(g("Meeting Type"))
+        ? { meetingType: "new_client_kickoff" as const, category: "new" as const }
+        : { meetingType: meetingTypeFromZoho(g("Meeting Type") || title), category: "review" as const }),
     meetingMode: meetingModeFromZoho(venue, location),
     locationOrLink: [location, venue].filter(Boolean).join(" · ").slice(0, 500) || null,
     status,

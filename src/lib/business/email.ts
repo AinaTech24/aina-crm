@@ -24,6 +24,8 @@ function esc(s: string): string {
 export type EmailLine = {
   schemeName: string;
   txnType: string;
+  /** A firm's own label for the type (Zoho picklist); shown instead of the standard one. */
+  typeLabel?: string | null;
   amount: string | number;
   frequency?: string | null;
   fromSchemeName?: string | null;
@@ -47,7 +49,7 @@ export function renderBusinessEmail(input: {
     .map((l) => {
       const freq = l.frequency ? ` (${l.frequency.replace(/_/g, " ")})` : "";
       const from = l.fromSchemeName ? ` — from ${l.fromSchemeName}` : "";
-      return { name: `${l.schemeName}${from}`, type: `${TXN_LABEL[l.txnType] ?? l.txnType}${freq}`, amt: inr(Number(l.amount)) };
+      return { name: `${l.schemeName}${from}`, type: `${l.typeLabel || (TXN_LABEL[l.txnType] ?? l.txnType)}${freq}`, amt: inr(Number(l.amount)) };
     });
 
   const text = [

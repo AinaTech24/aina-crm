@@ -65,3 +65,36 @@ export async function readZohoFile(file: unknown, kind: ZohoKind): Promise<{ hea
   }
   return { headers, rows };
 }
+
+/**
+ * Read EVERY sheet of a workbook — a Zoho export of a module with subforms
+ * (MF Transactions + "SIP and SIP Stop" + "Purchase and Redemption") arrives as
+ * one workbook with a sheet per form. Same raw reading and Excel-damage check
+ * as readZohoFile.
+ */
+export async function readZohoWorkbook(file: unknown): Promise<{ sheets: Record<string, Record<string, unknown>[]>; headers: Record<string, string[]> }> {
+  if (!(file instanceof File)) throw new ZohoFileError("Choose the Zoho export file.");
+  if (file.size > MAX_IMPORT_BYTES) throw new ZohoFileError(`The file is too large (max ${Math.round(MAX_IMPORT_BYTES / (1024 * 1024))} MB).`);
+  let wb: XLSX.WorkBook;
+  try {
+    wb = XLSX.read(Buffer.from(await file.arrayBuffer()), { type: "buffer", raw: true, cellDates: false });
+  } catch {
+    throw new ZohoFileError("This file could not be read. Upload the .xlsx Zoho exported.");
+  }
+  const sheets: Record<string, Record<string, unknown>[]> = {};
+  const headers: Record<string, string[]> = {};
+  let total = 0;
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name];
+    sheets[name] = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: true });
+    headers[name] = (XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, range: 0, blankrows: false })[0] ?? []).map((h) => String(h ?? "").trim());
+    total += sheets[name].length;
+    for (const col of headers[name].filter((h) => /(^Record Id$|\.id$|^Parent ID$)/.test(h))) {
+      if (sheets[name].some((r) => idDamagedByExcel(r[col]))) {
+        throw new ZohoFileError(`Sheet "${name}", column "${col}" was changed by Excel (long numbers turned into 5.7E+18). Export again from Zoho and upload that file without opening and saving it in Excel.`);
+      }
+    }
+  }
+  if (total > MAX_IMPORT_ROWS * 2) throw new ZohoFileError(`Too many rows (max ${(MAX_IMPORT_ROWS * 2).toLocaleString("en-IN")}).`);
+  return { sheets, headers };
+}

@@ -132,7 +132,7 @@ export default async function BusinessEntryDetailPage({ params }: { params: Prom
                   </div>
                 </td>
                 <td className="py-2.5 text-xs">
-                  {TXN_LABEL[l.txnType] ?? l.txnType}{l.frequency ? <span className="text-muted-foreground"> · {l.frequency.replace(/_/g, " ")}</span> : null}
+                  {l.typeLabel || (TXN_LABEL[l.txnType] ?? l.txnType)}{l.frequency ? <span className="text-muted-foreground"> · {l.frequency.replace(/_/g, " ")}</span> : null}
                 </td>
                 <td className="py-2.5 text-xs capitalize text-muted-foreground">{l.assetClass}</td>
                 <td className="py-2.5 text-right tabular-nums font-medium pr-4">{formatINR(Number(l.amount))}</td>

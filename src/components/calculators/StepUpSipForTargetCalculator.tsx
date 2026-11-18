@@ -49,6 +49,9 @@ export function StepUpSipForTargetCalculator() {
           <Stat key={`m${i}`} label={`Starting SIP @ ${fmtPct(sc.ratePct)}`} value={inr(sc.startSip)} tone={i === 0 ? "cyan" : "emerald"} />
         ))}
         {res.map((sc, i) => (
+          <Stat key={`l${i}`} label={`One-time lumpsum today @ ${fmtPct(sc.ratePct)}`} value={inr(sc.lumpsumToday)} />
+        ))}
+        {res.map((sc, i) => (
           <Stat key={`t${i}`} label={`Total invested @ ${fmtPct(sc.ratePct)}`} value={inr(sc.total)} />
         ))}
       </div>
@@ -57,7 +60,9 @@ export function StepUpSipForTargetCalculator() {
         <Insight tone="cyan">
           Start at <strong>{inr(s1.startSip)}/month</strong> and raise it {fmtPct(stepUpPct)} every year to reach{" "}
           <strong>{inr(target)}</strong> at {fmtPct(s1.ratePct)}
-          {res[1] && <> — or start at <strong>{inr(res[1].startSip)}/month</strong> at {fmtPct(res[1].ratePct)}</>}.
+          {res[1] && <> — or start at <strong>{inr(res[1].startSip)}/month</strong> at {fmtPct(res[1].ratePct)}</>}. Or invest a
+          one-time lumpsum of <strong>{inr(s1.lumpsumToday)}</strong> today at {fmtPct(s1.ratePct)}
+          {res[1] && <> ({inr(res[1].lumpsumToday)} at {fmtPct(res[1].ratePct)})</>} and leave it to grow.
         </Insight>
       ) : (
         <Insight tone="amber">Enter a SIP period of at least one year.</Insight>

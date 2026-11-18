@@ -3,6 +3,9 @@ import { idDamagedByExcel, istInstant, isoDate, mobile, yesNo, zohoId } from "@/
 import { BASE_LEAD_SOURCES, BASE_SALUTATIONS, PICKLISTS, leadSourceOption, leadSourceOptions, mapZohoContact, picklistOption, picklistOptions, reviewFrequencyFromZoho, riskFromZoho } from "@/lib/imports/zoho/contacts";
 import { mapZohoMeeting, meetingModeFromZoho, meetingTypeFromZoho } from "@/lib/imports/zoho/meetings";
 import { planFamilies } from "@/lib/imports/zoho/family-groups";
+import { buildClientMatcher } from "@/lib/imports/zoho/client-match";
+import { mapPurchaseRow, mapSipRow, planBusiness } from "@/lib/imports/zoho/business";
+import { buildSchemeIndex, matchScheme, schemeBase, statedVariant } from "@/lib/imports/zoho/scheme-match";
 
 const NOW = new Date("2026-11-14T10:00:00+05:30");
 
@@ -285,5 +288,124 @@ describe("Zoho family sheet → households", () => {
     expect(p.groups).toHaveLength(1);
     expect(p.groups[0].memberZohoIds).toHaveLength(1);
     expect(p.headMissing).toEqual([{ headZohoId: "9", headName: "Not Here", rows: 1 }]);
+  });
+});
+
+describe("We Care meetings: Existing / New and the client matcher", () => {
+  it("Existing → Review / Portfolio review, New → New / New client kickoff", () => {
+    const base = { "Record Id": "zcrm_1", Host: "X", "Contact Name.id": "zcrm_2", "Contact Name": "A", From: "23-05-2023 15:00", To: "23-05-2023 15:30", "Meeting Venue": "Client location" };
+    const ex = mapZohoMeeting({ ...base, "Meeting Type": "Existing" }, NOW);
+    expect([ex.category, ex.meetingType, ex.meetingMode, ex.start?.toISOString()]).toEqual(["review", "portfolio_review", "client_place", "2023-05-23T09:30:00.000Z"]);
+    const nw = mapZohoMeeting({ ...base, "Meeting Type": "New", "Meeting Venue": "In-office" }, NOW);
+    expect([nw.category, nw.meetingType, nw.meetingMode]).toEqual(["new", "new_client_kickoff", "office"]);
+    expect(mapZohoMeeting({ ...base, "Meeting Type": "", Title: "Goal planning" }, NOW).category).toBe("review");
+  });
+
+  it("matches by Zoho id, else by a name only one client and one contact have", () => {
+    const c = (id: string, name: string, zoho: string | null = null) => ({ id, name, family_id: null, rm_id: null, zoho_id: zoho });
+    const m = buildClientMatcher(
+      [c("a", "Ramesh Patel", "100"), c("b", "Sunita  Patel"), c("c", "Rahul Patel"), c("d", "rahul patel"), c("e", "Kiran Shah"), c("f", "Old Name", "999")],
+      new Map([["100", "Whatever"], ["200", "SUNITA PATEL"], ["300", "Rahul Patel"], ["400", "Kiran Shah"], ["401", "Kiran Shah"], ["500", "Old Name"], ["600", "Nobody"]])
+    );
+    expect(m.resolve("100")?.id).toBe("a");
+    expect(m.resolve("200")?.id).toBe("b");
+    expect(m.resolve("300")).toBeUndefined();
+    expect(m.why("300")).toBe("several clients in the CRM have this name");
+    expect(m.resolve("400")).toBeUndefined();
+    expect(m.why("400")).toBe("several Zoho contacts in the file have this name");
+    expect(m.resolve("500")).toBeUndefined();
+    expect(m.why("500")).toBe("the client with this name has a different Zoho Record ID");
+    expect(m.resolve("600")).toBeUndefined();
+    expect(m.why("600")).toBe("no client with this name in the CRM");
+    expect([m.matchedById(), m.matchedByName()]).toEqual([1, 1]);
+    expect(m.stamps()).toEqual([{ id: "b", zoho: "200" }]);
+  });
+});
+
+describe("Zoho MF Transactions → Business Entries", () => {
+  const parent = (mft: string, extra: Record<string, unknown> = {}) => ({
+    "Record Id": `zcrm_${mft}`, "MF Transaction Name": mft, "MF Transaction Owner": "Tushar Shah", "Client Name.id": "zcrm_c1", "Client Name": "Ramesh Patel",
+    Date: 45796, "Transact Through": "MFU", "Transaction Type": "Online", Remarks: "", ...extra,
+  });
+  const pr = (mft: string, extra: Record<string, unknown>) => ({ "Parent ID.id": `zcrm_${mft}`, "Parent ID": mft, Scheme: "DSP Large Cap Fund", Type: "Equity", ...extra });
+  const sip = (mft: string, extra: Record<string, unknown>) => ({ "Parent ID": mft, "Scheme Name": "Parag Parikh Flexi Cap Fund", ...extra });
+
+  it("maps Zoho's own kinds to a counted type and keeps their label", () => {
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Red. Done by Client", "Redemption Amount": 5000 })).line).toMatchObject({ txnType: "redemption", typeLabel: "Red. Done by Client", amount: 5000 });
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Transfer Out from Our Code", "Redemption Amount": 7000 })).line).toMatchObject({ txnType: "redemption", typeLabel: "Transfer Out from Our Code" });
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Broker Code Change in Our Code", "Purchase Amount": 9000 })).line).toMatchObject({ txnType: "lumpsum", typeLabel: "Broker Code Change in Our Code" });
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Switch In Our Code", "Purchase Amount": 9000 })).line).toMatchObject({ txnType: "switch", typeLabel: "Switch In Our Code" });
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Purchase", "Purchase Amount": 1000, Type: "Liquid" })).line).toMatchObject({ txnType: "lumpsum", assetClass: "liquid" });
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "SIF", "Purchase Amount": 1e6 })).product).toBe("sif");
+  });
+
+  it("STP and switch go from the source scheme into the To Scheme", () => {
+    const stp = mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Purchase", "Purchase Amount": 100000, "STP/SWP Amount": 5000, Options: "Normal STP - Weekly", Type: "Liquid to Equity", Scheme: "DSP Liquid", "To Scheme": "DSP Large Cap Fund" })).line;
+    expect(stp).toMatchObject({ txnType: "stp", amount: 5000, schemeName: "DSP Large Cap Fund", fromSchemeName: "DSP Liquid", assetClass: "equity", fromAssetClass: "liquid", frequency: "weekly" });
+  });
+
+  it("a rejected line is kept but never counts", () => {
+    const l = mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Purchase", "Purchase Amount": 2000, Status: "Rejected" })).line;
+    expect(l).toMatchObject({ txnType: "other", typeLabel: "Purchase (rejected)", rtaNotApplicable: "Rejected in Zoho" });
+  });
+
+  it("SIP rows: SIP, Daily SIP, SIP Stop, Auto Stop and Pause", () => {
+    expect(mapSipRow(sip("M2", { Type: "SIP", "SIP Amount": 2500, "Auto Debit Date": 10, "Auto Start Date": 45848 }))).toMatchObject({ txnType: "sip", amount: 2500, sipDate: "10", frequency: "monthly" });
+    expect(mapSipRow(sip("M2", { Type: "SIP", "SIP Amount": 2500, "Auto Debit Date": 30 })).sipDate).toBeNull();
+    expect(mapSipRow(sip("M2", { Type: "Daily SIP", "SIP Amount": 100 }))).toMatchObject({ txnType: "sip", typeLabel: "Daily SIP" });
+    expect(mapSipRow(sip("M2", { Type: "SIP Stop", "SIP Stop/Pause Amount": 3000 }))).toMatchObject({ txnType: "sip_stop", amount: 3000 });
+    expect(mapSipRow(sip("M2", { Type: "SIP Auto Stop", "SIP Stop/Pause Amount": 1000 }))).toMatchObject({ txnType: "sip_stop", typeLabel: "SIP Auto Stop" });
+    const pause = mapSipRow(sip("M2", { Type: "SIP Pause", "SIP Stop/Pause Amount": 4000, "SIP Pause (Months)": 3 }));
+    expect(pause).toMatchObject({ txnType: "other", typeLabel: "SIP Pause", amount: 4000 });
+    expect(pause.notes).toContain("Paused 3 months");
+  });
+
+  it("builds one entry per MFT and product, from both subforms", () => {
+    const p = planBusiness(
+      [parent("MFT1"), parent("MFT2", { Date: "" }), parent("MFT3"), parent("MFT4", { "PMS Amount": 5000000, "PMS Scheme": "ICICI PMS" })],
+      [sip("MFT1", { Type: "SIP", "SIP Amount": 2500 })],
+      [pr("MFT1", { "Purchase/Redemption": "Purchase", "Purchase Amount": 10000 }), pr("MFT1", { "Purchase/Redemption": "SIF", "Purchase Amount": 1e6 }), pr("MFT2", { "Purchase/Redemption": "Purchase", "Purchase Amount": 1 })]
+    );
+    expect(p.entries.map((e) => `${e.mft}:${e.product}:${e.lines.length}`).sort()).toEqual(["MFT1:mutual_fund:2", "MFT1:sif:1", "MFT4:pms:1"]);
+    expect(p.skipped).toEqual(expect.arrayContaining([{ mft: "MFT2", reason: "No date on the Zoho record" }, { mft: "MFT3", reason: "No scheme lines on the Zoho record" }]));
+    expect(p.entries[0].notes.startsWith("Zoho MFT1")).toBe(true);
+    expect(p.entries[0].businessDate).toBe("2025-05-19");
+  });
+});
+
+describe("Zoho scheme names → Scheme Master", () => {
+  const ms = (code: string, name: string, plan: string | null = null, option: string | null = null, closed = false) => ({ scheme_code: code, scheme_name: name, amc_code: name.split(" ")[0], category: "Equity Scheme - Flexi Cap Fund", plan, option, is_closed: closed });
+  const master = [
+    ms("1", "WhiteOak Capital Flexi Cap Fund - Direct Plan - Growth Option", "direct", "growth"),
+    ms("2", "WhiteOak Capital Flexi Cap Fund - Regular Plan - Growth Option", "regular", "growth"),
+    ms("3", "WhiteOak Capital Flexi Cap Fund - Regular Plan - IDCW Option", "regular", "idcw_payout"),
+    ms("4", "Aditya Birla Sun Life Frontline Equity Fund - Regular Plan - Growth"),
+    ms("5", "Aditya Birla Sun Life Frontline Equity Fund - Direct Plan - Growth"),
+    ms("6", "HDFC Mid Cap Fund - Regular Plan - Growth Option"),
+    ms("7", "Kotak Banking and Financial Services Fund - Regular Plan - Growth"),
+    ms("8", "Parag Parikh Flexi Cap Fund - Regular Plan - Growth", null, null, true),
+    ms("9", "Parag Parikh Flexi Cap Fund - Regular Plan - Growth"),
+  ];
+  const idx = buildSchemeIndex(master);
+
+  it("a name without plan or option maps to Regular · Growth", () => {
+    expect(matchScheme("WhiteOak Capital Flexi Cap Fund", idx)).toMatchObject({ confidence: "exact", scheme: { scheme_code: "2" } });
+  });
+  it("a name that states Direct or IDCW keeps it", () => {
+    expect(matchScheme("WHITEOAK CAPITAL FLEXI CAP FUND DIRECT PLAN GROWTH", idx).scheme?.scheme_code).toBe("1");
+    expect(matchScheme("WhiteOak Capital Flexi Cap Fund - IDCW", idx).scheme?.scheme_code).toBe("3");
+  });
+  it("short forms, '&' and spacing read the same; an open scheme beats a closed one", () => {
+    expect(matchScheme("ABSL Frontline Equity Fund", idx).scheme?.scheme_code).toBe("4");
+    expect(matchScheme("Kotak Banking & Financial Services Fund", idx).scheme?.scheme_code).toBe("7");
+    expect(matchScheme("Parag Parikh Flexi Cap Fund", idx).scheme?.scheme_code).toBe("9");
+  });
+  it("a renamed fund is only a suggestion; another house's fund is never matched", () => {
+    expect(matchScheme("HDFC Mid-Cap Opportunities Fund", idx)).toMatchObject({ confidence: "close", scheme: { scheme_code: "6" } });
+    expect(matchScheme("Axis Mid Cap Fund", idx).confidence).toBe("none");
+  });
+  it("reads plan and option from free text", () => {
+    expect(statedVariant("NIPPON INDIA SMALL CAP FUND - GROWTH PLAN - GROWTH OPTION")).toEqual({ plan: null, option: "growth" });
+    expect(schemeBase("ICICI Pru Bluechip Fund - Regular Plan - Growth")).toBe("icici prudential bluechip");
   });
 });

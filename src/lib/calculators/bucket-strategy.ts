@@ -54,6 +54,8 @@ export type YouthBucketResult = {
   corpusWithout: number;
   sipBucket: number; // monthly SIP — 4-bucket strategy
   sipWithout: number; // monthly SIP — single debt fund
+  lumpsumBucket: number; // one-time lumpsum today — 4-bucket strategy
+  lumpsumWithout: number; // one-time lumpsum today — single debt fund
   savingsAbs: number; // sipWithout − sipBucket
   savingsPct: number; // (sipWithout − sipBucket) / sipWithout
   corpusSavedPct: number; // (corpusWithout − corpusBucket) / corpusWithout
@@ -112,6 +114,12 @@ export function youthBucketStrategy(input: {
   const sip = (corpus: number) => (ytf > 0 ? -pmt(accMonthly, ytf * 12, 0, corpus, 1) : 0);
   const sipBucket = sip(corpusBucket);
   const sipWithout = sip(corpusWithout);
+  // The one-time alternative: a lumpsum invested today at the SAME large-cap
+  // rate (same effective monthly rate, same ytf × 12 months) that grows to the
+  // corpus by the freedom age. With no runway it is the corpus itself.
+  const lumpsum = (corpus: number) => (ytf > 0 ? corpus / Math.pow(1 + accMonthly, ytf * 12) : corpus);
+  const lumpsumBucket = lumpsum(corpusBucket);
+  const lumpsumWithout = lumpsum(corpusWithout);
 
   return {
     yearsToFreedom: ytf,
@@ -122,6 +130,8 @@ export function youthBucketStrategy(input: {
     corpusWithout,
     sipBucket,
     sipWithout,
+    lumpsumBucket,
+    lumpsumWithout,
     savingsAbs: Math.max(0, sipWithout - sipBucket),
     savingsPct: sipWithout > 0 ? (sipWithout - sipBucket) / sipWithout : 0,
     corpusSavedPct: corpusWithout > 0 ? (corpusWithout - corpusBucket) / corpusWithout : 0,

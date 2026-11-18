@@ -20,6 +20,8 @@ export const LineInput = z.object({
   assetCategory: z.string().max(150).nullish(),
   assetClass: z.enum(ASSET_CLASSES).nullish(),
   txnType: z.enum(TXN_TYPES).default("lumpsum"),
+  /** A firm's own label for this line's type (lib/business/zoho-types.ts). */
+  typeLabel: z.string().trim().max(60).nullish(),
   amount: z.number().min(0).max(1e13),
   units: z.number().min(0).nullish(),
   frequency: z.enum(TXN_FREQUENCIES).nullish(),
