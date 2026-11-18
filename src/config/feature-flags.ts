@@ -22,6 +22,7 @@ export const FEATURE_FLAGS: FeatureFlagDef[] = [
   { key: "redemptionOnlineOffline", label: "Redemption task: Online / Offline", description: "On the New task form, a Redemption request asks Online or Offline and adds that route's sub-tasks (slip to client … payment check, or platform entry … payment to client).", type: "boolean", group: "Tasks" },
   { key: "zohoImport", label: "Zoho CRM import", description: "Clients → Import → \"From Zoho CRM\": load a Zoho Contacts export (clients, families, referrals, products) and a Meetings export. Switch on only for a firm moving off Zoho.", type: "boolean", group: "Data migration" },
   { key: "riskPdfNoAnswers", label: "Risk profile PDF: say when there are no answers", description: "A risk profile with no questionnaire answers (imported, set directly or provisional) prints \"No questionnaire answers on record\", \"Not scored\" and \"Not confirmed by the client\" instead of an empty questionnaire and a client signature line. On for We Care Freedom Wealth.", type: "boolean", group: "Risk profiling" },
+  { key: "dashboardAllTime", label: "Dashboard period: All time", description: "The dashboard's Period menu offers \"All time\" (everything on record up to today) after Last FY. On for We Care Freedom Wealth.", type: "boolean", group: "Dashboards" },
   { key: "maxMessagesPerMonth", label: "Monthly message quota", description: "Cap on WhatsApp/SMS/email sends per month (0 or blank = plan default).", type: "number", group: "Limits" },
 ];
 

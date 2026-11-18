@@ -13,7 +13,16 @@
  */
 
 export const PERIOD_KEYS = ["today", "week", "month", "last_month", "quarter", "fy", "last_fy", "custom"] as const;
-export type PeriodKey = (typeof PERIOD_KEYS)[number];
+/**
+ * "All time" — everything on record up to today. Not in PERIOD_KEYS, so no
+ * menu lists it by default: the filter bar offers it only to a firm with the
+ * "dashboardAllTime" flag (config/feature-flags.ts), and prepareDashboard
+ * turns a ?period=all from anyone else back into the dashboard's default.
+ */
+export const ALL_TIME = "all" as const;
+export type PeriodKey = (typeof PERIOD_KEYS)[number] | typeof ALL_TIME;
+/** Where "All time" starts: before any record the CRM can hold. */
+export const ALL_TIME_FROM = "2000-01-01";
 
 export const PERIOD_NAMES: Record<PeriodKey, string> = {
   today: "Today",
@@ -24,6 +33,7 @@ export const PERIOD_NAMES: Record<PeriodKey, string> = {
   fy: "This FY",
   last_fy: "Last FY",
   custom: "Custom range",
+  all: "All time",
 };
 
 export type ResolvedPeriod = {
@@ -95,7 +105,7 @@ export function formatRange(from: string, to: string): string {
 }
 
 export function isPeriodKey(v: unknown): v is PeriodKey {
-  return typeof v === "string" && (PERIOD_KEYS as readonly string[]).includes(v);
+  return typeof v === "string" && (v === ALL_TIME || (PERIOD_KEYS as readonly string[]).includes(v));
 }
 
 /**
@@ -144,6 +154,9 @@ export function resolvePeriod(
       to = addDays(start, -1);
       break;
     }
+    case "all":
+      from = ALL_TIME_FROM;
+      break;
     case "custom": {
       let f = opts.from && ISO.test(opts.from) ? opts.from : null;
       let tt = opts.to && ISO.test(opts.to) ? opts.to : null;
@@ -162,14 +175,15 @@ export function resolvePeriod(
   const fyDays = (day(fyEnd).getTime() - day(fyStart).getTime()) / 864e5 + 1;
   const elapsed = (day(to).getTime() - day(fyStart).getTime()) / 864e5 + 1;
   const name = PERIOD_NAMES[k];
-  const range = formatRange(from, to);
+  // All time has no start worth printing: "Up to 18 Nov 2026".
+  const range = k === ALL_TIME ? `Up to ${formatRange(to, to)}` : formatRange(from, to);
   return {
     key: k,
     from,
     to,
     name,
     range,
-    label: k === "custom" ? range : `${name} (${range})`,
+    label: k === "custom" ? range : k === ALL_TIME ? `${name} (up to ${formatRange(to, to)})` : `${name} (${range})`,
     prev: { from: minusYear(from), to: minusYear(to) },
     fyStart,
     fiscalYear: fiscalYearKey(fyStart),
