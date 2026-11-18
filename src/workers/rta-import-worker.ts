@@ -1049,6 +1049,16 @@ export async function runRejectedRescanJob(
       const encrypted = isEncryptedOffice(buf);
       if (encrypted && !(await openEncryptedOffice(buf, passwords)).ok) {
         stillLocked++;
+        // A row filed under the OLD wording ("layout not recognised") says the wrong thing about
+        // a locked workbook: say what it is, so nobody hunts a parser problem.
+        if (r.status === "failed" && /none could be read/i.test(r.remarks ?? "")) {
+          await withTenant(job.tenantId, async (tx) => {
+            await tx.execute(sql`
+              UPDATE rta_file_imports
+                 SET status = 'rejected', remarks = ${encryptedOfficeMessage(passwords.length)}
+               WHERE id = ${r.id}::uuid`);
+          });
+        }
         continue;
       }
       // "Layout not recognised" on a file that is NOT locked is a real layout problem:

@@ -81,6 +81,10 @@ describe.skipIf(!TEST_DB)("encrypted Excel through the import worker", () => {
     added.length = 0;
     let r = await runRejectedRescanJob({ mode: "rescan", tenantId: tenant, source: "cams" });
     expect(r.requeued).toBe(0);
+    // still locked: the misleading "layout not recognised" wording is replaced by the true reason
+    const still = await row(ids.locked);
+    expect(still.status).toBe("rejected");
+    expect(still.remarks).toMatch(/password-protected/);
 
     await withSystem(async (tx) => { await cfg.appendMailbackPassword(tx, tenant, "cams", { label: "Later", password: "Secret@12" }); });
     expect((await enqueueRescansForAllFirms()).firms).toBeGreaterThanOrEqual(1);
