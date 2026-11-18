@@ -8,7 +8,9 @@
  *  - Leads           → leads (Zoho's status and source kept as text too)
  *  - Risk_Profiles   → risk profile history, CONFIRMED, signed on the Zoho date;
  *                      the band is the FIRM'S OWN band for Zoho's score
- *  - Query_Tracker   → tasks ("Task Tracker"; finished ones come in closed)
+ *  - Query_Tracker   → tasks ("Task Tracker"; finished ones and "Link Approved"
+ *                      come in closed, and so does anything unfinished older
+ *                      than 30 days — Zoho's status stays in the remarks)
  *  - Calls           → the activity log
  *  - SWP             → SIP rejections ("SIP Tracking"; only Rejected rows, all
  *                      open as Zoho has them)
@@ -271,7 +273,8 @@ const TASK_STATUS: Record<string, "open" | "in_progress" | "completed" | "cancel
   started: "in_progress",
   "in process": "in_progress",
   "link sent": "in_progress",
-  "link approved": "in_progress",
+  // The client approved the transaction link: the firm counts that as done (2026-11-18).
+  "link approved": "completed",
   completed: "completed",
   "link not approved": "cancelled",
   rejected: "cancelled",

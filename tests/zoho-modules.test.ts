@@ -41,6 +41,7 @@ describe("Zoho modules — API records → CRM", () => {
     expect([t.status, t.priority, t.department, t.title, t.assignee, t.meta.zohoId]).toEqual(["completed", "high", "operations", "Redemption — ICICI", "Disha Patel", "9"]);
     expect(mapTask({ id: "10", Status: "Not Solved", Reason: "Docs missing" }).status).toBe("cancelled");
     expect(mapTask({ id: "11", Status: "Link Sent" }).status).toBe("in_progress");
+    expect(mapTask({ id: "12", Status: "Link Approved" }).status).toBe("completed");
   });
 
   it("reads a call's direction, outcome and duration", () => {

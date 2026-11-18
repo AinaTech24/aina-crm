@@ -265,9 +265,14 @@ export async function importZohoModule(
         if (done.has(m.zohoId)) { result.already++; continue; }
         const client = m.clientZohoId ? clientOf.get(m.clientZohoId) : undefined;
         const lead = m.leadZohoId ? leadOf.get(m.leadZohoId) : undefined;
-        const finished = m.status === "completed" || m.status === "cancelled";
         const created = m.created ?? m.start ?? now;
-        count(`${m.statusText || "(blank)"} → ${m.status.replace("_", " ")}`);
+        // Unfinished work older than 30 days comes in closed (the firm's choice):
+        // years-old "open" Zoho tasks would otherwise sit on every dashboard as overdue.
+        const stale = (m.status === "open" || m.status === "in_progress") && now.getTime() - created.getTime() > 30 * DAY;
+        const status = stale ? "cancelled" : m.status;
+        const finished = status === "completed" || status === "cancelled";
+        const remarks = stale ? [`Closed at the move from Zoho — it was "${m.statusText || "no status"}" there`, m.remarks].filter(Boolean).join(" · ") : m.remarks;
+        count(stale ? `${m.statusText || "(blank)"}, older than 30 days → closed` : `${m.statusText || "(blank)"} → ${status.replace("_", " ")}`);
         if (m.clientZohoId && !client) count("Client not found (kept, unlinked)");
         rows.push({
           tenantId: actor.tenantId,
@@ -279,9 +284,9 @@ export async function importZohoModule(
           type: "custom",
           title: m.title,
           description: m.description,
-          remarks: m.remarks,
+          remarks,
           priority: m.priority,
-          status: m.status,
+          status,
           assigneeId: userId(m.assignee) ?? userId(m.owner),
           createdById: userId(m.owner),
           entryDate: created.toISOString().slice(0, 10),
@@ -291,7 +296,12 @@ export async function importZohoModule(
           remindAt: null,
           reminderFiredAt: finished ? null : now,
           overdueNotifiedAt: finished ? null : now,
-          meta: { ...m.meta, ...(m.clientZohoId && !client ? { zohoClient: m.clientName } : {}) },
+          meta: {
+            ...m.meta,
+            ...(m.clientZohoId && !client ? { zohoClient: m.clientName } : {}),
+            ...(m.assignee ? { zohoAssignee: m.assignee } : {}),
+            ...(m.owner ? { zohoOwner: m.owner } : {}),
+          },
           tags: ["zoho"],
           createdAt: created,
           updatedAt: now,
