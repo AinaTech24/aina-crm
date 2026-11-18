@@ -5,6 +5,11 @@
  *   quote → account for the chosen package → checkout → verify → activation,
  *   then a renewal auto-debit, the grace period and a late renewal.
  *
+ * A new firm's first purchase is the 6-month commitment or yearly: a crafted
+ * monthly / half-yearly first purchase is refused; after the commitment the
+ * first auto-debit continues MONTHLY; once the firm has paid, all three cycles
+ * are open again.
+ *
  * Proves: the amount is always recomputed on the server; a forged signature
  * is refused; activation, invoices and emails happen once per payment however
  * many times verify / the webhook repeat it; invoices are numbered without
@@ -74,6 +79,7 @@ vi.mock("@/lib/billing/razorpay", async (orig) => {
 const sign = (payment: string, sub: string) => crypto.createHmac("sha256", KEY_SECRET).update(`${payment}|${sub}`).digest("hex");
 const req = (url: string, body: unknown, ip = "198.51.100.7", headers: Record<string, string> = {}) =>
   new Request(`http://x${url}`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": ip, ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) }) as never;
+const getReq = async (url: string) => new (await import("next/server")).NextRequest(`http://x${url}`);
 const json = async (r: Response) => ({ status: r.status, body: (await r.json()) as Record<string, any> });
 
 describe("quote endpoint abuse controls (no database needed)", () => {
@@ -129,7 +135,12 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
     expect(r.status).toBe(200);
     quoteId = r.body.quoteId;
     token = r.body.token;
-    expect(r.body.cycles.map((c: { totalPaise: number }) => c.totalPaise)).toEqual([3_097_500, 17_098_200, 31_594_500]);
+    // A new firm is offered the commitment (₹1,57,500 + ₹28,350 GST) and yearly only.
+    expect(r.body.cycles.map((c: { cycle: string; totalPaise: number }) => [c.cycle, c.totalPaise])).toEqual([
+      ["commitment", 18_585_000],
+      ["yearly", 31_594_500],
+    ]);
+    expect(r.body.firstPurchase).toBe(true);
     const rows = await q(sql`SELECT users, aum_crore FROM pricing_quotes WHERE id = ${quoteId}::uuid`);
     expect(rows[0]).toMatchObject({ users: 5 });
   });
@@ -138,6 +149,17 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
     const { POST } = await import("@/app/api/public/pricing/signup/route");
     const r = await POST(req("/api/public/pricing/signup", { quoteId, token: "wrong", cycle: "yearly", password: "Secret#123", state: "Maharashtra" }, "198.51.100.22"));
     expect(r.status).toBe(404);
+  });
+
+  it("refuses a crafted monthly or half-yearly first purchase before creating any account", async () => {
+    const { POST } = await import("@/app/api/public/pricing/signup/route");
+    for (const cycle of ["monthly", "half_yearly"]) {
+      const r = await json(await POST(req("/api/public/pricing/signup", { quoteId, token, cycle, password: "Secret#123", state: "Maharashtra" }, "198.51.100.25")));
+      expect(r.status).toBe(400);
+      expect(r.body.error).toMatch(/first purchase/i);
+    }
+    const n = await q(sql`SELECT count(*)::int AS n FROM users WHERE lower(email) = ${email}`);
+    expect(n[0].n).toBe(0);
   });
 
   it("creates the firm for the chosen package and starts a server-priced checkout", async () => {
@@ -169,12 +191,32 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
     expect(r.status).toBe(409);
   });
 
-  it("Billing checkout recomputes the amount; a client price is ignored", async () => {
+  it("Billing refuses a crafted monthly / half-yearly first purchase and offers the commitment + yearly", async () => {
     const { POST } = await import("@/app/api/billing/checkout/route");
-    const r = await json(await POST(req("/api/billing/checkout", { cycle: "monthly", users: 5, aumCrore: 300, amountPaise: 100, totalPaise: 100 })));
+    for (const cycle of ["monthly", "half_yearly"]) {
+      const r = await json(await POST(req("/api/billing/checkout", { cycle, users: 5, aumCrore: 300 })));
+      expect(r.status).toBe(400);
+      expect(r.body.code).toBe("cycle_not_offered");
+    }
+    const { GET } = await import("@/app/api/billing/quote/route");
+    const g = await json(await GET(await getReq("/api/billing/quote?aumCrore=300&users=5")));
+    expect(g.body.cycles.map((c: { cycle: string }) => c.cycle)).toEqual(["commitment", "yearly"]);
+  });
+
+  it("Billing checkout recomputes the amount; a client price is ignored — the commitment, then monthly", async () => {
+    const { POST } = await import("@/app/api/billing/checkout/route");
+    const r = await json(await POST(req("/api/billing/checkout", { cycle: "commitment", users: 5, aumCrore: 300, amountPaise: 100, totalPaise: 100 })));
     expect(r.status).toBe(200);
-    expect(r.body.amountPaise).toBe(3_097_500);
+    expect(r.body.amountPaise).toBe(18_585_000);
     currentSub = r.body.subscriptionId;
+    // Paid now as the upfront add-on; the plan behind it is the MONTHLY one that
+    // follows, first debited when the 6 months end.
+    const sub = rz.subs.at(-1)!;
+    expect(sub.addons).toEqual([{ name: "6-month commitment (incl. GST)", amountPaise: 18_585_000 }]);
+    expect(rz.plans.at(-1)).toMatchObject({ amountPaise: 3_097_500, period: "monthly", interval: 1 });
+    const days = (sub.startAtUnix! * 1000 - Date.now()) / 86_400_000;
+    expect(days).toBeGreaterThan(178);
+    expect(days).toBeLessThan(186);
   });
 
   it("refuses a forged signature", async () => {
@@ -197,19 +239,22 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
 
     // The webhook for the same payment, too.
     const { POST: hook } = await import("@/app/api/webhooks/razorpay/route");
-    const raw = JSON.stringify({ event: "subscription.authenticated", payload: { subscription: { entity: { id: currentSub } }, payment: { entity: { id: pay, amount: 3_097_500 } } } });
+    const raw = JSON.stringify({ event: "subscription.authenticated", payload: { subscription: { entity: { id: currentSub } }, payment: { entity: { id: pay, amount: 18_585_000 } } } });
     const sig = crypto.createHmac("sha256", WEBHOOK_SECRET).update(raw).digest("hex");
     expect((await hook(req("/api/webhooks/razorpay", raw, "1.1.1.1", { "x-razorpay-signature": sig, "x-razorpay-event-id": `evt_${randomUUID()}` }))).status).toBe(200);
 
-    const [s] = await q(sql`SELECT status, billing_cycle, seats_override, license_start_at, license_end_at, mandate_status, pending_checkout, razorpay_subscription_id FROM subscriptions WHERE tenant_id = ${session.tenantId}::uuid`);
-    expect(s).toMatchObject({ status: "active", billing_cycle: "monthly", seats_override: 5, mandate_status: "active", pending_checkout: null, razorpay_subscription_id: currentSub });
-    const months = (new Date(s.license_end_at).getTime() - new Date(s.license_start_at).getTime()) / 86_400_000;
-    expect(months).toBeGreaterThanOrEqual(28);
-    expect(months).toBeLessThanOrEqual(31);
+    const [s] = await q(sql`SELECT status, billing_cycle, seats_override, license_start_at, license_end_at, mandate_status, pending_checkout, razorpay_subscription_id, razorpay_plan_paise FROM subscriptions WHERE tenant_id = ${session.tenantId}::uuid`);
+    expect(s).toMatchObject({ status: "active", billing_cycle: "commitment", seats_override: 5, mandate_status: "active", pending_checkout: null, razorpay_subscription_id: currentSub, razorpay_plan_paise: 3_097_500 });
+    const days = (new Date(s.license_end_at).getTime() - new Date(s.license_start_at).getTime()) / 86_400_000;
+    expect(days).toBeGreaterThanOrEqual(181);
+    expect(days).toBeLessThanOrEqual(184);
 
-    const inv = await q(sql`SELECT invoice_no, kind, total_paise, igst_paise, cgst_paise, place_of_supply, email_status FROM billing_invoices WHERE tenant_id = ${session.tenantId}::uuid`);
+    const inv = await q(sql`SELECT invoice_no, kind, total_paise, taxable_paise, igst_paise, cgst_paise, place_of_supply, email_status, lines FROM billing_invoices WHERE tenant_id = ${session.tenantId}::uuid`);
     expect(inv).toHaveLength(1);
-    expect(inv[0]).toMatchObject({ kind: "first", total_paise: 3_097_500, igst_paise: 472_500, cgst_paise: 0, email_status: "sent" });
+    expect(inv[0]).toMatchObject({ kind: "first", total_paise: 18_585_000, taxable_paise: 15_750_000, igst_paise: 2_835_000, cgst_paise: 0, email_status: "sent" });
+    const lines = inv[0].lines as Array<{ key: string; description: string }>;
+    expect(lines.map((l) => l.key)).toEqual(["maintenance", "users"]);
+    expect(lines[0].description).toMatch(/^CRM subscription — 6-month commitment/);
     expect(inv[0].invoice_no).toMatch(/^AINA\/\d{4}-\d{2}\/\d{6}$/);
     expect(inv[0].place_of_supply).toMatch(/Maharashtra/);
     const sent = mails.filter((m) => m.subject.includes(inv[0].invoice_no));
@@ -221,7 +266,14 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
     expect((await loadTenantLicense(session.tenantId, ["owner"])).maxUsers).toBe(5);
   });
 
-  it("a renewal auto-debit extends from the due date and is invoiced once", async () => {
+  it("an existing firm's Billing re-quote shows all three cycles again", async () => {
+    const { GET } = await import("@/app/api/billing/quote/route");
+    const g = await json(await GET(await getReq("/api/billing/quote?aumCrore=300&users=5")));
+    expect(g.body.cycles.map((c: { cycle: string }) => c.cycle)).toEqual(["monthly", "half_yearly", "yearly"]);
+    expect(g.body.firstPurchase).toBe(false);
+  });
+
+  it("with no choice made, the first debit after the commitment continues MONTHLY, from the due date, invoiced once", async () => {
     const [before] = await q(sql`SELECT license_end_at FROM subscriptions WHERE tenant_id = ${session.tenantId}::uuid`);
     const { POST: hook } = await import("@/app/api/webhooks/razorpay/route");
     const pay = `pay_renew_${randomUUID().slice(0, 8)}`;
@@ -235,8 +287,10 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
     const inv = await q(sql`SELECT kind, period_start::text AS ps FROM billing_invoices WHERE razorpay_payment_id = ${pay}`);
     expect(inv).toHaveLength(1);
     expect(inv[0].kind).toBe("renewal");
-    const [after] = await q(sql`SELECT license_end_at FROM subscriptions WHERE tenant_id = ${session.tenantId}::uuid`);
+    const [after] = await q(sql`SELECT license_end_at, billing_cycle, cycle_total_paise FROM subscriptions WHERE tenant_id = ${session.tenantId}::uuid`);
     expect(new Date(after.license_end_at).getTime()).toBeGreaterThan(new Date(before.license_end_at).getTime() + 27 * 86_400_000);
+    expect(new Date(after.license_end_at).getTime()).toBeLessThan(new Date(before.license_end_at).getTime() + 32 * 86_400_000);
+    expect(after).toMatchObject({ billing_cycle: "monthly", cycle_total_paise: 3_097_500 });
   });
 
   it("a failed mandate does not cut access; the dates and the 7-day grace do", async () => {
@@ -251,8 +305,10 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
     expect(l.status).toBe("expired");
   });
 
-  it("a late renewal adds the grace days pro-rata and starts the cycle on the payment date", async () => {
+  it("a late renewal adds the grace days pro-rata and starts the cycle on the payment date (monthly: allowed for an existing firm)", async () => {
     const { POST } = await import("@/app/api/billing/checkout/route");
+    // The commitment is never on offer again.
+    expect((await POST(req("/api/billing/checkout", { cycle: "commitment", users: 5 }))).status).toBe(400);
     const r = await json(await POST(req("/api/billing/checkout", { cycle: "monthly", users: 5 })));
     expect(r.status).toBe(200);
     expect(r.body.kind).toBe("late_renewal");

@@ -13,12 +13,19 @@
  *  Renewals are priced from the AUM the renewal review took from the CRM
  *  (lib/billing/renewal-review.ts), never from a typed figure.
  *
+ * Which cycles may be bought (`cyclesOffered`): a FIRST purchase gets the
+ * 6-month commitment or yearly only; everyone else the three standard cycles.
+ * The server decides from the database (lib/billing/first-purchase.ts), so a
+ * crafted monthly / half-yearly first purchase is refused here.
+ *
  * How it is collected: ONE Razorpay subscription per checkout. Its plan is the
  * cycle total (incl. GST) on the cycle's period (monthly ×1, monthly ×6,
  * yearly); `start_at` is the END of the period being bought, and the period
  * itself (plus any late charge) is an upfront add-on charged with the mandate
  * authorisation. So the money for now is taken now, and the first automatic
- * debit lands exactly on the next renewal date.
+ * debit lands exactly on the next renewal date. For the commitment the plan is
+ * the MONTHLY plan the firm continues on when it has not chosen another cycle
+ * by the commitment's end — the commitment itself is the upfront add-on.
  */
 
 import crypto from "node:crypto";
@@ -27,7 +34,9 @@ import { withTenant } from "@/db/client";
 import { subscriptions, tenants } from "@/db/schema";
 import {
   addMonths,
-  CYCLE_LABEL,
+  cycleLabel,
+  cyclesOffered,
+  AFTER_COMMITMENT_DEFAULT,
   lateProRataCharge,
   quoteCycle,
   razorpayPeriod,
@@ -38,6 +47,7 @@ import {
 } from "./aum-pricing";
 import { createRazorpayPlan, createRazorpaySubscription, razorpayConfigured, razorpayPublicKeyId } from "./razorpay";
 import { renewalState } from "./renewal";
+import { loadFirstPurchase } from "./first-purchase";
 import type { NextCycle, PendingCheckout } from "./payments";
 
 export class CheckoutError extends Error {
@@ -52,7 +62,7 @@ export class CheckoutError extends Error {
 
 export type CheckoutChoice = { cycle: CycleKey; users: number; aumCrore?: number | null };
 
-export type CheckoutPlan = Omit<PendingCheckout, "id" | "razorpaySubscriptionId" | "razorpayPlanId" | "createdAt" | "createdBy" | "previousRazorpaySubscriptionId">;
+export type CheckoutPlan = Omit<PendingCheckout, "id" | "razorpaySubscriptionId" | "razorpayPlanId" | "razorpayPlanPaise" | "createdAt" | "createdBy" | "previousRazorpaySubscriptionId">;
 
 type SubState = {
   status: string;
@@ -63,7 +73,17 @@ type SubState = {
   aumSource: string | null;
   aumAsOf: string | null;
   nextCycle: NextCycle | null;
+  /** Never bought before (lib/billing/first-purchase.ts) — the commitment rule applies. */
+  firstPurchase: boolean;
 };
+
+/** The message when a cycle is not on offer to this firm. */
+export function cycleNotOffered(firstPurchase: boolean, s: PricingSettings): CheckoutError {
+  const months = s.cycles.commitment.months;
+  return firstPurchase && s.firstPurchaseCommitment
+    ? new CheckoutError(400, `Your first purchase is the ${months}-month commitment or yearly. Monthly billing is available after the first ${months} months.`, "cycle_not_offered")
+    : new CheckoutError(400, "Choose monthly, half-yearly or yearly.", "cycle_not_offered");
+}
 
 /**
  * Pure: what a checkout made now would buy and charge. Throws CheckoutError
@@ -73,6 +93,8 @@ type SubState = {
 export function planCheckout(sub: SubState, choice: CheckoutChoice, now: Date, s: PricingSettings): CheckoutPlan {
   const isAum = sub.pricingModel === "aum";
   const unpaid = sub.status === "pending" || (!isAum && ["trial", "expired", "cancelled", "suspended"].includes(sub.status)) || (isAum && !sub.licenseEndAt);
+  const offered = cyclesOffered(unpaid && sub.firstPurchase, s);
+  if (!offered.includes(choice.cycle)) throw cycleNotOffered(unpaid && sub.firstPurchase, s);
   const months = s.cycles[choice.cycle].months;
 
   if (unpaid) {
@@ -150,7 +172,7 @@ export async function startCheckout(
   const ctx = await withTenant(tenantId, async (tx) => {
     const [sub] = await tx.select().from(subscriptions).where(eq(subscriptions.tenantId, tenantId)).limit(1);
     const [t] = await tx.select({ name: tenants.displayName }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
-    return { sub, firmName: t?.name ?? "Your firm" };
+    return { sub, firmName: t?.name ?? "Your firm", firstPurchase: await loadFirstPurchase(tx, tenantId) };
   });
   if (!ctx.sub) throw new CheckoutError(404, "No subscription to bill.");
   const sub = ctx.sub;
@@ -165,6 +187,7 @@ export async function startCheckout(
       aumSource: sub.aumSource ?? null,
       aumAsOf: sub.aumAsOf ?? null,
       nextCycle: (sub.nextCycle as NextCycle | null) ?? null,
+      firstPurchase: ctx.firstPurchase,
     },
     choice,
     now,
@@ -173,20 +196,25 @@ export async function startCheckout(
 
   const checkoutId = crypto.randomUUID();
   const notes = { tenant_id: tenantId, checkout_id: checkoutId, kind: plan.kind };
-  const { period, interval } = razorpayPeriod(plan.cycle);
+  // The plan is what auto-debits from the end of this period: the cycle bought,
+  // or — after a commitment — the monthly cycle the firm continues on.
+  const planCycle = plan.cycle === "commitment" ? AFTER_COMMITMENT_DEFAULT : plan.cycle;
+  const planQuote = planCycle === plan.cycle ? plan.quote : quoteCycle({ aumCrore: plan.aumCrore, users: plan.users, cycle: planCycle }, s);
+  const { period, interval } = razorpayPeriod(planCycle);
   const rzPlan = await createRazorpayPlan({
-    amountPaise: plan.quote.totalPaise,
+    amountPaise: planQuote.totalPaise,
     period,
     interval,
-    name: `Aina CRM — ${CYCLE_LABEL[plan.cycle]} · ${plan.users} user${plan.users === 1 ? "" : "s"} · ${plan.tierLabel}`,
+    name: `Aina CRM — ${cycleLabel(planCycle)} · ${plan.users} user${plan.users === 1 ? "" : "s"} · ${plan.tierLabel}`,
     notes,
   });
   const periodEnd = new Date(plan.periodEnd);
-  const addons = [{ name: `${CYCLE_LABEL[plan.cycle]} subscription (incl. GST)`, amountPaise: plan.quote.totalPaise }];
+  const label = cycleLabel(plan.cycle, plan.quote.months);
+  const addons = [{ name: plan.cycle === "commitment" ? `${label} (incl. GST)` : `${label} subscription (incl. GST)`, amountPaise: plan.quote.totalPaise }];
   if (plan.late) addons.push({ name: `Late renewal — ${plan.late.graceDays} grace days (incl. GST)`, amountPaise: plan.late.totalPaise });
   const rzSub = await createRazorpaySubscription({
     planId: rzPlan.id,
-    totalCount: razorpayTotalCount(plan.cycle),
+    totalCount: razorpayTotalCount(planCycle),
     customerNotify: true,
     startAtUnix: Math.floor(periodEnd.getTime() / 1000),
     addons,
@@ -198,6 +226,7 @@ export async function startCheckout(
     id: checkoutId,
     razorpaySubscriptionId: rzSub.id,
     razorpayPlanId: rzPlan.id,
+    razorpayPlanPaise: planQuote.totalPaise,
     previousRazorpaySubscriptionId: sub.razorpaySubscriptionId ?? null,
     createdAt: now.toISOString(),
     createdBy: actorUserId,
@@ -213,7 +242,7 @@ export async function startCheckout(
     keyId: await razorpayPublicKeyId(),
     subscriptionId: rzSub.id,
     amountPaise: plan.chargePaise,
-    description: `${ctx.firmName} · ${CYCLE_LABEL[plan.cycle]} · ${plan.users} user${plan.users === 1 ? "" : "s"}${plan.late ? " · incl. late charge" : ""}`,
+    description: `${ctx.firmName} · ${label} · ${plan.users} user${plan.users === 1 ? "" : "s"}${plan.late ? " · incl. late charge" : ""}`,
     plan,
   };
 }

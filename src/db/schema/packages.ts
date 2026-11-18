@@ -114,7 +114,7 @@ export const subscriptions = pgTable(
       .notNull()
       .default("trial"),
 
-    billingCycle: text("billing_cycle", { enum: ["monthly", "half_yearly", "yearly", "custom"] }).default("yearly"),
+    billingCycle: text("billing_cycle", { enum: ["monthly", "half_yearly", "yearly", "commitment", "custom"] }).default("yearly"),
 
     /** License window */
     licenseStartAt: timestamp("license_start_at", { withTimezone: true }).defaultNow(),
@@ -157,6 +157,8 @@ export const subscriptions = pgTable(
     failedPaymentCount: integer("failed_payment_count").notNull().default(0),
     lastPaymentAt: timestamp("last_payment_at", { withTimezone: true }),
     lastPaymentPaise: integer("last_payment_paise"),
+    /** What the Razorpay plan in force debits each cycle, incl. GST (migration 0268) — after a commitment, the monthly. */
+    razorpayPlanPaise: integer("razorpay_plan_paise"),
 
     /**
      * AUM-based pricing (lib/billing/aum-pricing.ts, migration 0265). Null

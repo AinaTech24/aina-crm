@@ -20,7 +20,7 @@ import { AumBillingPanel } from "@/components/billing/AumBillingPanel";
 import { can } from "@/lib/auth/rbac";
 import { loadPricingSettings } from "@/lib/billing/pricing-settings";
 import { loadAumBillingView, loadInvoices, type AumBillingView, type BillingInvoiceRow } from "@/lib/billing/billing-view";
-import { CYCLE_LABEL, inr } from "@/lib/billing/aum-pricing";
+import { CYCLE_LABEL, cycleLabel, inr } from "@/lib/billing/aum-pricing";
 import { aumSourceText } from "@/lib/billing/renewal-review";
 
 const STATUS_TONE: Record<string, Tone> = {
@@ -83,6 +83,7 @@ export default async function BillingPage() {
           scheduledChange={aum.scheduledChange}
           minUsers={settings.minUsers}
           maxUsers={settings.maxUsers}
+          commitment={aum.commitment ? { months: aum.commitment.months, endsLabel: aum.commitment.endsOn ? formatDate(aum.commitment.endsOn) : null } : null}
         />
         {usage && (
           <Card>
@@ -170,7 +171,7 @@ export default async function BillingPage() {
           </div>
 
           <BillingCycleChooser
-            current={sub.billingCycle ?? null}
+            current={sub.billingCycle === "commitment" ? null : sub.billingCycle ?? null}
             seats={sub.seatsOverride ?? pkg.maxUsers}
             monthlyPaise={pkg.monthlyPricePaise}
             yearlyPaise={pkg.yearlyPricePaise}
@@ -294,6 +295,24 @@ const KIND_LABEL: Record<string, string> = { first: "First payment", renewal: "R
 
 function AumStatus({ view }: { view: AumBillingView }) {
   const r = view.renewal;
+  const c = view.commitment;
+  if (c?.choiceOpen && c.endsOn) {
+    return (
+      <div role="status" className="rounded-xl border border-warning/50 bg-warning/5 p-4 text-sm flex items-start gap-3">
+        <CalendarClock className="size-5 mt-0.5 shrink-0" />
+        <div>
+          <div className="font-semibold">
+            Your {c.months}-month commitment ends on {formatDate(c.endsOn)} — {c.chosen ? `you chose ${CYCLE_LABEL[c.chosen].toLowerCase()}` : "choose how to continue"}
+          </div>
+          <p className="text-muted-foreground mt-0.5">
+            {c.chosen
+              ? "You can still change it below until then."
+              : `Pick monthly, half-yearly or yearly below. If you do not choose, your subscription continues monthly at ${inr(c.monthlyDefaultPaise)} incl. GST.`}
+          </p>
+        </div>
+      </div>
+    );
+  }
   if (view.mode === "pay_first") {
     return (
       <div role="status" className="rounded-xl border border-warning/50 bg-warning/5 p-4 text-sm flex items-start gap-3">
@@ -343,7 +362,7 @@ function AumCurrent({ view }: { view: AumBillingView }) {
         <CardHeader title="Your package" subtitle="In force for the current cycle." icon={<Package className="size-4" />} />
         <CardBody>
           <dl className="grid grid-cols-2 gap-3 text-sm">
-            <Item label="Cycle" value={CYCLE_LABEL[view.cycle]} />
+            <Item label="Cycle" value={cycleLabel(view.inForce.quote?.cycle ?? view.cycle, view.inForce.quote?.months)} />
             <Item label="Users (seats)" value={String(view.users)} />
             <Item label="AUM tier" value={f.tierLabel ?? "—"} />
             <Item label="Per cycle, incl. GST" value={f.cycleTotalPaise != null ? inr(f.cycleTotalPaise) : "—"} />

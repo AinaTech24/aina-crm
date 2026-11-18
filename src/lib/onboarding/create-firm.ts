@@ -23,7 +23,7 @@ import { PLATFORM_TENANT_ID } from "@/lib/platform";
 import { MASTER_SEEDS } from "@/lib/masters/seeds";
 import { installDefaultRecipes } from "@/lib/recipes/install-defaults";
 import { installClientEmailTemplates } from "@/lib/templates/install-client-emails";
-import type { CycleKey, CycleQuote } from "@/lib/billing/aum-pricing";
+import { cycleLabel, type CycleKey, type CycleQuote } from "@/lib/billing/aum-pricing";
 
 export type NewFirmInput = {
   firmName: string;
@@ -149,7 +149,7 @@ export async function createFirmAccount(input: NewFirmInput): Promise<NewFirm> {
         actor: p ? "system:online_purchase" : "system:self_serve_signup",
         toStatus: "pending",
         toPackage: pkg.key,
-        notes: p ? `Online purchase — ${p.cycle.replace("_", "-")}, ${p.users} user(s), ₹${p.aumCrore} Cr declared; awaiting payment.` : "Self-serve signup — awaiting package selection.",
+        notes: p ? `Online purchase — ${cycleLabel(p.cycle, p.quote.months).toLowerCase()}, ${p.users} user(s), ₹${p.aumCrore} Cr declared; awaiting payment.` : "Self-serve signup — awaiting package selection.",
       });
 
       for (const [masterType, rows] of Object.entries(MASTER_SEEDS)) {

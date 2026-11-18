@@ -11,7 +11,7 @@
  */
 
 import type { CycleQuote, LateCharge } from "./aum-pricing";
-import { CYCLE_LABEL } from "./aum-pricing";
+import { cycleLabel } from "./aum-pricing";
 import type { InvoiceLine } from "@/db/schema/billing";
 import { istDayNumber } from "./renewal";
 
@@ -87,6 +87,8 @@ export type InvoiceFigures = {
 /**
  * The invoice's lines for a cycle (and, for a renewal paid after the grace
  * period, the late pro-rata line). Amounts are the quote's, never re-derived.
+ * A 6-month commitment reads "CRM subscription — 6-month commitment" and, with
+ * no discount, has no discount line.
  */
 export function invoiceFigures(args: {
   quote: CycleQuote;
@@ -99,11 +101,15 @@ export function invoiceFigures(args: {
   const q = args.quote;
   const ps = iso(args.periodStart);
   const pe = iso(new Date(args.periodEnd.getTime() - 86_400_000));
-  const cycle = CYCLE_LABEL[q.cycle].toLowerCase();
+  const label = cycleLabel(q.cycle, q.months);
+  const aumText = `${args.tierLabel} (₹${q.aumCrore.toLocaleString("en-IN")} Cr AUM)`;
   const lines: InvoiceLine[] = [
     {
       key: "maintenance",
-      description: `CRM maintenance — ${args.tierLabel} (₹${q.aumCrore.toLocaleString("en-IN")} Cr AUM), ${cycle}`,
+      description:
+        q.cycle === "commitment"
+          ? `CRM subscription — ${label}: maintenance, ${aumText}`
+          : `CRM maintenance — ${aumText}, ${label.toLowerCase()}`,
       periodStart: ps,
       periodEnd: pe,
       quantity: q.months,
@@ -121,7 +127,7 @@ export function invoiceFigures(args: {
     },
   ];
   if (q.discountPaise > 0) {
-    lines.push({ key: "discount", description: `${CYCLE_LABEL[q.cycle]} discount ${(q.discountBp / 100).toString()}%`, amountPaise: -q.discountPaise });
+    lines.push({ key: "discount", description: `${label} discount ${(q.discountBp / 100).toString()}%`, amountPaise: -q.discountPaise });
   }
   let taxable = q.taxablePaise;
   let gst = q.gstPaise;

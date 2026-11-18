@@ -14,7 +14,7 @@ import { withSystem } from "@/db/client";
 import { recordAudit } from "@/lib/audit";
 import { sendSystemEmail } from "@/lib/comms/system-email";
 import { LEGAL } from "@/lib/legal/company";
-import { CYCLE_LABEL, inr, parseCycle } from "@/lib/billing/aum-pricing";
+import { cycleLabel, inr, parseCycle } from "@/lib/billing/aum-pricing";
 
 export const WELCOME_MAX_ATTEMPTS = 8;
 
@@ -104,7 +104,7 @@ export async function sendWelcomeEmail(tenantId: string): Promise<"sent" | "skip
       SELECT billing_cycle, seats_override, cycle_quote, cycle_total_paise, license_end_at, next_cycle
         FROM subscriptions WHERE tenant_id = ${tenantId}::uuid
     `)).rows[0] as
-      | { billing_cycle: string | null; seats_override: number | null; cycle_quote: { tierLabel?: string } | null; cycle_total_paise: number | null; license_end_at: string | null; next_cycle: { quote?: { totalPaise?: number } } | null }
+      | { billing_cycle: string | null; seats_override: number | null; cycle_quote: { tierLabel?: string; months?: number } | null; cycle_total_paise: number | null; license_end_at: string | null; next_cycle: { quote?: { totalPaise?: number } } | null }
       | undefined;
     if (!owner) {
       await tx.execute(sql`UPDATE tenants SET welcome_email_status = 'failed', welcome_email_attempts = welcome_email_attempts + 1, welcome_email_last_error = 'no owner email' WHERE id = ${tenantId}::uuid`);
@@ -114,7 +114,7 @@ export async function sendWelcomeEmail(tenantId: string): Promise<"sent" | "skip
     const mail = welcomeEmail({
       ownerName: owner.name,
       firmName: t.display_name,
-      cycleLabel: cycle ? CYCLE_LABEL[cycle] : null,
+      cycleLabel: cycle ? cycleLabel(cycle, sub?.cycle_quote?.months) : null,
       users: sub?.seats_override ?? null,
       tierLabel: sub?.cycle_quote?.tierLabel ?? null,
       nextRenewal: sub?.license_end_at ? new Date(sub.license_end_at).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Kolkata" }) : null,

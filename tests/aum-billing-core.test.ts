@@ -5,7 +5,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PRICING, monthlyBasePaise, quoteCycle } from "@/lib/billing/aum-pricing";
+import { DEFAULT_PRICING, monthlyBasePaise, quoteCycle, resolvePricingSettings } from "@/lib/billing/aum-pricing";
+import { commitmentEndingText } from "@/lib/billing/renewal-review";
 import { aumLicenseView, istDate, renewalPeriod, renewalState } from "@/lib/billing/renewal";
 import { CheckoutError, planCheckout } from "@/lib/billing/checkout";
 import { amountInWords, financialYear, indianWords, invoiceFigures, invoiceNumber, splitGst } from "@/lib/billing/invoice-core";
@@ -59,10 +60,10 @@ describe("grace period (rule A)", () => {
 });
 
 describe("what a checkout buys", () => {
-  const base = { pricingModel: "aum", declaredAumCrore: 300, aumCroreInForce: 300, aumSource: "declared", aumAsOf: null, nextCycle: null };
+  const base = { pricingModel: "aum", declaredAumCrore: 300, aumCroreInForce: 300, aumSource: "declared", aumAsOf: null, nextCycle: null, firstPurchase: false };
 
   it("a new firm pays the cycle, priced on the server from the declared AUM", () => {
-    const p = planCheckout({ ...base, status: "pending", licenseEndAt: null }, { cycle: "yearly", users: 5 }, day(0), DEFAULT_PRICING);
+    const p = planCheckout({ ...base, status: "pending", licenseEndAt: null, firstPurchase: true }, { cycle: "yearly", users: 5 }, day(0), DEFAULT_PRICING);
     expect(p.kind).toBe("first");
     expect(p.chargePaise).toBe(R(315_945));
     expect(p.late).toBeNull();
@@ -90,6 +91,39 @@ describe("what a checkout buys", () => {
     const p = planCheckout({ ...base, status: "active", licenseEndAt: DUE, nextCycle: nc }, { cycle: "monthly", users: 5, aumCrore: 10 }, day(2), DEFAULT_PRICING);
     expect(p.tierKey).toBe("upto_1000");
     expect(p.aumSource).toBe("crm_snapshot");
+  });
+
+  it("a new firm's first purchase is the 6-month commitment: 6 × the monthly base, no discount, + GST", () => {
+    const p = planCheckout({ ...base, status: "pending", licenseEndAt: null, firstPurchase: true }, { cycle: "commitment", users: 5 }, day(0), DEFAULT_PRICING);
+    expect(p.kind).toBe("first");
+    expect(p.quote.months).toBe(6);
+    expect(p.quote.discountPaise).toBe(0);
+    expect(p.chargePaise).toBe(R(185_850));
+    expect(p.periodEnd).toBe(new Date(Date.UTC(2027, 4, 10, 6, 30)).toISOString());
+  });
+
+  it("a crafted monthly or half-yearly first purchase is refused; an existing firm may buy them", () => {
+    const first = { ...base, status: "pending", licenseEndAt: null, firstPurchase: true };
+    for (const cycle of ["monthly", "half_yearly"] as const) {
+      expect(() => planCheckout(first, { cycle, users: 5 }, day(0), DEFAULT_PRICING)).toThrow(/first purchase/i);
+      // A lapsed legacy firm that has paid before is not a first purchase.
+      const legacy = planCheckout({ ...first, pricingModel: "legacy", status: "expired", firstPurchase: false }, { cycle, users: 5 }, day(0), DEFAULT_PRICING);
+      expect(legacy.kind).toBe("first");
+      // A renewal offers the three standard cycles.
+      expect(planCheckout({ ...base, status: "active", licenseEndAt: DUE }, { cycle, users: 5 }, day(2), DEFAULT_PRICING).kind).toBe("renewal");
+    }
+  });
+
+  it("the commitment is a first purchase only — never a renewal or a returning firm's purchase", () => {
+    expect(() => planCheckout({ ...base, status: "active", licenseEndAt: DUE }, { cycle: "commitment", users: 5 }, day(2), DEFAULT_PRICING)).toThrow(CheckoutError);
+    expect(() => planCheckout({ ...base, status: "pending", licenseEndAt: null, firstPurchase: false }, { cycle: "commitment", users: 5 }, day(0), DEFAULT_PRICING)).toThrow(CheckoutError);
+  });
+
+  it("with the admin's switch off, a first purchase may pick any standard cycle", () => {
+    const off = resolvePricingSettings({ firstPurchaseCommitment: false });
+    const p = planCheckout({ ...base, status: "pending", licenseEndAt: null, firstPurchase: true }, { cycle: "monthly", users: 5 }, day(0), off);
+    expect(p.chargePaise).toBe(R(30_975));
+    expect(() => planCheckout({ ...base, status: "pending", licenseEndAt: null, firstPurchase: true }, { cycle: "commitment", users: 5 }, day(0), off)).toThrow(CheckoutError);
   });
 
   it("a paid-up firm has nothing to pay now", () => {
@@ -134,6 +168,35 @@ describe("tax invoice arithmetic (rule E)", () => {
     expect(lf.taxablePaise).toBe(R(26_250 + 6_125));
     expect(lf.gstPaise).toBe(R(4_725 + 1_103));
     expect(lf.totalPaise).toBe(R(30_975 + 7_228));
+  });
+});
+
+describe("the commitment on the tax invoice", () => {
+  it("reads 'CRM subscription — 6-month commitment' with no discount line", () => {
+    const q = quoteCycle({ aumCrore: 300, users: 5, cycle: "commitment" });
+    const f = invoiceFigures({ quote: q, tierLabel: q.tierLabel, periodStart: DUE, periodEnd: new Date("2027-05-10T04:30:00Z") });
+    expect(f.lines.map((l) => l.key)).toEqual(["maintenance", "users"]);
+    expect(f.lines[0].description).toMatch(/^CRM subscription — 6-month commitment/);
+    expect(f.lines[0].amountPaise).toBe(R(120_000));
+    expect(f.lines[1].amountPaise).toBe(R(37_500));
+    expect(f.taxablePaise).toBe(R(157_500));
+    expect(f.gstPaise).toBe(R(28_350));
+    expect(f.totalPaise).toBe(R(185_850));
+    expect(f.lines.some((l) => /discount/i.test(l.description))).toBe(false);
+  });
+});
+
+describe("the end of the commitment notice", () => {
+  const options = (["monthly", "half_yearly", "yearly"] as const).map((cycle) => quoteCycle({ aumCrore: 300, users: 5, cycle }));
+  it("asks the owner to choose and says it continues monthly otherwise", () => {
+    const t = commitmentEndingText({ renewalOn: "2027-05-18", months: 6, chosen: null, next: options[0], options });
+    expect(t.title).toMatch(/6-month commitment ends on 18 May 2027/);
+    expect(t.body).toMatch(/continues monthly at ₹30,975/);
+    expect(t.body).toMatch(/yearly ₹3,15,945/);
+  });
+  it("confirms the owner's choice", () => {
+    const t = commitmentEndingText({ renewalOn: "2027-05-18", months: 6, chosen: "yearly", next: options[2], options });
+    expect(t.body).toMatch(/You chose yearly: ₹3,15,945/);
   });
 });
 

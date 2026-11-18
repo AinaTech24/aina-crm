@@ -11,6 +11,9 @@
  * if they leave before paying, Billing offers the same three packages and the
  * license gate keeps the firm to Billing and Support until it pays.
  *
+ * A new firm's first purchase is the commitment or yearly (`cyclesOffered`);
+ * any other cycle is refused BEFORE the account is created.
+ *
  * Abuse controls: 5 accounts per IP per hour, a claim token per quote, one
  * account per quote and per email.
  */
@@ -22,10 +25,10 @@ import { enforce } from "@/lib/rate-limit";
 import { issueSessionToken } from "@/lib/auth/issue-session";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { issueEmailVerification } from "@/lib/auth/email-verification";
-import { parseCycle, quoteCycle } from "@/lib/billing/aum-pricing";
+import { cyclesOffered, parseCycle, quoteCycle } from "@/lib/billing/aum-pricing";
 import { loadPricingSettings } from "@/lib/billing/pricing-settings";
 import { loadQuoteByToken, markQuoteChosen } from "@/lib/billing/quotes";
-import { CheckoutError, startCheckout } from "@/lib/billing/checkout";
+import { CheckoutError, cycleNotOffered, startCheckout } from "@/lib/billing/checkout";
 import { createFirmAccount, emailInUse, FirmCreateError } from "@/lib/onboarding/create-firm";
 import { checkGstin, gstState } from "@/lib/legal/gst";
 
@@ -43,6 +46,7 @@ export async function POST(req: NextRequest) {
     const b = ((await req.json().catch(() => null)) ?? {}) as Record<string, unknown>;
     const cycle = parseCycle(b.cycle);
     if (!cycle) return bad("Please choose a package.");
+    if (!cyclesOffered(true, settings).includes(cycle)) return bad(cycleNotOffered(true, settings).message, "cycle");
     const password = String(b.password ?? "");
     if (password.length < 8 || password.length > 200) return bad("Choose a password of at least 8 characters.", "password");
     const state = gstState(String(b.state ?? ""));

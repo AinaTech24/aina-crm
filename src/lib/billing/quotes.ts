@@ -12,11 +12,14 @@
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { quoteAll, tierFor, type CycleKey, type CycleQuote, type PricingSettings } from "./aum-pricing";
+import { quoteOffered, tierFor, type CycleKey, type CycleQuote, type PricingSettings } from "./aum-pricing";
 import type { QuoteRequest } from "./quote-request";
 
 export type StoredQuote = {
+  /** The packages this firm may buy (`cyclesOffered`): commitment + yearly for a first purchase. */
   cycles: CycleQuote[];
+  firstPurchase: boolean;
+  commitmentMonths: number;
   tierKey: string;
   tierLabel: string;
   gstBp: number;
@@ -34,10 +37,12 @@ export function hashIp(ip: string | null): string | null {
   return crypto.createHmac("sha256", key).update(ip).digest("hex").slice(0, 32);
 }
 
-export function buildStoredQuote(req: { aumCrore: number; users: number }, s: PricingSettings): StoredQuote {
+export function buildStoredQuote(req: { aumCrore: number; users: number }, s: PricingSettings, opts: { firstPurchase: boolean }): StoredQuote {
   const tier = tierFor(req.aumCrore, s);
   return {
-    cycles: quoteAll(req, s),
+    cycles: quoteOffered(req, opts.firstPurchase, s),
+    firstPurchase: opts.firstPurchase && s.firstPurchaseCommitment,
+    commitmentMonths: s.cycles.commitment.months,
     tierKey: tier.key,
     tierLabel: tier.label,
     gstBp: s.gstBp,

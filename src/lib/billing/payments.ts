@@ -9,6 +9,8 @@
  *  - `recordRenewalCharge`: an auto-debit (`subscription.charged`) on the
  *    subscription in force — the next cycle, priced as the renewal review
  *    decided (lib/billing/renewal-review.ts) from that cycle's start only.
+ *    The first debit after a 6-month commitment is the cycle the owner chose,
+ *    else MONTHLY — a commitment never renews as a commitment.
  *
  * Both run inside withSystem and lock the subscription row first, so two
  * deliveries of the same payment serialise. Every outcome is a
@@ -18,7 +20,7 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { recordAudit } from "@/lib/audit";
-import { CYCLE_LABEL, parseCycle, type CycleKey, type CycleQuote, type LateCharge, type PricingSettings } from "./aum-pricing";
+import { CYCLE_LABEL, cycleLabel, parseCycle, quoteCycle, renewalCycleOf, type CycleKey, type CycleQuote, type LateCharge, type PricingSettings } from "./aum-pricing";
 import { issueInvoice } from "./invoice";
 import { invoiceFigures } from "./invoice-core";
 import { markQuotePaid } from "./quotes";
@@ -29,6 +31,8 @@ export type PendingCheckout = {
   kind: "first" | "renewal" | "late_renewal";
   razorpaySubscriptionId: string;
   razorpayPlanId: string;
+  /** What that Razorpay plan debits each cycle (incl. GST) — for a commitment, the monthly that follows it. */
+  razorpayPlanPaise?: number;
   previousRazorpaySubscriptionId: string | null;
   cycle: CycleKey;
   users: number;
@@ -77,6 +81,7 @@ type SubRow = {
   cycle_quote: CycleQuote | null;
   cycle_total_paise: number | null;
   aum_tier_key: string | null;
+  aum_crore_in_force: string | null;
   quote_id: string | null;
   pricing_model: string | null;
 };
@@ -96,7 +101,7 @@ async function lockSubByRazorpayId(tx: Tx, razorpaySubscriptionId: string): Prom
   const r = await tx.execute(sql`
     SELECT id, tenant_id, status, billing_cycle, seats_override, license_start_at, license_end_at,
            razorpay_subscription_id, pending_checkout, next_cycle, cycle_quote, cycle_total_paise,
-           aum_tier_key, quote_id, pricing_model
+           aum_tier_key, aum_crore_in_force, quote_id, pricing_model
       FROM subscriptions
      WHERE razorpay_subscription_id = ${razorpaySubscriptionId}
         OR pending_checkout->>'razorpaySubscriptionId' = ${razorpaySubscriptionId}
@@ -141,6 +146,7 @@ export async function recordCheckoutPayment(
       next_renewal_at = ${end},
       razorpay_subscription_id = ${pc.razorpaySubscriptionId},
       razorpay_plan_id = ${pc.razorpayPlanId},
+      razorpay_plan_paise = ${pc.razorpayPlanPaise ?? q.totalPaise},
       mandate_status = 'active',
       failed_payment_count = 0,
       last_payment_at = ${paidAt},
@@ -170,7 +176,7 @@ export async function recordCheckoutPayment(
     INSERT INTO subscription_events (id, subscription_id, tenant_id, event_type, actor, from_status, to_status, amount_paise, notes, meta, at)
     VALUES (gen_random_uuid(), ${sub.id}::uuid, ${sub.tenant_id}::uuid, ${eventType}, ${a.source === "webhook" ? "razorpay_webhook" : "system:checkout"},
             ${sub.status}, 'active', ${pc.chargePaise},
-            ${`${CYCLE_LABEL[pc.cycle]} · ${pc.users} user(s) · ${pc.tierLabel}${pc.late ? " · late renewal charge" : ""} · invoice ${inv.invoiceNo}`},
+            ${`${cycleLabel(pc.cycle, q.months)} · ${pc.users} user(s) · ${pc.tierLabel}${pc.late ? " · late renewal charge" : ""} · invoice ${inv.invoiceNo}`},
             ${JSON.stringify({ paymentId: a.paymentId, razorpaySubscriptionId: pc.razorpaySubscriptionId, invoiceId: inv.id, checkoutId: pc.id, kind: pc.kind, latePaise: pc.late?.totalPaise ?? 0 })}::jsonb, now())
   `);
   if (pc.kind === "first" && sub.quote_id) await markQuotePaid(tx, sub.quote_id);
@@ -205,7 +211,7 @@ export async function recordRenewalCharge(
   const r = await tx.execute(sql`
     SELECT id, tenant_id, status, billing_cycle, seats_override, license_start_at, license_end_at,
            razorpay_subscription_id, pending_checkout, next_cycle, cycle_quote, cycle_total_paise,
-           aum_tier_key, quote_id, pricing_model
+           aum_tier_key, aum_crore_in_force, quote_id, pricing_model
       FROM subscriptions WHERE razorpay_subscription_id = ${a.razorpaySubscriptionId} LIMIT 1 FOR UPDATE
   `);
   const sub = r.rows[0] as SubRow | undefined;
@@ -221,9 +227,17 @@ export async function recordRenewalCharge(
   // (the plan switch did not reach Razorpay), the price in force is used.
   let quote: CycleQuote | null = null;
   let applied: NextCycle | null = null;
+  const endingCommitment = sub.billing_cycle === "commitment";
   if (nc && nc.quote.totalPaise === a.amountPaise) {
     quote = nc.quote;
     applied = nc;
+  } else if (endingCommitment) {
+    // The commitment has run and Razorpay debited something other than the
+    // decided next cycle (no review yet, or the plan switch to the owner's
+    // choice was refused): the firm continues MONTHLY — the plan the checkout
+    // set up — at the AUM decided for the renewal, else the AUM in force.
+    applied = afterCommitmentMonthly(sub, nc, a.settings, paidAt);
+    quote = applied?.quote ?? null;
   } else if (current) {
     quote = current;
   } else if (nc) {
@@ -233,8 +247,8 @@ export async function recordRenewalCharge(
   if (!quote) return { status: "unknown" };
   const mismatch = quote.totalPaise !== a.amountPaise;
 
-  const cycle = parseCycle(applied?.cycle ?? sub.billing_cycle) ?? "monthly";
-  const months = cycle === "yearly" ? 12 : cycle === "half_yearly" ? 6 : 1;
+  const cycle = renewalCycleOf(parseCycle(applied?.cycle ?? sub.billing_cycle));
+  const months = a.settings.cycles[cycle].months;
   const due = sub.license_end_at ? new Date(sub.license_end_at) : paidAt;
   const period = renewalPeriod(due, paidAt, months, a.settings.graceDays);
 
@@ -252,6 +266,7 @@ export async function recordRenewalCharge(
               aum_source = ${applied.aumSource}, aum_as_of = ${applied.aumAsOf}::date, aum_tier_key = ${applied.tierKey},
               monthly_base_paise = ${applied.quote.monthlyBasePaise}, cycle_total_paise = ${applied.quote.totalPaise},
               cycle_quote = ${JSON.stringify(applied.quote)}::jsonb, razorpay_plan_id = COALESCE(${applied.razorpayPlanId}, razorpay_plan_id),
+              razorpay_plan_paise = ${a.amountPaise},
               next_cycle = NULL, scheduled_change = NULL,`
         : sql``}
       updated_at = now()
@@ -293,3 +308,29 @@ export async function recordRenewalCharge(
   return { status: "recorded", tenantId: sub.tenant_id, invoiceId: inv.id, invoiceNo: inv.invoiceNo, previousRazorpaySubscriptionId: null, kind: period.late ? "late_renewal" : "renewal" };
 }
 
+
+/**
+ * The monthly cycle a firm continues on after its commitment when Razorpay's
+ * debit does not match the decided next cycle. Pure apart from the settings.
+ */
+function afterCommitmentMonthly(sub: SubRow, nc: NextCycle | null, s: PricingSettings, at: Date): NextCycle | null {
+  const base = nc ?? null;
+  const aumCrore = base?.aumCrore ?? (sub.aum_crore_in_force != null ? Number(sub.aum_crore_in_force) : sub.cycle_quote?.aumCrore ?? null);
+  const users = base?.users ?? sub.seats_override ?? sub.cycle_quote?.users ?? null;
+  if (aumCrore == null || users == null) return null;
+  const quote = quoteCycle({ aumCrore, users, cycle: "monthly" }, s);
+  return {
+    renewalOn: base?.renewalOn ?? (sub.license_end_at ? new Date(sub.license_end_at).toISOString().slice(0, 10) : at.toISOString().slice(0, 10)),
+    cycle: "monthly",
+    users,
+    aumCrore,
+    aumSource: base?.aumSource ?? "declared",
+    aumAsOf: base?.aumAsOf ?? null,
+    tierKey: quote.tierKey,
+    tierLabel: quote.tierLabel,
+    quote,
+    razorpayPlanId: null,
+    razorpayAction: "none",
+    decidedAt: at.toISOString(),
+  };
+}
