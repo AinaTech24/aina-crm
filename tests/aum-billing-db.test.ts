@@ -282,32 +282,37 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
     const { invoiceFigures } = await import("@/lib/billing/invoice-core");
     const { quoteCycle } = await import("@/lib/billing/aum-pricing");
     const quote = quoteCycle({ aumCrore: 300, users: 5, cycle: "monthly" });
-    const paidAt = new Date("2099-06-01T06:00:00Z"); // FY 2099-00: this test's own series
-    const figures = invoiceFigures({ quote, tierLabel: quote.tierLabel, periodStart: paidAt, periodEnd: new Date("2099-07-01T06:00:00Z") });
+    // Issued invoices are never deleted (0267), so each run takes its own far-future
+    // financial year and the previous one: numbering must start at 1 in both.
+    const Y = 2200 + Math.floor(Math.random() * 7000);
+    const fy = `${Y}-${String((Y + 1) % 100).padStart(2, "0")}`;
+    const prevFy = `${Y - 1}-${String(Y % 100).padStart(2, "0")}`;
+    const paidAt = new Date(`${Y}-06-01T06:00:00Z`); // FY ${fy}: this test's own series
+    const figures = invoiceFigures({ quote, tierLabel: quote.tierLabel, periodStart: paidAt, periodEnd: new Date(`${Y}-07-01T06:00:00Z`) });
     const one = (pid: string, fail = false) =>
       withSystem(async (tx) => {
         const r = await issueInvoice(tx, { tenantId: session.tenantId, subscriptionId: null, paymentId: pid, kind: "renewal", figures, periodStart: paidAt, periodEnd: paidAt, sac: "998314", paidAt });
         if (fail) throw new Error("payment rolled back");
         return r;
       });
-    await q(sql`DELETE FROM billing_invoice_counters WHERE financial_year = '2099-00'`);
+    await q(sql`DELETE FROM billing_invoice_counters WHERE financial_year = ${fy}`);
     const results = await Promise.all(Array.from({ length: 6 }, (_, i) => one(`pay_seq_${i}_${randomUUID().slice(0, 6)}`)));
     await expect(one(`pay_seq_fail_${randomUUID().slice(0, 6)}`, true)).rejects.toThrow();
     const after = await one(`pay_seq_after_${randomUUID().slice(0, 6)}`);
     const seqs = [...results, after].map((r) => Number(r.invoiceNo.split("/")[2])).sort((a, b) => a - b);
     expect(seqs).toEqual([1, 2, 3, 4, 5, 6, 7]);
-    expect(after.invoiceNo).toBe("AINA/2099-00/000007");
+    expect(after.invoiceNo).toBe(`AINA/${fy}/000007`);
     // A new financial year starts again at 1.
-    await q(sql`DELETE FROM billing_invoice_counters WHERE financial_year = '2098-99'`);
+    await q(sql`DELETE FROM billing_invoice_counters WHERE financial_year = ${prevFy}`);
     const lastFy = await withSystem((tx) =>
-      issueInvoice(tx, { tenantId: session.tenantId, subscriptionId: null, paymentId: `pay_fy_${randomUUID().slice(0, 6)}`, kind: "renewal", figures, periodStart: paidAt, periodEnd: paidAt, sac: "998314", paidAt: new Date("2099-03-31T12:00:00Z") })
+      issueInvoice(tx, { tenantId: session.tenantId, subscriptionId: null, paymentId: `pay_fy_${randomUUID().slice(0, 6)}`, kind: "renewal", figures, periodStart: paidAt, periodEnd: paidAt, sac: "998314", paidAt: new Date(`${Y}-03-31T12:00:00Z`) })
     );
-    expect(lastFy.invoiceNo).toBe("AINA/2098-99/000001");
-    await q(sql`DELETE FROM billing_invoice_counters WHERE financial_year = '2098-99'`);
+    expect(lastFy.invoiceNo).toBe(`AINA/${prevFy}/000001`);
+    await q(sql`DELETE FROM billing_invoice_counters WHERE financial_year = ${prevFy}`);
     // Same payment again → the same invoice.
     const again = await one(results[0] ? (await q<{ razorpay_payment_id: string }>(sql`SELECT razorpay_payment_id FROM billing_invoices WHERE invoice_no = ${results[0].invoiceNo}`))[0].razorpay_payment_id : "x");
     expect(again.created).toBe(false);
-    await q(sql`DELETE FROM billing_invoice_counters WHERE financial_year = '2099-00'`);
+    await q(sql`DELETE FROM billing_invoice_counters WHERE financial_year = ${fy}`);
   });
 
   it("splits CGST + SGST for a Gujarat firm and IGST otherwise; no GSTIN is fine", async () => {

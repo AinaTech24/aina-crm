@@ -274,17 +274,29 @@ export async function signNda(
     })
   );
   const fileName = `NDA-v${prepared.doc.version}-signed.pdf`;
-  const key = vaultKey(a.tenantId, "compliance", fileName, { firm: prepared.firm.display_name, uploader: signerName, docType: "agreements" });
-  await putObject(key, pdf, "application/pdf");
+  // The signature (the acceptance row below) is the legal record; the stored PDF
+  // is a convenience copy. A storage outage must not lose a signature whose
+  // one-time code was just used up, so the copy is best-effort: on failure the
+  // acceptance is still recorded (no key), the PDF still goes by email, and the
+  // miss is logged and audited.
+  let key: string | null = vaultKey(a.tenantId, "compliance", fileName, { firm: prepared.firm.display_name, uploader: signerName, docType: "agreements" });
+  try {
+    await putObject(key, pdf, "application/pdf");
+  } catch (err) {
+    console.error(`[onboarding] signed NDA PDF could not be stored for tenant ${a.tenantId}: ${(err as Error)?.message ?? err}`);
+    key = null;
+  }
 
   await withTenant(a.tenantId, async (tx) => {
-    const docRowId = uuid();
-    await tx.execute(sql`
-      INSERT INTO compliance_documents (id, tenant_id, category, name, description, storage_key, mime_type, size_bytes, issued_on, tags, uploaded_by_user_id, created_at, updated_at)
-      VALUES (${docRowId}::uuid, ${a.tenantId}::uuid, 'other', ${`Signed NDA with ${LEGAL.legalEntity} (v${prepared.doc.version})`},
-              ${`Signed electronically by ${signerName}, ${designation}, confirmed by a one-time code to ${prepared.email}.`},
-              ${key}, 'application/pdf', ${String(pdf.length)}, (now() AT TIME ZONE 'Asia/Kolkata')::date, ${JSON.stringify(["nda", "aina", "agreement"])}::jsonb, ${a.userId}::uuid, now(), now())
-    `);
+    const docRowId = key ? uuid() : null;
+    if (key && docRowId) {
+      await tx.execute(sql`
+        INSERT INTO compliance_documents (id, tenant_id, category, name, description, storage_key, mime_type, size_bytes, issued_on, tags, uploaded_by_user_id, created_at, updated_at)
+        VALUES (${docRowId}::uuid, ${a.tenantId}::uuid, 'other', ${`Signed NDA with ${LEGAL.legalEntity} (v${prepared.doc.version})`},
+                ${`Signed electronically by ${signerName}, ${designation}, confirmed by a one-time code to ${prepared.email}.`},
+                ${key}, 'application/pdf', ${String(pdf.length)}, (now() AT TIME ZONE 'Asia/Kolkata')::date, ${JSON.stringify(["nda", "aina", "agreement"])}::jsonb, ${a.userId}::uuid, now(), now())
+      `);
+    }
     await tx.execute(sql`
       INSERT INTO legal_acceptances (tenant_id, user_id, document_id, kind, version, text_sha256, signer_name, designation, email,
                                      accepted_at, ip_address, user_agent, otp_verified, signed_pdf_key, compliance_document_id)
@@ -297,20 +309,21 @@ export async function signNda(
       action: "legal.nda_signed",
       entityType: "legal_document",
       entityId: prepared.doc.id,
-      after: { version: prepared.doc.version, sha256: prepared.doc.bodySha256, signerName, designation, email: prepared.email, otpVerified: true, complianceDocumentId: docRowId },
+      after: { version: prepared.doc.version, sha256: prepared.doc.bodySha256, signerName, designation, email: prepared.email, otpVerified: true, complianceDocumentId: docRowId, pdfStored: !!key },
       ipAddress: a.ip,
       userAgent: a.userAgent,
     });
   });
 
+  const keptLine = key ? " A copy is kept in your firm's Compliance documents." : " Please keep this copy.";
   const mail = await sendSystemEmail({
     tenantId: a.tenantId,
     to: prepared.email,
     subject: `Your signed NDA with ${LEGAL.legalEntity}`,
-    text: `Thank you, ${signerName}. Your signed copy of the Non-Disclosure Agreement (version ${prepared.doc.version}) is attached. A copy is kept in your firm's Compliance documents.`,
+    text: `Thank you, ${signerName}. Your signed copy of the Non-Disclosure Agreement (version ${prepared.doc.version}) is attached.${keptLine}`,
     html: actionEmailHtml({
       heading: "Your signed NDA",
-      intro: `Thank you, ${signerName}. Your signed copy of the Non-Disclosure Agreement (version ${prepared.doc.version}) is attached. A copy is kept in your firm's Compliance documents.`,
+      intro: `Thank you, ${signerName}. Your signed copy of the Non-Disclosure Agreement (version ${prepared.doc.version}) is attached.${keptLine}`,
       buttonLabel: "Continue setup",
       buttonUrl: `${process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? LEGAL.url}/onboarding/setup`,
     }),
