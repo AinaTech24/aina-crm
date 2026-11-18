@@ -17,7 +17,7 @@
 import { ZOHO_TYPES } from "@/lib/business/zoho-types";
 import { cell, isoDate, zohoId } from "./values";
 
-export type Product = "mutual_fund" | "sif" | "aif" | "pms";
+export type Product = "mutual_fund" | "sif" | "aif" | "pms" | "direct_equity";
 export type AssetClass = "equity" | "debt" | "liquid" | "hybrid" | "gold" | "other";
 
 export type PlannedLine = {
@@ -100,7 +100,8 @@ export function mapPurchaseRow(r: Record<string, unknown>): { product: Product; 
   const pa = num(r["Purchase Amount"]);
   const ra = num(r["Redemption Amount"]);
   const stpAmt = num(r["STP/SWP Amount"]);
-  const product: Product = has(kind, "SIF") ? "sif" : has(kind, "AIF") ? "aif" : has(kind, "PMS") ? "pms" : "mutual_fund";
+  // "Direct Equity" (Smallcase, RSP …) comes from We Care's Direct Equity module, written in this shape.
+  const product: Product = has(kind, "SIF") ? "sif" : has(kind, "AIF") ? "aif" : has(kind, "PMS") ? "pms" : has(kind, "Direct Equity") ? "direct_equity" : "mutual_fund";
   const remarks = g("Remarks");
   const status = g("Status");
   const liquidToEquity = /liquid\s*to\s*equity/i.test(type);
