@@ -20,6 +20,14 @@
  *
  * Signature verified via HMAC SHA256 over the raw body. Resolves the firm by the
  * stored razorpay_subscription_id, falling back to notes.tenant_id.
+ *
+ * AUM-priced subscriptions (lib/billing/aum-pricing.ts) take their own path,
+ * `handleAumEvent`: a payment on the checkout the server started activates it
+ * (the same idempotent code the browser's verify call runs); a charge on the
+ * subscription in force is the renewal (new period + tax invoice); a failed,
+ * halted or cancelled mandate changes ONLY the mandate state — the paid-through
+ * date and the 7-day grace decide access (lib/billing/renewal.ts), never a
+ * webhook. Events for a subscription a checkout replaced are ignored.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -28,6 +36,10 @@ import { withSystem } from "@/db/client";
 import { subscriptions, subscriptionEvents } from "@/db/schema";
 import { verifyRazorpayWebhook } from "@/lib/billing/razorpay";
 import { captureError } from "@/lib/observability/capture";
+import type { Tx } from "@/db/client";
+import { loadPricingSettings } from "@/lib/billing/pricing-settings";
+import { recordCheckoutPayment, recordRenewalCharge, type PaymentOutcome } from "@/lib/billing/payments";
+import { afterPayment } from "@/lib/billing/after-payment";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +73,9 @@ export async function POST(req: NextRequest) {
 
   if (!rzpSubId && !tenantId) return NextResponse.json({ ok: true });
 
+  let paymentOutcome = null as PaymentOutcome | null;
   try {
+    const pricing = await loadPricingSettings();
     await withSystem(async (tx) => {
       // Idempotency guard — insert the event id in the SAME tx as processing, so
       // a duplicate is skipped while a processing failure (rollback) still retries.
@@ -73,12 +87,22 @@ export async function POST(req: NextRequest) {
         `);
         if (seen.rows.length === 0) return; // already processed — ack + skip
       }
-      // Resolve OUR subscription row by the Razorpay subscription id, else tenant.
+      // Resolve OUR subscription row by the Razorpay subscription id (in force,
+      // or the checkout in flight), else tenant.
       const rows = rzpSubId
-        ? await tx.select().from(subscriptions).where(eq(subscriptions.razorpaySubscriptionId, rzpSubId)).limit(1)
+        ? await tx
+            .select()
+            .from(subscriptions)
+            .where(sql`${subscriptions.razorpaySubscriptionId} = ${rzpSubId} OR ${subscriptions.pendingCheckout}->>'razorpaySubscriptionId' = ${rzpSubId}`)
+            .limit(1)
         : await tx.select().from(subscriptions).where(eq(subscriptions.tenantId, tenantId!)).limit(1);
       const sub = rows[0];
       if (!sub) return;
+
+      if (sub.pricingModel === "aum" || (rzpSubId && (sub.pendingCheckout as { razorpaySubscriptionId?: string } | null)?.razorpaySubscriptionId === rzpSubId)) {
+        paymentOutcome = await handleAumEvent(tx, { event, sub, rzpSubId: rzpSubId ?? null, payEntity, pricing });
+        return;
+      }
 
       const set: Record<string, unknown> = { updatedAt: new Date() };
       let logType: string | null = null;
@@ -157,6 +181,72 @@ export async function POST(req: NextRequest) {
     // 500 → Razorpay retries the webhook later.
     return NextResponse.json({ error: "processing failed" }, { status: 500 });
   }
+  if (paymentOutcome) await afterPayment(paymentOutcome);
 
   return NextResponse.json({ ok: true });
+}
+
+type SubRow = typeof subscriptions.$inferSelect;
+
+async function handleAumEvent(
+  tx: Tx,
+  a: { event: string; sub: SubRow; rzpSubId: string | null; payEntity: { id?: string; amount?: number; created_at?: number } | undefined; pricing: Awaited<ReturnType<typeof loadPricingSettings>> }
+): Promise<PaymentOutcome | null> {
+  const { event, sub, rzpSubId, payEntity } = a;
+  const pending = sub.pendingCheckout as { razorpaySubscriptionId?: string } | null;
+  const paidAt = payEntity?.created_at ? new Date(payEntity.created_at * 1000) : new Date();
+
+  // A payment on the checkout this server started → activate (idempotent).
+  if (rzpSubId && pending?.razorpaySubscriptionId === rzpSubId) {
+    if (payEntity?.id && ["subscription.authenticated", "subscription.activated", "subscription.charged", "payment.captured", "payment.authorized"].includes(event)) {
+      return recordCheckoutPayment(tx, { razorpaySubscriptionId: rzpSubId, paymentId: payEntity.id, paidAt, source: "webhook", settings: a.pricing });
+    }
+    return null;
+  }
+  // Events for a subscription a later checkout replaced: not ours any more.
+  if (rzpSubId && sub.razorpaySubscriptionId !== rzpSubId) return null;
+
+  const note = async (eventType: string, notes: string, amountPaise: number | null = null) => {
+    await tx.insert(subscriptionEvents).values({
+      subscriptionId: sub.id,
+      tenantId: sub.tenantId,
+      eventType: eventType as typeof subscriptionEvents.$inferInsert.eventType,
+      actor: "razorpay_webhook",
+      toStatus: sub.status,
+      amountPaise,
+      notes,
+      meta: { event, razorpaySubscriptionId: rzpSubId },
+    });
+  };
+
+  switch (event) {
+    case "subscription.charged":
+      if (!payEntity?.id || !rzpSubId) return null;
+      return recordRenewalCharge(tx, { razorpaySubscriptionId: rzpSubId, paymentId: payEntity.id, amountPaise: Number(payEntity.amount ?? 0), paidAt, settings: a.pricing });
+    case "subscription.authenticated":
+    case "subscription.activated":
+      await tx.update(subscriptions).set({ mandateStatus: "active", updatedAt: new Date() }).where(eq(subscriptions.id, sub.id));
+      return null;
+    case "subscription.pending":
+      // A debit failed and Razorpay is retrying. Access follows the dates.
+      await tx.update(subscriptions).set({ mandateStatus: "failed", updatedAt: new Date() }).where(eq(subscriptions.id, sub.id));
+      await note("payment_failed", "Auto-debit failed — Razorpay is retrying. Grace period rules apply from the renewal date.");
+      return null;
+    case "subscription.halted":
+      await tx.update(subscriptions).set({ mandateStatus: "failed", updatedAt: new Date() }).where(eq(subscriptions.id, sub.id));
+      await note("payment_failed", "Auto-debit stopped after retries — renew from Billing. Grace period rules apply.");
+      return null;
+    case "subscription.cancelled":
+      await tx.update(subscriptions).set({ mandateStatus: "cancelled", updatedAt: new Date() }).where(eq(subscriptions.id, sub.id));
+      await note("cancelled", "Auto-pay mandate cancelled — the subscription runs to its paid-through date; renew from Billing.");
+      return null;
+    case "subscription.completed":
+      await tx.update(subscriptions).set({ mandateStatus: "completed", updatedAt: new Date() }).where(eq(subscriptions.id, sub.id));
+      return null;
+    case "payment.failed":
+      await tx.update(subscriptions).set({ failedPaymentCount: sql`${subscriptions.failedPaymentCount} + 1`, updatedAt: new Date() }).where(eq(subscriptions.id, sub.id));
+      return null;
+    default:
+      return null;
+  }
 }

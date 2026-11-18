@@ -174,6 +174,8 @@ export const subscriptions = pgTable(
     monthlyBasePaise: integer("monthly_base_paise"),
     /** What one cycle costs, incl. GST. */
     cycleTotalPaise: integer("cycle_total_paise"),
+    /** The full quote (lib/billing/aum-pricing CycleQuote) of the cycle in force — the invoice's lines. */
+    cycleQuote: jsonb("cycle_quote").$type<Record<string, unknown>>(),
     quoteId: uuid("quote_id"),
     /** The Razorpay checkout in flight — what is being bought (server-computed). */
     pendingCheckout: jsonb("pending_checkout").$type<Record<string, unknown>>(),

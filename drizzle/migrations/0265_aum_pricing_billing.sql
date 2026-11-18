@@ -61,6 +61,7 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS aum_as_of date;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS aum_tier_key text;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS monthly_base_paise integer;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS cycle_total_paise integer;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS cycle_quote jsonb;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS quote_id uuid;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS pending_checkout jsonb;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS next_cycle jsonb;
@@ -124,10 +125,15 @@ CREATE POLICY tenant_isolation ON billing_invoices FOR ALL
   WITH CHECK (tenant_id = app_tenant_id() OR app_is_platform_admin());
 
 -- An issued invoice never changes (a correction is a credit note). Only the
--- email-delivery bookkeeping may move; nothing may be deleted.
+-- email-delivery bookkeeping may move. Nothing is deleted, except by the
+-- permanent purge of the whole firm (platform_purge_tenant, migration 0266,
+-- names the firm in app.purging_tenant for its own transaction).
 CREATE OR REPLACE FUNCTION billing_invoices_immutable() RETURNS trigger AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
+    IF COALESCE(current_setting('app.purging_tenant', true), '') = OLD.tenant_id::text THEN
+      RETURN OLD;
+    END IF;
     RAISE EXCEPTION 'billing_invoices: an issued tax invoice cannot be deleted (issue a credit note)';
   END IF;
   IF (NEW.id, NEW.tenant_id, NEW.subscription_id, NEW.invoice_no, NEW.financial_year, NEW.seq,

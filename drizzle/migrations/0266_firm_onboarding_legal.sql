@@ -110,9 +110,9 @@ CREATE POLICY tenant_isolation ON legal_acceptances FOR ALL
   USING (tenant_id = app_tenant_id() OR app_is_platform_admin())
   WITH CHECK (tenant_id = app_tenant_id() OR app_is_platform_admin());
 
--- Immutable: never updated; deleted only by an explicit firm purge that sets
--- app.allow_legal_purge for its own transaction. An acceptance must quote the
--- exact published text it accepts.
+-- Immutable: never updated; deleted only by the permanent purge of the whole
+-- firm (platform_purge_tenant names it in app.purging_tenant). An acceptance
+-- must quote the exact published text it accepts.
 CREATE OR REPLACE FUNCTION legal_acceptances_guard() RETURNS trigger AS $$
 DECLARE
   doc record;
@@ -121,7 +121,7 @@ BEGIN
     RAISE EXCEPTION 'legal_acceptances: an acceptance record is immutable';
   END IF;
   IF TG_OP = 'DELETE' THEN
-    IF COALESCE(current_setting('app.allow_legal_purge', true), '') <> 'true' THEN
+    IF COALESCE(current_setting('app.purging_tenant', true), '') <> OLD.tenant_id::text THEN
       RAISE EXCEPTION 'legal_acceptances: an acceptance record cannot be deleted';
     END IF;
     RETURN OLD;
@@ -141,6 +141,70 @@ DROP TRIGGER IF EXISTS legal_acceptances_guard ON legal_acceptances;
 CREATE TRIGGER legal_acceptances_guard
   BEFORE INSERT OR UPDATE OR DELETE ON legal_acceptances
   FOR EACH ROW EXECUTE FUNCTION legal_acceptances_guard();
+
+-- ── The firm purge may remove a purged firm's invoices and acceptances ────
+-- Same body as migration 0200, plus naming the firm being purged so the two
+-- immutability triggers above (and 0265's on billing_invoices) let ITS rows go.
+CREATE OR REPLACE FUNCTION platform_purge_tenant(p_tenant uuid) RETURNS void AS $$
+DECLARE
+  tbls text[];
+  t text;
+  blocked_now text[];
+  blocked_prev text[] := ARRAY[]::text[];
+  deleted_any boolean;
+  n bigint;
+  pass int := 0;
+BEGIN
+  PERFORM set_config('app.purging_tenant', p_tenant::text, true);
+
+  SELECT array_agg(c.table_name) INTO tbls
+  FROM information_schema.columns c
+  JOIN information_schema.tables tb
+    ON tb.table_schema = c.table_schema
+   AND tb.table_name = c.table_name
+   AND tb.table_type = 'BASE TABLE'
+  WHERE c.table_schema = 'public'
+    AND c.column_name = 'tenant_id';
+
+  IF tbls IS NOT NULL THEN
+    LOOP
+      pass := pass + 1;
+      blocked_now := ARRAY[]::text[];
+      deleted_any := false;
+
+      FOREACH t IN ARRAY tbls LOOP
+        BEGIN
+          EXECUTE format('DELETE FROM %I WHERE tenant_id = $1', t) USING p_tenant;
+          GET DIAGNOSTICS n = ROW_COUNT;
+          IF n > 0 THEN deleted_any := true; END IF;
+        EXCEPTION WHEN foreign_key_violation THEN
+          blocked_now := blocked_now || t;
+        END;
+      END LOOP;
+
+      EXIT WHEN array_length(blocked_now, 1) IS NULL;
+
+      IF NOT deleted_any AND blocked_now = blocked_prev THEN
+        RAISE EXCEPTION
+          'platform_purge_tenant: cannot delete tenant % — still blocked by foreign keys on: %',
+          p_tenant, array_to_string(blocked_now, ', ');
+      END IF;
+
+      blocked_prev := blocked_now;
+
+      IF pass > 60 THEN
+        RAISE EXCEPTION
+          'platform_purge_tenant: gave up after % passes for tenant % — still blocked by: %',
+          pass, p_tenant, array_to_string(blocked_now, ', ');
+      END IF;
+    END LOOP;
+  END IF;
+
+  UPDATE pricing_quotes SET converted_tenant_id = NULL WHERE converted_tenant_id = p_tenant;
+  DELETE FROM tenants WHERE id = p_tenant;
+  PERFORM set_config('app.purging_tenant', '', true);
+END;
+$$ LANGUAGE plpgsql;
 
 -- ── Seeds: v1 Terms (the /terms page as published) and v1 NDA (a draft) ───
 -- Under RLS the migration role is the table owner and FORCE applies, so the

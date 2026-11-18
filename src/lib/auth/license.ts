@@ -16,6 +16,8 @@ import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { subscriptions, packages } from "@/db/schema";
 import { isPlatformAdmin } from "@/lib/platform";
+import { aumLicenseView, type RenewalState } from "@/lib/billing/renewal";
+import { loadPricingSettings } from "@/lib/billing/pricing-settings";
 
 export type LicenseState = {
   status: "pending" | "trial" | "active" | "past_due" | "suspended" | "expired" | "cancelled" | "no_subscription";
@@ -38,6 +40,10 @@ export type LicenseState = {
   /** true → brand-new tenant hasn't chosen/paid for a plan yet; route to
    *  /onboarding/choose-plan instead of the dashboard or the billing gate. */
   needsOnboarding: boolean;
+  /** AUM-priced subscriptions: where the renewal stands (grace banner, gate). */
+  renewal: (RenewalState & { graceDays: number }) | null;
+  /** True for an AUM-priced (online) subscription. */
+  aumPriced: boolean;
   reason?: string;
 };
 
@@ -74,6 +80,8 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
       nextRenewalAt: null,
       isRestricted: false,
       needsOnboarding: false,
+      renewal: null,
+      aumPriced: false,
     };
   }
 
@@ -105,6 +113,8 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
       nextRenewalAt: null,
       isRestricted: true,
       needsOnboarding: false,
+      renewal: null,
+      aumPriced: false,
       reason: "No active subscription. Contact AINA to provision your license.",
     };
   }
@@ -120,7 +130,21 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
     effectiveStatus = "expired";
   }
 
-  const isRestricted = RESTRICTED_STATUSES.has(effectiveStatus);
+  let isRestricted = RESTRICTED_STATUSES.has(effectiveStatus);
+  // AUM-priced (online) subscriptions: the paid-through date and the grace
+  // period decide access (lib/billing/renewal.ts) — a failed or cancelled
+  // mandate alone does not end paid time, and 7 days' grace follow a missed
+  // renewal. A pending one is restricted to Billing (pay there), not sent to
+  // the legacy plan picker.
+  const aumPriced = sub.pricingModel === "aum";
+  let renewal: LicenseState["renewal"] = null;
+  if (aumPriced) {
+    const graceDays = (await loadPricingSettings()).graceDays;
+    const view = aumLicenseView({ status: sub.status, licenseEndAt: sub.licenseEndAt ? new Date(sub.licenseEndAt) : null }, new Date(now), graceDays);
+    effectiveStatus = view.status;
+    isRestricted = view.isRestricted;
+    renewal = view.renewal ? { ...view.renewal, graceDays } : null;
+  }
 
   const enabledModules = sub.modulesOverride
     ? (sub.modulesOverride as string[])
@@ -143,15 +167,22 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
     allowedDashboardWidgets,
     // Package flags + per-tenant overrides (migration 0163) — the override wins.
     featureFlags: { ...((pkg?.featureFlags as Record<string, any>) ?? {}), ...((sub.featureFlagsOverride as Record<string, any>) ?? {}) },
-    maxUsers: pkg?.maxUsers ?? 1,
+    // Seats bought (the subscription's seat count) are the user limit; else the package's.
+    maxUsers: sub.seatsOverride ?? pkg?.maxUsers ?? 1,
     maxInvestors: pkg?.maxInvestors ?? 100,
     trialEndsAt: sub.trialEndsAt ? new Date(sub.trialEndsAt) : null,
     licenseEndAt: sub.licenseEndAt ? new Date(sub.licenseEndAt) : null,
     nextRenewalAt: sub.nextRenewalAt ? new Date(sub.nextRenewalAt) : null,
     isRestricted,
-    needsOnboarding: effectiveStatus === "pending",
+    needsOnboarding: effectiveStatus === "pending" && !aumPriced,
+    renewal,
+    aumPriced,
     reason: isRestricted
-      ? sub.suspendedReason ?? sub.cancelledReason ?? "Your license is not active. Please contact AINA to reactivate."
+      ? aumPriced && effectiveStatus === "pending"
+        ? "Complete your payment in Billing to start using the CRM."
+        : aumPriced && effectiveStatus === "expired"
+          ? "Your renewal was not paid within the grace period. Renew from Billing to continue."
+          : sub.suspendedReason ?? sub.cancelledReason ?? "Your license is not active. Please contact AINA to reactivate."
       : undefined,
   };
 }
