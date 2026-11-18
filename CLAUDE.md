@@ -1316,6 +1316,14 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   rejected row, `tests/rta-diagnose-route.test.ts`): the page-side twin of the diagnose script for people with no server shell.
   Type the password you believe is right; it names who supplied a match ("the password you typed now" / "saved password #N") and
   which form matched, or says no tested password fits. Read-only, audited as `rta_import.diagnosed`, never returns a password.
+- **A CAMS `.xls` can be an ENCRYPTED workbook** (2026-11-18, `lib/rta/office-decrypt.ts`, `tests/rta-encrypted-excel*.test.ts`).
+  Rows `WebTrxns_H_ARN-…xls` read "49 data lines but none could be read — layout not recognised" with a line of �� : the
+  file is an OLE container holding an encrypted Excel, SheetJS threw "File is password-protected", and `decodeRtaToText`
+  swallowed it and read the bytes as text. Now: the worker recognises it (`isEncryptedOffice`), opens it with the firm's saved
+  passwords (same list and forms as the ZIPs; officecrypto-tool reads Standard / Agile OOXML and xls RC4), and when none fits
+  files it `rejected` with a password message. `decodeRtaToText` never again hands binary Office bytes on as text — it throws
+  what the reader said. The rescan (nightly, after a password is saved, and once at boot) also re-queues such rows, never a
+  genuine layout failure.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.

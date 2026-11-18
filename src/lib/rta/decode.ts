@@ -225,8 +225,33 @@ export function decodeRtaToText(buf: Buffer, fileName: string): string {
   try {
     if (isSpreadsheet) return spreadsheetToPipeText(buf);
     return normalizeDelimitedText(buf.toString("utf8"));
-  } catch {
-    // Last-ditch: hand back raw text so the parser at least tries.
+  } catch (e) {
+    // Last-ditch: hand back raw text so the parser at least tries — but ONLY when
+    // the bytes are text. A binary Office file (an OLE workbook, an .xlsx) read as
+    // UTF-8 is garbage, and the importer then reported "49 data lines, layout not
+    // recognised" with a line of �� for what was really SheetJS saying "File is
+    // password-protected" (a CAMS .xls). Say what the reader said.
+    if (looksBinary(buf)) {
+      throw new RtaUnreadableSpreadsheetError(
+        `This ${ext ? ext.toUpperCase() : "file"} could not be read as a spreadsheet — ${(e as Error)?.message ?? "unsupported format"}.`
+      );
+    }
     return buf.toString("utf8");
+  }
+}
+
+/** An Office container (OLE2 / OOXML zip) or anything with NUL bytes near the start. */
+function looksBinary(buf: Buffer): boolean {
+  if (buf.length > 3 && buf[0] === 0xd0 && buf[1] === 0xcf && buf[2] === 0x11 && buf[3] === 0xe0) return true;
+  if (buf.length > 1 && buf[0] === 0x50 && buf[1] === 0x4b) return true;
+  const n = Math.min(buf.length, 4096);
+  for (let i = 0; i < n; i++) if (buf[i] === 0) return true;
+  return false;
+}
+
+export class RtaUnreadableSpreadsheetError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RtaUnreadableSpreadsheetError";
   }
 }

@@ -36,6 +36,7 @@ import { parseRtaCsv, parseRtaRows } from "@/lib/rta";
 import { Q, RTA_BACKGROUND_PRIORITY } from "./queues";
 import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
+import { isEncryptedOffice, openEncryptedOffice, encryptedOfficeMessage } from "@/lib/rta/office-decrypt";
 import { RICH_KINDS, classifyMailback } from "@/lib/rta/classify-mailback";
 import { appendMailbackPassword, getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
@@ -380,6 +381,21 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
         captureError("[rta-import] could not queue the other files in a ZIP", e, { importId, tenantId }),
       );
     }
+  }
+
+  // A password-protected Excel (a CAMS .xls that is an encrypted workbook) is opened with the
+  // firm's saved passwords, the same ones its ZIPs use. Left alone it fell through to the
+  // text reader and read as "49 data lines, layout not recognised" — a password problem
+  // dressed up as a parser one.
+  if (isEncryptedOffice(dataBuf)) {
+    const passwords = candidatePasswords(job);
+    const opened = await openEncryptedOffice(dataBuf, passwords);
+    if (!opened.ok) {
+      await markRejected(job, encryptedOfficeMessage(opened.triedCount), { checksum, sizeBytes: buf.length });
+      return;
+    }
+    await rememberTypedPassword(job, (job as any).source, opened.usedPassword);
+    dataBuf = opened.data;
   }
 
   // Decode can legitimately REFUSE — a spreadsheet too large to hold in memory
@@ -802,6 +818,14 @@ async function computeRichImport(
   }
   buf = Buffer.alloc(0); // free the original before the heavy parse
 
+  if (isEncryptedOffice(data)) {
+    const passwords = candidatePasswords(job);
+    const opened = await openEncryptedOffice(data, passwords);
+    if (!opened.ok) return { ok: false, notOurs: true, error: encryptedOfficeMessage(opened.triedCount) };
+    await rememberTypedPassword(job, (job as any).rta, opened.usedPassword);
+    data = new Uint8Array(opened.data);
+  }
+
   report?.({ phase: "Parsing file", pct: 8 });
   // Binary Excel (CAMS R9 .xls) via SheetJS; anything else as latin-1 CSV.
   const parsed = isSpreadsheet(data, innerName)
@@ -991,16 +1015,17 @@ export async function runRejectedRescanJob(
   // never recovered it.
   const rows = await withTenant(job.tenantId, async (tx) => {
     const r = await tx.execute(sql`
-      SELECT id, source, kind, file_name, file_key
+      SELECT id, status, remarks, source, kind, file_name, file_key
       FROM rta_file_imports
       WHERE deleted_at IS NULL
         AND tenant_id = ${job.tenantId}::uuid
         AND (status = 'rejected'
-             OR (status = 'failed' AND (remarks ILIKE '%password%' OR remarks ILIKE 'Could not open the zip%')))
+             OR (status = 'failed' AND (remarks ILIKE '%password%' OR remarks ILIKE 'Could not open the zip%'
+                                        OR remarks ILIKE 'The file has % data lines but none could be read%')))
         AND file_key IS NOT NULL
       ORDER BY created_at DESC
       LIMIT ${RESCAN_MAX_FILES}`);
-    return r.rows as Array<{ id: string; source: RtaSource; kind: RtaFileKind; file_name: string; file_key: string }>;
+    return r.rows as Array<{ id: string; status: string; remarks: string | null; source: RtaSource; kind: RtaFileKind; file_name: string; file_key: string }>;
   });
 
   let requeued = 0;
@@ -1013,11 +1038,22 @@ export async function runRejectedRescanJob(
     } catch {
       continue; // object already purged — nothing to retry
     }
-    // Only ZIPs carry a password; link-downloaded CSVs arrive in the clear.
+    // ZIPs carry a password, and so can an Excel file (an encrypted workbook);
+    // link-downloaded CSVs arrive in the clear.
     const isZip = buf.length > 1 && buf[0] === 0x50 && buf[1] === 0x4b;
     if (isZip && !(await openWithAnyPassword(buf, passwords)).ok) {
       stillLocked++;
       continue;
+    }
+    if (!isZip) {
+      const encrypted = isEncryptedOffice(buf);
+      if (encrypted && !(await openEncryptedOffice(buf, passwords)).ok) {
+        stillLocked++;
+        continue;
+      }
+      // "Layout not recognised" on a file that is NOT locked is a real layout problem:
+      // re-queueing it every night would only fail it again.
+      if (!encrypted && r.status === "failed" && /none could be read/i.test(r.remarks ?? "")) continue;
     }
 
     // The worker treats `rejected`/`failed` as terminal and short-circuits, so
@@ -1073,7 +1109,8 @@ export async function enqueueRescansForAllFirms(): Promise<{ firms: number }> {
        WHERE deleted_at IS NULL AND file_key IS NOT NULL
          AND created_at > now() - interval '60 days'
          AND (status = 'rejected'
-              OR (status = 'failed' AND (remarks ILIKE '%password%' OR remarks ILIKE 'Could not open the zip%')))`);
+              OR (status = 'failed' AND (remarks ILIKE '%password%' OR remarks ILIKE 'Could not open the zip%'
+                                         OR remarks ILIKE 'The file has % data lines but none could be read%')))`);
     return (r.rows as Array<{ tenant_id: string }>).map((x) => String(x.tenant_id));
   });
   for (const t of tenants) await enqueueRejectedRescan(t, "cams", { jobId: `rta-rescan-${t}` });

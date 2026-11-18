@@ -159,6 +159,19 @@ if (groups.includes("rta")) {
       captureError("[rta-rescan] one-off rescan failed to queue", err);
     }
   })();
+  // Once after password-protected Excel files became readable (2026-11-18): a CAMS .xls
+  // that is an encrypted workbook was filed as "layout not recognised"; retry those.
+  void (async () => {
+    const job = "rta-rescan-encrypted-excel-2026-11-18";
+    if (await getLastRun(job)) return;
+    try {
+      const r = await enqueueRescansForAllFirms();
+      console.log(`[rta-rescan] queued a rescan of unreadable Excel files for ${r.firms} firm(s)`);
+      await recordRun(job, "ok", `${r.firms} firm(s)`);
+    } catch (err) {
+      captureError("[rta-rescan] one-off rescan failed to queue", err);
+    }
+  })();
   // FP mailback import shares the "rta" worker group (same import surface).
 }
 // Morning briefing — 8 AM IST digest (in-app + email) per RM/owner. The worker

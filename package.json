@@ -96,6 +96,7 @@
     "mailparser": "^3.9.23",
     "next": "^15.5.25",
     "nodemailer": "^10.0.1",
+    "officecrypto-tool": "^0.0.19",
     "pdf-lib": "^1.17.1",
     "pg": "^8.0.0",
     "qrcode": "^1.5.4",
