@@ -315,4 +315,31 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
     expect(recipientFrom({ legal_name: "A", address: { state: "Gujarat", city: "Anand" }, gst_number: null, email: null })).toMatchObject({ stateCode: "24", gstin: null });
     expect(recipientFrom({ legal_name: "B", address: null, gst_number: "27AAPFU0939F1ZV", email: null })).toMatchObject({ stateCode: "27", gstin: "27AAPFU0939F1ZV" });
   });
+
+  // Last: purges the test firm. GST law keeps issued invoices for years, so a
+  // purge must DETACH them (0267), never delete them.
+  it("purging a firm keeps its tax invoices, detached; they can never be deleted or detached otherwise", async () => {
+    const before = await q<{ n: number }>(sql`SELECT count(*)::int AS n FROM billing_invoices WHERE tenant_id = ${session.tenantId}::uuid`);
+    expect(before[0].n).toBeGreaterThan(0);
+    const ids = (await q<{ id: string }>(sql`SELECT id FROM billing_invoices WHERE tenant_id = ${session.tenantId}::uuid`)).map((r) => r.id);
+    // Outside a purge: neither delete nor detach is allowed.
+    await expect(q(sql`DELETE FROM billing_invoices WHERE id = ${ids[0]}::uuid`)).rejects.toThrow();
+    await expect(q(sql`UPDATE billing_invoices SET tenant_id = NULL WHERE id = ${ids[0]}::uuid`)).rejects.toThrow();
+    await withSystem(async (tx) => {
+      await tx.execute(sql`UPDATE tenants SET deleted_at = now() WHERE id = ${session.tenantId}::uuid`);
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${session.tenantId}, true)`);
+      await tx.execute(sql`SELECT platform_purge_tenant(${session.tenantId}::uuid)`);
+    });
+    const gone = await q<{ n: number }>(sql`SELECT count(*)::int AS n FROM tenants WHERE id = ${session.tenantId}::uuid`);
+    expect(gone[0].n).toBe(0);
+    const kept = await q<{ n: number; detached: number }>(sql`
+      SELECT count(*)::int AS n, count(*) FILTER (WHERE tenant_id IS NULL)::int AS detached
+        FROM billing_invoices WHERE id = ANY(${`{${ids.join(",")}}`}::uuid[])`);
+    expect(kept[0]).toEqual({ n: ids.length, detached: ids.length });
+    // Still a complete legal record: the recipient snapshot travels with it.
+    const rec = await q<{ name: string | null }>(sql`SELECT recipient->>'legalName' AS name FROM billing_invoices WHERE id = ${ids[0]}::uuid`);
+    expect(rec[0].name).toBeTruthy();
+    await expect(q(sql`DELETE FROM billing_invoices WHERE id = ${ids[0]}::uuid`)).rejects.toThrow();
+    session.tenantId = "";
+  });
 });

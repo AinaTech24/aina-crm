@@ -45,7 +45,8 @@ export type InvoiceLine = {
 /** One immutable GST tax invoice per Razorpay payment (trigger-enforced). */
 export const billingInvoices = pgTable("billing_invoices", {
   id,
-  tenantId,
+  /** NULL once the firm is purged — the invoice itself is kept (GST retention, 0267). */
+  tenantId: uuid("tenant_id"),
   subscriptionId: uuid("subscription_id"),
   invoiceNo: text("invoice_no").notNull(),
   financialYear: text("financial_year").notNull(),
