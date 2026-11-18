@@ -32,6 +32,8 @@ export type NewFirmInput = {
   ownerEmail: string;
   password: string;
   mobile?: string | null;
+  /** When the mobile was confirmed by an SMS code (the online purchase); null = unverified. */
+  mobileVerifiedAt?: Date | null;
   /** Registered state (name) — the tax invoice's place of supply. */
   state?: string | null;
   gstin?: string | null;
@@ -104,8 +106,9 @@ export async function createFirmAccount(input: NewFirmInput): Promise<NewFirm> {
       `);
 
       await tx.execute(sql`
-        INSERT INTO users (id, tenant_id, branch_id, email, name, phone, password_hash, roles, status, activated_at, created_at, updated_at)
-        VALUES (${userId}, ${tenantId}, ${branchId}, ${email}, ${input.ownerName}, ${input.mobile ?? null}, ${passwordHash},
+        INSERT INTO users (id, tenant_id, branch_id, email, name, phone, mobile_verified_at, password_hash, roles, status, activated_at, created_at, updated_at)
+        VALUES (${userId}, ${tenantId}, ${branchId}, ${email}, ${input.ownerName}, ${input.mobile ?? null},
+                ${input.mobile && input.mobileVerifiedAt ? input.mobileVerifiedAt : null}, ${passwordHash},
                 ARRAY['owner', 'rm', 'compliance']::text[], 'active', now(), now(), now())
       `);
 

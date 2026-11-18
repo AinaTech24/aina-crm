@@ -162,6 +162,8 @@ export const users = pgTable(
     offboardedAt: timestamp("offboarded_at", { withTimezone: true }),
     /** Self-serve signup verification. null = email not yet confirmed. */
     emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    /** Mobile confirmed by an SMS code at the online purchase (0269). null = not verified. */
+    mobileVerifiedAt: timestamp("mobile_verified_at", { withTimezone: true }),
     /**
      * Soft-delete → Trash. Set when an owner/admin moves the employee to Trash
      * (an alternative to offboarding). A row with deletedAt set is hidden from
