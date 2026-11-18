@@ -57,6 +57,7 @@ import { tenants, users, tenantUiLayouts } from "@/db/schema";
 import { requireSession, requirePageSession } from "@/lib/auth/session";
 import { primaryRoleLabel, can, type Capability } from "@/lib/auth/rbac";
 import { loadTenantLicense, isPathAllowedWhenRestricted } from "@/lib/auth/license";
+import { isPathAllowedDuringSetup, onboardingGate } from "@/lib/legal/documents";
 import { tenantAccessibleNavKeys, isGatableNav, gatedNavKeyForPath } from "@/config/nav-access";
 import { pickLogo } from "@/lib/branding/logo";
 import type { Metadata } from "next";
@@ -395,6 +396,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const reqHeaders = await headers();
   const pathname = reqHeaders.get("x-pathname") ?? "";
   const pathAllowed = isPathAllowedWhenRestricted(pathname);
+
+  // A firm that bought online finishes the setup wizard (firm details, Terms,
+  // the NDA) before the CRM opens; a firm with a NEW Terms / NDA version
+  // accepts it first (the owner — others carry on). Billing and Support stay
+  // open throughout (lib/legal/documents.ts).
+  if (!license.isRestricted && !session.isPlatformAdmin) {
+    const gate = await onboardingGate(session.tenantId);
+    const mustGo =
+      gate.mode === "setup" || (gate.mode === "reaccept" && can(session.roles, "settings.billing", session.permissions));
+    if (mustGo && !isPathAllowedDuringSetup(pathname)) redirect("/onboarding/setup");
+  }
 
   const tenantP = getShellTenant(session.tenantId);
   const { userModules, avatarUrl, twoFaEnabled, navBadges, branchList, firmLayoutRows } = await withTenant(session.tenantId, async (tx) => {
