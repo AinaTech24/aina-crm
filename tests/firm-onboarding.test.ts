@@ -171,6 +171,25 @@ describe.skipIf(!TEST_DB)("setup wizard against the database", () => {
     expect(await W.saveFirmDetails(actor(), parsed.value)).toEqual({ ok: true });
   });
 
+  // Runs as the firm under RLS, which hides other firms — the database's
+  // unique index must still turn a taken ARN into a field error, not a 500.
+  it("an ARN another firm holds is a clear field error", async () => {
+    const other = randomUUID();
+    const taken = `ARN-${Math.floor(100000 + Math.random() * 800000)}`;
+    await q(sql`INSERT INTO tenants (id, legal_name, display_name, arn) VALUES (${other}::uuid, 'Other Firm', 'Other Firm', ${taken})`);
+    try {
+      const parsed = W.parseFirmDetails({ legalName: "Mehta Wealth LLP", arn: taken, pan: "AAKFM1234C", gstRegistered: false, addressLine1: "12 MG Road", city: "Ahmedabad", state: "Gujarat", pincode: "380001", email, phone: "9876543210" });
+      if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
+      expect(await W.saveFirmDetails(actor(), parsed.value)).toEqual({ ok: false, errors: { arn: expect.stringContaining("already registered") } });
+    } finally {
+      await withSystem(async (tx) => {
+        await tx.execute(sql`UPDATE tenants SET deleted_at = now() WHERE id = ${other}::uuid`);
+        await tx.execute(sql`SELECT set_config('app.tenant_id', ${other}, true)`);
+        await tx.execute(sql`SELECT platform_purge_tenant(${other}::uuid)`);
+      });
+    }
+  });
+
   it("records the Terms acceptance with the exact text's hash, and it is immutable", async () => {
     expect(await W.acceptTerms(actor(), await docId("terms"))).toEqual({ ok: true });
     const [a] = await q(sql`SELECT a.text_sha256, d.body_sha256, a.ip_address, a.user_agent FROM legal_acceptances a JOIN legal_documents d ON d.id = a.document_id WHERE a.tenant_id = ${tenant}::uuid AND a.kind = 'terms'`);

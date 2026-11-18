@@ -9,6 +9,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { isUniqueViolation } from "@/lib/api/error-handler";
 import { v4 as uuid } from "uuid";
 import { withSystem, withTenant } from "@/db/client";
 import { recordAudit } from "@/lib/audit";
@@ -130,11 +131,22 @@ export function firmDetailsComplete(t: { legal_name: string | null; arn: string 
 
 type Actor = { tenantId: string; userId: string; email: string; name: string; ip: string | null; userAgent: string | null };
 
+const ARN_TAKEN = "This ARN is already registered with another firm. Contact Aina if it is yours.";
+
 export async function saveFirmDetails(a: Actor, d: FirmDetails): Promise<{ ok: true } | { ok: false; errors: FieldErrors }> {
+  // ARN is unique across firms (tenants_arn_unique). A pre-check cannot see it:
+  // this runs as the firm, and RLS hides every other firm's row — so the
+  // database's own unique index decides, and its violation becomes a field error.
+  try {
+    return await saveFirmDetailsTx(a, d);
+  } catch (err) {
+    if (isUniqueViolation(err, "tenants_arn_unique")) return { ok: false, errors: { arn: ARN_TAKEN } };
+    throw err;
+  }
+}
+
+async function saveFirmDetailsTx(a: Actor, d: FirmDetails): Promise<{ ok: true } | { ok: false; errors: FieldErrors }> {
   return withTenant(a.tenantId, async (tx) => {
-    // ARN is unique across firms.
-    const clash = (await tx.execute(sql`SELECT 1 FROM tenants WHERE arn = ${d.arn} AND id <> ${a.tenantId}::uuid AND deleted_at IS NULL LIMIT 1`)).rows.length;
-    if (clash) return { ok: false as const, errors: { arn: "This ARN is already registered with another firm. Contact Aina if it is yours." } };
     const before = (await tx.execute(sql`SELECT legal_name, display_name, arn, pan_number, gst_number, address, email, phone FROM tenants WHERE id = ${a.tenantId}::uuid`)).rows[0] as Record<string, unknown>;
     const address = { line1: d.addressLine1, line2: d.addressLine2 ?? undefined, city: d.city, state: d.state, pincode: d.pincode, country: "India" };
     await tx.execute(sql`
