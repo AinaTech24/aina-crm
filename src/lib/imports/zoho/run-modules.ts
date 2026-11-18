@@ -227,7 +227,10 @@ export async function importZohoModule(
         result.created++;
       }
       await insertAll(riskProfileResponses, rows);
-      // The client's own profile: the latest Zoho one, unless the CRM already holds a later one.
+      // The client's own profile: the latest Zoho one, unless the client has answered the
+      // CRM's own questionnaire (link / OTP / physical form) after it. A category that was
+      // only set or imported (the Excel client load stamped those with the import date)
+      // gives way to Zoho's questionnaire.
       for (const [investorId, m] of latest) {
         const res = await tx.execute(sql`
           UPDATE investors SET
@@ -238,8 +241,12 @@ export async function importZohoModule(
                  risk_profile_version = COALESCE(risk_profile_version, 0) + 1,
                  updated_at = now()
            WHERE tenant_id = ${actor.tenantId}::uuid AND id = ${investorId}::uuid
-             AND (risk_profile_signed_at IS NULL OR risk_profile_provisional
-                  OR risk_profile_signed_at <= ${m.signedAt!.toISOString()}::timestamptz)
+             AND NOT EXISTS (
+               SELECT 1 FROM risk_profile_responses r
+                WHERE r.tenant_id = ${actor.tenantId}::uuid AND r.investor_id = ${investorId}::uuid
+                  AND r.verification_method IN ('client_link', 'client_otp', 'client_physical')
+                  AND r.signed_at > ${m.signedAt!.toISOString()}::timestamptz
+             )
           RETURNING id
         `);
         if (res.rows.length) result.updated++;
