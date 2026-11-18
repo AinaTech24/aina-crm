@@ -264,6 +264,11 @@ function normaliseFeedStatus(s: string): CanonicalTransaction["status"] {
   if (["ALLOTTED", "SUCCESS", "SUCCESSFUL", "Y", "YES", "PROCESSED", "CONFIRMED"].includes(u)) return "successful";
   if (["REJECTED", "AUTO REJECTED", "REJECT"].includes(u)) return "rejected";
   if (["FAILED", "FAILURE", "BOUNCE", "BOUNCED"].includes(u)) return "failed";
+  // The registrars word a bounce many ways ("REJ", "REJECTED BY BANK", "SIP DISHONOURED",
+  // "UNSUCCESSFUL", "PAYMENT FAILED"). Anything else fell to "successful" below, so a bounced SIP
+  // was counted as money collected and never reached the SIP Rejections page.
+  if (/^REJ|REJECT/.test(u)) return "rejected";
+  if (/FAIL|BOUNC|DISHON|UNSUCC|RETURN|NOT\s*(HONOUR|HONOR)/.test(u)) return "failed";
   if (["PENDING", "N", "INITIATED", "AWAITED"].includes(u)) return "pending";
   return "successful"; // a posted reverse-feed row is, by definition, processed
 }

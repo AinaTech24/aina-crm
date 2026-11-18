@@ -57,8 +57,11 @@ export function SipRejectionsTable({
   rows,
   colOrder,
   extraCols = [],
+  emptyNote,
 }: {
   rows: SipRejectionRow[];
+  /** Why the list is empty, from what the transaction feed holds (server-decided). */
+  emptyNote?: string | null;
   /** Column keys in the order to draw them (built-in keys and `x:<field>`); server-decided from the person's cookie. */
   colOrder?: string[];
   /** The fields this person added, for their headings. */
@@ -362,8 +365,8 @@ export function SipRejectionsTable({
         <div className="py-12 text-center text-muted-foreground">
           <p className="text-sm font-medium">No SIP rejections found.</p>
           <p className="mx-auto mt-1 max-w-md text-xs">
-            A bounced SIP appears here after the registrar&apos;s transaction feed or SIP rejection report is imported
-            (RTA File Imports). Imports that skipped a row because its client was missing are placed again after the next client master import.
+            {emptyNote ??
+              "A bounced SIP appears here after the registrar's transaction feed or SIP rejection report is imported (RTA File Imports). Imports that skipped a row because its client was missing are placed again after the next client master import."}
           </p>
         </div>
       ) : (

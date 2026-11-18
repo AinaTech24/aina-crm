@@ -176,7 +176,36 @@ export default async function SipRejectionsPage({
         ? (Number(s.recovered_amt_mtd) / Number(s.rejected_amt_mtd)) * 100
         : 0;
 
+    // An empty page must say WHY. What the registrar's transaction feed (imported in the last
+    // 90 days, the window the rows are made from) holds about SIPs tells apart "no SIP in the
+    // feed", "SIPs came, none bounced" and "a bounce came but is not linked to a client".
+    let feedNote: string | null = null;
+    if (Number(s.total) === 0 && !q) {
+      const f = (
+        await tx.execute(sql`
+          SELECT COUNT(*) FILTER (WHERE type = 'sip')::int AS sip_total,
+                 COUNT(*) FILTER (WHERE type = 'sip' AND status IN ('rejected','failed'))::int AS sip_bounced,
+                 COUNT(*) FILTER (WHERE type = 'sip' AND status IN ('rejected','failed') AND investor_id IS NULL)::int AS bounced_unlinked
+            FROM transactions
+           WHERE tenant_id = ${session.tenantId}::uuid
+             AND created_at >= now() - interval '90 days'
+        `)
+      ).rows[0] as any;
+      const total = Number(f?.sip_total ?? 0);
+      const bounced = Number(f?.sip_bounced ?? 0);
+      const unlinked = Number(f?.bounced_unlinked ?? 0);
+      feedNote =
+        total === 0
+          ? "No SIP instalment is in the transaction feed imported in the last 90 days. Import the daily transaction feed (RTA File Imports) and bounced SIPs will appear here."
+          : bounced === 0
+            ? `The transaction feed imported in the last 90 days holds ${total.toLocaleString("en-IN")} SIP instalment${total === 1 ? "" : "s"}, and the registrar marked none of them rejected or failed. If your registrar sends bounces in a separate SIP rejection report, import that report; a bounce is added here only when the registrar reports it.`
+            : unlinked > 0
+              ? `${bounced.toLocaleString("en-IN")} bounced SIP${bounced === 1 ? "" : "s"} came in the feed, ${unlinked.toLocaleString("en-IN")} of them for a folio whose client is not in the client master. Import the folio master, then they are placed.`
+              : `${bounced.toLocaleString("en-IN")} bounced SIP${bounced === 1 ? "" : "s"} came in the feed and are being added; refresh in a minute.`;
+    }
+
     return {
+      feedNote,
       total: Number(s.total),
       pending: Number(s.pending),
       inProgress: Number(s.in_progress),
@@ -348,7 +377,7 @@ export default async function SipRejectionsPage({
         }
       />
 
-      <SipRejectionsTable rows={data.rows as any} colOrder={colOrder} extraCols={extraCols} />
+      <SipRejectionsTable rows={data.rows as any} colOrder={colOrder} extraCols={extraCols} emptyNote={data.feedNote} />
     </div>
   );
 }

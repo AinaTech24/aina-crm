@@ -1338,6 +1338,10 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   reached the page. It now also runs after every RTA import and looks back 90 days; idempotent (same transaction, or same
   client / date / amount from the report, never twice), and a bounce older than three days is stamped escalated so catching
   up sends no "overdue" alerts.
+- **An empty SIP Rejections page says why** (2026-11-18, Ahpal / `sip-rejections/page.tsx`): from the transaction feed imported in
+  the last 90 days it reports no SIP at all, SIPs with none marked rejected / failed (the registrar sends bounces only in its own
+  SIP rejection report then), or bounces for a folio whose client is missing. The feed's status text is read wide
+  (`normaliseFeedStatus`: REJ…, "dishonoured", "unsuccessful", "payment failed"); an unknown word on a posted row is still processed.
 - **SIP rejection report** (`processSipRejectionReport`): clients are found with
   the transaction feed's own index (`buildInvestorIndex`: folio with case / spaces
   / slashes ignored, the row's AMC picks between clients holding the same number),
