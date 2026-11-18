@@ -12,6 +12,7 @@
  *
  * Nothing here prints a password: candidates are shown by length and a short hash only.
  */
+import { labelledVariants } from "@/lib/rta/password-variants";
 import { createHash, pbkdf2Sync } from "node:crypto";
 import { ZipReader, Uint8ArrayReader, Uint8ArrayWriter, configure } from "@zip.js/zip.js";
 
@@ -37,14 +38,7 @@ export function passwordForms(pw: string): EncodingForm[] {
   const add = (label: string, bytes: Buffer) => {
     if (!out.some((o) => o.bytes.equals(bytes))) out.push({ label, bytes });
   };
-  const bases: Array<[string, string]> = [["as typed", pw]];
-  if (pw.trim() !== pw) bases.push(["trimmed", pw.trim()]);
-  if (pw.toUpperCase() !== pw) bases.push(["UPPER case", pw.toUpperCase()]);
-  if (pw.toLowerCase() !== pw) bases.push(["lower case", pw.toLowerCase()]);
-  if (pw.trim() === pw) {
-    bases.push(["+ trailing space", pw + " "]);
-    bases.push(["+ leading space", " " + pw]);
-  }
+  const bases: Array<[string, string]> = labelledVariants(pw);
   for (const [name, text] of bases) {
     add(`${name}, UTF-8`, Buffer.from(text, "utf8"));
     // eslint-disable-next-line no-control-regex -- detecting any non-ASCII

@@ -25,23 +25,54 @@ export function cleanTypedPassword(s: string): string {
   return s.replace(/[\r\n]+/g, "");
 }
 
-export function passwordVariants(password: string): string[] {
-  const out: string[] = [];
-  const add = (v: string) => {
-    if (v && !out.includes(v)) out.push(v);
+/**
+ * Forms of a password a registrar's web form may have turned it into before it reached
+ * the archive (2026-11-18: an AES archive that no typed or saved password opened although
+ * the person said the password was right). Each is only ever TRIED; an AES archive's
+ * 2-byte check is exact, so a form that is not the real one cannot pass.
+ *
+ *  - the web form's own damage: "+" read as a space, a percent-encoded / HTML-escaped
+ *    or unescaped text, whitespace inside, symbols dropped
+ *  - upper / lower case
+ *  - a password cut at the registrar's length limit (8, 10, 12, 15, 16 characters)
+ */
+export function labelledVariants(password: string): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  const add = (label: string, v: string) => {
+    if (v && !out.some(([, x]) => x === v)) out.push([label, v]);
   };
-  add(password);
+  add("as typed", password);
   const trimmed = password.trim();
-  add(trimmed);
+  add("trimmed", trimmed);
   if (trimmed === password) {
     // saved after the old code had already stripped it
-    add(`${password} `);
-    add(` ${password}`);
+    add("+ trailing space", `${password} `);
+    add("+ leading space", ` ${password}`);
   }
+  const t = trimmed;
+  add("UPPER case", t.toUpperCase());
+  add("lower case", t.toLowerCase());
+  add("symbols dropped", t.replace(/[^A-Za-z0-9]/g, ""));
+  add("inner spaces dropped", t.replace(/\s+/g, ""));
+  add("+ read as a space", t.replace(/\+/g, " "));
+  try {
+    add("percent-decoded", decodeURIComponent(t));
+  } catch {
+    /* not percent-encoded */
+  }
+  add("percent-encoded", encodeURIComponent(t));
+  add("HTML-escaped", t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"));
+  add("HTML-unescaped", t.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'"));
+  for (const n of [8, 10, 12, 15, 16]) if (t.length > n) add(`first ${n} characters only`, t.slice(0, n));
+  return out;
+}
+
+export function passwordVariants(password: string): string[] {
+  const out: string[] = labelledVariants(password).map(([, v]) => v);
   // ZipCrypto written by a UTF-8 tool: the password's UTF-8 bytes, one per char.
   for (const v of [...out]) {
     // eslint-disable-next-line no-control-regex -- deliberately detecting any non-ASCII
-    if (/[^\x00-\x7f]/.test(v)) add(Buffer.from(v, "utf8").toString("latin1"));
+    if (/[^\x00-\x7f]/.test(v) && !out.includes(Buffer.from(v, "utf8").toString("latin1"))) out.push(Buffer.from(v, "utf8").toString("latin1"));
   }
   return out;
 }

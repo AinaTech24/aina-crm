@@ -1316,6 +1316,11 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   rejected row, `tests/rta-diagnose-route.test.ts`): the page-side twin of the diagnose script for people with no server shell.
   Type the password you believe is right; it names who supplied a match ("the password you typed now" / "saved password #N") and
   which form matched, or says no tested password fits. Read-only, audited as `rta_import.diagnosed`, never returns a password.
+- **A password is also tried in the forms a registrar's web form may have turned it into** (2026-11-18,
+  `labelledVariants`, `lib/rta/password-variants.ts`): upper / lower case, symbols dropped, inner spaces dropped, "+" read as a
+  space, percent- / HTML-decoded and -encoded, and cut at 8 / 10 / 12 / 15 / 16 characters. Added after the stethoscope showed a
+  KFintech AES archive that neither the saved nor the typed password fit in any plain form. An AES check is exact, so a form that
+  is not the real one cannot pass; the diagnosis names the form that matched ("first 12 characters only").
 - **A CAMS `.xls` can be an ENCRYPTED workbook** (2026-11-18, `lib/rta/office-decrypt.ts`, `tests/rta-encrypted-excel*.test.ts`).
   Rows `WebTrxns_H_ARN-…xls` read "49 data lines but none could be read — layout not recognised" with a line of �� : the
   file is an OLE container holding an encrypted Excel, SheetJS threw "File is password-protected", and `decodeRtaToText`

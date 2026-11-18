@@ -82,3 +82,28 @@ describe("opening archives", () => {
     expect(await openWith(zip, ["Wrong#1", "right#1"])).toBeNull();
   });
 });
+
+describe("forms a registrar's web form may have turned a password into", () => {
+  it("opens an AES archive locked with the first 8 characters only", async () => {
+    const zip = await makeZip("Abcdefgh");
+    expect(await openWith(zip, ["Abcdefgh1234"])).toBe("Abcdefgh");
+  });
+
+  it("opens one locked with the symbols dropped, or with + read as a space", async () => {
+    expect(await openWith(await makeZip("Abc123xyz"), ["Abc@123#xyz"])).toBe("Abc123xyz");
+    expect(await openWith(await makeZip("Abc 123"), ["Abc+123"])).toBe("Abc 123");
+  });
+
+  it("opens one locked with the percent-decoded or HTML-unescaped text", async () => {
+    expect(await openWith(await makeZip("Ab&cd"), ["Ab&amp;cd"])).toBe("Ab&cd");
+    expect(await openWith(await makeZip("Ab#cd"), ["Ab%23cd"])).toBe("Ab#cd");
+  });
+
+  it("opens one locked with the upper-case form", async () => {
+    expect(await openWith(await makeZip("ABCD@1234"), ["Abcd@1234"])).toBe("ABCD@1234");
+  });
+
+  it("still tries the exact text first, so an ordinary password costs one attempt", () => {
+    expect(passwordVariants("Abc@1234")[0]).toBe("Abc@1234");
+  });
+});
