@@ -17,6 +17,14 @@
  *
  * Seats are not changed by this; grace and late rules use the tier in force
  * for the cycle being paid.
+ *
+ * The END OF A 6-MONTH COMMITMENT is the same review: 7 days before it, the
+ * owner is asked (in-app + email) to choose monthly, half-yearly or yearly on
+ * Billing. Their choice (`scheduled_change`, lib/billing/change.ts) prices the
+ * next cycle; with none the firm continues MONTHLY. The checkout already made
+ * the Razorpay plan the monthly one, so the plan is switched only when the
+ * amount or period differs (a chosen cycle, or an AUM tier change) — through
+ * the same plan-change-at-cycle-end path and its re-authorise fallback.
  */
 
 import { sql } from "drizzle-orm";
@@ -25,7 +33,7 @@ import { recordAudit } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
 import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
 import { LEGAL } from "@/lib/legal/company";
-import { CYCLE_LABEL, inr, parseCycle, quoteCycle, razorpayPeriod, type CycleKey, type PricingSettings } from "./aum-pricing";
+import { CYCLE_LABEL, inr, parseCycle, quoteAll, quoteCycle, razorpayPeriod, renewalCycleOf, type CycleKey, type CycleQuote, type PricingSettings } from "./aum-pricing";
 import { firmAumForPricing, type FirmAum } from "./firm-aum";
 import { createRazorpayPlan, updateRazorpaySubscriptionPlan } from "./razorpay";
 import { istDate, istDayNumber } from "./renewal";
@@ -34,7 +42,29 @@ import { loadPricingSettings } from "./pricing-settings";
 
 export type ReviewOutcome =
   | { status: "skipped"; reason: "not_aum" | "not_due" | "already_reviewed" | "no_renewal" | "inactive" }
-  | { status: "reviewed"; changed: boolean; tierChanged: boolean; next: NextCycle; aum: FirmAum; fromTier: string | null };
+  | { status: "reviewed"; changed: boolean; tierChanged: boolean; next: NextCycle; aum: FirmAum; fromTier: string | null; commitmentEnding: boolean };
+
+/** The words of the end-of-commitment notice (in-app and email). Pure. */
+export function commitmentEndingText(a: {
+  renewalOn: string;
+  months: number;
+  chosen: CycleKey | null;
+  next: CycleQuote;
+  options: CycleQuote[];
+}): { title: string; body: string } {
+  const on = new Date(`${a.renewalOn}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const prices = a.options.map((q) => `${CYCLE_LABEL[q.cycle].toLowerCase()} ${inr(q.totalPaise)}`).join(" · ");
+  if (a.chosen) {
+    return {
+      title: `Your ${a.months}-month commitment ends on ${on}`,
+      body: `You chose ${CYCLE_LABEL[a.chosen].toLowerCase()}: ${inr(a.next.totalPaise)} incl. GST from ${on}. You can still change it on Billing (${prices}, incl. GST).`,
+    };
+  }
+  return {
+    title: `Your ${a.months}-month commitment ends on ${on} — choose how to continue`,
+    body: `Choose monthly, half-yearly (save) or yearly (save more) on Billing: ${prices}, incl. GST. If you do not choose by ${on}, your subscription continues monthly at ${inr(a.next.totalPaise)} incl. GST.`,
+  };
+}
 
 /** Human wording for where the AUM came from. */
 export function aumSourceText(aum: Pick<FirmAum, "source" | "asOf">): string {
@@ -57,6 +87,9 @@ type Sub = {
   razorpay_subscription_id: string | null;
   mandate_status: string | null;
   scheduled_change: { cycle?: string; users?: number } | null;
+  razorpay_plan_paise: number | null;
+  /** Months of the cycle in force (the commitment's length as bought). */
+  cycle_months: number | null;
 };
 
 export async function reviewRenewal(
@@ -66,10 +99,11 @@ export async function reviewRenewal(
   const now = opts.now ?? new Date();
   const s = opts.settings ?? (await loadPricingSettings());
 
-  const result = await withTenant(tenantId, async (tx): Promise<ReviewOutcome & { notify?: { owners: Array<{ id: string; email: string; name: string | null }>; firm: string } }> => {
+  const result = await withTenant(tenantId, async (tx): Promise<ReviewOutcome & { notify?: { owners: Array<{ id: string; email: string; name: string | null }>; firm: string; commitment: { title: string; body: string } | null } }> => {
     const sub = (await tx.execute(sql`
       SELECT id, status, pricing_model, billing_cycle, seats_override, license_end_at, declared_aum_crore, aum_crore_in_force,
-             aum_tier_key, cycle_total_paise, razorpay_subscription_id, mandate_status, scheduled_change
+             aum_tier_key, cycle_total_paise, razorpay_subscription_id, mandate_status, scheduled_change, razorpay_plan_paise,
+             (cycle_quote->>'months')::int AS cycle_months
         FROM subscriptions WHERE tenant_id = ${tenantId}::uuid FOR UPDATE
     `)).rows[0] as Sub | undefined;
     if (!sub || sub.pricing_model !== "aum") return { status: "skipped", reason: "not_aum" };
@@ -82,11 +116,18 @@ export async function reviewRenewal(
 
     const declared = Number(sub.declared_aum_crore ?? sub.aum_crore_in_force ?? 0);
     const aum = await firmAumForPricing(tx, tenantId, declared);
-    const cycle: CycleKey = parseCycle(sub.scheduled_change?.cycle) ?? parseCycle(sub.billing_cycle) ?? "monthly";
+    // A commitment never renews as one: the owner's choice, else monthly.
+    const commitmentEnding = sub.billing_cycle === "commitment";
+    const chosen = parseCycle(sub.scheduled_change?.cycle);
+    const cycle: CycleKey = renewalCycleOf(chosen ?? parseCycle(sub.billing_cycle));
     const users = Number(sub.scheduled_change?.users ?? sub.seats_override ?? s.minUsers);
     const quote = quoteCycle({ aumCrore: aum.aumCrore, users, cycle }, s);
     const tierChanged = quote.tierKey !== sub.aum_tier_key;
     const changed = tierChanged || quote.totalPaise !== sub.cycle_total_paise || cycle !== sub.billing_cycle;
+    // Does the Razorpay plan have to move? After a commitment the plan already
+    // in force is the monthly one the checkout made; otherwise any change does.
+    const planPaise = sub.razorpay_plan_paise ?? sub.cycle_total_paise;
+    const needsPlanSwitch = commitmentEnding ? quote.totalPaise !== planPaise || cycle !== "monthly" : changed;
 
     // Claim this renewal date — once per firm per renewal (a forced re-review,
     // after the owner changes the package, replaces the decision).
@@ -107,7 +148,7 @@ export async function reviewRenewal(
     // Move Razorpay to the new amount from the NEXT cycle only.
     let razorpayAction: NextCycle["razorpayAction"] = "none";
     let planId: string | null = null;
-    if (changed && sub.razorpay_subscription_id) {
+    if (needsPlanSwitch && sub.razorpay_subscription_id) {
       try {
         const { period, interval } = razorpayPeriod(cycle);
         planId = (await createRazorpayPlan({
@@ -139,7 +180,11 @@ export async function reviewRenewal(
       razorpayAction,
       decidedAt: now.toISOString(),
     };
-    await tx.execute(sql`UPDATE subscriptions SET next_cycle = ${JSON.stringify(next)}::jsonb, updated_at = now() WHERE id = ${sub.id}::uuid`);
+    await tx.execute(sql`
+      UPDATE subscriptions SET next_cycle = ${JSON.stringify(next)}::jsonb,
+             razorpay_plan_paise = CASE WHEN ${razorpayAction === "updated"} THEN ${quote.totalPaise}::int ELSE razorpay_plan_paise END,
+             updated_at = now()
+       WHERE id = ${sub.id}::uuid`);
     await tx.execute(sql`UPDATE billing_renewal_reviews SET razorpay_action = ${razorpayAction}, razorpay_plan_id = ${planId} WHERE id = ${claimed.id}::uuid`);
 
     await recordAudit(tx, {
@@ -150,7 +195,7 @@ export async function reviewRenewal(
       entityType: "subscription",
       entityId: sub.id,
       before: { tier: sub.aum_tier_key, cycleTotalPaise: sub.cycle_total_paise, cycle: sub.billing_cycle, users: sub.seats_override },
-      after: { renewalOn, tier: quote.tierKey, aumCrore: aum.aumCrore, aumSource: aum.source, aumAsOf: aum.asOf, cycle, users, nextTotalPaise: quote.totalPaise, razorpayAction },
+      after: { renewalOn, tier: quote.tierKey, aumCrore: aum.aumCrore, aumSource: aum.source, aumAsOf: aum.asOf, cycle, users, nextTotalPaise: quote.totalPaise, razorpayAction, commitmentEnding, ownerChose: commitmentEnding ? !!chosen : undefined },
     });
     if (tierChanged) {
       const up = (s.tiers.findIndex((t) => t.key === quote.tierKey)) > (s.tiers.findIndex((t) => t.key === sub.aum_tier_key));
@@ -168,7 +213,28 @@ export async function reviewRenewal(
        WHERE tenant_id = ${tenantId}::uuid AND 'owner' = ANY(roles) AND status = 'active'
     `)).rows as Array<{ id: string; email: string; name: string | null }>;
     const firm = ((await tx.execute(sql`SELECT display_name FROM tenants WHERE id = ${tenantId}::uuid`)).rows[0] as { display_name: string } | undefined)?.display_name ?? "your firm";
-    if (tierChanged || razorpayAction === "reauth_required") {
+    const commitmentNotice = commitmentEnding
+      ? commitmentEndingText({
+          renewalOn,
+          months: sub.cycle_months ?? s.cycles.commitment.months,
+          chosen: chosen && chosen !== "commitment" ? chosen : null,
+          next: quote,
+          options: quoteAll({ aumCrore: aum.aumCrore, users }, s),
+        })
+      : null;
+    if (commitmentNotice) {
+      for (const o of owners) {
+        await createNotification(tx, {
+          tenantId,
+          userId: o.id,
+          kind: "billing.commitment_ending",
+          title: commitmentNotice.title,
+          body: commitmentNotice.body + (razorpayAction === "reauth_required" ? " Your bank mandate cannot be moved to the new amount automatically — please re-authorise from Billing." : ""),
+          linkUrl: "/dashboard/billing",
+          severity: razorpayAction === "reauth_required" ? "warning" : "info",
+        });
+      }
+    } else if (tierChanged || razorpayAction === "reauth_required") {
       for (const o of owners) {
         await createNotification(tx, {
           tenantId,
@@ -181,7 +247,16 @@ export async function reviewRenewal(
         });
       }
     }
-    return { status: "reviewed", changed, tierChanged, next, aum, fromTier: sub.aum_tier_key, notify: tierChanged || razorpayAction === "reauth_required" ? { owners, firm } : undefined };
+    return {
+      status: "reviewed",
+      changed,
+      tierChanged,
+      next,
+      aum,
+      fromTier: sub.aum_tier_key,
+      commitmentEnding,
+      notify: commitmentNotice || tierChanged || razorpayAction === "reauth_required" ? { owners, firm, commitment: commitmentNotice } : undefined,
+    };
   });
 
   // Email after commit; record that it went (best-effort).
@@ -191,7 +266,20 @@ export async function reviewRenewal(
     const line = `Your renewal on ${n.renewalOn}: AUM ₹${n.aumCrore.toLocaleString("en-IN")} Cr (${aumSourceText(result.aum)}) → ${n.tierLabel} → ${inr(n.quote.totalPaise)} incl. GST, ${CYCLE_LABEL[n.cycle].toLowerCase()}.`;
     const reauth = n.razorpayAction === "reauth_required" ? " Please re-authorise auto-pay for the new amount from Billing." : "";
     let sent = false;
+    const c = result.notify.commitment;
     for (const o of result.notify.owners) {
+      if (c) {
+        const r = await sendSystemEmail({
+          tenantId,
+          to: o.email,
+          subject: c.title,
+          text: `Hello${o.name ? ` ${o.name}` : ""},\n\n${c.body}${reauth}\n\n${base}/dashboard/billing`,
+          html: actionEmailHtml({ heading: c.title, intro: `${c.body}${reauth}`, buttonLabel: "Choose on Billing", buttonUrl: `${base}/dashboard/billing` }),
+          idempotencyKey: `commitment-ending:${tenantId}:${n.renewalOn}:${n.cycle}:${n.quote.totalPaise}:${o.id}`,
+        });
+        sent = sent || r.sent;
+        continue;
+      }
       const r = await sendSystemEmail({
         tenantId,
         to: o.email,

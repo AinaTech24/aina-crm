@@ -9,7 +9,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 import { Badge } from "@/components/ui/Badge";
 import { InlineEmpty } from "@/components/common/EmptyState";
-import { CYCLE_LABEL, inr, parseCycle, type CycleQuote } from "@/lib/billing/aum-pricing";
+import { cycleLabel, inr, parseCycle, type CycleQuote } from "@/lib/billing/aum-pricing";
 import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -118,7 +118,7 @@ export default async function PricingQuotesPage({ searchParams }: { searchParams
                     <td className="whitespace-nowrap">
                       {cycle ? (
                         <>
-                          {CYCLE_LABEL[cycle]}
+                          {cycleLabel(cycle, chosen?.months)}
                           {chosen && <div className="text-xs text-muted-foreground">{inr(chosen.totalPaise)}</div>}
                         </>
                       ) : (

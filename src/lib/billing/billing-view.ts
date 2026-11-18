@@ -1,13 +1,15 @@
 /**
  * Everything the Billing page shows about an AUM-priced subscription, in one
  * read: the package in force, where the renewal stands (grace / lapsed), the
- * AUM the next renewal will be priced from, the three packages pre-filled for
- * a re-quote, and the firm's tax invoices.
+ * AUM the next renewal will be priced from, the packages pre-filled for a
+ * re-quote (the commitment + yearly for a first purchase, else the three), a
+ * firm's commitment and when it ends, and the firm's tax invoices.
  */
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { lateProRataCharge, parseCycle, quoteAll, quoteCycle, type CycleKey, type CycleQuote, type LateCharge, type PricingSettings } from "./aum-pricing";
+import { lateProRataCharge, parseCycle, quoteCycle, quoteOffered, renewalCycleOf, type CycleKey, type CycleQuote, type LateCharge, type PricingSettings } from "./aum-pricing";
+import { loadFirstPurchase } from "./first-purchase";
 import { firmAumForPricing, type FirmAum } from "./firm-aum";
 import { renewalState, type RenewalState } from "./renewal";
 import type { NextCycle } from "./payments";
@@ -38,8 +40,15 @@ export type AumBillingView = {
   /** The renewal review's decision, or what it would decide today. */
   nextRenewal: { decided: boolean; aum: FirmAum; tierLabel: string; quote: CycleQuote; razorpayAction: string | null; renewalOn: string | null } | null;
   late: LateCharge | null;
-  /** The three packages for the re-quote, pre-filled. */
+  /** The packages for the re-quote, pre-filled — what this firm may buy. */
   quotes: CycleQuote[];
+  /** Never paid: the first purchase is the commitment or yearly. */
+  firstPurchase: boolean;
+  /**
+   * In a commitment: when it ends, whether the owner is being asked to choose
+   * (inside the review window), what they chose, and the monthly default.
+   */
+  commitment: { months: number; endsOn: string | null; choiceOpen: boolean; chosen: CycleKey | null; monthlyDefaultPaise: number } | null;
   quoteAumCrore: number;
   scheduledChange: { cycle: CycleKey; users: number } | null;
   pendingCheckout: boolean;
@@ -96,6 +105,9 @@ export async function loadAumBillingView(tx: Tx, tenantId: string, s: PricingSet
   if (!isAum && !legacyUnpaid) return null;
 
   const cycle = parseCycle(sub.scheduled_change?.cycle) ?? parseCycle(sub.billing_cycle) ?? "yearly";
+  const inCommitment = isAum && sub.billing_cycle === "commitment";
+  // The cycle the next renewal is priced on: a commitment continues monthly unless the owner chose.
+  const nextCycleKey = renewalCycleOf(parseCycle(sub.scheduled_change?.cycle) ?? parseCycle(sub.billing_cycle));
   const users = Math.max(s.minUsers, Number(sub.scheduled_change?.users ?? sub.seats_override ?? s.minUsers));
   const declared = sub.declared_aum_crore != null ? Number(sub.declared_aum_crore) : null;
   const end = sub.license_end_at ? new Date(sub.license_end_at) : null;
@@ -111,14 +123,25 @@ export async function loadAumBillingView(tx: Tx, tenantId: string, s: PricingSet
       nextRenewal = { decided: true, aum: { aumCrore: n.aumCrore, source: n.aumSource, asOf: n.aumAsOf }, tierLabel: n.tierLabel, quote: n.quote, razorpayAction: n.razorpayAction, renewalOn: n.renewalOn };
     } else {
       const aum = await firmAumForPricing(tx, tenantId, declared ?? Number(sub.aum_crore_in_force ?? 0));
-      const q = quoteCycle({ aumCrore: aum.aumCrore, users, cycle }, s);
+      const q = quoteCycle({ aumCrore: aum.aumCrore, users, cycle: nextCycleKey }, s);
       nextRenewal = { decided: false, aum, tierLabel: q.tierLabel, quote: q, razorpayAction: null, renewalOn: end ? end.toISOString().slice(0, 10) : null };
     }
   }
 
   const quoteAum = mode === "pay_first" ? declared ?? 0 : nextRenewal?.aum.aumCrore ?? Number(sub.aum_crore_in_force ?? declared ?? 0);
-  const quotes = quoteAll({ aumCrore: quoteAum, users }, s);
-  const late = renewal?.phase === "lapsed" ? lateProRataCharge(quotes.find((q) => q.cycle === cycle)!.monthlyBasePaise, s) : null;
+  const firstPurchase = mode === "pay_first" ? await loadFirstPurchase(tx, tenantId) : false;
+  const quotes = quoteOffered({ aumCrore: quoteAum, users }, firstPurchase, s);
+  // Every package shares one monthly base — the late charge's.
+  const late = renewal?.phase === "lapsed" ? lateProRataCharge(quotes[0].monthlyBasePaise, s) : null;
+  const commitment: AumBillingView["commitment"] = inCommitment
+    ? {
+        months: sub.cycle_quote?.months ?? s.cycles.commitment.months,
+        endsOn: end ? end.toISOString() : null,
+        choiceOpen: !!end && renewal?.phase === "current" && Math.ceil((end.getTime() - now.getTime()) / 86_400_000) <= s.renewalReviewDays,
+        chosen: parseCycle(sub.scheduled_change?.cycle),
+        monthlyDefaultPaise: quoteCycle({ aumCrore: nextRenewal?.aum.aumCrore ?? quoteAum, users, cycle: "monthly" }, s).totalPaise,
+      }
+    : null;
 
   return {
     status: sub.status,
@@ -142,6 +165,8 @@ export async function loadAumBillingView(tx: Tx, tenantId: string, s: PricingSet
     nextRenewal,
     late,
     quotes,
+    firstPurchase,
+    commitment,
     quoteAumCrore: quoteAum,
     scheduledChange: sub.scheduled_change?.cycle ? { cycle: parseCycle(sub.scheduled_change.cycle) ?? cycle, users: Number(sub.scheduled_change.users ?? users) } : null,
     pendingCheckout: !!sub.pending_checkout,

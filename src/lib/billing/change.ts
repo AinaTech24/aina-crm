@@ -5,6 +5,9 @@
  * prices the next cycle from it and the CRM's AUM, and moves Razorpay to the
  * new amount from the next cycle. Inside the review window the review runs
  * again at once so Billing shows the new figure straight away.
+ *
+ * Only the three standard cycles: the commitment is a first purchase, never a
+ * change. A firm in its commitment uses this to choose how it continues.
  */
 
 import { sql } from "drizzle-orm";
@@ -13,7 +16,7 @@ import { recordAudit } from "@/lib/audit";
 import { istDayNumber } from "./renewal";
 import { reviewRenewal, type ReviewOutcome } from "./renewal-review";
 import { CheckoutError } from "./checkout";
-import type { CycleKey, PricingSettings } from "./aum-pricing";
+import { STANDARD_CYCLES, type CycleKey, type PricingSettings } from "./aum-pricing";
 
 export async function scheduleChange(
   tenantId: string,
@@ -21,6 +24,9 @@ export async function scheduleChange(
   s: PricingSettings,
   actorUserId: string
 ): Promise<{ effectiveFrom: string; review: ReviewOutcome | null }> {
+  if (!(STANDARD_CYCLES as readonly string[]).includes(choice.cycle)) {
+    throw new CheckoutError(400, "Choose monthly, half-yearly or yearly.", "cycle_not_offered");
+  }
   const due = await withTenant(tenantId, async (tx) => {
     const sub = (await tx.execute(sql`
       SELECT id, status, pricing_model, license_end_at, billing_cycle, seats_override, declared_aum_crore, scheduled_change

@@ -3,7 +3,8 @@
 /**
  * "Get pricing" — three steps on one page, mobile first:
  *   1. the firm's AUM, users and contact details → the server prices it and saves the quote;
- *   2. three packages side by side (Monthly · Half-yearly · Yearly);
+ *   2. the packages a new firm may buy: the 6-month commitment and Yearly
+ *      (monthly and half-yearly open up after the commitment);
  *   3. create the firm's account for the chosen package, then pay in Razorpay
  *      Checkout. The server verifies the payment and opens the setup wizard.
  * Every figure shown comes from the server; nothing typed here sets a price.
@@ -17,7 +18,7 @@ import { Field } from "@/components/ui/Field";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { PackageCards } from "@/components/billing/PackageCards";
 import { openRazorpayCheckout, verifyCheckout, type CheckoutStart } from "@/components/billing/razorpay-checkout";
-import { CYCLE_LABEL, inr, type CycleKey, type CycleQuote } from "@/lib/billing/aum-pricing";
+import { cycleLabel, inr, type CycleKey, type CycleQuote } from "@/lib/billing/aum-pricing";
 import { GST_STATES } from "@/lib/legal/gst";
 
 type Quote = { quoteId: string | null; token: string | null; cycles: CycleQuote[]; tierLabel: string; onlineSignup: boolean };
@@ -209,8 +210,10 @@ export function PricingFlow() {
             <div>
               <h2 className="section-title">Create your firm&apos;s account</h2>
               <p className="section-subtitle mt-0.5">
-                {CYCLE_LABEL[chosen.cycle]} · {chosen.users} user{chosen.users === 1 ? "" : "s"} · {inr(chosen.totalPaise)} incl. GST every{" "}
-                {chosen.months === 1 ? "month" : `${chosen.months} months`}
+                {cycleLabel(chosen.cycle, chosen.months)} · {chosen.users} user{chosen.users === 1 ? "" : "s"} · {inr(chosen.totalPaise)} incl. GST{" "}
+                {chosen.cycle === "commitment"
+                  ? `for the first ${chosen.months} months, then monthly unless you choose half-yearly or yearly`
+                  : `every ${chosen.months === 1 ? "month" : `${chosen.months} months`}`}
               </p>
             </div>
             <Button variant="ghost" size="sm" icon={<ArrowLeft className="size-4" />} onClick={() => setStep("packages")}>

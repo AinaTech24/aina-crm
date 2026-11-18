@@ -7,6 +7,9 @@
  * (lib/billing/checkout.ts) and returns what Razorpay Checkout needs. An
  * active, paid-up firm changes its package from the next renewal instead
  * (POST /api/billing/change). Owner-only (settings.billing).
+ *
+ * A first purchase may buy only the commitment or yearly; the server decides
+ * that from the database (lib/billing/checkout.ts), whatever the body says.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -19,7 +22,7 @@ import { CheckoutError, startCheckout } from "@/lib/billing/checkout";
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
-  cycle: z.enum(["monthly", "half_yearly", "yearly"]),
+  cycle: z.enum(["monthly", "half_yearly", "yearly", "commitment"]),
   users: z.number().int().min(1).max(10000),
   aumCrore: z.number().min(0).max(1_000_000).nullable().optional(),
 });

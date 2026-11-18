@@ -3,8 +3,10 @@
 /**
  * Billing for an AUM-priced firm: pay (a first purchase, or a renewal that is
  * due — with the late charge after the grace period) or change the package
- * from the next renewal. The three cards are priced by the server
- * (GET /api/billing/quote) and charged at the server's figure.
+ * from the next renewal. The cards are priced by the server
+ * (GET /api/billing/quote) and charged at the server's figure — the
+ * commitment and yearly for a first purchase, else the three. A firm in its
+ * commitment uses "change" to choose how it continues (else monthly).
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -16,7 +18,7 @@ import { notify } from "@/components/ui/Toast";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import { PackageCards } from "./PackageCards";
 import { openRazorpayCheckout, verifyCheckout, type CheckoutStart } from "./razorpay-checkout";
-import { CYCLE_LABEL, inr, type CycleKey, type CycleQuote, type LateCharge } from "@/lib/billing/aum-pricing";
+import { CYCLE_LABEL, cycleLabel, inr, type CycleKey, type CycleQuote, type LateCharge } from "@/lib/billing/aum-pricing";
 
 export type AumPanelProps = {
   mode: "pay_first" | "pay_renewal" | "change";
@@ -31,6 +33,8 @@ export type AumPanelProps = {
   scheduledChange: { cycle: CycleKey; users: number } | null;
   minUsers: number;
   maxUsers: number;
+  /** In a commitment: its length and the date it ends (the change then picks how the firm continues). */
+  commitment?: { months: number; endsLabel: string | null } | null;
 };
 
 export function AumBillingPanel(p: AumPanelProps) {
@@ -70,9 +74,9 @@ export function AumBillingPanel(p: AumPanelProps) {
       if (p.mode === "change") {
         const q = quotes.find((x) => x.cycle === cycle)!;
         const ok = await confirmDialog({
-          title: `Switch to ${CYCLE_LABEL[cycle].toLowerCase()}, ${users} user${users === "1" ? "" : "s"}?`,
+          title: `${p.commitment ? "Continue" : "Switch to"} ${CYCLE_LABEL[cycle].toLowerCase()}, ${users} user${users === "1" ? "" : "s"}?`,
           message: `From your next renewal${p.renewalDueLabel ? ` (${p.renewalDueLabel})` : ""}: ${inr(q.totalPaise)} incl. GST. Nothing is charged now. The AUM tier at renewal is set from your CRM data.`,
-          confirmLabel: "Switch from next renewal",
+          confirmLabel: p.commitment ? `Continue ${CYCLE_LABEL[cycle].toLowerCase()}` : "Switch from next renewal",
         });
         if (!ok) return;
         const r = await fetch("/api/billing/change", { method: "POST", headers: { "content-type": "application/json" }, body });
@@ -101,7 +105,13 @@ export function AumBillingPanel(p: AumPanelProps) {
   }
 
   const title =
-    p.mode === "pay_first" ? "Choose your package and pay" : p.mode === "pay_renewal" ? "Renew your subscription" : "Change your package";
+    p.mode === "pay_first"
+      ? "Choose your package and pay"
+      : p.mode === "pay_renewal"
+        ? "Renew your subscription"
+        : p.commitment
+          ? `After your ${p.commitment.months}-month commitment`
+          : "Change your package";
   const subtitle =
     p.mode === "pay_first"
       ? "Your firm's account is ready — pay to start using the CRM. Auto-pay renews it every cycle."
@@ -109,7 +119,9 @@ export function AumBillingPanel(p: AumPanelProps) {
         ? p.late
           ? `Paid after the grace period, so the ${p.late.graceDays} grace days are added: ${inr(p.late.taxablePaise)} + GST = ${inr(p.late.totalPaise)}. The new cycle starts today.`
           : `Pay within the grace period at no extra cost — the new cycle runs from your renewal date${p.renewalDueLabel ? ` (${p.renewalDueLabel})` : ""}.`
-        : "Takes effect from your next renewal. Nothing is charged now.";
+        : p.commitment
+          ? `Choose how you continue from ${p.commitment.endsLabel ?? "the end of your commitment"}: monthly, half-yearly or yearly. If you do not choose, it continues monthly. Nothing is charged now.`
+          : "Takes effect from your next renewal. Nothing is charged now.";
 
   return (
     <Card>
@@ -120,7 +132,7 @@ export function AumBillingPanel(p: AumPanelProps) {
         )}
         {p.scheduledChange && p.mode === "change" && (
           <p className="text-sm text-muted-foreground">
-            Already scheduled: {CYCLE_LABEL[p.scheduledChange.cycle]}, {p.scheduledChange.users} user{p.scheduledChange.users === 1 ? "" : "s"} from the next renewal.
+            Already scheduled: {cycleLabel(p.scheduledChange.cycle)}, {p.scheduledChange.users} user{p.scheduledChange.users === 1 ? "" : "s"} from the next renewal.
           </p>
         )}
         <div className="grid gap-4 sm:grid-cols-2 max-w-xl">
@@ -141,7 +153,7 @@ export function AumBillingPanel(p: AumPanelProps) {
           tierLabel={quotes[0]?.tierLabel ?? ""}
           onChoose={p.canManage ? choose : undefined}
           busy={busy}
-          chooseLabel={p.mode === "change" ? "Switch to" : "Pay for"}
+          chooseLabel={p.mode === "change" ? (p.commitment ? "Continue" : "Switch to") : "Pay for"}
           disabled={!p.paymentsOn && p.mode !== "change"}
         />
         {!p.canManage && <p className="text-sm text-muted-foreground">Only the firm owner can pay or change the package.</p>}
