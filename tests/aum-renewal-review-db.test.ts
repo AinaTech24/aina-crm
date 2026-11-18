@@ -66,6 +66,8 @@ describe.skipIf(!TEST_DB)("renewal review", () => {
     if (!withSystem) return;
     await withSystem(async (tx) => {
       await tx.execute(sql`UPDATE tenants SET deleted_at = now() WHERE id = ${tenant}::uuid`);
+      // Some policies cast app.tenant_id without a platform branch — name the firm.
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenant}, true)`);
       await tx.execute(sql`SELECT platform_purge_tenant(${tenant}::uuid)`);
     }).catch((e) => console.error("cleanup", e));
   });

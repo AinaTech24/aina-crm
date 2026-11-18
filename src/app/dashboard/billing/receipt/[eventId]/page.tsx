@@ -192,15 +192,22 @@ function TaxInvoice({ inv, id }: { inv: InvoiceForPdf; id: string }) {
             </tr>
           </thead>
           <tbody>
-            {inv.lines.map((l, i) => (
-              <tr key={i} className="border-t border-border">
-                <td className="py-2">
-                  {l.description}
-                  {l.periodStart && <div className="text-xs text-muted-foreground">{formatDate(l.periodStart)} – {formatDate(l.periodEnd ?? null)}</div>}
-                </td>
-                <td className="py-2 text-right tabular-nums">{money(l.amountPaise)}</td>
-              </tr>
-            ))}
+            {[...inv.lines.filter((l) => l.key === "maintenance" || l.key === "users"), null, ...inv.lines.filter((l) => l.key !== "maintenance" && l.key !== "users")].map((l, i) =>
+              l === null ? (
+                <tr key="subtotal" className="border-t border-border font-medium">
+                  <td className="py-2">Subtotal</td>
+                  <td className="py-2 text-right tabular-nums">{money(inv.lines.filter((x) => x.key === "maintenance" || x.key === "users").reduce((s2, x) => s2 + x.amountPaise, 0))}</td>
+                </tr>
+              ) : (
+                <tr key={i} className="border-t border-border">
+                  <td className="py-2">
+                    {l.description}
+                    {l.periodStart && <div className="text-xs text-muted-foreground">{formatDate(l.periodStart)} – {formatDate(l.periodEnd ?? null)}</div>}
+                  </td>
+                  <td className="py-2 text-right tabular-nums">{money(l.amountPaise)}</td>
+                </tr>
+              )
+            )}
             <tr className="border-t border-border"><td className="py-2">Taxable value</td><td className="py-2 text-right tabular-nums">{money(inv.taxablePaise)}</td></tr>
             {inv.igstPaise > 0 ? (
               <tr><td className="py-1 text-muted-foreground">IGST @ 18%</td><td className="py-1 text-right tabular-nums">{money(inv.igstPaise)}</td></tr>

@@ -1528,6 +1528,52 @@ tenant data, cached 6 h in memory). Math is pure, in `src/lib/fund-research/`:
 - No benchmark index data exists here, so there is no alpha / beta and no
   "vs benchmark / vs category" rolling return — say so rather than estimate.
 
+## AUM pricing, online purchase and firm onboarding (2026-11-18)
+
+The owner's pricing decision, built on the existing Razorpay billing — not a
+parallel system. Migrations 0265 (billing) and 0266 (onboarding + legal).
+
+- **One price module**: `lib/billing/aum-pricing.ts` (pure, paise). Maintenance
+  by AUM (≤500 Cr ₹20k · ≤1,000 Cr ₹35k · above ₹40k a month) + ₹15,000 per
+  user a year; monthly / half-yearly (8% off) / yearly (15% off); 18% GST; GST
+  and totals rounded half-up to the rupee; the late pro-rata charge. Every
+  number is a default a platform admin can override (Aina Admin → Pricing &
+  billing, `platform_settings.aum_pricing`, `lib/billing/pricing-settings.ts`).
+  The server always recomputes; never take a price from the browser.
+- **Buying**: `/pricing` (public) → `POST /api/public/pricing/quote` (saved in
+  platform-level `pricing_quotes`, claim token, rate limit + honeypot) →
+  `POST /api/public/pricing/signup` (the one firm-creation path,
+  `lib/onboarding/create-firm.ts`) → Razorpay Checkout →
+  `POST /api/billing/verify` (signature) → `recordCheckoutPayment`. One Razorpay
+  subscription per checkout (`lib/billing/checkout.ts`): plan = cycle total incl.
+  GST, `start_at` = end of the period bought, the period itself (and any late
+  charge) as upfront add-ons. Verify and the webhook are both idempotent per
+  payment id (one invoice, one email).
+- **Access** for `pricing_model = 'aum'` follows the paid-through date
+  (`lib/billing/renewal.ts`): 7 days' grace with full access and a banner,
+  then Billing + Support only; paying late adds the grace days pro-rata and
+  starts the cycle that day. A failed / cancelled mandate only changes
+  `mandate_status`. Seats bought (`seats_override`) are the user limit.
+- **Renewal re-pricing** (`lib/billing/renewal-review.ts`, worker daily 03:20):
+  7 days before each renewal, the tier from the CRM's AUM (nightly firm
+  snapshot → live metric → declared, said so), once per firm per renewal date,
+  applied from the NEXT cycle only (`next_cycle`; Razorpay plan switched at
+  cycle end, or the owner re-authorises).
+- **Tax invoices** (`lib/billing/invoice*.ts`): one immutable row per payment,
+  `AINA/<FY>/<seq>` gap-free under the counter's row lock, CGST + SGST in
+  Gujarat else IGST, PDF emailed through the platform mail and retried hourly.
+  The billing receipt page IS the tax invoice. Supplier details in
+  `lib/legal/company.ts` (GST REG-06); the LLPIN is still to be supplied.
+- **Onboarding**: a firm that bought online (`tenants.onboarding_required`) is
+  sent to `/onboarding/setup` until it finishes — firm details, logo, Terms,
+  NDA signed with an emailed one-time code — then `onboarded_at`, a platform
+  notice and one welcome email (`lib/onboarding/welcome.ts`). Terms / NDA are
+  versioned in `legal_documents` (published = frozen); acceptances are
+  immutable and quote the text's SHA-256. A newer version is accepted at the
+  next sign-in by firms that accepted an earlier one.
+- A firm purge (`platform_purge_tenant`, redefined in 0266) names the firm in
+  `app.purging_tenant` so its immutable invoices and acceptances go with it.
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

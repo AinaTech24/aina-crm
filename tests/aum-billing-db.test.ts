@@ -114,6 +114,8 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
     if (!withSystem || !session.tenantId) return;
     await withSystem(async (tx) => {
       await tx.execute(sql`UPDATE tenants SET deleted_at = now() WHERE id = ${session.tenantId}::uuid`);
+      // Some policies cast app.tenant_id without a platform branch — name the firm.
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${session.tenantId}, true)`);
       await tx.execute(sql`SELECT platform_purge_tenant(${session.tenantId}::uuid)`);
       await tx.execute(sql`DELETE FROM pricing_quotes WHERE lower(email) = ${email}`);
     }).catch((e) => console.error("cleanup", e));
@@ -295,6 +297,13 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
     const seqs = [...results, after].map((r) => Number(r.invoiceNo.split("/")[2])).sort((a, b) => a - b);
     expect(seqs).toEqual([1, 2, 3, 4, 5, 6, 7]);
     expect(after.invoiceNo).toBe("AINA/2099-00/000007");
+    // A new financial year starts again at 1.
+    await q(sql`DELETE FROM billing_invoice_counters WHERE financial_year = '2098-99'`);
+    const lastFy = await withSystem((tx) =>
+      issueInvoice(tx, { tenantId: session.tenantId, subscriptionId: null, paymentId: `pay_fy_${randomUUID().slice(0, 6)}`, kind: "renewal", figures, periodStart: paidAt, periodEnd: paidAt, sac: "998314", paidAt: new Date("2099-03-31T12:00:00Z") })
+    );
+    expect(lastFy.invoiceNo).toBe("AINA/2098-99/000001");
+    await q(sql`DELETE FROM billing_invoice_counters WHERE financial_year = '2098-99'`);
     // Same payment again → the same invoice.
     const again = await one(results[0] ? (await q<{ razorpay_payment_id: string }>(sql`SELECT razorpay_payment_id FROM billing_invoices WHERE invoice_no = ${results[0].invoiceNo}`))[0].razorpay_payment_id : "x");
     expect(again.created).toBe(false);

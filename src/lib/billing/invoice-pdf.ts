@@ -139,7 +139,9 @@ export async function renderInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> 
   text("Period", periodX, y, { f: bold, size: 8 });
   text("Amount", amtX - 4, y, { f: bold, size: 8, right: true });
   y -= 18;
-  for (const l of inv.lines) {
+  const base = inv.lines.filter((l) => l.key === "maintenance" || l.key === "users");
+  const rest = inv.lines.filter((l) => l.key !== "maintenance" && l.key !== "users");
+  const drawLine = (l: InvoiceLine) => {
     const desc = wrap(T(l.description), font, 9, periodX - M - 14);
     desc.forEach((d, i) => {
       text(d, M + 4, y - i * 12);
@@ -147,7 +149,14 @@ export async function renderInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> 
     if (l.periodStart) text(`${fmtDate(l.periodStart)} – ${fmtDate(l.periodEnd ?? null)}`, periodX, y, { size: 8, color: muted });
     text(money(l.amountPaise, rupeeOk), amtX - 4, y, { right: true });
     y -= Math.max(1, desc.length) * 12 + 6;
+  };
+  base.forEach(drawLine);
+  if (base.length) {
+    text("Subtotal", M + 4, y, { f: bold });
+    text(money(base.reduce((sum, l) => sum + l.amountPaise, 0), rupeeOk), amtX - 4, y, { f: bold, right: true });
+    y -= 18;
   }
+  rest.forEach(drawLine);
   hr(y + 2);
   y -= 12;
 
