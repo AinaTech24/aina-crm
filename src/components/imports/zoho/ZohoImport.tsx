@@ -18,6 +18,8 @@ import type { ContactImportResult } from "@/lib/imports/zoho/run-contacts";
 import type { MeetingImportResult } from "@/lib/imports/zoho/run-meetings";
 import type { FamilyImportResult } from "@/lib/imports/zoho/run-families";
 import type { BusinessImportResult } from "@/lib/imports/zoho/run-business";
+import type { SchemePreview, SchemeApplyResult } from "@/lib/imports/zoho/run-schemes";
+import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
 
 type Kind = "contacts" | "meetings";
 
@@ -29,6 +31,7 @@ export function ZohoImport({ mayContacts, mayMeetings }: { mayContacts: boolean;
       <Step kind="meetings" n={2} title="Meetings — Zoho Meetings export" allowed={mayMeetings} />
       {mayContacts && <FamiliesStep />}
       {mayContacts && <BusinessStep />}
+      {mayContacts && <SchemeStep />}
     </div>
   );
 }
@@ -664,6 +667,189 @@ function BusinessStep() {
               </div>
             )}
             {done && <Link className="underline text-sm" href="/dashboard/business-entries">Open Business Entries</Link>}
+          </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * Step 5 — Zoho's scheme names on the imported business, mapped to the firm's
+ * Scheme Master. Exact family matches are included (Regular · Growth unless the
+ * name says otherwise); a close match is only a suggestion until ticked; any
+ * other name gets a picker. Nothing changes until Apply.
+ */
+function SchemeStep() {
+  const [data, setData] = useState<SchemePreview | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<"sync" | "apply" | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [accepted, setAccepted] = useState<Record<string, boolean>>({});
+  const [picked, setPicked] = useState<Record<string, { code: string; name: string }>>({});
+  const [done, setDone] = useState<SchemeApplyResult | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/imports/zoho/schemes");
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setErr(j.error ?? "Something went wrong.");
+      else setData(j);
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function syncMaster() {
+    setBusy("sync");
+    setErr(null);
+    try {
+      const res = await fetch("/api/schemes/sync", { method: "POST" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setErr(j.error ?? "The Scheme Master could not be filled.");
+      else await load();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const rows = data?.rows ?? [];
+  const exact = rows.filter((r) => r.confidence === "exact" && r.scheme);
+  const close = rows.filter((r) => r.confidence === "close" && r.scheme);
+  const none = rows.filter((r) => r.confidence === "none");
+  const mappings = [
+    ...exact.map((r) => ({ name: r.name, schemeCode: r.scheme!.code })),
+    ...close.filter((r) => accepted[r.name] && !picked[r.name]).map((r) => ({ name: r.name, schemeCode: r.scheme!.code })),
+    ...Object.entries(picked).map(([name, p]) => ({ name, schemeCode: p.code })),
+  ];
+  const lineCount = (names: Set<string>) => rows.filter((r) => names.has(r.name)).reduce((n, r) => n + r.lines, 0);
+  const mappedLines = lineCount(new Set(mappings.map((m) => m.name)));
+
+  async function apply() {
+    const ok = await confirmDialog({
+      title: "Map these scheme names?",
+      message: `${mappings.length} names on ${mappedLines} lines get their Scheme Master scheme. The Zoho name stays in each line's notes.`,
+      confirmLabel: "Map",
+    });
+    if (!ok) return;
+    setBusy("apply");
+    setErr(null);
+    try {
+      const res = await fetch("/api/imports/zoho/schemes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mappings }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setErr(j.error ?? "Something went wrong.");
+      else {
+        setDone(j);
+        setAccepted({});
+        setPicked({});
+        await load();
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader title={<span className="flex items-center gap-2"><Badge tone="neutral">Step 5</Badge>Scheme names → Scheme Master</span>} />
+      <CardBody className="space-y-4 text-sm">
+        {err && <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">{err}</div>}
+        {done && (
+          <p>
+            {done.names} names mapped on {done.lines + done.fromLines} lines ({done.entries} entries).
+            {done.rejected.length > 0 && ` Not in the Scheme Master: ${done.rejected.join(", ")}.`}
+          </p>
+        )}
+        {loading && !data && <p className="text-muted-foreground inline-flex items-center gap-2"><Loader2 className="size-4 animate-spin" />Matching scheme names…</p>}
+        {data && data.masterCount === 0 && (
+          <div className="rounded-md border border-warning/50 bg-warning/5 p-3 space-y-2">
+            <div>The Scheme Master is empty, so there is nothing to map to yet.</div>
+            <Button variant="secondary" disabled={!!busy} onClick={syncMaster}>
+              {busy === "sync" ? <Loader2 className="size-4 animate-spin" /> : null}
+              Fill the Scheme Master from AMFI
+            </Button>
+          </div>
+        )}
+        {data && data.masterCount > 0 && rows.length === 0 && <p>Every imported scheme name is mapped.</p>}
+        {data && data.masterCount > 0 && rows.length > 0 && (
+          <>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Stat label="Names to map" value={rows.length} />
+              <Stat label="Exact matches" value={exact.length} />
+              <Stat label="Suggestions" value={close.length} />
+              <Stat label="Need a pick" value={none.length} tone="warn" />
+            </div>
+            <p className="text-muted-foreground">A name that does not say Direct or IDCW maps to the Regular · Growth scheme.</p>
+            {exact.length > 0 && (
+              <details>
+                <summary className="cursor-pointer font-medium">Exact matches — included ({exact.length} names, {lineCount(new Set(exact.map((r) => r.name)))} lines)</summary>
+                <div className="mt-2 max-h-72 overflow-auto">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {exact.map((r) => (
+                        <tr key={r.name}><td>{r.name}</td><td className="text-muted-foreground">→ {r.scheme!.name}</td><td className="text-right tabular-nums">{r.lines}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
+            {close.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-medium">Suggestions — tick the right ones</div>
+                  <Button variant="ghost" size="sm" onClick={() => setAccepted(Object.fromEntries(close.map((r) => [r.name, true])))}>Tick all</Button>
+                </div>
+                <div className="max-h-96 overflow-auto">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {close.map((r) => (
+                        <tr key={r.name}>
+                          <td className="w-8"><input type="checkbox" aria-label={`Use the suggestion for ${r.name}`} checked={!!accepted[r.name]} onChange={(e) => setAccepted((a) => ({ ...a, [r.name]: e.target.checked }))} /></td>
+                          <td>{r.name}</td>
+                          <td className="text-muted-foreground">→ {r.scheme!.name}</td>
+                          <td className="text-right tabular-nums">{r.lines}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {none.length > 0 && (
+              <details open={none.length <= 40}>
+                <summary className="cursor-pointer font-medium">Pick the scheme ({none.length} names)</summary>
+                <div className="mt-2 space-y-2">
+                  {none.map((r) => (
+                    <div key={r.name} className="grid gap-2 md:grid-cols-[1fr_1fr_auto] md:items-center">
+                      <div>
+                        {r.name} <span className="text-muted-foreground tabular-nums">· {r.lines} lines</span>
+                        {r.nearest && <div className="text-muted-foreground text-xs">Nearest: {r.nearest}</div>}
+                      </div>
+                      <SchemeAutocomplete
+                        size="sm"
+                        plan="regular"
+                        placeholder="Search the Scheme Master…"
+                        onSelect={(p) => setPicked((x) => ({ ...x, [r.name]: { code: p.schemeCode, name: p.schemeName } }))}
+                        onClear={() => setPicked((x) => { const y = { ...x }; delete y[r.name]; return y; })}
+                      />
+                      <span className="text-xs text-muted-foreground">{picked[r.name] ? "Picked" : ""}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+            <div className="flex justify-end">
+              <Button variant="primary" disabled={!!busy || mappings.length === 0} onClick={apply}>
+                {busy === "apply" ? <Loader2 className="size-4 animate-spin" /> : null}
+                Map {mappings.length} names ({mappedLines} lines)
+              </Button>
+            </div>
           </>
         )}
       </CardBody>

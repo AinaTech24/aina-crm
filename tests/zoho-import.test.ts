@@ -5,6 +5,7 @@ import { mapZohoMeeting, meetingModeFromZoho, meetingTypeFromZoho } from "@/lib/
 import { planFamilies } from "@/lib/imports/zoho/family-groups";
 import { buildClientMatcher } from "@/lib/imports/zoho/client-match";
 import { mapPurchaseRow, mapSipRow, planBusiness } from "@/lib/imports/zoho/business";
+import { buildSchemeIndex, matchScheme, schemeBase, statedVariant } from "@/lib/imports/zoho/scheme-match";
 
 const NOW = new Date("2026-11-14T10:00:00+05:30");
 
@@ -369,5 +370,42 @@ describe("Zoho MF Transactions → Business Entries", () => {
     expect(p.skipped).toEqual(expect.arrayContaining([{ mft: "MFT2", reason: "No date on the Zoho record" }, { mft: "MFT3", reason: "No scheme lines on the Zoho record" }]));
     expect(p.entries[0].notes.startsWith("Zoho MFT1")).toBe(true);
     expect(p.entries[0].businessDate).toBe("2025-05-19");
+  });
+});
+
+describe("Zoho scheme names → Scheme Master", () => {
+  const ms = (code: string, name: string, plan: string | null = null, option: string | null = null, closed = false) => ({ scheme_code: code, scheme_name: name, amc_code: name.split(" ")[0], category: "Equity Scheme - Flexi Cap Fund", plan, option, is_closed: closed });
+  const master = [
+    ms("1", "WhiteOak Capital Flexi Cap Fund - Direct Plan - Growth Option", "direct", "growth"),
+    ms("2", "WhiteOak Capital Flexi Cap Fund - Regular Plan - Growth Option", "regular", "growth"),
+    ms("3", "WhiteOak Capital Flexi Cap Fund - Regular Plan - IDCW Option", "regular", "idcw_payout"),
+    ms("4", "Aditya Birla Sun Life Frontline Equity Fund - Regular Plan - Growth"),
+    ms("5", "Aditya Birla Sun Life Frontline Equity Fund - Direct Plan - Growth"),
+    ms("6", "HDFC Mid Cap Fund - Regular Plan - Growth Option"),
+    ms("7", "Kotak Banking and Financial Services Fund - Regular Plan - Growth"),
+    ms("8", "Parag Parikh Flexi Cap Fund - Regular Plan - Growth", null, null, true),
+    ms("9", "Parag Parikh Flexi Cap Fund - Regular Plan - Growth"),
+  ];
+  const idx = buildSchemeIndex(master);
+
+  it("a name without plan or option maps to Regular · Growth", () => {
+    expect(matchScheme("WhiteOak Capital Flexi Cap Fund", idx)).toMatchObject({ confidence: "exact", scheme: { scheme_code: "2" } });
+  });
+  it("a name that states Direct or IDCW keeps it", () => {
+    expect(matchScheme("WHITEOAK CAPITAL FLEXI CAP FUND DIRECT PLAN GROWTH", idx).scheme?.scheme_code).toBe("1");
+    expect(matchScheme("WhiteOak Capital Flexi Cap Fund - IDCW", idx).scheme?.scheme_code).toBe("3");
+  });
+  it("short forms, '&' and spacing read the same; an open scheme beats a closed one", () => {
+    expect(matchScheme("ABSL Frontline Equity Fund", idx).scheme?.scheme_code).toBe("4");
+    expect(matchScheme("Kotak Banking & Financial Services Fund", idx).scheme?.scheme_code).toBe("7");
+    expect(matchScheme("Parag Parikh Flexi Cap Fund", idx).scheme?.scheme_code).toBe("9");
+  });
+  it("a renamed fund is only a suggestion; another house's fund is never matched", () => {
+    expect(matchScheme("HDFC Mid-Cap Opportunities Fund", idx)).toMatchObject({ confidence: "close", scheme: { scheme_code: "6" } });
+    expect(matchScheme("Axis Mid Cap Fund", idx).confidence).toBe("none");
+  });
+  it("reads plan and option from free text", () => {
+    expect(statedVariant("NIPPON INDIA SMALL CAP FUND - GROWTH PLAN - GROWTH OPTION")).toEqual({ plan: null, option: "growth" });
+    expect(schemeBase("ICICI Pru Bluechip Fund - Regular Plan - Growth")).toBe("icici prudential bluechip");
   });
 });
