@@ -84,6 +84,8 @@ export function YouthBucketStrategy() {
         <Stat label="Corpus — single fund" value={inrShort(res.corpusWithout)} tone="amber" />
         <Stat label="SIP — bucket strategy" value={noRunway ? "—" : `${inr(Math.round(res.sipBucket))}/mo`} tone="emerald" />
         <Stat label="SIP — single fund" value={noRunway ? "—" : `${inr(Math.round(res.sipWithout))}/mo`} tone="rose" />
+        <Stat label="Or lumpsum today — bucket strategy" value={inrShort(res.lumpsumBucket)} />
+        <Stat label="Or lumpsum today — single fund" value={inrShort(res.lumpsumWithout)} />
       </div>
 
       {/* Allocation across buckets */}
@@ -125,7 +127,8 @@ export function YouthBucketStrategy() {
       <Insight tone="emerald">
         Funding {res.totalFreedomYears} years of freedom from one debt fund needs <strong>{inrShort(res.corpusWithout)}</strong>; the
         4-bucket strategy needs only <strong>{inrShort(res.corpusBucket)}</strong> ({(res.corpusSavedPct * 100).toFixed(0)}% less){noRunway ? "." : <> — so
-        the SIP drops from {inr(Math.round(res.sipWithout))} to <strong>{inr(Math.round(res.sipBucket))}/month</strong>.</>} That gap is
+        the SIP drops from {inr(Math.round(res.sipWithout))} to <strong>{inr(Math.round(res.sipBucket))}/month</strong>, or a one-time
+        lumpsum today from {inrShort(res.lumpsumWithout)} to <strong>{inrShort(res.lumpsumBucket)}</strong> at {largeCap}%.</>} That gap is
         the advisor&rsquo;s alpha: each bucket sits in a higher-return fund until it&rsquo;s needed.
       </Insight>
 

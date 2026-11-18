@@ -300,6 +300,9 @@ export type SipForSwpResult = {
   /** Value the SIP must reach on its last month (corpus discounted over the deferment). */
   targetAtSipEnd: number;
   monthlySip: number;
+  /** One-time lumpsum today that grows (at the accumulation rate, over the SIP +
+   *  waiting years) to the corpus the SWP needs. */
+  lumpsumToday: number;
   annualInvestment: number;
   totalInvested: number;
   totalWithdrawal: number;
@@ -316,6 +319,7 @@ export function sipForSwp(input: SipForSwpInput): SipForSwpResult {
   const corpus = W1 * swpAnnuityFactor(M, input.distPct, input.inflationPct) + Math.max(0, input.endBalance) / Math.pow(1 + md, M);
   const targetAtSipEnd = corpus / Math.pow(1 + input.accPct / 100, deferYears);
   const monthlySip = requiredSip(targetAtSipEnd, input.accPct, sipYears * 12);
+  const lumpsumToday = corpus / Math.pow(1 + input.accPct / 100, sipYears + deferYears);
   const age = input.currentAge;
 
   const accRows: SipAccRow[] = [];
@@ -340,6 +344,7 @@ export function sipForSwp(input: SipForSwpInput): SipForSwpResult {
     corpus,
     targetAtSipEnd,
     monthlySip,
+    lumpsumToday,
     annualInvestment: monthlySip * 12,
     totalInvested: monthlySip * 12 * sipYears,
     totalWithdrawal: sim.totalWithdrawal,

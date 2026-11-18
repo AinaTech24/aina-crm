@@ -130,6 +130,14 @@ export function ReadyReckoner({ mode }: { mode: ReckonerMode }) {
   const isLakh = result.unit === "lakh";
   const fmt = (v: number) => (isLakh && !exact ? lakh(v) : inr(displayCell(v, "rupee")));
   const isNeed = mode === "lumpsum_need" || mode === "sip_need";
+  // SIP Needed: the one-time lumpsum today for the same target, beside the SIP
+  // grid — in ₹ lakh like the Lumpsum Needed reckoner, unless "exact rupees".
+  const lumpsumCells = result.lumpsumCells;
+  const fmtLumpsum = (v: number) => (exact ? inr(displayCell(v, "rupee")) : lakh(v));
+  const lumpsumRows = lumpsumCells
+    ? result.rates.map((r, ri) => [`${r.toFixed(2)}%`, ...lumpsumCells[ri].map((v) => fmtLumpsum(v))])
+    : null;
+  const sampleLumpsum = lumpsumCells && result.valid ? lumpsumCells[0][result.years.length - 1] : NaN;
 
   const head = ["Return (p.a.)", ...result.years.map((y) => `${y} yrs`)];
   const rows = result.rates.map((r, ri) => [
@@ -182,7 +190,7 @@ export function ReadyReckoner({ mode }: { mode: ReckonerMode }) {
             </div>
           )}
         </Field>
-        {isLakh && (
+        {(isLakh || lumpsumCells) && (
           <div className="flex items-end pb-2">
             <Toggle checked={exact} onChange={setExact} label="Show exact rupees" />
           </div>
@@ -215,14 +223,27 @@ export function ReadyReckoner({ mode }: { mode: ReckonerMode }) {
                   <>To have {inr(amount)} in {lastYear} years at {fmtPct(firstRate)} a year, about <strong>{inr(sample)}</strong> invested today is enough — the longer the runway, the smaller the cheque.</>
                 )}
                 {mode === "sip_need" && (
-                  <>To build {inr(amount)} in {lastYear} years at {fmtPct(firstRate)} a year, a monthly SIP of about <strong>{inr(sample)}</strong> is needed — starting earlier lowers it sharply.</>
+                  <>
+                    To build {inr(amount)} in {lastYear} years at {fmtPct(firstRate)} a year, a monthly SIP of about <strong>{inr(sample)}</strong> is needed — starting earlier lowers it sharply.
+                    {Number.isFinite(sampleLumpsum) && <> Or invest a one-time lumpsum of about <strong>{inr(sampleLumpsum)}</strong> today and leave it to grow.</>}
+                  </>
                 )}
               </Insight>
             )}
           </Section>
 
+          {lumpsumRows && (
+            <Section n={2} title={`Or a one-time lumpsum needed today — target ${inr(amount)}`}>
+              <Table head={head} rows={lumpsumRows} />
+              <p className="text-2xs text-muted-foreground">
+                {exact ? "Figures in ₹, rounded to the rupee." : "Figures in ₹ lakh (1 lakh = ₹1,00,000), rounded to 2 decimals."}
+                {" "}Invested once today at the same return and left for the same period; returns compound once a year.
+              </p>
+            </Section>
+          )}
+
           {result.years.length >= 2 && (
-            <Section n={2} title={isNeed ? "How the requirement falls with time" : "How the value builds with time"}>
+            <Section n={lumpsumRows ? 3 : 2} title={isNeed ? "How the requirement falls with time" : "How the value builds with time"}>
               <CalcChart data={chartData} xKey="year" series={series} />
             </Section>
           )}

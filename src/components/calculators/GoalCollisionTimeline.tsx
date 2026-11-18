@@ -63,20 +63,23 @@ export function GoalCollisionTimeline() {
 
       {clientName && <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span></div>}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Highest monthly commitment (now)" value={inr(result.peakMonthly)} tone="rose" />
+        <Stat label="Or one-time lumpsum today (all goals)" value={inr(result.totalLumpsumToday)} />
         <Stat label="Goals running now" value={`${result.timeline[0]?.activeGoals.length ?? 0}`} tone="amber" />
         <Stat label="Goals" value={`${result.goals.length}`} />
       </div>
 
       {/* Per-goal required SIPs */}
-      <Section n={1} title="Required monthly SIP per goal">
+      <Section n={1} title="Required monthly SIP — or one-time lumpsum today — per goal">
         <div className="space-y-1">
           {result.goals.map((g) => (
-            <div key={g.name} className="flex items-center justify-between text-sm border-b border-border/40 py-1">
+            <div key={g.name} className="flex flex-wrap items-center justify-between gap-x-3 text-sm border-b border-border/40 py-1">
               <span className="font-medium">{g.name}</span>
               <span className="text-muted-foreground">{g.yearsAway}y · {inr(g.futureCost)}</span>
-              <span className="tabular-nums font-semibold">{isDueNow(g.yearsAway) ? "Due now — lumpsum" : `${inr(g.monthlySip)}/mo`}</span>
+              <span className="tabular-nums font-semibold">
+                {isDueNow(g.yearsAway) ? `Due now — lumpsum ${inr(g.lumpsumToday)}` : `${inr(g.monthlySip)}/mo or ${inr(g.lumpsumToday)} today`}
+              </span>
             </div>
           ))}
         </div>
@@ -103,7 +106,8 @@ export function GoalCollisionTimeline() {
 
       <Insight tone="amber">
         The household&apos;s monthly investment commitment is highest now — <strong>{inr(result.peakMonthly)}/month</strong> while{" "}
-        {result.timeline[0]?.activeGoals.length ?? 0} goals run together — and eases as each goal is reached.
+        {result.timeline[0]?.activeGoals.length ?? 0} goals run together — and eases as each goal is reached. Funding every goal
+        with a one-time lumpsum instead would take <strong>{inr(result.totalLumpsumToday)}</strong> invested today.
       </Insight>
     </div>
   );

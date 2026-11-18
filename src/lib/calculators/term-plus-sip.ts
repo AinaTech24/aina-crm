@@ -23,7 +23,7 @@
  *     → maturity ₹2,19,32,588; SIP ₹40,417; fund ₹3,71,77,568.
  */
 
-import { fvSip, requiredSip } from "./sip360";
+import { fvLumpsum, fvSip, requiredSip } from "./sip360";
 
 export type TermSipRow = {
   year: number;
@@ -95,6 +95,8 @@ export type TermPlusSipGoalInput = {
 export type TermPlusSipGoalResult = {
   sipMonthly: number; // unrounded
   annualOutlay: number; // premium + 12 × SIP
+  /** One-time lumpsum today that grows to the goal by the end of the term (same rate, same months). */
+  lumpsumToday: number;
   finalAge: number;
   rows: TermSipRow[];
 };
@@ -104,9 +106,13 @@ export function termPlusSipGoal(input: TermPlusSipGoalInput): TermPlusSipGoalRes
   const n = Math.max(0, Math.round(input.termYears));
   const sipMonthly = requiredSip(input.goal, input.returnPct, 12 * n);
   const annualOutlay = input.premium + 12 * sipMonthly;
+  // fvLumpsum(₹1) is the growth factor over the same 12 × n months.
+  const growth = fvLumpsum(1, input.returnPct, 12 * n);
+  const lumpsumToday = input.goal > 0 && growth > 0 ? input.goal / growth : 0;
   return {
     sipMonthly,
     annualOutlay,
+    lumpsumToday,
     finalAge: input.age + n,
     rows: rowsFor(input.age, n, sipMonthly, input.returnPct, input.goal, annualOutlay),
   };

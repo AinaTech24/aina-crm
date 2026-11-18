@@ -3,7 +3,17 @@
  * reusing the verified goal-planning helpers. No UI, no data fetching.
  */
 
-import { fvSip, fvLumpsum, inflatedTarget, requiredSip } from "@/lib/goal-planning/calc";
+import { fvSip, fvLumpsum, inflatedTarget, requiredLumpsumToday, requiredSip } from "@/lib/goal-planning/calc";
+
+/**
+ * The one-time lumpsum TODAY shown beside a "SIP needed" figure: the present
+ * value of the same target at the same (nominal r/12) rate over the same
+ * months, less what is already saved — requiredSip nets `existing` grown at the
+ * same rate, so the PV of its shortfall is PV(target) − existing. Floor 0.
+ */
+export function lumpsumNetOfSavings(target: number, existing: number, returnPct: number, months: number): number {
+  return Math.max(0, requiredLumpsumToday(target, returnPct, Math.max(0, months)) - Math.max(0, existing));
+}
 
 /** Future value of an annual annuity-due (contribution at the start of each year). */
 function fvAnnualDue(amount: number, ratePct: number, years: number): number {
@@ -146,7 +156,8 @@ export function passiveIncome(p: {
   }
   const months = Math.round(p.yearsToFreedom * 12);
   const sip = months > 0 ? requiredSip(corpusNeeded, p.existingCorpus, p.buildReturnPct, months) : 0;
-  return { futureMonthly, corpusNeeded, requiredSip: Math.max(0, sip) };
+  const lumpsumToday = lumpsumNetOfSavings(corpusNeeded, p.existingCorpus, p.buildReturnPct, months);
+  return { futureMonthly, corpusNeeded, requiredSip: Math.max(0, sip), lumpsumToday };
 }
 
 /* ── B5. Dream Wedding Planner (and any inflated lump goal) ── */
@@ -160,7 +171,8 @@ export function inflatedGoalSip(p: {
   const futureCost = inflatedTarget(p.costToday, p.inflationPct, p.years);
   const months = Math.round(p.years * 12);
   const sip = months > 0 ? requiredSip(futureCost, p.existingSavings, p.returnPct, months) : 0;
-  return { futureCost, requiredSip: Math.max(0, sip), months };
+  const lumpsumToday = lumpsumNetOfSavings(futureCost, p.existingSavings, p.returnPct, months);
+  return { futureCost, requiredSip: Math.max(0, sip), lumpsumToday, months };
 }
 
 /* ── B6. Dream Car — Invest First vs Auto-loan ── */
@@ -177,6 +189,7 @@ export function dreamCar(p: {
   const months = Math.round(p.yearsToBuy * 12);
   const sipToBuyCash = months > 0 ? requiredSip(futurePrice, 0, p.investReturnPct, months) : 0;
   const investedCash = Math.max(0, sipToBuyCash) * months;
+  const lumpsumToBuyCash = lumpsumNetOfSavings(futurePrice, 0, p.investReturnPct, months);
   const down = (p.carPriceToday * p.downPaymentPct) / 100;
   const loan = Math.max(0, p.carPriceToday - down);
   const r = p.loanRatePct / 100 / 12;
@@ -184,7 +197,7 @@ export function dreamCar(p: {
   const emi = n === 0 ? 0 : r === 0 ? loan / n : (loan * r) / (1 - Math.pow(1 + r, -n));
   const loanTotal = down + emi * n;
   const loanInterest = emi * n - loan;
-  return { futurePrice, sipToBuyCash: Math.max(0, sipToBuyCash), investedCash, emi, loanTotal, loanInterest, down };
+  return { futurePrice, sipToBuyCash: Math.max(0, sipToBuyCash), lumpsumToBuyCash, investedCash, emi, loanTotal, loanInterest, down };
 }
 
 /* ── C7. Emergency Fund Planner ── */
@@ -198,7 +211,8 @@ export function emergencyFund(p: {
   const target = p.monthlyExpense * p.monthsBuffer;
   const gap = Math.max(0, target - p.existing);
   const sip = p.buildMonths > 0 && gap > 0 ? requiredSip(target, p.existing, p.parkReturnPct, p.buildMonths) : 0;
-  return { target, gap, requiredSip: Math.max(0, sip) };
+  const lumpsumToday = lumpsumNetOfSavings(target, p.existing, p.parkReturnPct, p.buildMonths);
+  return { target, gap, requiredSip: Math.max(0, sip), lumpsumToday };
 }
 
 /* ── C8. Retirement Bucket Strategy ── */

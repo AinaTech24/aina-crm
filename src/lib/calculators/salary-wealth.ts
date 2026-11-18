@@ -80,6 +80,9 @@ export type SalaryWealthResult = {
   // reverse (saving) mode
   requiredMonthlySip?: number;
   requiredSipPct?: number;
+  /** Saving mode: the one-time lumpsum today, at the assumed return, that closes
+   *  the same gap (target − grown existing fund) by retirement. */
+  requiredLumpsumToday?: number;
   targetWealth?: number;
 
   schedule: SalaryYearRow[];
@@ -138,6 +141,7 @@ export function computeSalaryWealth(input: SalaryWealthInput): SalaryWealthResul
   let monthly0: number;
   let requiredMonthlySip: number | undefined;
   let requiredSipPct: number | undefined;
+  let requiredLumpsumToday: number | undefined;
   let targetWealth: number | undefined;
 
   if (input.mode === "wealth") {
@@ -150,6 +154,8 @@ export function computeSalaryWealth(input: SalaryWealthInput): SalaryWealthResul
     // No investing years (invest-till age ≤ current age) ⇒ no SIP can close a
     // gap: NaN renders "—" (was ₹0). nSip = 0 then, so nothing below sums it.
     requiredMonthlySip = factor > 0 ? need / factor : need > 0 ? NaN : 0;
+    // Same need, same effective monthly rate, invested today and held to retirement.
+    requiredLumpsumToday = need / Math.pow(1 + effM(input.assumedReturnPct), Math.round(totalYears * 12));
     requiredSipPct = input.currentMonthlySalary > 0 ? (requiredMonthlySip / input.currentMonthlySalary) * 100 : 0;
     monthly0 = requiredMonthlySip;
   }
@@ -181,6 +187,7 @@ export function computeSalaryWealth(input: SalaryWealthInput): SalaryWealthResul
     wealthGain: wealth - totalInvested,
     requiredMonthlySip,
     requiredSipPct,
+    requiredLumpsumToday,
     targetWealth,
     schedule: sim.schedule,
   };

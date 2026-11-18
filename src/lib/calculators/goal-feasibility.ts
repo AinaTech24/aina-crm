@@ -6,7 +6,7 @@
  * value of its existing corpus toward the goals. Also factors the savings rate.
  */
 
-import { isDueNow, requiredMonthlySip } from "./goal-collision";
+import { isDueNow, lumpsumNeededToday, requiredMonthlySip } from "./goal-collision";
 
 export type FeasGoal = { name: string; futureCost: number; yearsAway: number; returnPct: number };
 
@@ -18,13 +18,16 @@ export type FeasInput = {
   goals: FeasGoal[];
 };
 
-export type FeasGoalResult = FeasGoal & { requiredMonthly: number };
+export type FeasGoalResult = FeasGoal & { requiredMonthly: number; lumpsumToday: number };
 
 export type FeasResult = {
   goals: FeasGoalResult[];
   requiredMonthlyTotal: number;
   corpusCoversMonthlyEquivalent: number; // existing corpus expressed as monthly SIP it offsets
   netRequiredMonthly: number;
+  /** One-time lumpsum today that funds every goal after the existing corpus —
+   *  each goal's net cost discounted at its own return (a goal due now: as is). */
+  netLumpsumToday: number;
   availableMonthly: number;
   coverageRatio: number; // available / netRequired
   savingsRatePct: number;
@@ -37,6 +40,7 @@ export function computeGoalFeasibility(input: FeasInput): FeasResult {
   const goals: FeasGoalResult[] = input.goals.map((g) => ({
     ...g,
     requiredMonthly: requiredMonthlySip(g.futureCost, g.returnPct, g.yearsAway),
+    lumpsumToday: lumpsumNeededToday(g.futureCost, g.returnPct, g.yearsAway),
   }));
   const requiredMonthlyTotal = goals.reduce((s, g) => s + g.requiredMonthly, 0);
 
@@ -47,12 +51,14 @@ export function computeGoalFeasibility(input: FeasInput): FeasResult {
   // badly for near goals.)
   let remainingToday = Math.max(0, input.existingCorpus);
   let netRequiredMonthly = 0;
+  let netLumpsumToday = 0;
   let dueNowUncovered = 0;
   for (const g of [...input.goals].sort((a, b) => a.yearsAway - b.yearsAway)) {
     const grow = Math.pow(1 + input.corpusReturnPct / 100, Math.max(0, g.yearsAway));
     const offset = Math.min(remainingToday * grow, g.futureCost);
     remainingToday -= offset / grow;
     const net = g.futureCost - offset;
+    netLumpsumToday += lumpsumNeededToday(net, g.returnPct, g.yearsAway);
     if (isDueNow(g.yearsAway)) dueNowUncovered += net;
     else netRequiredMonthly += requiredMonthlySip(net, g.returnPct, g.yearsAway);
   }
@@ -77,6 +83,7 @@ export function computeGoalFeasibility(input: FeasInput): FeasResult {
     requiredMonthlyTotal,
     corpusCoversMonthlyEquivalent,
     netRequiredMonthly,
+    netLumpsumToday,
     availableMonthly,
     coverageRatio,
     savingsRatePct,

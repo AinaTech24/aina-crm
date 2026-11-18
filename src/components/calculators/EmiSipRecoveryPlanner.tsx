@@ -129,11 +129,18 @@ export function EmiSipRecoveryPlanner() {
           { label: "SIP grows to (recovers)", value: inr(result.totalRepayment), tone: "emerald" },
         ]}
       />
+      <ResultRow
+        cells={[
+          { label: `Or one-time lumpsum today @ ${sipReturnPct.toFixed(2)}%`, value: inr(result.lumpsumRequired), tone: "emerald" },
+          { label: "Lumpsum grows to (recovers)", value: inr(result.totalRepayment) },
+        ]}
+      />
 
       <div className="rounded-lg px-4 py-3 text-sm border border-emerald-200 bg-emerald-50/60 text-emerald-900">
         If you start a SIP of <strong>{inr(result.monthlySipRequired)}</strong> — just{" "}
         <strong>{result.sipAsPctOfEmi.toFixed(2)}%</strong> of your {inr(result.monthlyEmi)} EMI — you&apos;ll accumulate{" "}
         <strong>{inr(result.totalRepayment)}</strong> by the end of the tenure and effectively <strong>recover your entire EMI outgo</strong>.
+        A one-time lumpsum of <strong>{inr(result.lumpsumRequired)}</strong> invested today does the same.
       </div>
 
       <p className="text-2xs text-muted-foreground border-t pt-3">
