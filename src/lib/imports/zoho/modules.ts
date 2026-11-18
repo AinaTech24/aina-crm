@@ -6,10 +6,12 @@
  *
  * We Care Freedom Wealth's modules, agreed 2026-11-18:
  *  - Leads           → leads (Zoho's status and source kept as text too)
- *  - Risk_Profiles   → risk profile history, CONFIRMED, signed on the Zoho date
+ *  - Risk_Profiles   → risk profile history, CONFIRMED, signed on the Zoho date;
+ *                      the band is the FIRM'S OWN band for Zoho's score
  *  - Query_Tracker   → tasks ("Task Tracker"; finished ones come in closed)
  *  - Calls           → the activity log
- *  - SWP             → SIP rejections ("SIP Tracking"; only Rejected rows)
+ *  - SWP             → SIP rejections ("SIP Tracking"; only Rejected rows, all
+ *                      open as Zoho has them)
  *  - Equity          → monthly equity brokerage ("Equity Brokerage")
  */
 
@@ -216,6 +218,25 @@ const RP_QUESTIONS: Array<[field: string, key: string, question: string]> = [
   ["Q2_About_Capacity_in_terms_of_Income", "capacity", "Income and years to retirement"],
   ["Q3_Objective_or_need", "objective", "Objective or need"],
 ];
+
+export type RiskBand = { id: string; minScore: number; maxScore: number };
+
+/** The CRM's default bands (lib/risk-profile/questions.ts), when a firm has none. */
+export const DEFAULT_RISK_BANDS: RiskBand[] = [
+  { id: "conservative", minScore: 8, maxScore: 18 },
+  { id: "moderate", minScore: 19, maxScore: 29 },
+  { id: "aggressive", minScore: 30, maxScore: 40 },
+];
+
+/** The firm's band for a score (the first band whose range holds it), as a
+ *  CRM risk category; null for no score or a score outside every band.
+ *  We Care's choice (2026-11-18): a Zoho profile takes the band the CRM's own
+ *  questionnaire gives its score, not Zoho's band name. */
+export function categoryFromScore(score: number, bands: RiskBand[]): "conservative" | "moderate" | "aggressive" | "very_aggressive" | null {
+  if (!(score > 0)) return null;
+  const b = bands.find((x) => score >= Number(x.minScore) && score <= Number(x.maxScore));
+  return b && ["conservative", "moderate", "aggressive", "very_aggressive"].includes(b.id) ? (b.id as any) : null;
+}
 
 export type MappedRiskProfile = {
   zohoId: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brokerageByMonth, leadSource, mapCall, mapLead, mapRiskProfile, mapSipTracking, mapTask } from "@/lib/imports/zoho/modules";
+import { DEFAULT_RISK_BANDS, brokerageByMonth, categoryFromScore, leadSource, mapCall, mapLead, mapRiskProfile, mapSipTracking, mapTask } from "@/lib/imports/zoho/modules";
 
 describe("Zoho modules — API records → CRM", () => {
   it("maps a lead's status, source, pipeline and conversion", () => {
@@ -28,6 +28,12 @@ describe("Zoho modules — API records → CRM", () => {
       .toEqual(["conservative", "conservative", "moderate", "moderate", "aggressive", null]);
     const rp = mapRiskProfile({ id: "1", Risk_Assignments: "Moderate", Risk_Score_Calculations: 18, Q1_About_Tolerance_whne_market_falls_20: "I will feel bad but can manage to wait for recovery", Clients: { id: "5", name: "A" }, Created_Time: "2025-04-01T10:00:00+05:30" });
     expect([rp.score, rp.responses.length, rp.signedAt?.toISOString().slice(0, 10)]).toEqual([18, 1, "2025-04-01"]);
+  });
+
+  it("takes the firm's band for Zoho's score", () => {
+    const bands = [{ id: "conservative", minScore: 8, maxScore: 18 }, { id: "moderate", minScore: 19, maxScore: 29 }, { id: "aggressive", minScore: 30, maxScore: 40 }];
+    expect([9, 18, 19, 25, 29, 30, 0, 45].map((s) => categoryFromScore(s, bands))).toEqual(["conservative", "conservative", "moderate", "moderate", "moderate", "aggressive", null, null]);
+    expect(categoryFromScore(24, DEFAULT_RISK_BANDS)).toBe("moderate");
   });
 
   it("closes finished Task Tracker rows and keeps the Zoho id", () => {

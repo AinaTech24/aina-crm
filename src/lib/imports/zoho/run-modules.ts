@@ -25,8 +25,8 @@ import { ownerKey } from "./contacts";
 import type { ImportActor } from "./run-contacts";
 import { ZohoFileError } from "./workbook";
 import {
-  MODULE_LABEL, brokerageByMonth, mapCall, mapLead, mapRiskProfile, mapSipTracking, mapTask,
-  type ZohoModule, type ZohoRecord,
+  DEFAULT_RISK_BANDS, MODULE_LABEL, brokerageByMonth, categoryFromScore, mapCall, mapLead, mapRiskProfile, mapSipTracking, mapTask,
+  type RiskBand, type ZohoModule, type ZohoRecord,
 } from "./modules";
 
 export type ModuleImportResult = {
@@ -49,7 +49,7 @@ class Rollback extends Error {
   }
 }
 
-const SCORE_BY_CATEGORY = { conservative: 13, moderate: 24, aggressive: 35 } as const;
+const SCORE_BY_CATEGORY = { conservative: 13, moderate: 24, aggressive: 35, very_aggressive: 40 } as const;
 const DAY = 864e5;
 
 export async function importZohoModule(
@@ -188,16 +188,24 @@ export async function importZohoModule(
            WHERE tenant_id = ${actor.tenantId}::uuid AND rm_remarks LIKE 'Zoho risk profile %'
         `)).rows as Array<{ z: string }>).map((r) => r.z)
       );
+      // The firm's own bands (its active questionnaire) decide the category from Zoho's score.
+      const tpl = (await tx.execute(sql`
+        SELECT bands FROM risk_profile_templates
+         WHERE tenant_id = ${actor.tenantId}::uuid AND is_active ORDER BY version_number DESC LIMIT 1
+      `)).rows[0] as { bands: RiskBand[] } | undefined;
+      const bands = Array.isArray(tpl?.bands) && tpl!.bands.length ? tpl!.bands : DEFAULT_RISK_BANDS;
+      result.notes.push(`Band from Zoho's score on the firm's bands: ${bands.map((b) => `${b.id} ${b.minScore}–${b.maxScore}`).join(", ")}.`);
+      for (const m of mapped) m.category = categoryFromScore(m.score, bands) as any;
       // The latest profile per client becomes the client's own.
       const latest = new Map<string, (typeof mapped)[number]>();
       const rows: Array<typeof riskProfileResponses.$inferInsert> = [];
       for (const m of mapped) {
         if (done.has(m.zohoId)) { result.already++; continue; }
-        if (!m.category) { skip(m.zohoBand ? `Risk band "${m.zohoBand}" not recognised` : "No risk band on the Zoho profile"); continue; }
+        if (!m.category) { skip(m.score > 0 ? `Score ${m.score} is outside the firm's bands` : "No score on the Zoho profile"); continue; }
         const client = clientOf.get(m.clientZohoId);
         if (!client) { skip(m.clientZohoId ? "Client not in the CRM" : "No client on the Zoho profile"); continue; }
         if (!m.signedAt) { skip("No date on the Zoho profile"); continue; }
-        count(`${m.zohoBand} → ${m.category}`);
+        count(`Zoho ${m.zohoBand || "(no band)"} → ${m.category}`);
         rows.push({
           tenantId: actor.tenantId,
           investorId: client.id,
@@ -356,8 +364,10 @@ export async function importZohoModule(
         if (!client) { skip("Client not in the CRM"); continue; }
         if (!m.date) { skip("No date"); continue; }
         if (!(m.amount > 0)) { skip("No amount"); continue; }
-        const recent = now.getTime() - new Date(`${m.date}T00:00:00+05:30`).getTime() < 30 * DAY;
-        count(recent ? "Rejected in the last 30 days → open" : "Older rejection → closed (recovery not recorded in Zoho)");
+        // As Zoho has it (the firm's choice): every rejection open. Marked as
+        // already escalated so the reconciliation scanner does not alert on
+        // years-old rejections all at once.
+        count(m.date.slice(0, 4));
         rows.push({
           tenantId: actor.tenantId,
           investorId: client.id,
@@ -366,10 +376,10 @@ export async function importZohoModule(
           rejectionReason: "Rejected (Zoho SIP Tracking)",
           schemeName: m.scheme,
           assignedRmId: client.rm_id ?? userId(m.owner),
-          recoveryStatus: recent ? "pending" : "not_recoverable",
+          recoveryStatus: "pending",
           statusChangedAt: now,
           escalatedAt: now,
-          remarks: [m.sipType, m.debitDay ? `Debit day ${m.debitDay}` : "", m.mft ? `Zoho ${m.mft}` : "", recent ? "" : "Imported from Zoho; recovery not recorded there"].filter(Boolean).join(" · "),
+          remarks: [m.sipType, m.debitDay ? `Debit day ${m.debitDay}` : "", m.mft ? `Zoho ${m.mft}` : "", "Imported from Zoho SIP Tracking"].filter(Boolean).join(" · "),
           dedupKey: `zoho:${m.zohoId}`,
         } as any);
         result.created++;
