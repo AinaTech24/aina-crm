@@ -759,6 +759,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
           ) : (
             <>
               {license.isRestricted && pathAllowed && <RestrictedBanner license={license} />}
+              {!license.isRestricted && license.renewal?.phase === "grace" && (
+                <RenewalDueBanner
+                  daysLeft={license.renewal.daysLeft ?? 0}
+                  graceEndsOn={license.renewal.graceEndsOn}
+                  canRenew={can(session.roles, "settings.billing", session.permissions)}
+                />
+              )}
               {children}
             </>
           )}
@@ -780,6 +787,38 @@ export default async function DashboardLayout({ children }: { children: React.Re
     </div>
     </ConfirmProvider>
     </ToastProvider>
+  );
+}
+
+/**
+ * A renewal not paid on its due date: 7 days' grace with full access (the
+ * owner's rule A). The owner and anyone who manages billing get a persistent
+ * banner with a Renew button; everyone else a softer notice.
+ */
+function RenewalDueBanner({ daysLeft, graceEndsOn, canRenew }: { daysLeft: number; graceEndsOn: string; canRenew: boolean }) {
+  const left = daysLeft === 0 ? "today is the last day" : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
+  if (!canRenew) {
+    return (
+      <div role="status" className="mb-4 rounded-xl border border-border bg-secondary/70 px-3.5 py-2.5 text-sm text-muted-foreground print:hidden">
+        Your firm&apos;s subscription renewal is due — the owner has been asked to renew ({left}).
+      </div>
+    );
+  }
+  return (
+    <div role="alert" className="mb-6 rounded-xl border border-warning/50 bg-warning/5 p-3.5 flex flex-wrap items-center gap-3 text-sm print:hidden">
+      <div className="size-9 rounded-lg bg-warning/10 grid place-items-center flex-shrink-0">
+        <AlertTriangle className="size-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <span className="font-semibold">Your subscription renewal is due — renew now.</span>{" "}
+        <span className="text-muted-foreground">
+          {left[0].toUpperCase() + left.slice(1)} of full access (until {formatDate(graceEndsOn)}). Renewing in this time costs nothing extra.
+        </span>
+      </div>
+      <Link href="/dashboard/billing" className="btn-primary text-xs whitespace-nowrap">
+        Renew
+      </Link>
+    </div>
   );
 }
 
