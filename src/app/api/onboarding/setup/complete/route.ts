@@ -14,7 +14,8 @@ export async function POST(req: NextRequest) {
     requireCap(session.roles, "settings.billing", session.permissions);
     const r = await completeOnboarding(wizardActor(session, req));
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
-    return NextResponse.json({ ok: true, next: "/dashboard" });
+    // The first completion lands on "Start here" (/dashboard/welcome).
+    return NextResponse.json({ ok: true, next: r.first ? "/dashboard/welcome" : "/dashboard" });
   } catch (err) {
     return handleApiError(err);
   }

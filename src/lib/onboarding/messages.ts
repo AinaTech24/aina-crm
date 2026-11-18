@@ -15,8 +15,13 @@ export const IMPORT_CLIENTS_HREF = "/dashboard/rta-imports";
 export const IMPORT_EXCEL_HREF = "/dashboard/investors/import";
 export const INVITE_TEAM_HREF = "/dashboard/employees/new";
 
-/** "Questions? WhatsApp us" — Aina's sales / support line. */
-export const WHATSAPP_US_URL = DEMO_URL;
+/**
+ * "Questions? WhatsApp us" — Aina's sales / support line (the number DEMO_URL
+ * opens), with a pricing question as the first message instead of a demo
+ * request. "Book a demo" stays DEMO_URL itself.
+ */
+export const WHATSAPP_US_URL = `${CONTACT.whatsapp}?text=${encodeURIComponent("Hi, I have a question about Aina CRM's pricing for my practice.")}`;
+export { DEMO_URL };
 
 export const ONBOARDING_CALL_TEXT = "Hi, I've just joined AINA CRM — I'd like to book my onboarding call.";
 

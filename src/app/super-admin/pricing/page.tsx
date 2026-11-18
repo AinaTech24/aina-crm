@@ -19,6 +19,7 @@ export default async function PlatformPricingPage() {
           What a firm pays: maintenance by its AUM, plus a yearly fee per CRM user, billed monthly, half-yearly or
           yearly with GST on top. The server recomputes every price from these numbers — a price sent by a browser is
           never used. See also <Link className="text-primary underline" href="/super-admin/pricing/quotes">pricing quotes</Link>,{" "}
+          <Link className="text-primary underline" href="/super-admin/pricing/stalled">stalled onboarding</Link>,{" "}
           <Link className="text-primary underline" href="/super-admin/invoices">tax invoices</Link> and{" "}
           <Link className="text-primary underline" href="/super-admin/legal">legal documents</Link>.
         </p>

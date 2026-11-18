@@ -318,7 +318,7 @@ function AumStatus({ view }: { view: AumBillingView }) {
       <div role="status" className="rounded-xl border border-warning/50 bg-warning/5 p-4 text-sm flex items-start gap-3">
         <AlertTriangle className="size-5 mt-0.5 shrink-0" />
         <div>
-          <div className="font-semibold">Complete your payment to open the CRM</div>
+          <div className="font-semibold">Finish your payment to open your CRM</div>
           <p className="text-muted-foreground mt-0.5">
             Your package is saved below{view.pendingCheckout ? " — a payment was started but not finished" : ""}. Until it is paid, only Billing and Support are open.
           </p>

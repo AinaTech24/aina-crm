@@ -63,6 +63,23 @@ export function selectQuoteFollowups(rows: FollowupCandidate[], now: Date): Arra
   return out;
 }
 
+export type QuoteStage = "paid" | "firm_unpaid" | "followed_up" | "new";
+
+export const STAGE_LABEL: Record<QuoteStage, string> = {
+  paid: "Paid",
+  firm_unpaid: "Firm created (unpaid)",
+  followed_up: "Followed up",
+  new: "New",
+};
+
+/** Pure: where a quote stands, for Aina Admin → Pricing quotes. The furthest stage wins. */
+export function quoteStage(q: { paidAt: unknown; convertedTenantId: unknown; followupSentAt: unknown }): QuoteStage {
+  if (q.paidAt) return "paid";
+  if (q.convertedTenantId) return "firm_unpaid";
+  if (q.followupSentAt) return "followed_up";
+  return "new";
+}
+
 export type FollowupFacts = {
   contactName: string;
   firmName: string;
