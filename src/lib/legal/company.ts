@@ -18,18 +18,32 @@ function configured(name: string, fallback: string): string {
 export const LEGAL = {
   /** Product / brand name shown to users. */
   brand: configured("LEGAL_BRAND_NAME", "Aina"),
-  /** Registered legal entity that operates the platform. */
-  legalEntity: configured("LEGAL_ENTITY_NAME", "AinaTech"),
+  /** Registered legal entity that operates the platform (GST REG-06). */
+  legalEntity: configured("LEGAL_ENTITY_NAME", "AINA TECH SERVICES LLP"),
+  /** Constitution of business, as on the GST certificate. */
+  entityType: configured("LEGAL_ENTITY_TYPE", "Limited Liability Partnership"),
   /** Registered office address (single line is fine). */
-  address: configured("LEGAL_REGISTERED_ADDRESS", "India"),
+  address: configured("LEGAL_REGISTERED_ADDRESS", "FF F-4, City Plaza, Sardar Bank Road, Anand, Gujarat 388001"),
+  /** The supplier's state and its GST state code — decides CGST + SGST vs IGST on invoices. */
+  state: configured("LEGAL_STATE", "Gujarat"),
+  stateCode: configured("LEGAL_STATE_CODE", "24"),
+  pincode: configured("LEGAL_PINCODE", "388001"),
+  /** PAN of the entity (the GSTIN's characters 3–12). */
+  pan: configured("LEGAL_PAN", "ACKFA5449H"),
   /** Public support / contact email. */
   email: configured("LEGAL_SUPPORT_EMAIL", "support@ainatech.in"),
   /** Support / grievance phone (optional — leave "" to hide). */
   phone: configured("LEGAL_SUPPORT_PHONE", ""),
-  /** GST registration number — printed on invoices. */
-  gstin: configured("LEGAL_GSTIN", ""),
+  /** GST registration number — printed on invoices. Regular, valid from 18-03-2026. */
+  gstin: configured("LEGAL_GSTIN", "24ACKFA5449H1ZB"),
+  gstRegistrationType: configured("LEGAL_GST_REGISTRATION_TYPE", "Regular"),
+  gstValidFrom: configured("LEGAL_GST_VALID_FROM", "18-03-2026"),
   /** CIN, if a company. */
   cin: configured("LEGAL_CIN", ""),
+  /** LLPIN — an LLP's registration number. The owner must supply it (LEGAL_LLPIN). */
+  llpin: configured("LEGAL_LLPIN", ""),
+  /** Prefix of the tax invoice number: <prefix>/<FY>/<sequence>. */
+  invoicePrefix: configured("LEGAL_INVOICE_PREFIX", "AINA"),
   /**
    * Grievance Officer — naming one is required under India's DPDP Act 2023
    * and the IT (Intermediary Guidelines) Rules. Use a real, monitored inbox.
@@ -51,6 +65,7 @@ export const LEGAL = {
 export function commercialLegalReadiness() {
   const checks = [
     { key: "entity", label: "Registered legal entity", ok: LEGAL.legalEntity !== "AinaTech" },
+    { key: "llpin", label: "LLPIN (an LLP has no CIN)", ok: !!LEGAL.llpin || !!LEGAL.cin },
     { key: "address", label: "Registered office address", ok: LEGAL.address !== "India" && LEGAL.address.length >= 12 },
     { key: "support", label: "Support contact", ok: !!LEGAL.email && !!LEGAL.phone },
     { key: "gstin", label: "GSTIN", ok: /^[0-9A-Z]{15}$/.test(LEGAL.gstin) },

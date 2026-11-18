@@ -26,6 +26,10 @@ export async function sendSystemEmail(args: {
   html?: string;
   /** Stable key so a retried send dedupes provider-side. */
   idempotencyKey?: string;
+  /** Extra recipients copied in (e.g. the NDA signer on the welcome email). */
+  cc?: string[];
+  /** In-memory attachments (a tax invoice or a signed NDA PDF). */
+  attachments?: Array<{ filename: string; content: Buffer }>;
 }): Promise<SystemEmailResult> {
   // Resolve the platform SMTP config — DB (Aina Admin → Email) first, env (SMTP_*)
   // as fallback.
@@ -52,6 +56,8 @@ export async function sendSystemEmail(args: {
       smtp: { host: cfg.host, port: cfg.port, secure: cfg.secure, user: cfg.user ?? "", pass: cfg.pass ?? "" },
       fromOverride: cfg.from,
       idempotencyKey: args.idempotencyKey,
+      ...(args.attachments?.length ? { attachments: args.attachments } : {}),
+      ...(args.cc?.length ? { cc: args.cc } : {}),
     });
     return { sent: true };
   } catch (e: any) {

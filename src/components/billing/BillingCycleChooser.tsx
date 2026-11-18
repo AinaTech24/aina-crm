@@ -22,7 +22,7 @@ export function BillingCycleChooser({
   perUserYearlyPaise,
   canManage,
 }: {
-  current: "monthly" | "yearly" | "custom" | null;
+  current: "monthly" | "half_yearly" | "yearly" | "custom" | null;
   seats: number;
   monthlyPaise: number;
   yearlyPaise: number;

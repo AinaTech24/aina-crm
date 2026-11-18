@@ -42,7 +42,7 @@ export default function TermsPage() {
 
       <H2>4. Subscriptions, trials, and billing</H2>
       <P>
-        Paid plans are billed in advance on a recurring basis (monthly or yearly) through our payment
+        Paid plans are billed in advance on a recurring basis (monthly, half-yearly or yearly) through our payment
         processor. Free trials, where offered, convert to a paid subscription unless cancelled before the
         trial ends. Prices are exclusive of applicable taxes (including GST), which will be added at the
         prevailing rate. Cancellation, renewal, and refunds are governed by our{" "}

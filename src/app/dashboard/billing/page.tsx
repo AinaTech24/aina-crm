@@ -1,7 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { eq } from "drizzle-orm";
-import { CreditCard, Package, Users, FolderOpen, HardDrive, MessageSquare, Clock, AlertTriangle, FileText } from "lucide-react";
+import { CreditCard, Package, Users, FolderOpen, HardDrive, MessageSquare, Clock, AlertTriangle, FileText, Download, CalendarClock } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { subscriptions, packages, subscriptionEvents } from "@/db/schema";
 import { desc } from "drizzle-orm";
@@ -12,6 +12,16 @@ import { AutoPaySetup } from "@/components/billing/AutoPaySetup";
 import { computeAnnualAmountPaise, razorpayConfigured } from "@/lib/billing/razorpay";
 import { getBillingUsage, type UsageMetric } from "@/lib/billing/usage";
 import { StatusChip, type Tone } from "@/components/common/StatusChip";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { buttonClass } from "@/components/ui/button-class";
+import { InlineEmpty } from "@/components/common/EmptyState";
+import { AumBillingPanel } from "@/components/billing/AumBillingPanel";
+import { can } from "@/lib/auth/rbac";
+import { loadPricingSettings } from "@/lib/billing/pricing-settings";
+import { loadAumBillingView, loadInvoices, type AumBillingView, type BillingInvoiceRow } from "@/lib/billing/billing-view";
+import { CYCLE_LABEL, inr } from "@/lib/billing/aum-pricing";
+import { aumSourceText } from "@/lib/billing/renewal-review";
 
 const STATUS_TONE: Record<string, Tone> = {
   trial: "info",
@@ -26,7 +36,8 @@ export const dynamic = "force-dynamic";
 
 export default async function BillingPage() {
   const session = await requireSession();
-  const { sub, pkg, events, usage } = await withTenant(session.tenantId, async (tx) => {
+  const settings = await loadPricingSettings();
+  const { sub, pkg, events, usage, aum, invoices } = await withTenant(session.tenantId, async (tx) => {
     const s = (await tx.select().from(subscriptions).where(eq(subscriptions.tenantId, session.tenantId)).limit(1))[0] ?? null;
     const p = s ? (await tx.select().from(packages).where(eq(packages.id, s.packageId)).limit(1))[0] ?? null : null;
     const ev = s
@@ -45,10 +56,50 @@ export default async function BillingPage() {
           messageCap: Number((p.featureFlags as any)?.maxMessagesPerMonth ?? 0),
         })
       : null;
-    return { sub: s, pkg: p, events: ev, usage: u };
+    const view = s ? await loadAumBillingView(tx, session.tenantId, settings) : null;
+    const inv = await loadInvoices(tx, session.tenantId);
+    return { sub: s, pkg: p, events: ev, usage: u, aum: view, invoices: inv };
   });
 
   const razorpayReady = await razorpayConfigured();
+  const canManage = can(session.roles, "settings.billing", session.permissions);
+
+  if (sub && aum) {
+    return (
+      <div className="space-y-6 max-w-5xl">
+        <PageHeaderCard title={<>Billing & Subscription</>} />
+        <AumStatus view={aum} />
+        {aum.mode !== "pay_first" && <AumCurrent view={aum} />}
+        <AumBillingPanel
+          mode={aum.mode}
+          cycle={aum.cycle}
+          users={aum.users}
+          aumCrore={aum.quoteAumCrore}
+          quotes={aum.quotes}
+          late={aum.late}
+          canManage={canManage}
+          paymentsOn={razorpayReady}
+          renewalDueLabel={aum.licenseEndAt ? formatDate(aum.licenseEndAt) : null}
+          scheduledChange={aum.scheduledChange}
+          minUsers={settings.minUsers}
+          maxUsers={settings.maxUsers}
+        />
+        {usage && (
+          <Card>
+            <CardHeader title="Plan usage" />
+            <CardBody className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+              <UsageRow icon={Users} label="Users" m={usage.users} unit="" />
+              <UsageRow icon={FolderOpen} label="Clients" m={usage.investors} unit="" />
+              <UsageRow icon={HardDrive} label="Storage" m={usage.storage} unit=" GB" />
+              <UsageRow icon={MessageSquare} label="Messages this month" m={usage.messages} unit="" />
+            </CardBody>
+          </Card>
+        )}
+        <Invoices rows={invoices} canDownload={canManage} />
+        <History events={events} />
+      </div>
+    );
+  }
 
   // Trial / expiry countdown.
   const endDate = sub?.licenseEndAt ? new Date(sub.licenseEndAt) : null;
@@ -157,6 +208,8 @@ export default async function BillingPage() {
             </div>
           </div>
 
+          {invoices.length > 0 && <Invoices rows={invoices} canDownload={canManage} />}
+
           <div className="border rounded-lg bg-card p-6">
             <h2 className="font-semibold flex items-center gap-2">
               <CreditCard className="size-4" /> Activity history
@@ -234,5 +287,168 @@ function UsageRow({ icon: Icon, label, m, unit }: { icon: any; label: string; m:
         <div className="text-2xs text-rose-600 mt-0.5">{pct}% used — approaching your plan limit</div>
       )}
     </div>
+  );
+}
+
+const KIND_LABEL: Record<string, string> = { first: "First payment", renewal: "Renewal", late_renewal: "Late renewal" };
+
+function AumStatus({ view }: { view: AumBillingView }) {
+  const r = view.renewal;
+  if (view.mode === "pay_first") {
+    return (
+      <div role="status" className="rounded-xl border border-warning/50 bg-warning/5 p-4 text-sm flex items-start gap-3">
+        <AlertTriangle className="size-5 mt-0.5 shrink-0" />
+        <div>
+          <div className="font-semibold">Complete your payment to open the CRM</div>
+          <p className="text-muted-foreground mt-0.5">
+            Your package is saved below{view.pendingCheckout ? " — a payment was started but not finished" : ""}. Until it is paid, only Billing and Support are open.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  if (r?.phase === "grace") {
+    return (
+      <div role="status" className="rounded-xl border border-warning/50 bg-warning/5 p-4 text-sm flex items-start gap-3">
+        <Clock className="size-5 mt-0.5 shrink-0" />
+        <div>
+          <div className="font-semibold">
+            Your renewal was due on {formatDate(r.dueAt)} — {r.daysLeft === 0 ? "today is the last day" : `${r.daysLeft} day${r.daysLeft === 1 ? "" : "s"} left`} to renew at no extra cost
+          </div>
+          <p className="text-muted-foreground mt-0.5">Full access continues until {formatDate(r.graceEndsOn)}. After that the CRM is limited to Billing and Support, and the grace days are charged pro-rata.</p>
+        </div>
+      </div>
+    );
+  }
+  if (r?.phase === "lapsed") {
+    return (
+      <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm flex items-start gap-3">
+        <AlertTriangle className="size-5 mt-0.5 shrink-0" />
+        <div>
+          <div className="font-semibold">Your renewal was not paid within the grace period</div>
+          <p className="text-muted-foreground mt-0.5">Renew below to reopen the CRM. {view.late ? `It includes the ${view.late.graceDays} grace days pro-rata: ${inr(view.late.totalPaise)} incl. GST.` : ""}</p>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
+function AumCurrent({ view }: { view: AumBillingView }) {
+  const f = view.inForce;
+  const n = view.nextRenewal;
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Card>
+        <CardHeader title="Your package" subtitle="In force for the current cycle." icon={<Package className="size-4" />} />
+        <CardBody>
+          <dl className="grid grid-cols-2 gap-3 text-sm">
+            <Item label="Cycle" value={CYCLE_LABEL[view.cycle]} />
+            <Item label="Users (seats)" value={String(view.users)} />
+            <Item label="AUM tier" value={f.tierLabel ?? "—"} />
+            <Item label="Per cycle, incl. GST" value={f.cycleTotalPaise != null ? inr(f.cycleTotalPaise) : "—"} />
+            <Item label="Paid through" value={view.licenseEndAt ? formatDate(view.licenseEndAt) : "—"} />
+            <Item label="Auto-pay" value={view.mandateStatus === "active" ? "Active" : view.mandateStatus === "none" ? "Not set up" : view.mandateStatus.replace(/_/g, " ")} />
+          </dl>
+          {f.aumCrore != null && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Priced at ₹{f.aumCrore.toLocaleString("en-IN")} Cr — {f.source === "declared" ? "the AUM you declared" : `from your CRM data${f.asOf ? ` on ${formatDate(f.asOf)}` : ""}`}.
+            </p>
+          )}
+        </CardBody>
+      </Card>
+      {n && (
+        <Card>
+          <CardHeader
+            title="Your next renewal"
+            subtitle={n.renewalOn ? `On ${formatDate(n.renewalOn)}${n.decided ? "" : " — re-checked 7 days before"}` : undefined}
+            icon={<CalendarClock className="size-4" />}
+          />
+          <CardBody className="space-y-2 text-sm">
+            <p>
+              AUM used for your next renewal: <strong>₹{n.aum.aumCrore.toLocaleString("en-IN")} Cr</strong> ({aumSourceText(n.aum)}) → <strong>{n.tierLabel}</strong> →{" "}
+              <strong>{inr(n.quote.totalPaise)}</strong> incl. GST, {CYCLE_LABEL[n.quote.cycle].toLowerCase()}.
+            </p>
+            {n.aum.source === "declared" && <p className="text-muted-foreground">Import your clients and RTA files and the tier follows your real AUM.</p>}
+            {n.razorpayAction === "reauth_required" && (
+              <p className="rounded-lg border border-warning/50 bg-warning/5 p-2">Your bank mandate cannot be moved to the new amount automatically — renew or re-authorise below when it is due.</p>
+            )}
+            {n.decided ? <Badge tone="info" raw>Decided — applies from the next cycle only</Badge> : <Badge tone="neutral" raw>Estimate if renewed today</Badge>}
+          </CardBody>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function Item({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="font-medium mt-0.5">{value}</dd>
+    </div>
+  );
+}
+
+function Invoices({ rows, canDownload }: { rows: BillingInvoiceRow[]; canDownload: boolean }) {
+  return (
+    <Card>
+      <CardHeader title="Tax invoices" subtitle="One GST tax invoice for every payment, emailed to the owner." icon={<FileText className="size-4" />} />
+      <CardBody>
+        {rows.length === 0 ? (
+          <InlineEmpty message="No invoices yet." />
+        ) : (
+          <ul className="divide-y divide-border">
+            {rows.map((r) => (
+              <li key={r.id} className="py-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                <div className="min-w-0">
+                  <Link href={`/dashboard/billing/receipt/${r.id}`} className="font-medium text-primary hover:underline">{r.invoiceNo}</Link>
+                  <div className="text-xs text-muted-foreground">
+                    {formatDate(r.issuedAt)} · {KIND_LABEL[r.kind] ?? r.kind}
+                    {r.periodStart ? ` · ${formatDate(r.periodStart)} – ${formatDate(r.periodEnd)}` : ""}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="tabular-nums font-medium">{inr(r.totalPaise)}</span>
+                  {canDownload && (
+                    <a className={buttonClass("ghost", "sm")} href={`/api/billing/invoices/${r.id}/pdf`}>
+                      <Download className="size-4" /> PDF
+                    </a>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function History({ events }: { events: Array<{ id: string; eventType: string; amountPaise: number | null; notes: string | null; at: Date }> }) {
+  return (
+    <Card>
+      <CardHeader title="Activity history" icon={<CreditCard className="size-4" />} />
+      <CardBody>
+        {events.length === 0 ? (
+          <InlineEmpty message="No activity yet." />
+        ) : (
+          <ul className="space-y-2 text-sm">
+            {events.map((e) => (
+              <li key={e.id} className="border-l-2 border-border pl-3 py-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">
+                    {e.eventType.replace(/_/g, " ")}
+                    {e.amountPaise != null && <span className="text-muted-foreground font-normal"> · {inr(e.amountPaise)}</span>}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{formatRelative(e.at)}</span>
+                </div>
+                {e.notes && <div className="text-xs text-muted-foreground mt-0.5">{e.notes}</div>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardBody>
+    </Card>
   );
 }

@@ -92,7 +92,10 @@ export default function Home() {
               <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full bg-site-crimson px-8 py-4 text-base font-bold text-white shadow-lg shadow-site-crimson/25 hover:bg-site-crimson-deep transition">
                 Book a Demo <ArrowRight className="size-5" />
               </a>
-              <a href="#features" className="inline-flex items-center justify-center gap-2 rounded-full bg-site-paper px-7 py-4 text-base font-bold text-site-ink ring-1 ring-site-sand hover:bg-site-sand/50 transition">
+              <Link href="/pricing" className="inline-flex items-center justify-center gap-2 rounded-full bg-site-paper px-7 py-4 text-base font-bold text-site-ink ring-1 ring-site-sand hover:bg-site-sand/50 transition">
+                Get pricing <ArrowRight className="size-5" />
+              </Link>
+              <a href="#features" className="inline-flex items-center justify-center gap-2 rounded-full px-5 py-4 text-base font-bold text-site-ink hover:bg-site-sand/50 transition">
                 Explore Features <ArrowDown className="size-5" />
               </a>
             </div>
