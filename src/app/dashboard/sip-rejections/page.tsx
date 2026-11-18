@@ -185,7 +185,10 @@ export default async function SipRejectionsPage({
         await tx.execute(sql`
           SELECT COUNT(*) FILTER (WHERE type = 'sip')::int AS sip_total,
                  COUNT(*) FILTER (WHERE type = 'sip' AND status IN ('rejected','failed'))::int AS sip_bounced,
-                 COUNT(*) FILTER (WHERE type = 'sip' AND status IN ('rejected','failed') AND investor_id IS NULL)::int AS bounced_unlinked
+                 COUNT(*) FILTER (WHERE type = 'sip' AND status IN ('rejected','failed') AND investor_id IS NULL)::int AS bounced_unlinked,
+                 COUNT(*) FILTER (WHERE type = 'sip' AND status = 'cancelled')::int AS sip_cancelled,
+                 COUNT(*) FILTER (WHERE type = 'sip' AND reason_code IN ('REVERSAL','REVERSED'))::int AS sip_reversed,
+                 COUNT(*) FILTER (WHERE type = 'sip' AND status = 'pending')::int AS sip_pending
             FROM transactions
            WHERE tenant_id = ${session.tenantId}::uuid
              AND created_at >= now() - interval '90 days'
@@ -194,11 +197,20 @@ export default async function SipRejectionsPage({
       const total = Number(f?.sip_total ?? 0);
       const bounced = Number(f?.sip_bounced ?? 0);
       const unlinked = Number(f?.bounced_unlinked ?? 0);
+      const cancelled = Number(f?.sip_cancelled ?? 0);
+      const reversed = Number(f?.sip_reversed ?? 0);
+      const pending = Number(f?.sip_pending ?? 0);
+      const others = [
+        cancelled > 0 ? `${cancelled.toLocaleString("en-IN")} cancelled` : "",
+        reversed > 0 ? `${reversed.toLocaleString("en-IN")} reversed` : "",
+        pending > 0 ? `${pending.toLocaleString("en-IN")} pending` : "",
+      ].filter(Boolean);
+      const alsoSeen = others.length ? ` (also seen: ${others.join(", ")})` : "";
       feedNote =
         total === 0
           ? "No SIP instalment is in the transaction feed imported in the last 90 days. Import the daily transaction feed (RTA File Imports) and bounced SIPs will appear here."
           : bounced === 0
-            ? `The transaction feed imported in the last 90 days holds ${total.toLocaleString("en-IN")} SIP instalment${total === 1 ? "" : "s"}, and the registrar marked none of them rejected or failed. If your registrar sends bounces in a separate SIP rejection report, import that report; a bounce is added here only when the registrar reports it.`
+            ? `The transaction feed imported in the last 90 days holds ${total.toLocaleString("en-IN")} SIP instalment${total === 1 ? "" : "s"}, and the registrar marked none of them rejected or failed${alsoSeen}. If your registrar sends bounces in a separate SIP rejection report, import that report; a bounce is added here only when the registrar reports it.`
             : unlinked > 0
               ? `${bounced.toLocaleString("en-IN")} bounced SIP${bounced === 1 ? "" : "s"} came in the feed, ${unlinked.toLocaleString("en-IN")} of them for a folio whose client is not in the client master. Import the folio master, then they are placed.`
               : `${bounced.toLocaleString("en-IN")} bounced SIP${bounced === 1 ? "" : "s"} came in the feed and are being added; refresh in a minute.`;
