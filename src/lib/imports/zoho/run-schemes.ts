@@ -34,6 +34,8 @@ export type SchemeRow = {
   score: number;
   scheme: { code: string; name: string; amc: string | null; category: string | null; plan: string | null } | null;
   nearest?: string;
+  /** Why a suggestion was made, when it is a category rename. */
+  why?: string;
 };
 
 export type SchemePreview = { masterCount: number; rows: SchemeRow[] };
@@ -76,6 +78,7 @@ export async function previewSchemeMapping(tx: Tx, tenantId: string): Promise<Sc
           ? { code: m.scheme.scheme_code, name: m.scheme.scheme_name, amc: m.scheme.amc_code, category: m.scheme.category, plan: m.scheme.plan }
           : null,
         nearest: m.nearest,
+        why: m.why,
       };
     }),
   };
