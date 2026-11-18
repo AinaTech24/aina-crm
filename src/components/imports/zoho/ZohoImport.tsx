@@ -17,6 +17,7 @@ import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import type { ContactImportResult } from "@/lib/imports/zoho/run-contacts";
 import type { MeetingImportResult } from "@/lib/imports/zoho/run-meetings";
 import type { FamilyImportResult } from "@/lib/imports/zoho/run-families";
+import type { BusinessImportResult } from "@/lib/imports/zoho/run-business";
 
 type Kind = "contacts" | "meetings";
 
@@ -27,6 +28,7 @@ export function ZohoImport({ mayContacts, mayMeetings }: { mayContacts: boolean;
       <Step kind="contacts" n={1} title="Clients — Zoho Contacts export" allowed={mayContacts} />
       <Step kind="meetings" n={2} title="Meetings — Zoho Meetings export" allowed={mayMeetings} />
       {mayContacts && <FamiliesStep />}
+      {mayContacts && <BusinessStep />}
     </div>
   );
 }
@@ -502,6 +504,166 @@ function FamiliesStep() {
               </div>
             )}
             {done && <Link className="underline text-sm" href="/dashboard/families">Open Families</Link>}
+          </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+const PRODUCT_LABEL: Record<string, string> = { mutual_fund: "Mutual fund", sif: "SIF", aif: "AIF", pms: "PMS" };
+const TYPE_LABEL: Record<string, string> = {
+  sip: "SIP", sip_stop: "SIP Stop", lumpsum: "Purchase", switch: "Switch", stp: "STP", swp: "SWP", redemption: "Redemption", other: "Other",
+};
+const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
+
+/**
+ * Step 4 — MF business from a Zoho MF Transaction export (the parent sheet plus
+ * its "SIP and SIP Stop" and "Purchase and Redemption" subform sheets, one
+ * workbook) into Business Entries. Preview first.
+ */
+function BusinessStep() {
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState<"preview" | "import" | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [preview, setPreview] = useState<BusinessImportResult | null>(null);
+  const [done, setDone] = useState<BusinessImportResult | null>(null);
+  const [toMe, setToMe] = useState(false);
+
+  async function send(f: File, dryRun: boolean) {
+    setBusy(dryRun ? "preview" : "import");
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("dryRun", dryRun ? "1" : "0");
+      fd.append("unmatchedToMe", toMe ? "1" : "0");
+      const res = await fetch("/api/imports/zoho/business", { method: "POST", body: fd });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(j.error ?? "Something went wrong.");
+        return;
+      }
+      if (dryRun) setPreview(j);
+      else {
+        setDone(j);
+        setPreview(null);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const r = done ?? preview;
+  const unmatched = (preview?.owners ?? []).filter((o) => o.owner && !o.user);
+  const canImport = !!preview && preview.entries > 0 && (unmatched.length === 0 || toMe);
+
+  async function apply() {
+    if (!file || !preview) return;
+    const ok = await confirmDialog({
+      title: "Import this business?",
+      message: `${preview.created} entries with ${preview.lines} lines, as confirmed business. No email is sent, no SIP is added to the SIP book.`,
+      confirmLabel: "Import",
+    });
+    if (ok) await send(file, false);
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title={<span className="flex items-center gap-2"><Badge tone="neutral">Step 4</Badge>MF business — Zoho MF Transactions (with its subform sheets)</span>}
+        action={done ? <Badge tone="success" dot>Imported</Badge> : undefined}
+      />
+      <CardBody className="space-y-4">
+        {!done && (
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex">
+              <span className={buttonClass("secondary", "md", "cursor-pointer")}>
+                {busy === "preview" ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet className="size-4" />}
+                {file ? "Choose another file" : "Choose the export (.xlsx with all its sheets)"}
+              </span>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                className="sr-only"
+                disabled={!!busy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!f) return;
+                  setFile(f);
+                  setPreview(null);
+                  void send(f, true);
+                }}
+              />
+            </label>
+            {file && <span className="text-sm text-muted-foreground truncate max-w-xs">{file.name}</span>}
+          </div>
+        )}
+        {err && <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{err}</div>}
+        {r && (
+          <>
+            {done ? (
+              <p className="text-sm">{done.created} entries with {done.lines} lines added as confirmed business.</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Preview — nothing has been saved yet.</p>
+            )}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              <Stat label="MF Transactions" value={r.parents} />
+              <Stat label={done ? "Entries added" : "Entries to add"} value={r.created} />
+              <Stat label="Scheme lines" value={r.lines} />
+              <Stat label="Client not linked" value={r.clients.unlinked} tone="warn" />
+              <Stat label="Skipped" value={r.skippedByReason.reduce((n, x) => n + x.count, 0)} tone="warn" />
+            </div>
+            <ul className="text-sm space-y-1">
+              <li>
+                Gross business {inr(r.totals.gross)} (Zoho Total Purchase {inr(r.totals.zohoPurchase)}) · Redemption {inr(r.totals.redemption)} (Zoho {inr(r.totals.zohoRedemption)})
+              </li>
+              <li>Clients found by Zoho Record ID: {r.clients.byId} · by exact name: {r.clients.byName}</li>
+              <li>Entries: {r.byProduct.map((p) => `${PRODUCT_LABEL[p.value] ?? p.value} ${p.count}`).join(" · ")}</li>
+              <li>Confirmed business, no email, nothing added to the SIP book; rejected lines are kept but not counted.</li>
+            </ul>
+            {!done && <PeopleTable rows={(preview?.owners ?? []).map((o) => ({ owner: o.owner, count: o.entries, user: o.user }))} unit="Entries" />}
+            <div className="grid gap-4 md:grid-cols-2">
+              <ValueTable title="Line types" items={r.types.map((t) => ({ value: TYPE_LABEL[t.value] ?? t.value, to: "", count: t.count }))} />
+              {r.skippedByReason.length > 0 && <ValueTable title="Skipped" items={r.skippedByReason.map((x) => ({ value: x.reason, to: "skipped", count: x.count }))} />}
+            </div>
+            {r.unlinked.length > 0 && (
+              <details className="text-sm">
+                <summary className="cursor-pointer font-medium">Entries kept without a client link ({r.unlinked.length}{r.unlinked.length >= 500 ? "+" : ""})</summary>
+                <div className="mt-2 max-h-72 overflow-auto">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {r.unlinked.map((u) => (
+                        <tr key={u.mft}>
+                          <td className="tabular-nums text-muted-foreground w-24">{u.mft}</td>
+                          <td>{u.client}</td>
+                          <td className="text-muted-foreground">{u.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
+            {!done && unmatched.length > 0 && (
+              <div className="rounded-md border border-warning/50 bg-warning/5 p-3 space-y-2 text-sm">
+                <div className="font-medium">{unmatched.length} owner{unmatched.length === 1 ? " has" : "s have"} no user in the CRM</div>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={toMe} onChange={(e) => setToMe(e.target.checked)} />
+                  Book their entries under me
+                </label>
+              </div>
+            )}
+            {!done && (
+              <div className="flex justify-end">
+                <Button variant="primary" disabled={!canImport || !!busy} onClick={apply}>
+                  {busy === "import" ? <Loader2 className="size-4 animate-spin" /> : null}
+                  Import {preview?.created ?? 0} entries
+                </Button>
+              </div>
+            )}
+            {done && <Link className="underline text-sm" href="/dashboard/business-entries">Open Business Entries</Link>}
           </>
         )}
       </CardBody>

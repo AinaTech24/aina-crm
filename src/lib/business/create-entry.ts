@@ -86,6 +86,7 @@ export async function insertBusinessEntry(
       assetCategory: l.assetCategory ?? null,
       assetClass: l.assetClass,
       txnType: l.txnType,
+      typeLabel: l.typeLabel || null,
       amount: String(l.amount),
       units: l.units != null ? String(l.units) : null,
       frequency: l.frequency ?? null,

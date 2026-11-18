@@ -87,6 +87,10 @@ export const businessEntryLines = pgTable(
     assetClass: text("asset_class", { enum: ASSET_CLASSES }).notNull().default("other"),
 
     txnType: text("txn_type", { enum: TXN_TYPES }).notNull().default("lumpsum"),
+    /** The label people see, when it is not the standard one for txnType — a
+     *  firm's own picklist value such as Zoho's "Red. Done by Client"
+     *  (lib/business/zoho-types.ts, migration 0264). Null = standard label. */
+    typeLabel: text("type_label"),
     amount: numeric("amount", { precision: 18, scale: 2 }).notNull().default("0"),
     units: numeric("units", { precision: 18, scale: 4 }),
     /** For SIP / STP / SWP. */

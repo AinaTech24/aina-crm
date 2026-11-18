@@ -15,6 +15,7 @@ import { DateField } from "@/components/ui/DateField";
 import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
 import { useToast } from "@/components/ui/Toast";
 import { classifyAssetClass } from "@/lib/business/asset-class";
+import { ZOHO_TYPES, zohoTypeFromValue, zohoValue } from "@/lib/business/zoho-types";
 
 const PRODUCT_OPTS: [string, string][] = [
   ["mutual_fund", "Mutual Fund"], ["direct_equity", "Direct Equity / Demat"], ["pms", "PMS"], ["aif", "AIF"], ["sif", "SIF"], ["bond", "Bond"], ["ncd", "NCD"], ["p2p", "P2P"], ["las", "LAS"], ["other", "Other"],
@@ -95,6 +96,8 @@ type Line = {
   assetCategory: string;
   assetClass: string;
   txnType: string;
+  /** A firm's own label for the type (Zoho picklist, lib/business/zoho-types.ts); "" = standard. */
+  typeLabel: string;
   amount: string;
   frequency: string;
   sipDate: string;
@@ -107,7 +110,7 @@ type Line = {
 let _k = 0;
 const blankLine = (): Line => ({
   key: `l${++_k}`, schemeCode: "", schemeName: "", amcName: "", assetCategory: "", assetClass: "equity",
-  txnType: "lumpsum", amount: "", frequency: "", sipDate: "", fromSchemeCode: "", fromSchemeName: "", fromAssetClass: "", folioNo: "",
+  txnType: "lumpsum", typeLabel: "", amount: "", frequency: "", sipDate: "", fromSchemeCode: "", fromSchemeName: "", fromAssetClass: "", folioNo: "",
 });
 
 function inr(n: number): string {
@@ -136,6 +139,7 @@ export function BusinessEntryForm({
   members,
   currentUserId,
   prefillClient,
+  zohoTypes = false,
 }: {
   initial?: InitialEntry;
   initialLines?: InitialLine[];
@@ -143,6 +147,8 @@ export function BusinessEntryForm({
   currentUserId: string;
   /** Pre-select the client on a NEW entry (e.g. opened from a blueprint action). */
   prefillClient?: { id: string; name: string };
+  /** The firm has the "zohoImport" flag: offer Zoho's own types in the picklist. */
+  zohoTypes?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -168,7 +174,7 @@ export function BusinessEntryForm({
           key: `l${++_k}`,
           schemeCode: l.schemeCode ?? "", schemeName: l.schemeName ?? "", amcName: l.amcName ?? "",
           assetCategory: l.assetCategory ?? "", assetClass: l.assetClass ?? "equity",
-          txnType: l.txnType ?? "lumpsum", amount: l.amount != null ? String(l.amount) : "",
+          txnType: l.txnType ?? "lumpsum", typeLabel: l.typeLabel ?? "", amount: l.amount != null ? String(l.amount) : "",
           frequency: l.frequency ?? "", sipDate: l.sipDate ?? "", fromSchemeCode: l.fromSchemeCode ?? "", fromSchemeName: l.fromSchemeName ?? "",
           fromAssetClass: l.fromAssetClass ?? "", folioNo: l.folioNo ?? "",
         }))
@@ -191,6 +197,7 @@ export function BusinessEntryForm({
       ls.map((l) => ({
         ...l,
         txnType: c.txnTypes.includes(l.txnType) ? l.txnType : c.txnTypes[0],
+        typeLabel: c.txnTypes.includes(l.txnType) ? l.typeLabel : "",
         assetClass: c.lockAssetClass && c.defaultAssetClass
           ? c.defaultAssetClass // fixed for this product (e.g. Bond/NCD = Debt)
           : !c.catalog && c.defaultAssetClass && (!l.assetClass || l.assetClass === "equity")
@@ -248,7 +255,7 @@ export function BusinessEntryForm({
         lines: cleaned.map((l) => ({
           schemeCode: l.schemeCode || null, schemeName: l.schemeName.trim(), amcName: l.amcName || null,
           assetCategory: l.assetCategory || null, assetClass: l.assetClass,
-          txnType: l.txnType, amount: Number(l.amount) || 0,
+          txnType: l.txnType, typeLabel: l.typeLabel || null, amount: Number(l.amount) || 0,
           frequency: NEEDS_FREQ.has(l.txnType) ? l.frequency || null : null,
           sipDate: l.txnType === "sip" ? l.sipDate || null : null,
           fromSchemeCode: NEEDS_FROM.has(l.txnType) ? l.fromSchemeCode || null : null,
@@ -374,8 +381,23 @@ export function BusinessEntryForm({
                 </div>
                 <div className="lg:col-span-2">
                   <Label sm>Type</Label>
-                  <SelectField size="sm" value={l.txnType} onChange={(e) => patchLine(i, { txnType: e.target.value })} className="w-full">
+                  <SelectField
+                    size="sm"
+                    value={l.typeLabel ? zohoValue(l.typeLabel) : l.txnType}
+                    onChange={(e) => {
+                      // A Zoho type sets the standard type it counts as, and keeps its own label.
+                      const z = zohoTypeFromValue(e.target.value);
+                      patchLine(i, z ? { txnType: z.txnType, typeLabel: z.label } : { txnType: e.target.value, typeLabel: "" });
+                    }}
+                    className="w-full"
+                  >
                     {TXN_OPTS.filter(([v]) => cfg.txnTypes.includes(v)).map(([v, lab]) => <option key={v} value={v}>{cfg.txnLabels?.[v] ?? lab}</option>)}
+                    {(zohoTypes && productType === "mutual_fund") || (l.typeLabel && !ZOHO_TYPES.some((t) => t.label === l.typeLabel)) ? (
+                      <optgroup label="Zoho">
+                        {zohoTypes && productType === "mutual_fund" && ZOHO_TYPES.map((t) => <option key={t.label} value={zohoValue(t.label)}>{t.label}</option>)}
+                        {l.typeLabel && !ZOHO_TYPES.some((t) => t.label === l.typeLabel) && <option value={zohoValue(l.typeLabel)}>{l.typeLabel}</option>}
+                      </optgroup>
+                    ) : null}
                   </SelectField>
                 </div>
                 <div className="lg:col-span-2">

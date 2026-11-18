@@ -4,6 +4,7 @@ import { BASE_LEAD_SOURCES, BASE_SALUTATIONS, PICKLISTS, leadSourceOption, leadS
 import { mapZohoMeeting, meetingModeFromZoho, meetingTypeFromZoho } from "@/lib/imports/zoho/meetings";
 import { planFamilies } from "@/lib/imports/zoho/family-groups";
 import { buildClientMatcher } from "@/lib/imports/zoho/client-match";
+import { mapPurchaseRow, mapSipRow, planBusiness } from "@/lib/imports/zoho/business";
 
 const NOW = new Date("2026-11-14T10:00:00+05:30");
 
@@ -317,5 +318,56 @@ describe("We Care meetings: Existing / New and the client matcher", () => {
     expect(m.why("600")).toBe("no client with this name in the CRM");
     expect([m.matchedById(), m.matchedByName()]).toEqual([1, 1]);
     expect(m.stamps()).toEqual([{ id: "b", zoho: "200" }]);
+  });
+});
+
+describe("Zoho MF Transactions → Business Entries", () => {
+  const parent = (mft: string, extra: Record<string, unknown> = {}) => ({
+    "Record Id": `zcrm_${mft}`, "MF Transaction Name": mft, "MF Transaction Owner": "Tushar Shah", "Client Name.id": "zcrm_c1", "Client Name": "Ramesh Patel",
+    Date: 45796, "Transact Through": "MFU", "Transaction Type": "Online", Remarks: "", ...extra,
+  });
+  const pr = (mft: string, extra: Record<string, unknown>) => ({ "Parent ID.id": `zcrm_${mft}`, "Parent ID": mft, Scheme: "DSP Large Cap Fund", Type: "Equity", ...extra });
+  const sip = (mft: string, extra: Record<string, unknown>) => ({ "Parent ID": mft, "Scheme Name": "Parag Parikh Flexi Cap Fund", ...extra });
+
+  it("maps Zoho's own kinds to a counted type and keeps their label", () => {
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Red. Done by Client", "Redemption Amount": 5000 })).line).toMatchObject({ txnType: "redemption", typeLabel: "Red. Done by Client", amount: 5000 });
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Transfer Out from Our Code", "Redemption Amount": 7000 })).line).toMatchObject({ txnType: "redemption", typeLabel: "Transfer Out from Our Code" });
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Broker Code Change in Our Code", "Purchase Amount": 9000 })).line).toMatchObject({ txnType: "lumpsum", typeLabel: "Broker Code Change in Our Code" });
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Switch In Our Code", "Purchase Amount": 9000 })).line).toMatchObject({ txnType: "switch", typeLabel: "Switch In Our Code" });
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Purchase", "Purchase Amount": 1000, Type: "Liquid" })).line).toMatchObject({ txnType: "lumpsum", assetClass: "liquid" });
+    expect(mapPurchaseRow(pr("M1", { "Purchase/Redemption": "SIF", "Purchase Amount": 1e6 })).product).toBe("sif");
+  });
+
+  it("STP and switch go from the source scheme into the To Scheme", () => {
+    const stp = mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Purchase", "Purchase Amount": 100000, "STP/SWP Amount": 5000, Options: "Normal STP - Weekly", Type: "Liquid to Equity", Scheme: "DSP Liquid", "To Scheme": "DSP Large Cap Fund" })).line;
+    expect(stp).toMatchObject({ txnType: "stp", amount: 5000, schemeName: "DSP Large Cap Fund", fromSchemeName: "DSP Liquid", assetClass: "equity", fromAssetClass: "liquid", frequency: "weekly" });
+  });
+
+  it("a rejected line is kept but never counts", () => {
+    const l = mapPurchaseRow(pr("M1", { "Purchase/Redemption": "Purchase", "Purchase Amount": 2000, Status: "Rejected" })).line;
+    expect(l).toMatchObject({ txnType: "other", typeLabel: "Purchase (rejected)", rtaNotApplicable: "Rejected in Zoho" });
+  });
+
+  it("SIP rows: SIP, Daily SIP, SIP Stop, Auto Stop and Pause", () => {
+    expect(mapSipRow(sip("M2", { Type: "SIP", "SIP Amount": 2500, "Auto Debit Date": 10, "Auto Start Date": 45848 }))).toMatchObject({ txnType: "sip", amount: 2500, sipDate: "10", frequency: "monthly" });
+    expect(mapSipRow(sip("M2", { Type: "SIP", "SIP Amount": 2500, "Auto Debit Date": 30 })).sipDate).toBeNull();
+    expect(mapSipRow(sip("M2", { Type: "Daily SIP", "SIP Amount": 100 }))).toMatchObject({ txnType: "sip", typeLabel: "Daily SIP" });
+    expect(mapSipRow(sip("M2", { Type: "SIP Stop", "SIP Stop/Pause Amount": 3000 }))).toMatchObject({ txnType: "sip_stop", amount: 3000 });
+    expect(mapSipRow(sip("M2", { Type: "SIP Auto Stop", "SIP Stop/Pause Amount": 1000 }))).toMatchObject({ txnType: "sip_stop", typeLabel: "SIP Auto Stop" });
+    const pause = mapSipRow(sip("M2", { Type: "SIP Pause", "SIP Stop/Pause Amount": 4000, "SIP Pause (Months)": 3 }));
+    expect(pause).toMatchObject({ txnType: "other", typeLabel: "SIP Pause", amount: 4000 });
+    expect(pause.notes).toContain("Paused 3 months");
+  });
+
+  it("builds one entry per MFT and product, from both subforms", () => {
+    const p = planBusiness(
+      [parent("MFT1"), parent("MFT2", { Date: "" }), parent("MFT3"), parent("MFT4", { "PMS Amount": 5000000, "PMS Scheme": "ICICI PMS" })],
+      [sip("MFT1", { Type: "SIP", "SIP Amount": 2500 })],
+      [pr("MFT1", { "Purchase/Redemption": "Purchase", "Purchase Amount": 10000 }), pr("MFT1", { "Purchase/Redemption": "SIF", "Purchase Amount": 1e6 }), pr("MFT2", { "Purchase/Redemption": "Purchase", "Purchase Amount": 1 })]
+    );
+    expect(p.entries.map((e) => `${e.mft}:${e.product}:${e.lines.length}`).sort()).toEqual(["MFT1:mutual_fund:2", "MFT1:sif:1", "MFT4:pms:1"]);
+    expect(p.skipped).toEqual(expect.arrayContaining([{ mft: "MFT2", reason: "No date on the Zoho record" }, { mft: "MFT3", reason: "No scheme lines on the Zoho record" }]));
+    expect(p.entries[0].notes.startsWith("Zoho MFT1")).toBe(true);
+    expect(p.entries[0].businessDate).toBe("2025-05-19");
   });
 });
