@@ -35,13 +35,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "That is not a Zoho data file (.json)." }, { status: 400 });
     }
     const body = parsed as { module?: string; records?: unknown };
-    const module = body?.module as ZohoModule;
-    if (!ZOHO_MODULES.includes(module) || !Array.isArray(body.records)) {
+    const zohoModule = body?.module as ZohoModule;
+    if (!ZOHO_MODULES.includes(zohoModule) || !Array.isArray(body.records)) {
       return NextResponse.json({ error: `The file must hold { module, records } for one of: ${ZOHO_MODULES.join(", ")}.` }, { status: 400 });
     }
     const result = await importZohoModule(
       { tenantId: session.tenantId, userId: session.userId, branchId: session.branchId ?? null, roles: session.roles },
-      module,
+      zohoModule,
       body.records as Record<string, unknown>[],
       { dryRun: form.get("dryRun") === "1", unmatchedToMe: form.get("unmatchedToMe") === "1" }
     );
