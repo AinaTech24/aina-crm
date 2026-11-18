@@ -17,7 +17,7 @@ import { FormActions } from "@/components/ui/FormActions";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import { notify } from "@/components/ui/Toast";
 import type { PricingSettings } from "@/lib/billing/aum-pricing";
-import { quoteAll, inr, lateProRataCharge, monthlyBasePaise, resolvePricingSettings } from "@/lib/billing/aum-pricing";
+import { cycleLabel, quoteAll, quoteCycle, inr, lateProRataCharge, monthlyBasePaise, resolvePricingSettings } from "@/lib/billing/aum-pricing";
 
 type TierRow = { key: string; label: string; upTo: string; monthly: string };
 
@@ -36,6 +36,9 @@ export function PricingSettingsForm({ settings, overridden }: { settings: Pricin
     maxUsers: String(settings.maxUsers),
     halfDisc: toPct(settings.cycles.half_yearly.discountBp),
     yearDisc: toPct(settings.cycles.yearly.discountBp),
+    commitMonths: String(settings.cycles.commitment.months),
+    commitDisc: toPct(settings.cycles.commitment.discountBp),
+    firstCommit: settings.firstPurchaseCommitment,
     gst: toPct(settings.gstBp),
     graceDays: String(settings.graceDays),
     dayBasis: String(settings.proRataDayBasis),
@@ -64,6 +67,7 @@ export function PricingSettingsForm({ settings, overridden }: { settings: Pricin
         monthly: { months: 1 as const, discountBp: 0 },
         half_yearly: { months: 6 as const, discountBp: bp(f.halfDisc) },
         yearly: { months: 12 as const, discountBp: bp(f.yearDisc) },
+        commitment: { months: Number(f.commitMonths), discountBp: bp(f.commitDisc) },
       },
       gstBp: bp(f.gst),
       graceDays: Number(f.graceDays),
@@ -72,6 +76,7 @@ export function PricingSettingsForm({ settings, overridden }: { settings: Pricin
       sacCode: f.sac.trim(),
       packageKey: f.packageKey.trim() || null,
       onlineSignup: f.onlineSignup,
+      firstPurchaseCommitment: f.firstCommit,
     };
   }
 
@@ -79,7 +84,10 @@ export function PricingSettingsForm({ settings, overridden }: { settings: Pricin
   const preview = (() => {
     const s = resolvePricingSettings(build());
     try {
-      return { quotes: quoteAll({ aumCrore: 300, users: 5 }, s), late: lateProRataCharge(monthlyBasePaise(300, 5, s), s) };
+      return {
+        quotes: [quoteCycle({ aumCrore: 300, users: 5, cycle: "commitment" }, s), ...quoteAll({ aumCrore: 300, users: 5 }, s)],
+        late: lateProRataCharge(monthlyBasePaise(300, 5, s), s),
+      };
     } catch {
       return null;
     }
@@ -189,6 +197,22 @@ export function PricingSettingsForm({ settings, overridden }: { settings: Pricin
       </Card>
 
       <Card>
+        <CardHeader title="First purchase" subtitle="A new firm's first purchase: the commitment or yearly. Monthly and half-yearly open up after it." />
+        <CardBody className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {num("commitMonths", "Commitment months", "Paid upfront; then the firm's choice, else monthly")}
+          {num("commitDisc", "Commitment discount %", "Off the whole commitment bill")}
+          <Field label="First purchase">
+            {(id) => (
+              <label htmlFor={id} className="flex items-center gap-2 text-sm pt-2">
+                <input id={id} type="checkbox" checked={f.firstCommit} onChange={(e) => set("firstCommit", e.target.checked)} />
+                Requires the commitment (or yearly)
+              </label>
+            )}
+          </Field>
+        </CardBody>
+      </Card>
+
+      <Card>
         <CardHeader title="Renewals and invoices" />
         <CardBody className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {num("graceDays", "Grace days after a missed renewal", "Full access throughout")}
@@ -214,10 +238,10 @@ export function PricingSettingsForm({ settings, overridden }: { settings: Pricin
       {preview && (
         <Card>
           <CardHeader title="Preview — 300 Cr, 5 users" subtitle="With the numbers above, before you save." />
-          <CardBody className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
+          <CardBody className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-sm">
             {preview.quotes.map((q) => (
               <div key={q.cycle} className="rounded-lg bg-secondary/70 p-3">
-                <div className="text-muted-foreground">{q.cycle.replace("_", "-")}</div>
+                <div className="text-muted-foreground">{cycleLabel(q.cycle, q.months)}</div>
                 <div className="font-semibold tabular-nums">{inr(q.totalPaise)}</div>
                 <div className="text-xs text-muted-foreground">{inr(q.taxablePaise)} + GST {inr(q.gstPaise)}</div>
               </div>

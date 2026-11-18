@@ -7,7 +7,7 @@ import { loadPricingSettings } from "@/lib/billing/pricing-settings";
 export const metadata: Metadata = {
   title: { absolute: "Pricing — AINA CRM for Mutual Fund Distributors" },
   description:
-    "Get your AINA CRM price in a minute: maintenance by your AUM plus a yearly fee per user, billed monthly, half-yearly (save 8%) or yearly (save 15%).",
+    "Get your AINA CRM price in a minute: maintenance by your AUM plus a yearly fee per user. Start with a 6-month commitment or a year (save 15%); monthly and half-yearly billing follow.",
   alternates: { canonical: "/pricing" },
 };
 
@@ -16,6 +16,8 @@ export const dynamic = "force-dynamic";
 export default async function PricingPage() {
   const s = await loadPricingSettings().catch(() => DEFAULT_PRICING);
   const perUserYearly = inr(s.perUserYearlyPaise);
+  const months = s.cycles.commitment.months;
+  const pct = (bp: number) => `${(bp / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}%`;
   return (
     <SitePage crumbs={[["Home", "/"], ["Pricing", "/pricing"]]}>
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14 space-y-8">
@@ -32,7 +34,19 @@ export default async function PricingPage() {
                 {t.label.toLowerCase()} {inr(t.monthlyPaise)}
               </span>
             ))}{" "}
-            a month — plus {perUserYearly} per CRM user a year. Pay monthly, half-yearly or yearly; GST extra.
+            a month — plus {perUserYearly} per CRM user a year. GST extra.
+          </p>
+          <p className="mt-3 text-site-muted leading-relaxed">
+            {s.firstPurchaseCommitment ? (
+              <>
+                You start with a {months}-month commitment at the monthly price, paid upfront, or a full year
+                {s.cycles.yearly.discountBp > 0 ? ` and save ${pct(s.cycles.yearly.discountBp)}` : ""}. After the first {months} months, choose
+                how you continue: monthly, half-yearly
+                {s.cycles.half_yearly.discountBp > 0 ? ` (save ${pct(s.cycles.half_yearly.discountBp)})` : ""} or yearly — or simply carry on monthly.
+              </>
+            ) : (
+              <>Pay monthly, half-yearly or yearly; the longer the cycle, the more you save.</>
+            )}
           </p>
         </div>
         <PricingFlow />
