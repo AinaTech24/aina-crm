@@ -7,6 +7,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { ensureStarterPackage } from "./helpers/starter-package";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const rz = { updates: [] as Array<{ id: string; planId: string }>, refuse: false, n: 0 };
@@ -48,6 +49,7 @@ describe.skipIf(!TEST_DB)("renewal review", () => {
     process.env.ALLOW_SYSTEM_TX = "1";
     ({ withSystem } = await import("@/db/client"));
     ({ sql } = await import("drizzle-orm"));
+    await ensureStarterPackage((t) => q(t), sql);
     ({ reviewRenewal } = await import("@/lib/billing/renewal-review"));
     const { quoteCycle } = await import("@/lib/billing/aum-pricing");
     const quote = quoteCycle({ aumCrore: 300, users: 5, cycle: "monthly" });

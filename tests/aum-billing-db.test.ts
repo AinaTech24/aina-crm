@@ -14,6 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import crypto, { randomUUID } from "node:crypto";
+import { ensureStarterPackage } from "./helpers/starter-package";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const KEY_SECRET = "test_key_secret_billing";
@@ -108,6 +109,7 @@ describe.skipIf(!TEST_DB)("buying online, renewing, grace and late payment", () 
     process.env.RAZORPAY_WEBHOOK_SECRET = WEBHOOK_SECRET;
     ({ withSystem } = await import("@/db/client"));
     ({ sql } = await import("drizzle-orm"));
+    await ensureStarterPackage((t) => q(t), sql);
   }, 60_000);
 
   afterAll(async () => {
