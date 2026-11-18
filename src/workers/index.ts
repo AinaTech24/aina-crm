@@ -40,6 +40,7 @@ import { syncMfSchemeCatalog, enrichMfSchemes } from "@/lib/finance/mfapi";
 import { describeRun, getLastRun, recordRun } from "./scheduler-state";
 import { recordDailySnapshots } from "./firm-snapshot-recorder";
 import { runDscReminder } from "./dsc-reminder";
+import { runBillingDaily, runBillingEmailRetries } from "@/lib/billing/jobs";
 import { captureError } from "@/lib/observability/capture";
 
 const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho,rta,briefing")
@@ -217,6 +218,26 @@ scheduleDaily("ops", "daily-firm-snapshot", 0, 5, recordDailySnapshots, "FIRM_SN
  * as soon as the new financial year opens and stays until the DSC is filed.
  */
 scheduleDaily("ops", "dsc-reminder", 7, 0, runDscReminder, "DSC_REMINDER_ON_BOOT");
+
+/**
+ * AUM-priced billing (lib/billing/jobs.ts). Daily at 03:20: the renewal review
+ * re-prices every renewal falling within the next 7 days from the firm's AUM in
+ * the CRM — once per firm per renewal date, so a re-run or a catch-up changes
+ * nothing. Hourly: retry tax-invoice and welcome emails that did not go.
+ */
+scheduleDaily("ops", "billing-renewal-review", 3, 20, () => runBillingDaily(), "BILLING_REVIEW_ON_BOOT");
+if (groups.includes("ops")) {
+  const tick = async () => {
+    try {
+      await runBillingEmailRetries();
+    } catch (err) {
+      console.error("[billing-email-retry] tick failed:", (err as Error).message);
+    }
+  };
+  const interval = setInterval(tick, 60 * 60 * 1000);
+  interval.unref?.();
+  stops.push(() => clearInterval(interval));
+}
 
 // The client review-due reminder (a "Portfolio review due — <client>" task and
 // bell alert for every client whose review date came round) was turned off for
