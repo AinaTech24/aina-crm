@@ -3,8 +3,11 @@
  * the same code; a preview rolls back (see run-contacts.ts).
  *
  *  - The meeting's client is the one whose Zoho Record Id is the meeting's
- *    Contact Name.id — so the Clients file goes in first. A meeting with no
+ *    Contact Name.id; a client without one is matched by exact unique name
+ *    (client-match.ts) and keeps that Zoho id afterwards. A meeting with no
  *    contact (a lead's or a deal's) is skipped, as agreed.
+ *  - Meetings are saved 500 at a time; a batch that fails is retried row by
+ *    row, so one bad row never loses the rest.
  *  - Host is the RM and must be a user of the firm (or the person chose to
  *    take those meetings themselves).
  *  - A meeting already in the CRM for the same client, time and title is
@@ -20,7 +23,8 @@ import type { Tx } from "@/db/client";
 import { withTenant } from "@/db/client";
 import { recordAudit } from "@/lib/audit";
 import { reviewMeetings } from "@/db/schema";
-import { ZOHO_ID_FIELD, ownerKey } from "./contacts";
+import { ownerKey } from "./contacts";
+import { loadClientMatcher, stampZohoIds } from "./client-match";
 import { mapZohoMeeting } from "./meetings";
 import type { ImportActor, OwnerLine } from "./run-contacts";
 import { ZohoFileError } from "./workbook";
@@ -37,6 +41,9 @@ export type MeetingImportResult = {
   statuses: Array<{ value: string; to: string; count: number }>;
   modes: Array<{ value: string; count: number }>;
   clientsLastMeetingMoved: number;
+  /** Clients found by Zoho Record ID / by exact unique name. */
+  matchedById: number;
+  matchedByName: number;
 };
 
 class Rollback extends Error {
@@ -69,6 +76,8 @@ export async function importZohoMeetings(
       statuses: tally(mapped.filter((m) => !m.skip).map((m) => [m.zohoStatus || "(blank)", m.closedAsPast ? "Completed (date has passed)" : TYPE_LABEL(m.status)])),
       modes: [],
       clientsLastMeetingMoved: 0,
+      matchedById: 0,
+      matchedByName: 0,
     };
 
     const users = (await tx.execute(sql`
@@ -80,13 +89,10 @@ export async function importZohoMeetings(
       if (u.email) userByKey.set(ownerKey(u.email), u);
     }
 
-    const clients = (await tx.execute(sql`
-      SELECT id, name, rm_id, custom_fields->>${ZOHO_ID_FIELD.key} AS zoho_id
-        FROM investors
-       WHERE tenant_id = ${actor.tenantId}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
-         AND custom_fields ? ${ZOHO_ID_FIELD.key}
-    `)).rows as Array<{ id: string; name: string; rm_id: string | null; zoho_id: string }>;
-    const clientByZoho = new Map(clients.map((c) => [c.zoho_id, c]));
+    // Zoho contact id → its name in the file (the first one seen), for the name fallback.
+    const fileNames = new Map<string, string>();
+    for (const m of mapped) if (m.contactZohoId && m.contactName && !fileNames.has(m.contactZohoId)) fileNames.set(m.contactZohoId, m.contactName);
+    const matcher = await loadClientMatcher(tx, actor.tenantId, fileNames);
 
     // Meetings already in the CRM, so a second run adds only the new ones.
     const already = new Set(
@@ -119,6 +125,38 @@ export async function importZohoMeetings(
     const modeCounts = new Map<string, number>();
     const lastMet = new Map<string, number>();
 
+    type Pending = { rowNo: number; label: string; m: (typeof mapped)[number]; clientId: string; values: typeof reviewMeetings.$inferInsert };
+    let pending: Pending[] = [];
+    const saved = (p: Pending) => {
+      result.created++;
+      if (p.m.closedAsPast) result.closedAsPast++;
+      modeCounts.set(p.m.meetingMode, (modeCounts.get(p.m.meetingMode) ?? 0) + 1);
+      if (p.m.status === "completed") lastMet.set(p.clientId, Math.max(lastMet.get(p.clientId) ?? 0, p.m.start!.getTime()));
+    };
+    // 500 at a time; a batch that fails is retried row by row so one bad row loses only itself.
+    const flush = async () => {
+      if (!pending.length) return;
+      const batch = pending;
+      pending = [];
+      try {
+        await tx.transaction(async (sp) => {
+          await sp.insert(reviewMeetings).values(batch.map((p) => p.values));
+        });
+        batch.forEach(saved);
+      } catch {
+        for (const p of batch) {
+          try {
+            await tx.transaction(async (sp) => {
+              await sp.insert(reviewMeetings).values(p.values);
+            });
+            saved(p);
+          } catch (err: any) {
+            skip(p.rowNo, p.label, `Could not be saved: ${String(err?.message ?? err).slice(0, 200)}`);
+          }
+        }
+      }
+    };
+
     for (let i = 0; i < mapped.length; i++) {
       const m = mapped[i];
       const rowNo = i + 2;
@@ -132,9 +170,9 @@ export async function importZohoMeetings(
         continue;
       }
       if (m.zohoId) seen.add(m.zohoId);
-      const client = clientByZoho.get(m.contactZohoId);
+      const client = matcher.resolve(m.contactZohoId);
       if (!client) {
-        skip(rowNo, label, "Its contact is not in the CRM — import the Clients file first");
+        skip(rowNo, label, `Client not matched: ${matcher.why(m.contactZohoId)}`);
         continue;
       }
       const key = `${client.id}|${m.start!.getTime()}|${m.subject ?? ""}`;
@@ -146,34 +184,35 @@ export async function importZohoMeetings(
 
       const host = m.hostText ? userByKey.get(ownerKey(m.hostText)) : undefined;
       const rmId = host?.id ?? (m.hostText ? actor.userId : client.rm_id ?? actor.userId);
-      try {
-        await tx.transaction(async (sp) => {
-          await sp.insert(reviewMeetings).values({
-            id: uuid(),
-            tenantId: actor.tenantId,
-            investorId: client.id,
-            leadId: null,
-            rmId,
-            category: "review",
-            meetingType: m.meetingType,
-            subject: m.subject,
-            meetingDate: m.start!,
-            durationMinutes: String(m.durationMinutes),
-            meetingMode: m.meetingMode,
-            locationOrLink: m.locationOrLink,
-            discussionPoints: m.discussionPoints,
-            status: m.status,
-            attendees: [],
-          });
-        });
-        result.created++;
-        if (m.closedAsPast) result.closedAsPast++;
-        modeCounts.set(m.meetingMode, (modeCounts.get(m.meetingMode) ?? 0) + 1);
-        if (m.status === "completed") lastMet.set(client.id, Math.max(lastMet.get(client.id) ?? 0, m.start!.getTime()));
-      } catch (err: any) {
-        skip(rowNo, label, `Could not be saved: ${String(err?.message ?? err).slice(0, 200)}`);
-      }
+      pending.push({
+        rowNo,
+        label,
+        m,
+        clientId: client.id,
+        values: {
+          id: uuid(),
+          tenantId: actor.tenantId,
+          investorId: client.id,
+          leadId: null,
+          rmId,
+          category: m.category,
+          meetingType: m.meetingType,
+          subject: m.subject,
+          meetingDate: m.start!,
+          durationMinutes: String(m.durationMinutes),
+          meetingMode: m.meetingMode,
+          locationOrLink: m.locationOrLink,
+          discussionPoints: m.discussionPoints,
+          status: m.status,
+          attendees: [],
+        },
+      });
+      if (pending.length >= 500) await flush();
     }
+    await flush();
+    await stampZohoIds(tx, actor.tenantId, actor.userId, matcher.stamps());
+    result.matchedById = matcher.matchedById();
+    result.matchedByName = matcher.matchedByName();
 
     for (const [investorId, t] of lastMet) {
       const r = await tx.execute(sql`
@@ -197,7 +236,7 @@ export async function importZohoMeetings(
       action: "review_meeting.bulk_import",
       entityType: "review_meeting",
       entityId: null,
-      meta: { source: "zoho_meetings", totalRows: rows.length, created: result.created, closedAsPast: result.closedAsPast, skipped: result.skippedByReason },
+      meta: { source: "zoho_meetings", totalRows: rows.length, created: result.created, closedAsPast: result.closedAsPast, matchedById: result.matchedById, matchedByName: result.matchedByName, skipped: result.skippedByReason },
     });
 
     if (opts.dryRun) throw new Rollback(result);

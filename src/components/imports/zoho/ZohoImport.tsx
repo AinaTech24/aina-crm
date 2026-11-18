@@ -331,6 +331,10 @@ function MeetingsPreview({ p }: { p: MeetingImportResult }) {
         <Stat label="Skipped" value={p.skipped.length} tone="warn" />
       </div>
       <PeopleTable rows={p.hosts.map((h) => ({ owner: h.owner, count: h.meetings, user: h.user }))} unit="Meetings" />
+      <p className="text-sm">
+        Clients found by Zoho Record ID: {p.matchedById} · by exact name: {p.matchedByName}
+        {p.matchedByName > 0 && " (they keep the Zoho Record ID from now on)"}
+      </p>
       {p.skippedByReason.length > 0 && (
         <ValueTable title="Skipped" items={p.skippedByReason.map((s) => ({ value: s.reason, to: "skipped", count: s.count }))} />
       )}

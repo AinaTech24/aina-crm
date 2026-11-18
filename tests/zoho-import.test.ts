@@ -3,6 +3,7 @@ import { idDamagedByExcel, istInstant, isoDate, mobile, yesNo, zohoId } from "@/
 import { BASE_LEAD_SOURCES, BASE_SALUTATIONS, PICKLISTS, leadSourceOption, leadSourceOptions, mapZohoContact, picklistOption, picklistOptions, reviewFrequencyFromZoho, riskFromZoho } from "@/lib/imports/zoho/contacts";
 import { mapZohoMeeting, meetingModeFromZoho, meetingTypeFromZoho } from "@/lib/imports/zoho/meetings";
 import { planFamilies } from "@/lib/imports/zoho/family-groups";
+import { buildClientMatcher } from "@/lib/imports/zoho/client-match";
 
 const NOW = new Date("2026-11-14T10:00:00+05:30");
 
@@ -285,5 +286,36 @@ describe("Zoho family sheet → households", () => {
     expect(p.groups).toHaveLength(1);
     expect(p.groups[0].memberZohoIds).toHaveLength(1);
     expect(p.headMissing).toEqual([{ headZohoId: "9", headName: "Not Here", rows: 1 }]);
+  });
+});
+
+describe("We Care meetings: Existing / New and the client matcher", () => {
+  it("Existing → Review / Portfolio review, New → New / New client kickoff", () => {
+    const base = { "Record Id": "zcrm_1", Host: "X", "Contact Name.id": "zcrm_2", "Contact Name": "A", From: "23-05-2023 15:00", To: "23-05-2023 15:30", "Meeting Venue": "Client location" };
+    const ex = mapZohoMeeting({ ...base, "Meeting Type": "Existing" }, NOW);
+    expect([ex.category, ex.meetingType, ex.meetingMode, ex.start?.toISOString()]).toEqual(["review", "portfolio_review", "client_place", "2023-05-23T09:30:00.000Z"]);
+    const nw = mapZohoMeeting({ ...base, "Meeting Type": "New", "Meeting Venue": "In-office" }, NOW);
+    expect([nw.category, nw.meetingType, nw.meetingMode]).toEqual(["new", "new_client_kickoff", "office"]);
+    expect(mapZohoMeeting({ ...base, "Meeting Type": "", Title: "Goal planning" }, NOW).category).toBe("review");
+  });
+
+  it("matches by Zoho id, else by a name only one client and one contact have", () => {
+    const c = (id: string, name: string, zoho: string | null = null) => ({ id, name, family_id: null, rm_id: null, zoho_id: zoho });
+    const m = buildClientMatcher(
+      [c("a", "Ramesh Patel", "100"), c("b", "Sunita  Patel"), c("c", "Rahul Patel"), c("d", "rahul patel"), c("e", "Kiran Shah"), c("f", "Old Name", "999")],
+      new Map([["100", "Whatever"], ["200", "SUNITA PATEL"], ["300", "Rahul Patel"], ["400", "Kiran Shah"], ["401", "Kiran Shah"], ["500", "Old Name"], ["600", "Nobody"]])
+    );
+    expect(m.resolve("100")?.id).toBe("a");
+    expect(m.resolve("200")?.id).toBe("b");
+    expect(m.resolve("300")).toBeUndefined();
+    expect(m.why("300")).toBe("several clients in the CRM have this name");
+    expect(m.resolve("400")).toBeUndefined();
+    expect(m.why("400")).toBe("several Zoho contacts in the file have this name");
+    expect(m.resolve("500")).toBeUndefined();
+    expect(m.why("500")).toBe("the client with this name has a different Zoho Record ID");
+    expect(m.resolve("600")).toBeUndefined();
+    expect(m.why("600")).toBe("no client with this name in the CRM");
+    expect([m.matchedById(), m.matchedByName()]).toEqual([1, 1]);
+    expect(m.stamps()).toEqual([{ id: "b", zoho: "200" }]);
   });
 });

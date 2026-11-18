@@ -25,9 +25,7 @@ import { recordAudit } from "@/lib/audit";
 import { loadFamilySettings } from "@/lib/families/master";
 import { recomputeFamilyHealth } from "@/lib/families/health-persist";
 import { onClientFamilyMapped } from "@/lib/families/journey";
-import { ZOHO_ID_FIELD } from "./contacts";
-import { nameKey } from "./values";
-import { customFieldDefs } from "@/db/schema";
+import { loadClientMatcher, stampZohoIds } from "./client-match";
 import { planFamilies } from "./family-groups";
 import { headFamily, type ImportActor } from "./run-contacts";
 
@@ -86,49 +84,9 @@ export async function importZohoFamilies(
     };
     for (const h of plan.headMissing) note("Family Owner is not in the sheet", h.rows, h.headName || h.headZohoId);
 
-    const clients = (await tx.execute(sql`
-      SELECT id, name, family_id, custom_fields->>${ZOHO_ID_FIELD.key} AS zoho_id
-        FROM investors
-       WHERE tenant_id = ${actor.tenantId}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
-    `)).rows as Array<{ id: string; name: string; family_id: string | null; zoho_id: string | null }>;
-    const byZohoId = new Map(clients.filter((c) => c.zoho_id).map((c) => [c.zoho_id as string, c]));
-    // Exact-name fallback: names held by exactly one live client AND one sheet row.
-    const crmNames = new Map<string, (typeof clients)[number] | null>();
-    for (const c of clients) {
-      const k = nameKey(c.name);
-      if (!k) continue;
-      crmNames.set(k, crmNames.has(k) ? null : c);
-    }
-    const sheetNameCount = new Map<string, number>();
-    for (const n of plan.nameOf.values()) {
-      const k = nameKey(n);
-      if (k) sheetNameCount.set(k, (sheetNameCount.get(k) ?? 0) + 1);
-    }
-    const stampIds: Array<{ id: string; zoho: string }> = [];
-    const resolved = new Map<string, (typeof clients)[number] | undefined>();
-    const why = new Map<string, string>();
-    const resolve = (zoho: string) => {
-      if (resolved.has(zoho)) return resolved.get(zoho);
-      let c = byZohoId.get(zoho);
-      if (c) result.matchedById++;
-      else {
-        const k = nameKey(plan.nameOf.get(zoho) ?? "");
-        const hit = k ? crmNames.get(k) : undefined;
-        if (!k) why.set(zoho, "no name on the row");
-        else if (hit === undefined) why.set(zoho, "no client with this name in the CRM");
-        else if (hit === null) why.set(zoho, "several clients in the CRM have this name");
-        else if ((sheetNameCount.get(k) ?? 0) > 1) why.set(zoho, "several rows in the sheet have this name");
-        else if (hit.zoho_id && hit.zoho_id !== zoho) why.set(zoho, "the client with this name has a different Zoho Record ID");
-        else {
-          c = hit;
-          result.matchedByName++;
-          stampIds.push({ id: hit.id, zoho });
-        }
-      }
-      resolved.set(zoho, c);
-      return c;
-    };
-    const byZoho = { get: (z: string) => resolve(z) };
+    const matcher = await loadClientMatcher(tx, actor.tenantId, plan.nameOf);
+    const byZoho = { get: (z: string) => matcher.resolve(z) };
+    const why = { get: (z: string) => matcher.why(z) };
     const settings = await loadFamilySettings(tx, actor.tenantId);
 
     for (const g of plan.groups) {
@@ -195,38 +153,9 @@ export async function importZohoFamilies(
 
     // Clients matched by name keep the row's Zoho Record ID, so the next run and
     // the Meetings import find them exactly.
-    if (stampIds.length) {
-      const has = (await tx.execute(sql`
-        SELECT 1 FROM custom_field_defs WHERE tenant_id = ${actor.tenantId}::uuid AND entity = 'investor' AND key = ${ZOHO_ID_FIELD.key}
-      `)).rows.length;
-      if (!has) {
-        const next = (await tx.execute(sql`
-          SELECT COALESCE(MAX(sort_order), 0)::int + 1 AS n FROM custom_field_defs WHERE tenant_id = ${actor.tenantId}::uuid AND entity = 'investor'
-        `)).rows[0] as { n: number };
-        await tx.insert(customFieldDefs).values({
-          tenantId: actor.tenantId,
-          entity: "investor",
-          key: ZOHO_ID_FIELD.key,
-          label: ZOHO_ID_FIELD.label,
-          type: "text",
-          options: null,
-          required: false,
-          sortOrder: Number(next.n),
-          createdBy: actor.userId,
-        });
-      }
-      for (let i = 0; i < stampIds.length; i += 500) {
-        const part = stampIds.slice(i, i + 500);
-        await tx.execute(sql`
-          UPDATE investors AS inv
-             SET custom_fields = COALESCE(inv.custom_fields, '{}'::jsonb) || jsonb_build_object(${ZOHO_ID_FIELD.key}::text, v.zoho),
-                 updated_at = now()
-            FROM (VALUES ${sql.join(part.map((p) => sql`(${p.id}::uuid, ${p.zoho}::text)`), sql`, `)}) AS v(id, zoho)
-           WHERE inv.id = v.id AND inv.tenant_id = ${actor.tenantId}::uuid
-             AND NOT (COALESCE(inv.custom_fields, '{}'::jsonb) ? ${ZOHO_ID_FIELD.key})
-        `);
-      }
-    }
+    await stampZohoIds(tx, actor.tenantId, actor.userId, matcher.stamps());
+    result.matchedById = matcher.matchedById();
+    result.matchedByName = matcher.matchedByName();
 
     result.problems = [...problem.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
     await recordAudit(tx, {
