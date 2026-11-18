@@ -812,7 +812,7 @@ function SchemeStep() {
                         <tr key={r.name}>
                           <td className="w-8"><input type="checkbox" aria-label={`Use the suggestion for ${r.name}`} checked={!!accepted[r.name]} onChange={(e) => setAccepted((a) => ({ ...a, [r.name]: e.target.checked }))} /></td>
                           <td>{r.name}</td>
-                          <td className="text-muted-foreground">→ {r.scheme!.name}</td>
+                          <td className="text-muted-foreground">→ {r.scheme!.name}{r.why && <div className="text-xs">{r.why}</div>}</td>
                           <td className="text-right tabular-nums">{r.lines}</td>
                         </tr>
                       ))}

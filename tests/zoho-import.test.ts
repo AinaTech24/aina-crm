@@ -409,3 +409,33 @@ describe("Zoho scheme names → Scheme Master", () => {
     expect(schemeBase("ICICI Pru Bluechip Fund - Regular Plan - Growth")).toBe("icici prudential bluechip");
   });
 });
+
+describe("scheme matcher — renames and guards (real AMFI shapes)", () => {
+  const ms = (code: string, name: string, amc: string) => ({ scheme_code: code, scheme_name: name, amc_code: amc, category: null, plan: /direct/i.test(name) ? "direct" : "regular", option: null });
+  const idx = buildSchemeIndex([
+    ms("1", "ICICI Prudential Large Cap Fund (erstwhile Bluechip Fund) - Regular Plan - Growth", "ICICI Prudential Mutual Fund"),
+    ms("2", "ICICI Prudential Value Fund (erstwhile Value Discovery Fund) - Regular Plan - Growth", "ICICI Prudential Mutual Fund"),
+    ms("3", "Kotak Ultra Short to Short Term Fund - Regular Plan - Growth", "Kotak Mahindra Mutual Fund"),
+    ms("4", "WhiteOak Capital Ultra Short Term Fund - Regular Plan - Growth Option", "WhiteOak Capital Mutual Fund"),
+    ms("5", "ICICI Prudential Equity Savings Fund - Regular Plan - Cumulative", "ICICI Prudential Mutual Fund"),
+    ms("6", "Aditya Birla Sun Life Manufacturing Equity Fund - Regular Plan - GROWTH", "Aditya Birla Sun Life Mutual Fund"),
+    ms("7", "HDFC Retirement Fund - Hybrid-Equity Plan - Regular Plan - Growth Option", "HDFC Mutual Fund"),
+  ]);
+  it("a bracketed note is not part of the name; a former name finds the fund", () => {
+    expect(matchScheme("ICICI Prudential Value Fund- Regular Plan - Growth", idx)).toMatchObject({ confidence: "exact", scheme: { scheme_code: "2" } });
+    expect(matchScheme("ICICI Prudential Bluechip Fund", idx)).toMatchObject({ confidence: "exact", scheme: { scheme_code: "1" } });
+  });
+  it("SEBI's category renames are suggestions with their reason", () => {
+    expect(matchScheme("Kotak Low Duration Fund- Regular Plan-Growth Option", idx)).toMatchObject({ confidence: "close", scheme: { scheme_code: "3" }, why: expect.stringContaining("Low Duration") });
+    expect(matchScheme("WhiteOak Capital Ultra Short Duration Fund", idx)).toMatchObject({ confidence: "close", scheme: { scheme_code: "4" } });
+  });
+  it("never suggests a fund that adds a type word, or swaps a word", () => {
+    expect(matchScheme("ICICI Prudential Savings Fund", idx).confidence).toBe("none");
+    expect(matchScheme("Aditya Birla Sun Life Frontline Equity Fund", idx).confidence).toBe("none");
+    expect(matchScheme("HDFC Hybrid Equity Fund", idx).confidence).toBe("none");
+  });
+  it("dropping words is a rename it may suggest; ICICI's 'Cumulative' is growth", () => {
+    expect(matchScheme("HDFC Retirement Savings Fund - Hybrid-Equity Plan", idx)).toMatchObject({ confidence: "close", scheme: { scheme_code: "7" } });
+    expect(matchScheme("ICICI Prudential Equity Savings Fund", idx)).toMatchObject({ confidence: "exact", scheme: { scheme_code: "5" } });
+  });
+});
