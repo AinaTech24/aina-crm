@@ -189,6 +189,19 @@ export const tenants = pgTable(
      *  non-null value hides the tenant from the list and blocks its logins. */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     deletedBy: uuid("deleted_by"),
+    /** Bought online (/pricing): sent to the setup wizard until `onboardedAt`
+     *  is stamped (migration 0266). Firms created any other way stay false. */
+    onboardingRequired: boolean("onboarding_required").notNull().default(false),
+    onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
+    /** Where tax invoices go besides the owner (optional). */
+    billingEmail: text("billing_email"),
+    /** false = the firm said it is not GST-registered; null = not asked yet. */
+    gstRegistered: boolean("gst_registered"),
+    /** The one welcome email on finishing onboarding (lib/onboarding/welcome.ts). */
+    welcomeEmailStatus: text("welcome_email_status"),
+    welcomeEmailAttempts: integer("welcome_email_attempts").notNull().default(0),
+    welcomeEmailSentAt: timestamp("welcome_email_sent_at", { withTimezone: true }),
+    welcomeEmailLastError: text("welcome_email_last_error"),
     ...timestamps,
   },
   (t) => ({
