@@ -4,7 +4,7 @@
  * so they never say different things.
  */
 
-import { CONTACT, DEMO_URL } from "@/lib/landing/links";
+import { CONTACT } from "@/lib/landing/links";
 
 /** Step 1 of /pricing, and its API: the email already signs in somewhere. */
 export const EMAIL_TAKEN_MESSAGE = "An account with this email already exists.";
@@ -21,7 +21,6 @@ export const INVITE_TEAM_HREF = "/dashboard/employees/new";
  * request. "Book a demo" stays DEMO_URL itself.
  */
 export const WHATSAPP_US_URL = `${CONTACT.whatsapp}?text=${encodeURIComponent("Hi, I have a question about Aina CRM's pricing for my practice.")}`;
-export { DEMO_URL };
 
 export const ONBOARDING_CALL_TEXT = "Hi, I've just joined AINA CRM — I'd like to book my onboarding call.";
 

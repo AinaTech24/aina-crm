@@ -35,6 +35,8 @@ type Quote = { quoteId: string | null; token: string | null; cycles: CycleQuote[
 type Step = "details" | "packages" | "account" | "done";
 type Form = { aumCrore: string; users: string; contactName: string; firmName: string; email: string; mobile: string; arn: string; website: string };
 type Notice = { tone: "error" | "info"; text: string; next?: string; nextLabel?: string };
+type ResumeReply = Quote & { converted?: boolean; error?: string; form?: Partial<Form> };
+type CodeReply = { status?: "sent" | "verified" | "skipped" | "wait" | "too_many"; sentTo?: string; error?: string };
 type MobileCheck =
   | { state: "idle" | "sending" | "skipped" | "verified" }
   | { state: "sent"; sentTo: string; skippedByUser?: boolean };
@@ -99,7 +101,7 @@ export function PricingFlow() {
       setResuming(true);
       try {
         const r = await fetch(`/api/public/pricing/quote?quote=${encodeURIComponent(target.quoteId)}&t=${encodeURIComponent(target.token)}`);
-        const j = (await r.json().catch(() => ({}))) as Record<string, any>;
+        const j = (await r.json().catch(() => ({}))) as ResumeReply;
         if (r.status === 409 && j.converted) {
           writeSaved(null);
           setNotice({ tone: "info", text: "An account was already created from this quote — sign in to continue.", next: "/login", nextLabel: "Sign in" });
@@ -179,8 +181,8 @@ export function PricingFlow() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ quoteId: quote.quoteId, token: quote.token }),
         });
-        const j = (await r.json().catch(() => ({}))) as Record<string, any>;
-        if (j.status === "sent") setMobile({ state: "sent", sentTo: j.sentTo });
+        const j = (await r.json().catch(() => ({}))) as CodeReply;
+        if (j.status === "sent") setMobile({ state: "sent", sentTo: j.sentTo ?? "your mobile" });
         else if (j.status === "verified") setMobile({ state: "verified" });
         else setMobile({ state: "skipped" });
       } catch {
@@ -199,10 +201,10 @@ export function PricingFlow() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ quoteId: quote.quoteId, token: quote.token }),
       });
-      const j = (await r.json().catch(() => ({}))) as Record<string, any>;
-      if (j.status === "sent") setMobile({ state: "sent", sentTo: j.sentTo });
+      const j = (await r.json().catch(() => ({}))) as CodeReply;
+      if (j.status === "sent") setMobile({ state: "sent", sentTo: j.sentTo ?? "your mobile" });
       else if (j.status === "verified") setMobile({ state: "verified" });
-      else if (j.status === "wait" || j.status === "too_many") setErrors((e) => ({ ...e, mobileCode: j.error }));
+      else if (j.status === "wait" || j.status === "too_many") setErrors((e) => ({ ...e, mobileCode: j.error ?? "Please wait a moment and try again." }));
       else setMobile({ state: "skipped" });
     } finally {
       setMobileBusy(false);
@@ -223,7 +225,7 @@ export function PricingFlow() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ quoteId: quote?.quoteId, token: quote?.token, code: mobileCode }),
       });
-      const j = (await r.json().catch(() => ({}))) as Record<string, any>;
+      const j = (await r.json().catch(() => ({}))) as CodeReply;
       if (!r.ok) {
         setErrors((e) => ({ ...e, mobileCode: j.error ?? "That code is not right." }));
         return false;
