@@ -7,10 +7,15 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PRICING,
   addMonths,
+  cycleLabel,
+  cyclesOffered,
+  isFirstPurchase,
   lateProRataCharge,
   monthlyBasePaise,
   parseCycle,
   quoteAll,
+  quoteOffered,
+  renewalCycleOf,
   quoteCycle,
   razorpayPeriod,
   resolvePricingSettings,
@@ -195,9 +200,73 @@ describe("helpers", () => {
     expect(addMonths(new Date("2026-11-18T05:00:00Z"), 12).toISOString()).toBe("2027-11-18T05:00:00.000Z");
   });
 
-  it("parses only the three cycles", () => {
+  it("parses the stored cycles, the commitment included", () => {
     expect(parseCycle("half_yearly")).toBe("half_yearly");
+    expect(parseCycle("commitment")).toBe("commitment");
     expect(parseCycle("weekly")).toBeNull();
     expect(parseCycle(undefined)).toBeNull();
+  });
+});
+
+describe("first purchase: the 6-month commitment (owner's rule of 2026-11-18)", () => {
+  it("300 Cr + 5 users: 6 × 26,250 = 1,57,500, no discount, + 28,350 GST = 1,85,850", () => {
+    const c = quoteCycle({ aumCrore: 300, users: 5, cycle: "commitment" });
+    expect(c.months).toBe(6);
+    expect(c.monthlyBasePaise).toBe(R(26_250));
+    expect(c.subtotalPaise).toBe(R(157_500));
+    expect(c.discountBp).toBe(0);
+    expect(c.discountPaise).toBe(0);
+    expect(c.taxablePaise).toBe(R(157_500));
+    expect(c.gstPaise).toBe(R(28_350));
+    expect(c.totalPaise).toBe(R(185_850));
+    expect(c.savingVsMonthlyPaise).toBe(0);
+    // Yearly is unchanged.
+    expect(quoteCycle({ aumCrore: 300, users: 5, cycle: "yearly" }).totalPaise).toBe(R(315_945));
+  });
+
+  it("a first purchase is offered the commitment and yearly only; everyone else the three", () => {
+    expect(cyclesOffered(true)).toEqual(["commitment", "yearly"]);
+    expect(cyclesOffered(false)).toEqual(["monthly", "half_yearly", "yearly"]);
+    expect(quoteOffered({ aumCrore: 300, users: 5 }, true).map((q) => q.totalPaise)).toEqual([R(185_850), R(315_945)]);
+    expect(quoteOffered({ aumCrore: 300, users: 5 }, false).map((q) => q.cycle)).toEqual(["monthly", "half_yearly", "yearly"]);
+    // The standard three never include the commitment.
+    expect(quoteAll({ aumCrore: 300, users: 5 }).map((q) => q.cycle)).not.toContain("commitment");
+  });
+
+  it("an existing firm — active, in grace, or with any payment on record — is never a first purchase", () => {
+    expect(isFirstPurchase({ status: "pending", lastPaymentAt: null, paidInvoices: 0 })).toBe(true);
+    expect(isFirstPurchase({ status: "trial", lastPaymentAt: null, paidInvoices: 0 })).toBe(true);
+    expect(isFirstPurchase({ status: "active", lastPaymentAt: null, paidInvoices: 0 })).toBe(false);
+    expect(isFirstPurchase({ status: "past_due", lastPaymentAt: null, paidInvoices: 0 })).toBe(false);
+    expect(isFirstPurchase({ status: "expired", lastPaymentAt: "2026-01-01", paidInvoices: 0 })).toBe(false);
+    expect(isFirstPurchase({ status: "pending", lastPaymentAt: null, paidInvoices: 1 })).toBe(false);
+  });
+
+  it("after the commitment the firm renews on a standard cycle — monthly by default", () => {
+    expect(renewalCycleOf("commitment")).toBe("monthly");
+    expect(renewalCycleOf(null)).toBe("monthly");
+    expect(renewalCycleOf("yearly")).toBe("yearly");
+    expect(razorpayPeriod("commitment")).toEqual({ period: "monthly", interval: 1 });
+  });
+
+  it("the admin sets the commitment's months and discount, and can switch the rule off", () => {
+    const s = resolvePricingSettings({ cycles: { ...DEFAULT_PRICING.cycles, commitment: { months: 3, discountBp: 500 } } });
+    const c = quoteCycle({ aumCrore: 300, users: 5, cycle: "commitment" }, s);
+    expect(c.months).toBe(3);
+    expect(c.discountPaise).toBe(R(3_937.5));
+    expect(cycleLabel("commitment", c.months)).toBe("3-month commitment");
+    expect(cyclesOffered(true, resolvePricingSettings({ firstPurchaseCommitment: false }))).toEqual(["monthly", "half_yearly", "yearly"]);
+    expect(validatePricingOverride({ cycles: { ...DEFAULT_PRICING.cycles, commitment: { months: 0, discountBp: 0 } } }).ok).toBe(false);
+  });
+
+  it("an override saved before the commitment existed still applies, with the default commitment", () => {
+    const old = {
+      cycles: { monthly: { months: 1, discountBp: 0 }, half_yearly: { months: 6, discountBp: 1000 }, yearly: { months: 12, discountBp: 2000 } },
+    };
+    expect(validatePricingOverride(old).ok).toBe(true);
+    const s = resolvePricingSettings(old);
+    expect(s.cycles.half_yearly.discountBp).toBe(1000);
+    expect(s.cycles.commitment).toEqual({ months: 6, discountBp: 0 });
+    expect(s.firstPurchaseCommitment).toBe(true);
   });
 });

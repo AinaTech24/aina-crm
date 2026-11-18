@@ -10,6 +10,11 @@
  *   Monthly base = maintenance + users × ₹1,250.
  *   Cycles: monthly (no discount) · half-yearly (6 months, 8% off the whole bill)
  *           · yearly (12 months, 15% off the whole bill).
+ *   First purchase (the owner's rule of 2026-11-18): a new firm buys either the
+ *   6-MONTH COMMITMENT (6 × the monthly base, no discount) or Yearly. Monthly
+ *   and half-yearly open up once the commitment has run; with no choice by its
+ *   end the firm continues monthly (lib/billing/renewal-review.ts).
+ *   `cyclesOffered` decides which a firm may buy — the server, never the browser.
  *   GST 18% on the discounted amount. Prices exclude GST.
  *
  * Every figure is in PAISE (integers). Rounding, in order:
@@ -29,14 +34,29 @@
 
 import { z } from "zod";
 
-export type CycleKey = "monthly" | "half_yearly" | "yearly";
-export const CYCLE_KEYS: readonly CycleKey[] = ["monthly", "half_yearly", "yearly"] as const;
+export type CycleKey = "monthly" | "half_yearly" | "yearly" | "commitment";
+/** The cycles a firm can renew on — every firm once its first purchase is behind it. */
+export type StandardCycleKey = Exclude<CycleKey, "commitment">;
+export const STANDARD_CYCLES: readonly StandardCycleKey[] = ["monthly", "half_yearly", "yearly"] as const;
+/** Every cycle key that can be stored (parseCycle accepts these). */
+export const CYCLE_KEYS: readonly CycleKey[] = ["monthly", "half_yearly", "yearly", "commitment"] as const;
 
+/** Static labels; the commitment's assumes the default 6 months — prefer `cycleLabel(cycle, months)`. */
 export const CYCLE_LABEL: Record<CycleKey, string> = {
   monthly: "Monthly",
   half_yearly: "Half-yearly",
   yearly: "Yearly",
+  commitment: "6-month commitment",
 };
+
+/** "6-month commitment" with the months actually bought; the plain label otherwise. */
+export function cycleLabel(cycle: CycleKey, months?: number | null): string {
+  if (cycle === "commitment" && months) return `${months}-month commitment`;
+  return CYCLE_LABEL[cycle];
+}
+
+/** The cycle a firm continues on after its commitment when it has not chosen one. */
+export const AFTER_COMMITMENT_DEFAULT: StandardCycleKey = "monthly";
 
 export type AumTier = {
   /** Stable key: "upto_500", "upto_1000", "above_1000" for the defaults. */
@@ -67,6 +87,11 @@ export type PricingSettings = {
   packageKey: string | null;
   /** Firms may create their account from /pricing. */
   onlineSignup: boolean;
+  /**
+   * A firm's FIRST purchase must be the commitment or yearly (the owner's rule
+   * of 2026-11-18). Off: a first purchase may pick any of the three standard cycles.
+   */
+  firstPurchaseCommitment: boolean;
 };
 
 export const DEFAULT_PRICING: PricingSettings = {
@@ -82,6 +107,7 @@ export const DEFAULT_PRICING: PricingSettings = {
     monthly: { months: 1, discountBp: 0 },
     half_yearly: { months: 6, discountBp: 800 },
     yearly: { months: 12, discountBp: 1500 },
+    commitment: { months: 6, discountBp: 0 },
   },
   gstBp: 1800,
   graceDays: 7,
@@ -90,6 +116,7 @@ export const DEFAULT_PRICING: PricingSettings = {
   sacCode: "998314",
   packageKey: null,
   onlineSignup: true,
+  firstPurchaseCommitment: true,
 };
 
 const paise = z.number().int().min(0).max(1_000_000_000_00);
@@ -113,6 +140,8 @@ const Override = z
       monthly: z.object({ months: z.literal(1), discountBp: z.number().int().min(0).max(5000) }),
       half_yearly: z.object({ months: z.literal(6), discountBp: z.number().int().min(0).max(5000) }),
       yearly: z.object({ months: z.literal(12), discountBp: z.number().int().min(0).max(5000) }),
+      // Optional: overrides saved before the commitment existed still validate.
+      commitment: z.object({ months: z.number().int().min(1).max(24), discountBp: z.number().int().min(0).max(5000) }).optional(),
     }),
     gstBp: z.number().int().min(0).max(5000),
     graceDays: z.number().int().min(0).max(60),
@@ -121,6 +150,7 @@ const Override = z
     sacCode: z.string().trim().regex(/^\d{4,8}$/),
     packageKey: z.string().trim().min(1).max(60).nullable(),
     onlineSignup: z.boolean(),
+    firstPurchaseCommitment: z.boolean(),
   })
   .partial();
 
@@ -270,9 +300,40 @@ export function quoteCycle(
   };
 }
 
-/** The three packages side by side, monthly → half-yearly → yearly. */
+/** The three standard packages side by side, monthly → half-yearly → yearly. */
 export function quoteAll(input: { aumCrore: number; users: number }, s: PricingSettings = DEFAULT_PRICING): CycleQuote[] {
-  return CYCLE_KEYS.map((cycle) => quoteCycle({ ...input, cycle }, s));
+  return STANDARD_CYCLES.map((cycle) => quoteCycle({ ...input, cycle }, s));
+}
+
+/**
+ * Which cycles a firm may buy now. A FIRST purchase (a firm that has never
+ * paid) gets the commitment and yearly while the admin's switch is on; every
+ * other purchase — renewals, a change from the next renewal, a firm that has
+ * paid before — the three standard cycles. The checkout, the sign-up and the
+ * change APIs all refuse anything not in this list.
+ */
+export function cyclesOffered(firstPurchase: boolean, s: PricingSettings = DEFAULT_PRICING): CycleKey[] {
+  return firstPurchase && s.firstPurchaseCommitment ? ["commitment", "yearly"] : [...STANDARD_CYCLES];
+}
+
+/** The packages to show a firm, in the order of `cyclesOffered`. */
+export function quoteOffered(
+  input: { aumCrore: number; users: number },
+  firstPurchase: boolean,
+  s: PricingSettings = DEFAULT_PRICING
+): CycleQuote[] {
+  return cyclesOffered(firstPurchase, s).map((cycle) => quoteCycle({ ...input, cycle }, s));
+}
+
+/**
+ * Has this firm ever bought? Existing firms — active (or in grace), or with a
+ * payment on record (a tax invoice, or a legacy Razorpay payment) — are never
+ * a first purchase, so the commitment never applies to them.
+ */
+export function isFirstPurchase(f: { status: string; lastPaymentAt: Date | string | null; paidInvoices: number }): boolean {
+  if (f.status === "active" || f.status === "past_due") return false;
+  if (f.lastPaymentAt) return false;
+  return f.paidInvoices === 0;
 }
 
 export type LateCharge = {
@@ -304,7 +365,11 @@ export function lateProRataCharge(monthlyBase: number, s: PricingSettings = DEFA
   };
 }
 
-/** Razorpay plan period for a cycle — monthly ×1, monthly ×6, yearly ×1. */
+/**
+ * Razorpay plan period for a cycle — monthly ×1, monthly ×6, yearly ×1. The
+ * commitment is paid once, upfront; the plan behind it is the MONTHLY plan the
+ * firm continues on (lib/billing/checkout.ts), so it maps to monthly ×1.
+ */
 export function razorpayPeriod(cycle: CycleKey): { period: "monthly" | "yearly"; interval: number } {
   if (cycle === "yearly") return { period: "yearly", interval: 1 };
   if (cycle === "half_yearly") return { period: "monthly", interval: 6 };
@@ -314,6 +379,11 @@ export function razorpayPeriod(cycle: CycleKey): { period: "monthly" | "yearly";
 /** Cycles to authorise the mandate for (Razorpay's total_count): ~10 years. */
 export function razorpayTotalCount(cycle: CycleKey): number {
   return cycle === "yearly" ? 10 : cycle === "half_yearly" ? 20 : 120;
+}
+
+/** The cycle a renewal continues on: a commitment never renews as a commitment. */
+export function renewalCycleOf(cycle: CycleKey | null | undefined): StandardCycleKey {
+  return !cycle || cycle === "commitment" ? AFTER_COMMITMENT_DEFAULT : cycle;
 }
 
 /** Calendar months later, clamped to the month's last day (31 Jan + 1 → 28/29 Feb). */
