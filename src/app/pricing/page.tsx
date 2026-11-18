@@ -18,7 +18,7 @@ export default function PricingPage() {
         <div className="max-w-3xl">
           <span className="text-xs font-bold uppercase tracking-widest text-site-crimson">Pricing</span>
           <h1 className="mt-3 font-brand text-4xl sm:text-5xl leading-tight text-site-ink text-balance">
-            One price, set by your AUM and your team.
+            Get your price to scale and automate your business.
           </h1>
         </div>
         <PricingFlow />
