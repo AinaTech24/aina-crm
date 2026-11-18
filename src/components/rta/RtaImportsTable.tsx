@@ -31,6 +31,8 @@ type Row = {
   created_at: string;
   uploaded_by_name: string | null;
   remarks: string | null;
+  /** The source file is still stored (a completed import's is kept 14 days). */
+  has_file?: boolean;
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -373,15 +375,17 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                             >
                               {diagBusy === r.id ? <Loader2 className="size-3.5 animate-spin" /> : <Stethoscope className="size-3.5" />}
                             </button>
+                            </>
+                          )}
+                          {r.has_file && (
                             <a
                               href={`/api/rta-imports/${r.id}/file`}
                               className="btn-icon"
-                              title="Download the file exactly as received — to try it on your computer with your password"
+                              title={r.status === "completed" ? "Download the complete file exactly as received (kept for 14 days after a successful import)" : "Download the file exactly as received — to try it on your computer with your password"}
                               aria-label="Download the stored file"
                             >
                               <Download className="size-3.5" />
                             </a>
-                            </>
                           )}
                           {r.status === "rejected" && (
                             <button

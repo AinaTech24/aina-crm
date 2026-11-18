@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (!row.file_key) {
     return NextResponse.json(
-      { error: "The file is no longer stored (a completed import removes its source file). Ask the registrar to send it again." },
+      { error: "The file is no longer stored. A completed import keeps its source file for 14 days; after that, ask the registrar to send it again." },
       { status: 409 },
     );
   }
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     bytes = await getObjectBytes(row.file_key);
   } catch {
-    return NextResponse.json({ error: "The stored file could not be read." }, { status: 404 });
+    return NextResponse.json({ error: "The stored file could not be read. A file imported before downloads were kept for completed imports was removed once it was read; request it from the registrar again." }, { status: 404 });
   }
 
   await withTenant(session.tenantId, async (tx) => {

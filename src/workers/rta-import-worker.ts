@@ -37,7 +37,7 @@ import { Q, RTA_BACKGROUND_PRIORITY } from "./queues";
 import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { isEncryptedOffice, openEncryptedOffice, encryptedOfficeMessage } from "@/lib/rta/office-decrypt";
-import { RICH_KINDS, classifyMailback } from "@/lib/rta/classify-mailback";
+import { RICH_KINDS, classifyMailback, isSipRejectionFileName } from "@/lib/rta/classify-mailback";
 import { appendMailbackPassword, getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
 import { materialiseSipRejectionsAfterImport } from "@/lib/rta/sip-rejection-rows";
@@ -317,7 +317,8 @@ async function importAlreadyFinished(job: {
 /** The actual import. Exported so it can be unit-tested / invoked one-off. */
 export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
   const ctx = { userId: job.userId, branchId: job.branchId ?? undefined, roles: job.roles };
-  const { importId, tenantId, source, kind, key, filename } = job;
+  const { importId, tenantId, source, key, filename } = job;
+  let kind = job.kind;
 
   // 1. Mark parsing.
   await withTenant(
@@ -376,6 +377,23 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
     await rememberTypedPassword(job, (job as any).source, opened.usedPassword, opened.usedExact);
     dataBuf = Buffer.from(opened.data);
     innerName = opened.filename;
+    // The ZIP's own name decided the kind, but the file INSIDE may say what it is: a bounce / SIP
+    // rejection report packed in a ZIP named after another report. Its own name wins, so the
+    // file is read as a rejection report and its rows reach the SIP Rejections page.
+    if (isSipRejectionFileName(innerName) && kind !== "sip_rejection_report") {
+      kind = "sip_rejection_report";
+      await withTenant(
+        tenantId,
+        async (tx) => {
+          await tx.execute(sql`
+            UPDATE rta_file_imports
+               SET kind = 'sip_rejection_report',
+                   remarks = ${sanitizeText(`Read as a SIP rejection report: the file inside the ZIP (${innerName.slice(0, 120)}) is one`)}
+             WHERE id = ${importId}::uuid`);
+        },
+        ctx,
+      );
+    }
     if (opened.others.length) {
       await queueUnpackedSiblings(job, opened.others).catch((e) =>
         captureError("[rta-import] could not queue the other files in a ZIP", e, { importId, tenantId }),
@@ -1143,6 +1161,45 @@ export async function enqueueRescansForAllFirms(): Promise<{ firms: number }> {
  *  - at most 3 re-runs per file, only files kept in storage, never a file over
  *    20 MB, newest 40 per firm per run.
  */
+/** How long the source file of a COMPLETED import stays downloadable on the RTA File Imports page. */
+const KEEP_COMPLETED_DAYS = Math.max(1, Number(process.env.RTA_KEEP_COMPLETED_DAYS ?? 14));
+
+/**
+ * Remove the source files of completed imports older than the keep window, and blank their
+ * `file_key` (the column is NOT NULL, so '' means "no file") so the page stops offering a download that no longer exists. An object that another
+ * live row still needs (a mail forwarded from several mailboxes shares one object) is kept until
+ * every row using it is past the window.
+ */
+export async function sweepKeptCompletedFiles(): Promise<number> {
+  const days = KEEP_COMPLETED_DAYS;
+  const rows = await withSystem(async (tx) => {
+    const r = await tx.execute(sql`
+      SELECT DISTINCT file_key FROM rta_file_imports
+       WHERE status = 'completed' AND file_key IS NOT NULL AND file_key <> ''
+         AND parsed_at < now() - make_interval(days => ${days}::int)
+       LIMIT 500`);
+    return (r.rows as Array<{ file_key: string }>).map((x) => x.file_key);
+  });
+  let removed = 0;
+  for (const key of rows) {
+    const stillNeeded = await withSystem(async (tx) => {
+      const r = await tx.execute(sql`
+        SELECT count(*)::int AS n FROM rta_file_imports
+         WHERE file_key = ${key} AND deleted_at IS NULL
+           AND NOT (status = 'completed' AND parsed_at < now() - make_interval(days => ${days}::int))`);
+      return Number((r.rows[0] as { n: number })?.n ?? 0) > 0;
+    });
+    if (stillNeeded) continue;
+    await deleteObject(key).catch(() => {});
+    await withSystem(async (tx) => {
+      await tx.execute(sql`UPDATE rta_file_imports SET file_key = '' WHERE file_key = ${key} AND status = 'completed'`);
+    });
+    removed++;
+  }
+  if (removed) console.log(`[rta-import] swept ${removed} kept source file(s) of completed imports older than ${days} days`);
+  return removed;
+}
+
 export type RtaRerunJob = { mode: "rerun"; tenantId: string };
 
 const RERUN_MAX_FILES = 40;
@@ -1223,6 +1280,7 @@ export async function enqueueRerunsForAllFirms(): Promise<{ firms: number }> {
   for (const t of tenants) await enqueueRerun(t, 0);
   // …and give every firm's password-refused ZIPs another try with the passwords it holds now.
   await enqueueRescansForAllFirms().catch((e) => captureError("[rta-import] nightly rescan enqueue failed", e));
+  await sweepKeptCompletedFiles().catch((e) => captureError("[rta-import] sweep of kept source files failed", e));
   return { firms: tenants.length };
 }
 
@@ -1358,11 +1416,12 @@ export function startRtaImportWorker() {
         // several rows sharing one file_key; the first to finish used to delete
         // the object out from under its siblings, which then failed with "The
         // specified key does not exist" and were recorded as genuine failures.
-        if (localKey && (await importSucceeded(job.data as any))) {
-          if (await isLastLiveClaimOnObject(localKey, (job.data as any)?.importId)) {
-            await deleteObject(localKey).catch(() => {});
-          }
-        }
+        // A COMPLETED import's file is no longer deleted here: it is kept for RTA_KEEP_COMPLETED_DAYS
+        // (default 14) so the person can download the whole file from the page, then removed by the
+        // nightly sweep (sweepKeptCompletedFiles).
+        void importSucceeded; // kept for the sweep's callers / tests
+        void isLastLiveClaimOnObject;
+        void localKey;
       }
     }),
     {

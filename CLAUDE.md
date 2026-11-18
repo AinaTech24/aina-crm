@@ -1329,6 +1329,14 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   files it `rejected` with a password message. `decodeRtaToText` never again hands binary Office bytes on as text — it throws
   what the reader said. The rescan (nightly, after a password is saved, and once at boot) also re-queues such rows, never a
   genuine layout failure.
+- **A completed import's file is kept 14 days and can be downloaded** (2026-11-18, `sweepKeptCompletedFiles`,
+  `RTA_KEEP_COMPLETED_DAYS`, `tests/rta-kept-completed-files.test.ts`). It used to be deleted the moment the import
+  completed, so a finished row had no download. Now every row with a stored file shows the download icon
+  (`has_file`); the nightly rerun removes the object once every row using it is past the window and sets its
+  `file_key` to '' (the column is NOT NULL). A file that lived inside a ZIP whose own NAME says SIP rejection /
+  bounce is read as a SIP rejection report whatever the ZIP's name said (`isSipRejectionFileName`).
+  A SIP row whose type text says rejection / dishonoured is a bounce even when the status column says processed
+  (`statusWithTypeText`).
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.

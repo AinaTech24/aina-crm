@@ -176,6 +176,14 @@ function detectKind(haystack: string, codesOnly: boolean): { kind: RtaFileKind; 
  * Classify by (filename, senderDomain). Returns null when unrecognised so the
  * caller can quarantine rather than mis-import.
  */
+/**
+ * Is this file name, taken ALONE, a SIP rejection / bounce report? For a file found inside a ZIP,
+ * where the registrar is already known and the name carries no CAMS / KFintech marker.
+ */
+export function isSipRejectionFileName(fileName: string): boolean {
+  return detectKind(fileName, false)?.kind === "sip_rejection_report";
+}
+
 export function classifyMailback(
   fileName: string,
   fromAddress: string | undefined | null

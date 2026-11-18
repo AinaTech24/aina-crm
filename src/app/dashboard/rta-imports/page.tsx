@@ -47,7 +47,7 @@ export default async function RtaImportsPage() {
       SELECT
         rfi.id, rfi.source, rfi.kind, rfi.period_start, rfi.period_end,
         rfi.file_name, rfi.status, rfi.rows_total, rfi.rows_imported,
-        rfi.rows_skipped, rfi.rows_failed, rfi.created_at, rfi.parsed_at, rfi.remarks,
+        rfi.rows_skipped, rfi.rows_failed, rfi.created_at, rfi.parsed_at, rfi.remarks, (rfi.file_key IS NOT NULL AND rfi.file_key <> '') AS has_file,
         u.name AS uploaded_by_name
       FROM rta_file_imports rfi
       LEFT JOIN users u ON u.id = rfi.uploaded_by
@@ -61,7 +61,7 @@ export default async function RtaImportsPage() {
       SELECT
         rfi.id, rfi.source, rfi.kind, rfi.period_start, rfi.period_end,
         rfi.file_name, rfi.status, rfi.rows_total, rfi.rows_imported,
-        rfi.rows_skipped, rfi.rows_failed, rfi.created_at, rfi.parsed_at, rfi.remarks,
+        rfi.rows_skipped, rfi.rows_failed, rfi.created_at, rfi.parsed_at, rfi.remarks, (rfi.file_key IS NOT NULL AND rfi.file_key <> '') AS has_file,
         rfi.deleted_at, u.name AS uploaded_by_name
       FROM rta_file_imports rfi
       LEFT JOIN users u ON u.id = rfi.uploaded_by

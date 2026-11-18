@@ -18,7 +18,7 @@ export async function GET(_req: NextRequest) {
         rfi.id, rfi.source, rfi.kind, rfi.period_start, rfi.period_end,
         rfi.file_name, rfi.file_size_bytes, rfi.status, rfi.parsed_at,
         rfi.rows_total, rfi.rows_imported, rfi.rows_skipped, rfi.rows_failed,
-        rfi.errors, rfi.remarks, rfi.created_at, rfi.uploaded_by,
+        rfi.errors, rfi.remarks, rfi.created_at, rfi.uploaded_by, (rfi.file_key IS NOT NULL AND rfi.file_key <> '') AS has_file,
         u.name AS uploaded_by_name
       FROM rta_file_imports rfi
       LEFT JOIN users u ON u.id = rfi.uploaded_by
