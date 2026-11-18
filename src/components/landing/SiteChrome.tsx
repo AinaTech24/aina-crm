@@ -14,6 +14,7 @@ export const SITE_NAV: [string, string][] = [
   ["Features", "/#features"],
   ["Why AINA", "/#why"],
   ["Solutions", "/solutions"],
+  ["Pricing", "/pricing"],
   ["Blog", "/blog"],
   ["FAQ", "/#faq"],
   ["Contact", "/#contact"],
@@ -48,6 +49,7 @@ export function SiteHeader({ nav = SITE_NAV }: { nav?: [string, string][] }) {
 
 const FOOTER_LINKS: [string, string][] = [
   ["Book a Demo", DEMO_URL],
+  ["Get pricing", "/pricing"],
   ["Community", COMMUNITY_URL],
   ["Blog", "/blog"],
   ["Log in", "/login"],

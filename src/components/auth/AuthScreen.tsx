@@ -425,14 +425,26 @@ export function AuthScreen({
               </form>
             )}
 
-            {/* Self-serve sign-up is closed: workspaces are created by Aina, so
-                the login screen offers no "Create one" link. */}
+            {/* New firms start from "Get pricing": a quote, then the account
+                and the payment (lib/billing/aum-pricing.ts). */}
+            {mode === "login" && !challenge && !enroll && (
+              <p className="mt-6 pt-6 border-t border-border text-center text-sm text-muted-foreground">
+                New to Aina?{" "}
+                <Link href="/pricing" className="text-primary font-semibold hover:underline">
+                  Get pricing
+                </Link>
+              </p>
+            )}
             {mode === "signup" && (
               <div className="mt-6 pt-6 border-t border-border text-center text-sm text-muted-foreground">
                 Already have an account?{" "}
                 <button type="button" onClick={() => switchMode("login")} className="text-primary font-semibold hover:underline">
                   Sign in
                 </button>
+                {" · "}
+                <Link href="/pricing" className="text-primary font-semibold hover:underline">
+                  Get pricing
+                </Link>
               </div>
             )}
 

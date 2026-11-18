@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
-// Self-serve sign-up is closed — workspaces are created by Aina.
+// Workspaces start from "Get pricing": a quote, then the firm's account and
+// the payment (the owner's decision of 2026-11-18). /signup leads there.
 export default function SignupPage() {
-  redirect("/login");
+  redirect("/pricing");
 }
