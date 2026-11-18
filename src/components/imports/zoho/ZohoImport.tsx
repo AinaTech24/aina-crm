@@ -19,6 +19,7 @@ import type { MeetingImportResult } from "@/lib/imports/zoho/run-meetings";
 import type { FamilyImportResult } from "@/lib/imports/zoho/run-families";
 import type { BusinessImportResult } from "@/lib/imports/zoho/run-business";
 import type { SchemePreview, SchemeApplyResult } from "@/lib/imports/zoho/run-schemes";
+import type { ModuleImportResult } from "@/lib/imports/zoho/run-modules";
 import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
 
 type Kind = "contacts" | "meetings";
@@ -32,6 +33,7 @@ export function ZohoImport({ mayContacts, mayMeetings }: { mayContacts: boolean;
       {mayContacts && <FamiliesStep />}
       {mayContacts && <BusinessStep />}
       {mayContacts && <SchemeStep />}
+      {mayContacts && <ModulesStep />}
     </div>
   );
 }
@@ -514,7 +516,7 @@ function FamiliesStep() {
   );
 }
 
-const PRODUCT_LABEL: Record<string, string> = { mutual_fund: "Mutual fund", sif: "SIF", aif: "AIF", pms: "PMS" };
+const PRODUCT_LABEL: Record<string, string> = { mutual_fund: "Mutual fund", sif: "SIF", aif: "AIF", pms: "PMS", direct_equity: "Direct equity" };
 const TYPE_LABEL: Record<string, string> = {
   sip: "SIP", sip_stop: "SIP Stop", lumpsum: "Purchase", switch: "Switch", stp: "STP", swp: "SWP", redemption: "Redemption", other: "Other",
 };
@@ -668,6 +670,133 @@ function BusinessStep() {
             )}
             {done && <Link className="underline text-sm" href="/dashboard/business-entries">Open Business Entries</Link>}
           </>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * Step 6 — the other Zoho modules (Leads, Risk Profiles, Task Tracker, Calls,
+ * SIP Tracking, Equity Brokerage), one JSON file of API records per module
+ * (lib/imports/zoho/run-modules.ts). The file says which module it holds.
+ */
+function ModulesStep() {
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState<"preview" | "import" | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ModuleImportResult | null>(null);
+  const [done, setDone] = useState<ModuleImportResult[]>([]);
+  const [toMe, setToMe] = useState(false);
+
+  async function send(f: File, dryRun: boolean) {
+    setBusy(dryRun ? "preview" : "import");
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("dryRun", dryRun ? "1" : "0");
+      fd.append("unmatchedToMe", toMe ? "1" : "0");
+      const res = await fetch("/api/imports/zoho/modules", { method: "POST", body: fd });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(j.error ?? "Something went wrong.");
+        return;
+      }
+      if (dryRun) setPreview(j);
+      else {
+        setDone((d) => [j, ...d]);
+        setPreview(null);
+        setFile(null);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const unmatched = (preview?.owners ?? []).filter((o) => !o.user);
+  const canImport = !!preview && preview.created + preview.updated > 0 && (unmatched.length === 0 || toMe);
+
+  async function apply() {
+    if (!file || !preview) return;
+    const ok = await confirmDialog({
+      title: `Import ${preview.label}?`,
+      message: `${preview.created} to add${preview.updated ? `, ${preview.updated} to update` : ""}. Nothing is sent and no reminder fires.`,
+      confirmLabel: "Import",
+    });
+    if (ok) await send(file, false);
+  }
+
+  return (
+    <Card>
+      <CardHeader title={<span className="flex items-center gap-2"><Badge tone="neutral">Step 6</Badge>More Zoho modules — Leads, Risk Profiles, Task Tracker, Calls, SIP Tracking, Equity Brokerage</span>} />
+      <CardBody className="space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="inline-flex">
+            <span className={buttonClass("secondary", "md", "cursor-pointer")}>
+              {busy === "preview" ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet className="size-4" />}
+              {file ? "Choose another file" : "Choose the Zoho data file (.json)"}
+            </span>
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="sr-only"
+              disabled={!!busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                setFile(f);
+                setPreview(null);
+                void send(f, true);
+              }}
+            />
+          </label>
+          {file && <span className="text-sm text-muted-foreground truncate max-w-xs">{file.name}</span>}
+        </div>
+        {err && <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{err}</div>}
+        {preview && (
+          <>
+            <p className="text-xs text-muted-foreground">Preview of {preview.label} — nothing has been saved yet.</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              <Stat label="Rows" value={preview.totalRows} />
+              <Stat label="To add" value={preview.created} />
+              <Stat label="To update" value={preview.updated} />
+              <Stat label="Already in the CRM" value={preview.already} />
+              <Stat label="Skipped" value={preview.skippedByReason.reduce((n, x) => n + x.count, 0)} tone="warn" />
+            </div>
+            {preview.notes.length > 0 && <ul className="text-sm space-y-1">{preview.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+            {preview.owners.length > 0 && <PeopleTable rows={preview.owners.map((o) => ({ owner: o.owner, count: o.rows, user: o.user }))} unit="Rows" />}
+            <div className="grid gap-4 md:grid-cols-2">
+              {preview.breakdown.length > 0 && <ValueTable title="What comes in" items={preview.breakdown.map((b) => ({ value: b.label, to: "", count: b.count }))} />}
+              {preview.skippedByReason.length > 0 && <ValueTable title="Skipped" items={preview.skippedByReason.map((x) => ({ value: x.reason, to: "skipped", count: x.count }))} />}
+            </div>
+            {unmatched.length > 0 && (
+              <div className="rounded-md border border-warning/50 bg-warning/5 p-3 space-y-2 text-sm">
+                <div className="font-medium">{unmatched.length} Zoho user{unmatched.length === 1 ? " has" : "s have"} no user in the CRM</div>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={toMe} onChange={(e) => setToMe(e.target.checked)} />
+                  Give their records to me
+                </label>
+              </div>
+            )}
+            <div className="flex justify-end">
+              <Button variant="primary" disabled={!canImport || !!busy} onClick={apply}>
+                {busy === "import" ? <Loader2 className="size-4 animate-spin" /> : null}
+                Import {preview.label}
+              </Button>
+            </div>
+          </>
+        )}
+        {done.length > 0 && (
+          <ul className="text-sm space-y-1">
+            {done.map((d, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <Check className="size-4 text-success" />
+                {d.label}: {d.created} added{d.updated ? `, ${d.updated} updated` : ""}{d.already ? `, ${d.already} already there` : ""}.
+              </li>
+            ))}
+          </ul>
         )}
       </CardBody>
     </Card>
