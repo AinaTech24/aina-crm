@@ -27,9 +27,10 @@ export const REPORT_SUBJECTS = [
   "goal",
   "service_request",
   "claim",
-  // Meetings — offered in the builder only to a firm with the zohoImport flag
+  // Meetings and Business Entry lines — offered in the builder only to a firm with the zohoImport flag
   // (Zoho report parity for We Care, 2026-11-19); the API refuses it elsewhere.
   "review_meeting",
+  "business_line",
 ] as const;
 export const REPORT_TYPES = ["detailed", "summary", "matrix"] as const;
 export const REPORT_SHARE_SCOPES = ["private", "team", "tenant"] as const;

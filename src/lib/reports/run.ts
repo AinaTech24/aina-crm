@@ -16,7 +16,7 @@ import { getCatalog, getField, type FieldType } from "@/lib/filter/catalog";
 import { compileToSql, bindCompiled } from "@/lib/filter/compiler";
 import { sql as dsql, type SQL } from "drizzle-orm";
 
-export type ReportSubject = "investor" | "lead" | "task" | "user" | "transaction" | "sip" | "insurance" | "goal" | "service_request" | "claim" | "review_meeting";
+export type ReportSubject = "investor" | "lead" | "task" | "user" | "transaction" | "sip" | "insurance" | "goal" | "service_request" | "claim" | "review_meeting" | "business_line";
 
 export type ReportAggregate = "count" | "sum" | "avg" | "min" | "max";
 

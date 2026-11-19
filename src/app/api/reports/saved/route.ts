@@ -108,8 +108,8 @@ export async function POST(req: NextRequest) {
     }
     const body = parse.data;
     // Meetings reports: only a firm with the Zoho import flag (We Care, 2026-11-19).
-    if (body.subject === "review_meeting" && !(await zohoImportEnabled(session.tenantId, session.roles))) {
-      return NextResponse.json({ error: "Meetings reports are not available for this firm." }, { status: 403 });
+    if ((body.subject === "review_meeting" || body.subject === "business_line") && !(await zohoImportEnabled(session.tenantId, session.roles))) {
+      return NextResponse.json({ error: "This report module is not available for this firm." }, { status: 403 });
     }
 
     // Catalog validation — every referenced field must exist (no injection,

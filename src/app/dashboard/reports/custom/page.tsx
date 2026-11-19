@@ -33,6 +33,7 @@ const SUBJECT_LABEL: Record<string, string> = {
   service_request: "Service Requests",
   claim: "Insurance Claims",
   review_meeting: "Meetings",
+  business_line: "Business Entries",
 };
 const TYPE_META: Record<string, { label: string; icon: typeof Table2 }> = {
   detailed: { label: "Detailed", icon: Table2 },

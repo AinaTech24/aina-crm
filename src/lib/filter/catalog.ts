@@ -57,7 +57,8 @@ export interface SubjectCatalog {
     | "service_request"
     | "claim"
     | "review_meeting"
-    | "business_entry";
+    | "business_entry"
+    | "business_line";
   /** Primary table + alias used in compiled SQL. */
   table: string;
   alias: string;
@@ -649,6 +650,36 @@ export const businessEntryCatalog: SubjectCatalog = {
   relations: {},
 };
 
+/** Business Entry LINES — one row per scheme line, with its entry's facts
+ *  (owner, client, date). Zoho report parity for We Care (2026-11-19): a Zoho
+ *  MF Transaction report filters and sums the Purchase / Redemption subform
+ *  lines. The associate and the Zoho MFT number live in the entry's notes. */
+export const businessLineCatalog: SubjectCatalog = {
+  subject: "business_line",
+  table: "business_entry_lines",
+  alias: "bl",
+  fields: [
+    { key: "owner_name", label: "Owner / RM", type: "string", sql: "(SELECT u.name FROM business_entries e JOIN users u ON u.id = e.rm_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
+    { key: "associate", label: "Associate", type: "string", sql: "(SELECT NULLIF(btrim(substring(e.notes from 'Associate: ([^·]+)')), '') FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
+    { key: "client_name", label: "Client", type: "string", sql: "(SELECT e.client_name FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
+    { key: "entry_ref", label: "Zoho MF Transaction", type: "string", sql: "(SELECT substring(e.notes from 'Zoho (MFT[^ ·]*)') FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
+    { key: "business_date", label: "Date", type: "date", sql: "(SELECT e.business_date FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_DATE_OPS },
+    { key: "entry_status", label: "Entry status", type: "enum", sql: "(SELECT e.status FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_ENUM_OPS, enumValues: ["draft", "confirmed", "emailed", "cancelled"] },
+    { key: "product_type", label: "Product", type: "enum", sql: "(SELECT e.product_type FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_ENUM_OPS, enumValues: ["mutual_fund", "direct_equity", "pms", "aif", "sif", "bond", "ncd", "p2p", "las", "other"] },
+    { key: "scheme_name", label: "Scheme", type: "string", sql: "bl.scheme_name", ops: COMMON_STRING_OPS },
+    { key: "amc_name", label: "AMC", type: "string", sql: "bl.amc_name", ops: COMMON_STRING_OPS },
+    { key: "txn_type", label: "Transaction", type: "enum", sql: "bl.txn_type", ops: COMMON_ENUM_OPS, enumValues: ["sip", "sip_topup", "sip_stop", "lumpsum", "additional_purchase", "switch", "stp", "swp", "redemption", "other"] },
+    { key: "asset_type", label: "Type (Liquid / Equity …)", type: "string", sql: "(CASE bl.asset_class WHEN 'liquid' THEN 'Liquid' WHEN 'equity' THEN 'Equity' WHEN 'debt' THEN 'Debt' WHEN 'hybrid' THEN 'Hybrid' WHEN 'gold' THEN 'Gold' ELSE 'Other' END)", ops: COMMON_STRING_OPS },
+    { key: "rejected", label: "Rejected", type: "string", sql: "(CASE WHEN bl.type_label LIKE '%(rejected)' THEN 'Yes' ELSE 'No' END)", ops: COMMON_STRING_OPS },
+    { key: "purchase_amount", label: "Purchase amount (₹)", type: "currency", sql: "(CASE WHEN bl.txn_type IN ('lumpsum', 'additional_purchase', 'switch', 'stp') THEN bl.amount ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "redemption_amount", label: "Redemption amount (₹)", type: "currency", sql: "(CASE WHEN bl.txn_type IN ('redemption', 'swp') THEN bl.amount ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "net_purchase", label: "Net purchase (₹)", type: "currency", sql: "(CASE WHEN bl.txn_type IN ('lumpsum', 'additional_purchase', 'switch', 'stp') THEN bl.amount WHEN bl.txn_type IN ('redemption', 'swp') THEN -bl.amount ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "sip_amount", label: "SIP amount (₹)", type: "currency", sql: "(CASE WHEN bl.txn_type IN ('sip', 'sip_topup') THEN bl.amount ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "amount", label: "Amount (₹)", type: "currency", sql: "bl.amount", ops: COMMON_NUMBER_OPS },
+  ],
+  relations: {},
+};
+
 export const CATALOGS: Record<string, SubjectCatalog> = {
   investor: investorCatalog,
   lead: leadCatalog,
@@ -662,6 +693,7 @@ export const CATALOGS: Record<string, SubjectCatalog> = {
   claim: claimCatalog,
   review_meeting: reviewMeetingCatalog,
   business_entry: businessEntryCatalog,
+  business_line: businessLineCatalog,
 };
 
 export function getCatalog(subject: string): SubjectCatalog {

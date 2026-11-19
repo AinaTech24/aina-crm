@@ -65,6 +65,16 @@ export async function reportSubjectScope(tx: any, session: SessionUser, subject:
         OR ${await clientOf("investor_id")}
         OR (${sql.raw(`${a}.investor_id`)} IS NULL AND ${firm ? sql`TRUE` : sql`FALSE`}))`;
     }
+    case "business_line": {
+      // A line follows its entry: the business_entry rule over the parent row.
+      const firm = cap("investor.view.all") && !isBranchScoped(session);
+      if (!invAllowed) return sql`EXISTS (SELECT 1 FROM business_entries rsc_e WHERE rsc_e.id = ${sql.raw(`${a}.entry_id`)} AND rsc_e.rm_id = ${session.userId}::uuid)`;
+      const clientScope = clientsFree ? sql`TRUE` : await investorScopeSql(tx, session, "rsc_i");
+      return sql`EXISTS (SELECT 1 FROM business_entries rsc_e WHERE rsc_e.id = ${sql.raw(`${a}.entry_id`)} AND (
+        rsc_e.rm_id = ${session.userId}::uuid
+        OR (rsc_e.investor_id IS NOT NULL AND EXISTS (SELECT 1 FROM investors rsc_i WHERE rsc_i.id = rsc_e.investor_id AND ${clientScope}))
+        OR (rsc_e.investor_id IS NULL AND ${firm ? sql`TRUE` : sql`FALSE`})))`;
+    }
     case "user":
       return sql`TRUE`;
     default:
