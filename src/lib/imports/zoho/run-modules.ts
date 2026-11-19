@@ -435,13 +435,12 @@ export async function importZohoModule(
         count(`${m.kind || "(blank)"} · ${m.type || "(no type)"}`);
       }
       for (let i = 0; i < sets.length; i += 500) {
-        const batch = sets.slice(i, i + 500);
-        const ids = batch.map((b) => b.id);
-        const types = batch.map((b) => b.type ?? "");
-        const kinds = batch.map((b) => b.kind ?? "");
+        // A JS array interpolated into sql`` becomes a list of params, not an
+        // array — pass the batch as one jsonb value instead.
+        const batch = sets.slice(i, i + 500).map((b) => ({ id: b.id, t: b.type ?? "", k: b.kind ?? "" }));
         await tx.execute(sql`
           UPDATE business_entry_lines l SET source_type = NULLIF(v.t, ''), source_kind = NULLIF(v.k, ''), updated_at = now()
-            FROM unnest(${ids}::uuid[], ${types}::text[], ${kinds}::text[]) AS v(id, t, k)
+            FROM jsonb_to_recordset(${JSON.stringify(batch)}::jsonb) AS v(id uuid, t text, k text)
            WHERE l.id = v.id AND l.tenant_id = ${actor.tenantId}::uuid
         `);
       }
