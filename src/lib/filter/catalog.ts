@@ -681,6 +681,11 @@ export const businessLineCatalog: SubjectCatalog = {
     { key: "redemption_amount", label: "Redemption amount (₹)", type: "currency", sql: "(CASE WHEN bl.txn_type IN ('redemption', 'swp') THEN bl.amount ELSE 0 END)", ops: COMMON_NUMBER_OPS },
     { key: "net_purchase", label: "Net purchase (₹)", type: "currency", sql: "(CASE WHEN bl.txn_type IN ('lumpsum', 'additional_purchase', 'switch', 'stp') THEN bl.amount WHEN bl.txn_type IN ('redemption', 'swp') THEN -bl.amount ELSE 0 END)", ops: COMMON_NUMBER_OPS },
     { key: "sip_amount", label: "SIP amount (₹)", type: "currency", sql: "(CASE WHEN bl.txn_type IN ('sip', 'sip_topup') THEN bl.amount ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "sip_stop_amount", label: "SIP stop amount (₹)", type: "currency", sql: "(CASE WHEN bl.txn_type = 'sip_stop' THEN bl.amount ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "net_sip", label: "Net SIP (₹)", type: "currency", sql: "(CASE WHEN bl.txn_type IN ('sip', 'sip_topup') THEN bl.amount WHEN bl.txn_type = 'sip_stop' THEN -bl.amount ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    // Where the entry was first written: Zoho's MF Transaction module, Zoho's
+    // old Mutual Fund module (MFT-OLD-…), another Zoho module, or the CRM.
+    { key: "entry_source", label: "Recorded in", type: "string", sql: "(SELECT CASE WHEN e.notes ~ '^Zoho MFT-OLD-' THEN 'Zoho Mutual Fund (old module)' WHEN e.notes ~ '^Zoho MFT[0-9]' THEN 'Zoho MF Transaction' WHEN e.notes ~ '^Zoho ' THEN 'Zoho (other module)' ELSE 'CRM' END FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
     { key: "amount", label: "Amount (₹)", type: "currency", sql: "bl.amount", ops: COMMON_NUMBER_OPS },
   ],
   relations: {},
