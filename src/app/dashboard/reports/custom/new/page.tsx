@@ -55,6 +55,11 @@ function Builder() {
   const [schedule, setSchedule] = useState({ enabled: false, freq: "weekly", hour: 9, day: 1, emails: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Meetings as a module: only for a firm with the Zoho import flag (We Care).
+  const [meetingsOn, setMeetingsOn] = useState(false);
+  useEffect(() => {
+    fetch("/api/imports/zoho/contacts").then((r) => r.json()).then((j) => setMeetingsOn(!!j?.enabled)).catch(() => {});
+  }, []);
 
   const cat = CATALOGS[form.subject] ?? CATALOGS.investor;
   const numericFields = useMemo(() => cat.fields.filter((f) => NUMERIC_TYPES.has(f.type)), [cat]);
@@ -174,7 +179,7 @@ function Builder() {
           <Field label="Name *"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. HNI clients with no review in 90 days" className="input-base" /></Field>
           <Field label="Module">
             <SelectField value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className="w-full">
-              {SUBJECTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              {[...SUBJECTS, ...(meetingsOn || form.subject === "review_meeting" ? ([["review_meeting", "Meetings"]] as [string, string][]) : [])].map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </SelectField>
           </Field>
         </div>

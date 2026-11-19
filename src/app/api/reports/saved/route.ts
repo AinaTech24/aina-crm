@@ -16,6 +16,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { savedReports, REPORT_SUBJECTS, REPORT_TYPES, REPORT_SHARE_SCOPES, REPORT_AGGREGATES } from "@/db/schema";
 import { FilterASTSchema } from "@/lib/filter/ast";
 import { assertValidReport } from "@/lib/reports/run";
+import { zohoImportEnabled } from "@/lib/imports/zoho/access";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
     const body = parse.data;
+    // Meetings reports: only a firm with the Zoho import flag (We Care, 2026-11-19).
+    if (body.subject === "review_meeting" && !(await zohoImportEnabled(session.tenantId, session.roles))) {
+      return NextResponse.json({ error: "Meetings reports are not available for this firm." }, { status: 403 });
+    }
 
     // Catalog validation — every referenced field must exist (no injection,
     // no broken reports). Throws a clean message the client can show.
