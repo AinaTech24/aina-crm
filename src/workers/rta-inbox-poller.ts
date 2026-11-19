@@ -53,6 +53,7 @@ import {
 } from "@/lib/rta/mailback-config";
 import { loadRtaInboxConfig } from "@/lib/rta/inbox-config";
 import { captureError } from "@/lib/observability/capture";
+import { archiveDays, archiveRawMail, sweepArchivedMail } from "@/lib/rta/inbound-archive";
 import { addressRef, fileRef, safeError, urlRef } from "@/lib/observability/log-safe";
 
 // Background imports have no human uploader. A stable sentinel enables the
@@ -156,6 +157,14 @@ async function logInbound(
   // mail only when it could not be routed. Set before the insert so a failed
   // log write cannot hide the outcome.
   msg.outcome = fields.outcome;
+  // Keep the whole mail for Inbound Mail's viewer and attachment downloads.
+  // Best-effort: an archive failure must never stop the log or an import.
+  let archived: { key: string; size: number } | null = null;
+  try {
+    archived = await archiveRawMail(msg.raw, msg.date);
+  } catch (e) {
+    captureError("[rta-inbox] raw mail archive failed", safeError(e));
+  }
   try {
     const atts = fields.attachments ?? [];
     await withSystem(async (tx) => {
@@ -163,7 +172,8 @@ async function logInbound(
         INSERT INTO rta_inbound_messages (
           tenant_id, forward_address_id, message_id, from_address, from_name,
           to_address, recipients, subject, body_snippet, received_at,
-          outcome, reason, attachment_count, queued_count, duplicate_count, attachments
+          outcome, reason, attachment_count, queued_count, duplicate_count, attachments,
+          raw_key, raw_size
         ) VALUES (
           ${fields.tenantId ?? null}, ${fields.forwardAddressId ?? null},
           ${msg.messageId ?? null}, ${msg.from ?? null}, ${msg.fromName ?? null},
@@ -172,7 +182,8 @@ async function logInbound(
           ${msg.subject ?? null}, ${(msg.text ?? "").slice(0, BODY_SNIPPET_MAX) || null},
           ${msg.date ?? null}, ${fields.outcome}, ${fields.reason ?? null},
           ${msg.attachments.length}, ${fields.queued ?? 0}, ${fields.duplicates ?? 0},
-          ${JSON.stringify(atts)}::jsonb
+          ${JSON.stringify(atts)}::jsonb,
+          ${archived?.key ?? null}, ${archived?.size ?? null}
         )
         ON CONFLICT (message_id) WHERE message_id IS NOT NULL DO UPDATE SET
           tenant_id = EXCLUDED.tenant_id,
@@ -182,7 +193,9 @@ async function logInbound(
           attachment_count = EXCLUDED.attachment_count,
           queued_count = EXCLUDED.queued_count,
           duplicate_count = EXCLUDED.duplicate_count,
-          attachments = EXCLUDED.attachments
+          attachments = EXCLUDED.attachments,
+          raw_key = COALESCE(EXCLUDED.raw_key, rta_inbound_messages.raw_key),
+          raw_size = COALESCE(EXCLUDED.raw_size, rta_inbound_messages.raw_size)
       `);
     });
   } catch (e) {
@@ -746,6 +759,12 @@ export function startRtaInboxPollerWorker() {
           lastHeldRetry = Date.now();
           const r = await retryHeldS3Inbound();
           if (r.recovered) console.log(`[rta-inbox] S3: recovered ${r.recovered} of ${r.retried} held mail(s)`);
+          // The Inbound Mail archive keeps each raw mail RTA_INBOUND_ARCHIVE_DAYS days.
+          const gone = await sweepArchivedMail().catch((e) => {
+            captureError("[rta-inbox] archive sweep failed", e);
+            return 0;
+          });
+          if (gone) console.log(`[rta-inbox] archive: removed ${gone} mail(s) older than ${archiveDays()}d`);
         }
       } catch (e) {
         outcome = "error";

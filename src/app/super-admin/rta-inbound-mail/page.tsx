@@ -44,10 +44,10 @@ export default async function PlatformRtaInboundMailPage() {
           <strong>Already imported</strong> is a safe no-op — the same file was already in flight.
         </p>
         <p>
-          Only the first 2000 characters of the plain-text body are stored, and attachment <em>bytes</em> are never kept
-          here — they go straight to S3 and through the import pipeline. For the full original message, open the{" "}
-          <code className="bg-background px-1 rounded">{status.user ?? "rta@…"}</code> mailbox directly; the poller only
-          flags mail as read, it never deletes.
+          Each mail is kept whole for 30 days: <strong>Open full mail</strong> shows it as a mail client would (remote
+          images are not loaded), and every attachment — imported or not — can be downloaded, as can the .eml. After
+          30 days only the log row stays; files that were imported remain downloadable from their import. Opens and
+          downloads are recorded in the audit log.
         </p>
       </div>
     </div>

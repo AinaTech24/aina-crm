@@ -53,7 +53,8 @@ export async function GET(req: NextRequest) {
                m.message_id, m.from_address, m.from_name, m.to_address,
                m.subject, m.body_snippet, m.received_at, m.created_at,
                m.outcome, m.reason,
-               m.attachment_count, m.queued_count, m.duplicate_count, m.attachments
+               m.attachment_count, m.queued_count, m.duplicate_count, m.attachments,
+               (m.raw_key IS NOT NULL) AS has_raw
         FROM rta_inbound_messages m
         LEFT JOIN tenants t ON t.id = m.tenant_id
         WHERE ${whereSql}
@@ -94,6 +95,7 @@ export async function GET(req: NextRequest) {
         queuedCount: r.queued_count,
         duplicateCount: r.duplicate_count,
         attachments: r.attachments ?? [],
+        hasRaw: !!r.has_raw,
       })),
       summary,
     });

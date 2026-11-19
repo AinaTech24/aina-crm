@@ -24,7 +24,11 @@ import {
   ShieldCheck,
   FileWarning,
   Paperclip,
+  Download,
+  MailOpen,
 } from "lucide-react";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { RtaMailViewer } from "./RtaMailViewer";
 
 type AttachmentLog = {
   filename: string;
@@ -54,6 +58,8 @@ type Message = {
   queuedCount: number;
   duplicateCount: number;
   attachments: AttachmentLog[];
+  /** The whole mail is kept (archive) — it can be opened and its attachments downloaded. */
+  hasRaw: boolean;
 };
 
 /** Outcome → label, colour, icon. Ordered as the filter strip renders them. */
@@ -142,6 +148,7 @@ export function RtaInboundMailLog() {
   const [filter, setFilter] = useState<string>("");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [viewing, setViewing] = useState<string | null>(null);
 
   const load = useCallback(
     async (opts?: { quiet?: boolean }) => {
@@ -314,6 +321,31 @@ export function RtaInboundMailLog() {
                       <tr className="bg-muted/20 border-t">
                         <td />
                         <td colSpan={6} className="px-3 py-3 space-y-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {m.hasRaw ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setViewing(m.id)}
+                                  className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+                                >
+                                  <MailOpen className="size-3.5" /> Open full mail
+                                </button>
+                                <DownloadButton
+                                  url={`/api/super-admin/rta-inbound-mail/${m.id}/download?eml=1`}
+                                  className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+                                  title="The whole mail as an .eml file — opens in Outlook or Thunderbird"
+                                >
+                                  <Download className="size-3.5" /> Download .eml
+                                </DownloadButton>
+                              </>
+                            ) : (
+                              <span className="text-2xs text-muted-foreground">
+                                The full mail is not kept for this message (mail is kept 30 days, from when the viewer was added).
+                              </span>
+                            )}
+                          </div>
+
                           {/* Routing detail */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-xs">
                             <div>
@@ -357,6 +389,16 @@ export function RtaInboundMailLog() {
                                       {a.outcome}
                                     </span>
                                     {a.reason && <span className="text-muted-foreground italic">{a.reason}</span>}
+                                    {(m.hasRaw || a.importId) && (
+                                      <DownloadButton
+                                        url={`/api/super-admin/rta-inbound-mail/${m.id}/download?log=${i}`}
+                                        filename={a.filename}
+                                        className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-0.5 text-2xs font-medium hover:bg-accent"
+                                        title={`Download ${a.filename}`}
+                                      >
+                                        <Download className="size-3" /> Download
+                                      </DownloadButton>
+                                    )}
                                   </li>
                                 ))}
                               </ul>
@@ -382,6 +424,7 @@ export function RtaInboundMailLog() {
           </table>
         )}
       </div>
+      {viewing && <RtaMailViewer id={viewing} onClose={() => setViewing(null)} />}
     </div>
   );
 }

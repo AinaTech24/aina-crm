@@ -73,6 +73,14 @@ export const rtaInboundMessages = pgTable(
      */
     mailDeletedAt: timestamp("mail_deleted_at", { withTimezone: true }),
 
+    /**
+     * The whole mail (.eml) in the uploads bucket, kept RTA_INBOUND_ARCHIVE_DAYS
+     * (30) days so Inbound Mail can show it and its attachments (migration 0281).
+     * NULL = not kept.
+     */
+    rawKey: text("raw_key"),
+    rawSize: integer("raw_size"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

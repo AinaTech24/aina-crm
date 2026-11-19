@@ -87,6 +87,8 @@ export interface InboundRawMessage {
    * between deleting the stored mail and holding it for a retry.
    */
   outcome?: string;
+  /** The whole message as received (.eml) — archived for Aina Admin → Inbound Mail. */
+  raw?: Buffer;
 }
 
 const EMAIL_RE = /[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/gi;
@@ -189,6 +191,7 @@ export async function parseInboundSource(source: Buffer, uid: number, envelope?:
     recipients: collectRecipients(parsed, envelope),
     senderCandidates: collectSenderCandidates(parsed, fromAddr?.address),
     attachments,
+    raw: source,
   };
 }
 
