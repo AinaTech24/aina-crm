@@ -1,6 +1,8 @@
 import { type FilterAST, type Predicate, isGroup, isPredicate, type FieldRef } from "./ast";
 import { getCatalog, getField, type FieldDef } from "./catalog";
 import { getRuntimeField, validateRuntimeFilter } from "./event-fields";
+import { resolveReportPeriod } from "@/lib/reports/period";
+import { indiaToday } from "@/lib/dashboards/system/period";
 
 /**
  * Compiles a FilterAST into a JavaScript predicate `(row) => boolean` for
@@ -138,6 +140,13 @@ function evalPredicate(node: Predicate, row: Record<string, any>, subject: strin
       const dur = node.duration ?? (node.value as any);
       const max = addDuration(new Date(), dur);
       return d >= new Date() && d <= max;
+    }
+    case "date_period": {
+      if (value == null || value === "") return false;
+      const p = resolveReportPeriod(String(node.value ?? ""), { fallback: "month" });
+      if (p.unbounded) return true;
+      const d = indiaToday(asDate(value));
+      return d >= p.from && d <= p.to;
     }
     case "date_before":
       return asDate(value) < asDate(node.value);

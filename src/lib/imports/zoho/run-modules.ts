@@ -25,7 +25,7 @@ import { ownerKey } from "./contacts";
 import type { ImportActor } from "./run-contacts";
 import { ZohoFileError } from "./workbook";
 import {
-  DEFAULT_RISK_BANDS, MODULE_LABEL, brokerageByMonth, categoryFromScore, mapCall, mapLead, mapRiskProfile, mapSipTracking, mapTask,
+  DEFAULT_RISK_BANDS, MODULE_LABEL, brokerageByMonth, categoryFromScore, mapCall, mapLead, mapLineType, mapRiskProfile, mapSipTracking, mapTask,
   type RiskBand, type ZohoModule, type ZohoRecord,
 } from "./modules";
 
@@ -227,7 +227,10 @@ export async function importZohoModule(
         result.created++;
       }
       await insertAll(riskProfileResponses, rows);
-      // The client's own profile: the latest Zoho one, unless the CRM already holds a later one.
+      // The client's own profile: the latest Zoho one, unless the client has answered the
+      // CRM's own questionnaire (link / OTP / physical form) after it. A category that was
+      // only set or imported (the Excel client load stamped those with the import date)
+      // gives way to Zoho's questionnaire.
       for (const [investorId, m] of latest) {
         const res = await tx.execute(sql`
           UPDATE investors SET
@@ -238,8 +241,12 @@ export async function importZohoModule(
                  risk_profile_version = COALESCE(risk_profile_version, 0) + 1,
                  updated_at = now()
            WHERE tenant_id = ${actor.tenantId}::uuid AND id = ${investorId}::uuid
-             AND (risk_profile_signed_at IS NULL OR risk_profile_provisional
-                  OR risk_profile_signed_at <= ${m.signedAt!.toISOString()}::timestamptz)
+             AND NOT EXISTS (
+               SELECT 1 FROM risk_profile_responses r
+                WHERE r.tenant_id = ${actor.tenantId}::uuid AND r.investor_id = ${investorId}::uuid
+                  AND r.verification_method IN ('client_link', 'client_otp', 'client_physical')
+                  AND r.signed_at > ${m.signedAt!.toISOString()}::timestamptz
+             )
           RETURNING id
         `);
         if (res.rows.length) result.updated++;
@@ -265,9 +272,14 @@ export async function importZohoModule(
         if (done.has(m.zohoId)) { result.already++; continue; }
         const client = m.clientZohoId ? clientOf.get(m.clientZohoId) : undefined;
         const lead = m.leadZohoId ? leadOf.get(m.leadZohoId) : undefined;
-        const finished = m.status === "completed" || m.status === "cancelled";
         const created = m.created ?? m.start ?? now;
-        count(`${m.statusText || "(blank)"} → ${m.status.replace("_", " ")}`);
+        // Unfinished work older than 30 days comes in closed (the firm's choice):
+        // years-old "open" Zoho tasks would otherwise sit on every dashboard as overdue.
+        const stale = (m.status === "open" || m.status === "in_progress") && now.getTime() - created.getTime() > 30 * DAY;
+        const status = stale ? "cancelled" : m.status;
+        const finished = status === "completed" || status === "cancelled";
+        const remarks = stale ? [`Closed at the move from Zoho — it was "${m.statusText || "no status"}" there`, m.remarks].filter(Boolean).join(" · ") : m.remarks;
+        count(stale ? `${m.statusText || "(blank)"}, older than 30 days → closed` : `${m.statusText || "(blank)"} → ${status.replace("_", " ")}`);
         if (m.clientZohoId && !client) count("Client not found (kept, unlinked)");
         rows.push({
           tenantId: actor.tenantId,
@@ -279,9 +291,9 @@ export async function importZohoModule(
           type: "custom",
           title: m.title,
           description: m.description,
-          remarks: m.remarks,
+          remarks,
           priority: m.priority,
-          status: m.status,
+          status,
           assigneeId: userId(m.assignee) ?? userId(m.owner),
           createdById: userId(m.owner),
           entryDate: created.toISOString().slice(0, 10),
@@ -291,7 +303,12 @@ export async function importZohoModule(
           remindAt: null,
           reminderFiredAt: finished ? null : now,
           overdueNotifiedAt: finished ? null : now,
-          meta: { ...m.meta, ...(m.clientZohoId && !client ? { zohoClient: m.clientName } : {}) },
+          meta: {
+            ...m.meta,
+            ...(m.clientZohoId && !client ? { zohoClient: m.clientName } : {}),
+            ...(m.assignee ? { zohoAssignee: m.assignee } : {}),
+            ...(m.owner ? { zohoOwner: m.owner } : {}),
+          },
           tags: ["zoho"],
           createdAt: created,
           updatedAt: now,
@@ -385,6 +402,66 @@ export async function importZohoModule(
         result.created++;
       }
       await insertAll(sipRejections, rows);
+    }
+
+    if (module === "Purchase_and_Redempti_01") {
+      // Restore Zoho's own Type and Purchase/Redemption onto the imported lines
+      // (the Scheme Master mapping re-derived asset_class from the category).
+      const lines = (await tx.execute(sql`
+        SELECT l.id, l.amount::numeric AS amount, l.scheme_name, l.from_scheme_name, COALESCE(l.notes, '') AS notes,
+               substring(e.notes from '^Zoho (MFT[0-9]+)') AS mft
+          FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
+         WHERE l.tenant_id = ${actor.tenantId}::uuid AND e.notes ~ '^Zoho MFT[0-9]'
+           AND l.txn_type NOT IN ('sip', 'sip_topup', 'sip_stop')
+      `)).rows as Array<{ id: string; amount: string; scheme_name: string; from_scheme_name: string | null; notes: string; mft: string }>;
+      const byMft = new Map<string, typeof lines>();
+      for (const l of lines) {
+        if (!byMft.has(l.mft)) byMft.set(l.mft, []);
+        byMft.get(l.mft)!.push(l);
+      }
+      const taken = new Set<string>();
+      const sets: Array<{ id: string; type: string; kind: string }> = [];
+      const key = (s: string) => s.trim().toLowerCase();
+      for (const r of records) {
+        const m = mapLineType(r);
+        if (!m.mft) { skip("No MF Transaction on the line"); continue; }
+        const cands = (byMft.get(m.mft) ?? []).filter((l) => !taken.has(l.id) && Math.abs(Number(l.amount) - m.amount) < 0.01);
+        if (!cands.length) { skip(byMft.has(m.mft) ? "No CRM line with this amount" : "MF Transaction not in the CRM"); continue; }
+        const names = [m.scheme, m.toScheme].filter(Boolean).map(key);
+        const hit =
+          cands.find((l) => names.some((n) => key(l.scheme_name) === n || key(l.from_scheme_name ?? "") === n || key(l.notes).startsWith(`zoho: ${n}`))) ?? cands[0];
+        taken.add(hit.id);
+        sets.push({ id: hit.id, type: m.type, kind: m.kind });
+        count(`${m.kind || "(blank)"} · ${m.type || "(no type)"}`);
+      }
+      for (let i = 0; i < sets.length; i += 500) {
+        // A JS array interpolated into sql`` becomes a list of params, not an
+        // array — pass the batch as one jsonb value instead.
+        const batch = sets.slice(i, i + 500).map((b) => ({ id: b.id, t: b.type ?? "", k: b.kind ?? "" }));
+        await tx.execute(sql`
+          UPDATE business_entry_lines l SET source_type = NULLIF(v.t, ''), source_kind = NULLIF(v.k, ''), updated_at = now()
+            FROM jsonb_to_recordset(${JSON.stringify(batch)}::jsonb) AS v(id uuid, t text, k text)
+           WHERE l.id = v.id AND l.tenant_id = ${actor.tenantId}::uuid
+        `);
+      }
+      result.updated = sets.length;
+      // The old Mutual Fund module has no subform: its Type is the one the import
+      // gave the line, read back from the asset class it set (no Scheme Master
+      // mapping has run on those lines).
+      const old = await tx.execute(sql`
+        UPDATE business_entry_lines l SET
+               source_type = CASE WHEN l.asset_class = 'equity' AND l.from_asset_class = 'liquid' THEN 'Liquid to Equity'
+                                  WHEN l.asset_class = 'liquid' THEN 'Liquid'
+                                  WHEN l.asset_class = 'equity' THEN 'Equity' ELSE NULL END,
+               source_kind = CASE WHEN l.txn_type IN ('redemption', 'swp') THEN 'Redemption' ELSE 'Purchase' END,
+               updated_at = now()
+          FROM business_entries e
+         WHERE e.id = l.entry_id AND l.tenant_id = ${actor.tenantId}::uuid AND e.notes ~ '^Zoho MFT-OLD-'
+           AND e.product_type = 'mutual_fund' AND l.source_type IS NULL
+           AND l.txn_type NOT IN ('sip', 'sip_topup', 'sip_stop')
+        RETURNING l.id
+      `);
+      result.notes.push(`${sets.length} MF Transaction lines took Zoho's Type; ${old.rows.length} old Mutual Fund lines took the Type they were imported with.`);
     }
 
     if (module === "Equity") {

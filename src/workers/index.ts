@@ -40,7 +40,7 @@ import { syncMfSchemeCatalog, enrichMfSchemes } from "@/lib/finance/mfapi";
 import { describeRun, getLastRun, recordRun } from "./scheduler-state";
 import { recordDailySnapshots } from "./firm-snapshot-recorder";
 import { runDscReminder } from "./dsc-reminder";
-import { runBillingDaily, runBillingEmailRetries } from "@/lib/billing/jobs";
+import { runBillingDaily, runBillingEmailRetries, runOnboardingNudges } from "@/lib/billing/jobs";
 import { captureError } from "@/lib/observability/capture";
 
 const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho,rta,briefing")
@@ -223,9 +223,13 @@ scheduleDaily("ops", "dsc-reminder", 7, 0, runDscReminder, "DSC_REMINDER_ON_BOOT
  * AUM-priced billing (lib/billing/jobs.ts). Daily at 03:20: the renewal review
  * re-prices every renewal falling within the next 7 days from the firm's AUM in
  * the CRM — once per firm per renewal date, so a re-run or a catch-up changes
- * nothing. Hourly: retry tax-invoice and welcome emails that did not go.
+ * nothing. Hourly: retry tax-invoice and welcome emails that did not go, and
+ * send the one follow-up to a day-old quote that never became a firm.
+ * Daily at 04:40 (10:10 IST): the one "need a hand importing your clients?"
+ * email to a firm that paid 3+ days ago and has no clients (lib/onboarding).
  */
 scheduleDaily("ops", "billing-renewal-review", 3, 20, () => runBillingDaily(), "BILLING_REVIEW_ON_BOOT");
+scheduleDaily("ops", "onboarding-stalled-nudge", 4, 40, () => runOnboardingNudges(), "ONBOARDING_NUDGE_ON_BOOT");
 if (groups.includes("ops")) {
   const tick = async () => {
     try {

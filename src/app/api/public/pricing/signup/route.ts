@@ -30,7 +30,7 @@ import { loadPricingSettings } from "@/lib/billing/pricing-settings";
 import { loadQuoteByToken, markQuoteChosen } from "@/lib/billing/quotes";
 import { CheckoutError, cycleNotOffered, startCheckout } from "@/lib/billing/checkout";
 import { createFirmAccount, emailInUse, FirmCreateError } from "@/lib/onboarding/create-firm";
-import { checkGstin, gstState } from "@/lib/legal/gst";
+import { checkGstin, gstinStateMismatch, gstState } from "@/lib/legal/gst";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +55,9 @@ export async function POST(req: NextRequest) {
     if (String(b.gstin ?? "").trim()) {
       const g = checkGstin(String(b.gstin));
       if (!g.ok) return bad(g.error, "gstin");
-      if (g.stateCode !== state.code) return bad(`This GSTIN is registered in ${gstState(g.stateCode)?.name ?? "another state"}, not ${state.name}.`, "gstin");
+      // The same rule as the account step's field error (lib/legal/gst.ts).
+      const mismatch = gstinStateMismatch(state.code, g.gstin);
+      if (mismatch) return bad(mismatch, "state");
       gstin = g.gstin;
     }
 
@@ -67,6 +69,10 @@ export async function POST(req: NextRequest) {
     }
     // Recomputed here: the price is never taken from the browser.
     const priced = quoteCycle({ aumCrore: quote.aumCrore, users: quote.users, cycle }, settings);
+    if (!quote.mobileVerifiedAt) {
+      // Mobile verification never blocks a sign-up (lib/onboarding/mobile-otp.ts).
+      console.info(`[pricing-signup] quote ${quote.id}: mobile not verified (SMS off, failed or skipped) — recorded as unverified`);
+    }
 
     let firm;
     try {
@@ -77,6 +83,7 @@ export async function POST(req: NextRequest) {
         ownerEmail: quote.email,
         password,
         mobile: quote.mobile,
+        mobileVerifiedAt: quote.mobileVerifiedAt,
         state: state.name,
         gstin,
         pricing: { quoteId: quote.id, aumCrore: quote.aumCrore, users: quote.users, cycle, quote: priced, packageKey: settings.packageKey },

@@ -134,6 +134,41 @@ The **catalog** (`src/lib/filter/catalog.ts`) is the source of truth for what's 
 
 **Security:** the AST can only reference catalog fields. Values are always parameterized. There is no way for user input to inject SQL.
 
+`date_period` (value: a key from `lib/reports/period.ts` — `month`, `fy`, `last_fy`, `last_30` …) means "is in This month / This FY …", resolved TODAY in India time, so a saved filter always means the current window.
+
+## Reports — Zoho-style (2026-11-19)
+
+The firm asked for Zoho CRM's Reports; what that became:
+
+- **Standard reports** (`/dashboard/reports/[key]`) have quick filters — Period,
+  RM / team member, Branch — in the URL. A report's SQL opts in by calling the
+  scope helpers: `s.inPeriod(col)` (India-midnight bounds, index-friendly),
+  `s.inv` / `s.lead` / `s.fam` / `s.sr` (also apply RM / Branch: a client fact
+  follows the client's RM), `s.staff(col)` for per-person rows, and
+  `s.limit` (2,000, and the page says so when it is hit). A filter is only
+  shown when the report calls its helper; filters only ever narrow the
+  viewer's access. Each report's `period` is the window it was hard-coded to
+  before, so nothing moved until someone picks another. "Save view" stores the
+  report + its filters under the person's name (`report_user_prefs.views`).
+- **Custom reports** (`lib/reports/run.ts`): group / pivot keys may bucket a
+  date — `"<field>@month"` (day · week · month · quarter (FY, Apr–Jun = Q1) ·
+  fy · year, `lib/reports/grouping.ts`) — or use a category column
+  `"cat:<id>"` (number bands / value groups, `lib/reports/categories.ts`; the
+  SQL emits only bucket codes, labels are applied in JS). The run API takes
+  the viewer's quick filter (`filter`, ANDed — narrow only), a `drill` (the
+  group values behind a clicked number) and paging; detailed rows carry
+  `__link` to their record. New definition options go in
+  `lib/reports/definition.ts` (zod strips unknown keys).
+- **Who sees a custom report**: `canSeeSavedReport` — creator, team / firm
+  shared, or the owner — on every route (get, run, export, send, clone).
+- **Delete is "Recently deleted"** (`deleted_at`, 30 days, restore or erase;
+  the nightly ops scan purges). **Favourites and Recently viewed** live on the
+  server (`report_user_prefs`, a custom report's `starred_by` / `viewed_by`).
+- **Schedules run in INDIA time** (they used the server clock — UTC — so 9:00
+  arrived at 14:30), daily / weekly / monthly / yearly, to team members (their
+  current email) and typed emails, optionally with the Excel file
+  (`lib/reports/workbook.ts`, the same rows as Export).
+
 ---
 
 ## The Workflow Engine
@@ -287,6 +322,63 @@ ones greet the client by name.
 ### Adding a new compliance rule
 
 Append a function to `ALL_RULES` in `src/lib/comms/compliance.ts`. Each rule is `(ctx) => ComplianceFinding[]`. Severity `block` stops sends; `warn` shows in UI but allows; `info` is logged.
+
+---
+
+## Self-serve onboarding — from a price to the first clients
+
+`/pricing` (`PricingFlow`) → account + Razorpay → the setup wizard → "Start
+here". The owner's "smooth onboarding" request of 2026-11-18 (migration 0269,
+columns only) added the pieces below. Shared words and links live in
+`lib/onboarding/messages.ts` — never retype them on a page.
+
+- **Resume a quote.** `GET /api/public/pricing/quote?quote=&t=` takes the
+  quote's claim token OR the follow-up email's resume token
+  (`pricing_quotes.resume_token_hash`; only hashes are stored) and RE-PRICES
+  from the saved AUM and users with today's settings (`resumeQuote`, pure) —
+  a price is never honoured because it was shown. A converted quote answers
+  409 `converted` and the page points to sign-in. The page keeps
+  {quoteId, token, form, step} in sessionStorage (never the password) and
+  strips the token from the address bar.
+- **Email already an account** is caught at step 1 by the quote API with the
+  same `emailInUse` check sign-up uses, after the per-email rate limit
+  ("An account with this email already exists." + Sign in instead).
+- **GSTIN → state**: `stateFromGstin` fills the state; `gstinStateMismatch`
+  is the ONE rule for the field error and the sign-up API's refusal (on
+  `state`). Both in `lib/legal/gst.ts`.
+- **Follow-up** (`lib/onboarding/quote-followup.ts`, the hourly billing tick):
+  a quote ≥ 24 h and < 7 days old, never converted, whose email is not a
+  sign-in, gets ONE email (packages, resume link, WhatsApp, "you asked for a
+  price" footer). One per person — the newest quote; `followup_sent_at` is
+  stamped in the send's transaction, so a failed send retries and a sent one
+  never repeats. Aina Admin → Pricing quotes shows New / Followed up / Firm
+  created (unpaid) / Paid (`quoteStage`).
+- **Mobile code** (`lib/onboarding/mobile-otp.ts`,
+  `/api/public/pricing/mobile-code` + `/mobile-verify`): only when
+  `MSG91_AUTH_KEY` and `MSG91_OTP_TEMPLATE_ID` (DLT; variable
+  `MSG91_OTP_VAR`, default `var1`) are set. State lives on the quote (hash,
+  10 min, 5 tries, 60 s between sends, 5 sends). Unconfigured, MSG91 down, or
+  the buyer skips → carry on unverified with a server log. NEVER make it
+  block a sign-up. `users.mobile_verified_at` is copied from the quote.
+- **Never paid ≠ lapsed.** `LicenseState.neverPaid` (online firm, pending,
+  no payment): the layout says "Finish your payment to open your CRM" + Pay
+  now, and not as a banner on Billing (Billing says it). Renew wording is
+  for paid firms whose licence lapsed.
+- **Start here** (`components/onboarding/StartHere.tsx`): the wizard's last
+  step and `/dashboard/welcome` (where the first completion lands) — import
+  clients (the one primary action), invite the team, book the onboarding call.
+  The call link is `onboardingCallUrl()`: `ONBOARDING_CALL_URL` (https only),
+  else WhatsApp with the agreed first message; it is server-side, so pages
+  pass it down as a prop. Also in the welcome email and the checklist.
+- **"Get set up"** (`SetupChecklist`): four core steps with a progress bar;
+  positions and the operations manual under a collapsed "Later". Same data
+  checks; it disappears when all six are done.
+- **Stalled firms** (`lib/onboarding/stalled.ts`, daily 04:40 UTC): first
+  tax invoice ≥ 3 days old and no clients → one email to the owner,
+  `tenants.onboarding_nudged_at` stamped with the send. Aina Admin → Pricing →
+  Stalled onboarding lists them (owner email / mobile, nudge date).
+- Every new email path logs and returns when SMTP is missing — never a 500,
+  never a stamp for an email that did not go.
 
 ---
 
@@ -913,11 +1005,13 @@ clients and leads; this CRM is its processor. Step 1 of the plan (2026-10-31):
 - **Still to build** (the plan): DPAs between AinaTech and each firm
   (paperwork, step 5).
 
-## Payroll (phase 1)
+## Payroll (phases 1 and 2)
 
 Team → Payroll (owner, or anyone granted `payroll.manage` / `payroll.view`)
-and Team → My pay (everyone's own payslips). Design and later phases:
-`docs/PAYROLL_MODULE_DESIGN.md`. Migration 0261.
+and Team → My pay (everyone's own payslips, tax declaration, expense claims,
+loans and incentives). Design and phase 3: `docs/PAYROLL_MODULE_DESIGN.md`.
+Migrations 0261 and 0273. Payroll and My pay are NOT in the nav-access
+catalog — Payroll is gated by its capabilities, My pay is self-only.
 
 - **The employee is the `users` row.** Payroll adds `payroll_profiles` (PAN
   and bank account encrypted with `lib/crypto`, last digits in clear; work
@@ -940,6 +1034,44 @@ and Team → My pay (everyone's own payslips). Design and later phases:
   audited.
 - Salaries are never visible outside payroll: not on the team list, not to
   branch heads, not to the AI.
+- **Phase 2 inputs** (`lib/payroll/inputs.ts`, all read by `calculateRun`):
+  - *Loans and advances* (`payroll_loans`): the balance is the principal less
+    every instalment recorded on an approved / paid run
+    (`result.links.loans`), so reopening a run never recovers twice; someone
+    leaving repays the balance; a month too short of pay cuts the EMI, never
+    the net below nil. A repaid loan closes when the run is marked paid.
+  - *Expense claims* (`reimbursement_claims`): submitted in My pay → decided
+    by the claimant's reporting manager or `payroll.manage`, never the
+    claimant (`canDecideClaim`) → repaid untaxed, with no ESI / PT, by the next
+    run. One bill is never paid twice (claimant + category + date + amount +
+    bill number, letters and digits only). Bill images are not stored yet.
+  - *Incentives* (`incentive_plans` / `incentive_statements`,
+    `lib/payroll/incentive-rules.ts` pure + `incentives.ts`): the measure
+    comes from the CRM on the dashboards' definitions — RTA-processed net or
+    gross business, net SIP, insurance premium booked, new clients — never
+    typed. No RTA data is "nothing to pay, and why", not ₹0 of business.
+    Slabs on achievement of the person's KRA target (pro-rated) or on the
+    figure; % / fixed / per client; a cap. Worked out → approved
+    (`payroll.manage`, not one's own) → paid as taxable pay. Recalculating
+    never touches an approved statement.
+  - Claims and incentives are ATTACHED to the draft run that picks them up
+    (`pay_run_id`); marking the run paid marks them paid and sends a held
+    person's back to wait.
+  - *Arrears*: a salary revision dated back pays the difference for each of
+    the last twelve months already approved / paid, for the days paid, less
+    arrears already paid for that month; their Basic attracts PF. A revision
+    DOWN is only warned about, never recovered automatically.
+  - *Tax declarations* (`tax_declarations`, `lib/payroll/tax.ts`): the
+    employee picks the regime and declares; the old regime (`OLD_REGIME` in
+    statutory.ts) takes HRA, 80C (incl. their PF), 80D, 24(b), 80CCD(1B), PT.
+    After the proof deadline (setting `proofDeadlineMonth`, January) only
+    VERIFIED proofs count. Every result carries `tax` with the other regime's
+    figure, which My pay → Tax declaration shows side by side. A previous
+    employer's income and TDS count in both regimes.
+- **Phase 2 outputs**: the run page's "Review before approving" (variance
+  against last month, `lib/payroll/variance.ts`; people missing a UAN or ESI
+  number) and the PF ECR v2 / ESIC files (`lib/payroll/filings.ts`, approved
+  runs, `payroll.manage`, audited). Every result carries `statutory` wages.
 
 ## Creating a family
 

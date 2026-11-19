@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { loadTenantLicense } from "@/lib/auth/license";
 import { requirePageSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 
@@ -24,5 +26,12 @@ export default async function ReportsLayout({ children }: { children: React.Reac
     can(session.roles, "investor.view.all", session.permissions) ||
     can(session.roles, "investor.view.assigned", session.permissions);
   if (!allowed) redirect("/dashboard");
+  // A firm with "reportsOwnOnly" (We Care) keeps only its own custom reports:
+  // the built-in library and every built-in report page lead there instead.
+  const path = (await headers()).get("x-pathname") ?? "";
+  if (path.startsWith("/dashboard/reports") && !path.startsWith("/dashboard/reports/custom")) {
+    const license = await loadTenantLicense(session.tenantId, session.roles);
+    if (license.featureFlags?.reportsOwnOnly === true) redirect("/dashboard/reports/custom");
+  }
   return <>{children}</>;
 }

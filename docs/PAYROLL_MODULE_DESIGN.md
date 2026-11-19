@@ -10,6 +10,16 @@ phase 2); statutory rates live in `lib/payroll/statutory.ts` as dated tables
 in code, not a database table; mid-year starters get an opening balance
 (salary and TDS already paid this financial year) on their payroll details.
 
+**Phase 2 built** (2026-11-19, migration 0273): tax declarations and proofs
+with the old regime; reimbursement claims; loans and advances; revisions with
+arrears; incentive plans; the PF ECR and ESIC files; the variance review.
+How it differs from the plan below: a reimbursement claim records the bill
+number and date, not an image of the bill; an incentive is approved by
+payroll in one step (no separate manager confirmation); incentives have no
+compliance gate or clawback yet; the old regime is for individuals below 60
+(no senior-citizen slabs). Still not built from the phase 1 list: structure
+templates, the payslip email and the journal to business expenses.
+
 The CRM already knows who works for the firm, when they came in, what leave
 they took and what business they brought. Payroll turns that into a monthly
 pay run: gross to net, statutory deductions, payslips, the bank transfer file

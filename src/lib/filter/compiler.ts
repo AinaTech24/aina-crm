@@ -1,5 +1,6 @@
 import { type FilterAST, type Predicate, isGroup, isPredicate, type FieldRef, type FilterOperator, astDepth, MAX_AST_DEPTH } from "./ast";
 import { getCatalog, getField, type FieldDef, type SubjectCatalog } from "./catalog";
+import { resolveReportPeriod } from "@/lib/reports/period";
 
 /** Longest regex a `matches` predicate may carry — a crude ReDoS guard that
  *  pairs with the statement_timeout the preview/materializer set. */
@@ -181,6 +182,15 @@ class Compiler {
       case "date_in_next": {
         const d = node.duration ?? toDuration(node.value);
         return `${fieldSql} >= now() AND ${fieldSql} <= now() + INTERVAL '${intervalSql(d)}'`;
+      }
+      case "date_period": {
+        // A named window (This month, Last FY …) resolved TODAY in India time,
+        // so a saved report or segment always means the current one. Bounds
+        // are India-midnight instants: index-friendly, and a date column
+        // compares the same whatever the server's zone.
+        const p = resolveReportPeriod(String(node.value ?? ""), { fallback: "month" });
+        if (p.unbounded) return `${fieldSql} IS NOT NULL`;
+        return `(${fieldSql} >= (${this.bind(p.from)}::date)::timestamp AT TIME ZONE 'Asia/Kolkata' AND ${fieldSql} < (${this.bind(p.to)}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata')`;
       }
       case "date_before":
         return `${fieldSql} < ${this.bind(node.value)}`;

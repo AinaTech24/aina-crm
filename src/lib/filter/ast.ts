@@ -50,6 +50,7 @@ export const FilterOperatorSchema = z.enum([
   "date_in_next", // "in next N <unit>"
   "date_in_last", // "in last N <unit>"
   "date_is_anniversary", // month-day matches today (birthdays, anniversaries)
+  "date_period", // "is in <This month | Last FY | …>" — value is a ReportPeriodKey (lib/reports/period.ts), India time
 ]);
 
 export type FilterOperator = z.infer<typeof FilterOperatorSchema>;

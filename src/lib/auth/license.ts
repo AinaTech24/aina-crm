@@ -44,6 +44,11 @@ export type LicenseState = {
   renewal: (RenewalState & { graceDays: number }) | null;
   /** True for an AUM-priced (online) subscription. */
   aumPriced: boolean;
+  /**
+   * An online-purchase firm whose FIRST payment has not gone through yet (it
+   * has never paid). Its banner says "Finish your payment", never "renew".
+   */
+  neverPaid?: boolean;
   reason?: string;
 };
 
@@ -177,9 +182,10 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
     needsOnboarding: effectiveStatus === "pending" && !aumPriced,
     renewal,
     aumPriced,
+    neverPaid: aumPriced && effectiveStatus === "pending" && !sub.lastPaymentAt,
     reason: isRestricted
       ? aumPriced && effectiveStatus === "pending"
-        ? "Complete your payment in Billing to start using the CRM."
+        ? "Your package is saved in Billing. Pay for it there to open your CRM."
         : aumPriced && effectiveStatus === "expired"
           ? "Your renewal was not paid within the grace period. Renew from Billing to continue."
           : sub.suspendedReason ?? sub.cancelledReason ?? "Your license is not active. Please contact AINA to reactivate."

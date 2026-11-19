@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { branches } from "./branches";
@@ -27,6 +27,10 @@ export const REPORT_SUBJECTS = [
   "goal",
   "service_request",
   "claim",
+  // Meetings and Business Entry lines — offered in the builder only to a firm with the zohoImport flag
+  // (Zoho report parity for We Care, 2026-11-19); the API refuses it elsewhere.
+  "review_meeting",
+  "business_line",
 ] as const;
 export const REPORT_TYPES = ["detailed", "summary", "matrix"] as const;
 export const REPORT_SHARE_SCOPES = ["private", "team", "tenant"] as const;
@@ -102,17 +106,35 @@ export const savedReports = pgTable(
     /**
      * Optional email schedule. NULL or enabled=false = manual-run only.
      * The report-scheduler worker emails the rendered report to `emails`
-     * at `hour` on the matching cadence (weekly: day=0-6, monthly: day=1-28).
+     * at `hour` (India time) on the matching cadence (weekly: day=0-6,
+     * monthly: day=1-28, yearly: month + day), to its team members and emails.
      */
     schedule: jsonb("schedule").$type<{
-      freq: "daily" | "weekly" | "monthly";
+      freq: "daily" | "weekly" | "monthly" | "yearly";
+      /** India time. */
       hour: number;
+      /** weekly 0–6 (Sun–Sat); monthly / yearly: day of the month. */
       day?: number;
+      /** yearly: 1–12. */
+      month?: number;
+      /** Team members, sent to at their own email (resolved at send time). */
+      userIds?: string[];
       emails: string[];
+      /** Attach the report as an Excel file. */
+      attach?: boolean;
       enabled: boolean;
     } | null>(),
     /** Last time the scheduler delivered this report (dedup guard). */
     lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+
+    /** Category columns ("cat:<id>"): number bands / value groups (lib/reports/categories.ts, 0277). */
+    categories: jsonb("categories").$type<Array<Record<string, unknown>> | null>(),
+    /** Chart extras: a dashed target line and how many groups to draw (migration 0277). */
+    chartOptions: jsonb("chart_options").$type<{ target?: number | null; limit?: number | null } | null>(),
+    /** { userId: last-opened ISO time } — each viewer's "Recently viewed" (0277). */
+    viewedBy: jsonb("viewed_by").$type<Record<string, string>>().notNull().default({}),
+    /** Set = in "Recently deleted"; restorable for 30 days, then purged (0277). */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
 
     ...timestamps,
   },
@@ -120,6 +142,27 @@ export const savedReports = pgTable(
     tenantIdx: index("saved_reports_tenant_idx").on(t.tenantId, t.updatedAt),
     subjectIdx: index("saved_reports_subject_idx").on(t.tenantId, t.subject),
     creatorIdx: index("saved_reports_creator_idx").on(t.tenantId, t.createdById),
+  })
+);
+
+/**
+ * Per user: favourite and recently opened STANDARD reports (catalog keys) —
+ * server-side, so they follow the person to any device (migration 0277).
+ */
+export const reportUserPrefs = pgTable(
+  "report_user_prefs",
+  {
+    tenantId: tenantId.references(() => tenants.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    favourites: jsonb("favourites").$type<string[]>().notNull().default([]),
+    /** Most recent first: [{ key, at }]. */
+    recent: jsonb("recent").$type<{ key: string; at: string }[]>().notNull().default([]),
+    /** Saved views: a standard report + its filters (query string), named by the person. */
+    views: jsonb("views").$type<{ id: string; key: string; name: string; query: string }[]>().notNull().default([]),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.tenantId, t.userId] }),
   })
 );
 

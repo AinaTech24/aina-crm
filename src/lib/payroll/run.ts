@@ -22,6 +22,7 @@ import type { Tx } from "@/db/client";
 import { payRunItems, payRuns, tenants, type PayAdjustment } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
 import { calculatePay, type PayResult } from "./calc";
+import { arrearsForMonth, claimsForRun, declarationsForMonth, incentivesForRun, loansForMonth, settleInputsOnPaid } from "./inputs";
 import { readPayrollSettings, type PayrollSettings } from "./settings";
 
 type Actor = { tenantId: string; userId: string; isOwner: boolean };
@@ -62,6 +63,7 @@ export type PayEmployee = {
   gender: string | null;
   paymentMode: string;
   hasBank: boolean;
+  taxRegime: "new" | "old";
 };
 
 /** Everyone payroll should consider for the month, with their salary in force at its end. */
@@ -69,7 +71,7 @@ export async function employeesForMonth(tx: Tx, tenantId: string, period: string
   const { start, end } = monthBounds(period);
   const rows = (await tx.execute(sql`
     SELECT u.id::text AS user_id, u.name, u.employee_code, u.department, u.joining_date::text AS join_date,
-           p.exit_date::text AS exit_date, p.pf_enabled, p.esi_mode, p.work_state, p.gender, p.payment_mode,
+           p.exit_date::text AS exit_date, p.pf_enabled, p.esi_mode, p.work_state, p.gender, p.payment_mode, p.tax_regime,
            (p.bank_account_enc IS NOT NULL) AS has_bank,
            s.monthly_gross, s.basic_override, s.hra_override
       FROM users u
@@ -102,6 +104,7 @@ export async function employeesForMonth(tx: Tx, tenantId: string, period: string
     gender: (r.gender as string) ?? null,
     paymentMode: (r.payment_mode as string) ?? "bank",
     hasBank: Boolean(r.has_bank),
+    taxRegime: r.tax_regime === "old" ? "old" : "new",
   }));
 }
 
@@ -171,8 +174,14 @@ export async function calculateRun(tx: Tx, actor: Actor, runId: string): Promise
   const lop = await lopForMonth(tx, actor.tenantId, period);
   const ytd = await ytdForMonth(tx, actor.tenantId, period);
   const existing = new Map((await tx.select().from(payRunItems).where(eq(payRunItems.payRunId, runId))).map((i) => [i.userId, i]));
+  const ids = staff.map((e) => e.userId);
+  const loans = await loansForMonth(tx, actor.tenantId, period, runId, new Map(staff.map((e) => [e.userId, e.exitDate])));
+  const claims = await claimsForRun(tx, actor.tenantId, runId, ids);
+  const incentives = await incentivesForRun(tx, actor.tenantId, runId, ids);
+  const back = await arrearsForMonth(tx, actor.tenantId, period, runId, settings);
+  const decls = await declarationsForMonth(tx, actor.tenantId, period, fyStart(period), settings);
 
-  const totals = { employees: 0, gross: 0, deductions: 0, net: 0, tds: 0, employerCost: 0, pf: 0, esi: 0, pt: 0, onHold: 0 };
+  const totals = { employees: 0, gross: 0, deductions: 0, net: 0, tds: 0, employerCost: 0, pf: 0, esi: 0, pt: 0, onHold: 0, arrears: 0, incentives: 0, claims: 0, loans: 0 };
   const keep = new Set<string>();
   for (const e of staff) {
     const prev = existing.get(e.userId);
@@ -192,13 +201,24 @@ export async function calculateRun(tx: Tx, actor: Actor, runId: string): Promise
           joinDate: e.joinDate,
           exitDate: e.exitDate,
         },
-        { period, lopDays, adjustments, ytd: ytd.get(e.userId) ?? { taxableGross: 0, tds: 0 } },
+        {
+          period,
+          lopDays,
+          adjustments,
+          ytd: ytd.get(e.userId) ?? { taxableGross: 0, tds: 0 },
+          loans: loans.get(e.userId),
+          claims: claims.get(e.userId),
+          incentives: incentives.get(e.userId),
+          arrears: back.arrears.get(e.userId),
+          tax: decls.get(e.userId) ?? { regime: e.taxRegime, declaration: {}, proofsApplied: false },
+        },
         settings
       ),
       lopWhy: prev?.lopOverride ? `Set by hand: ${prev.lopReason ?? "no reason given"}` : auto?.why || undefined,
       employee: { name: e.name, employeeCode: e.employeeCode, department: e.department, workState: e.workState, paymentMode: e.paymentMode, hasBank: e.hasBank },
     };
     if (e.paymentMode === "bank" && !e.hasBank) result.warnings.push("No bank account on the payroll profile — add it before paying.");
+    for (const w of back.warnings.get(e.userId) ?? []) result.warnings.push(w);
     // Part-way through the year with nothing on record for the months before:
     // TDS assumes nothing was paid, and would be too low.
     const fy = fyStart(period);
@@ -230,6 +250,10 @@ export async function calculateRun(tx: Tx, actor: Actor, runId: string): Promise
     totals.pf += amt(["pf"], result.deductions) + amt(["epf", "eps", "edli", "pf_admin"], result.employer);
     totals.esi += amt(["esi"], result.deductions) + amt(["esi_er"], result.employer);
     totals.pt += amt(["pt"], result.deductions);
+    totals.arrears += amt(["arrears"], result.earnings);
+    totals.incentives += amt(["incentive"], result.earnings);
+    totals.claims += amt(["claim"], result.earnings);
+    totals.loans += amt(["loan"], result.deductions);
   }
   // Someone no longer on the run (salary removed, left before the month) drops off.
   for (const [uid, item] of existing) if (!keep.has(uid)) await tx.delete(payRunItems).where(eq(payRunItems.id, item.id));
@@ -260,6 +284,7 @@ export async function setRunStatus(tx: Tx, actor: Actor, runId: string, action: 
   } else {
     if (run.status !== "approved") throw fail("Approve the pay run before marking it paid.");
     await tx.update(payRuns).set({ status: "paid", paidBy: actor.userId, paidAt: now, paidOn: paidOn ?? now.toISOString().slice(0, 10), updatedAt: now }).where(eq(payRuns.id, runId));
+    await settleInputsOnPaid(tx, actor.tenantId, runId);
   }
   await recordAudit(tx, { tenantId: actor.tenantId, actorUserId: actor.userId, action: `payroll.run_${action}`, entityType: "pay_run", entityId: runId, after: { period: run.period, paidOn } });
 }

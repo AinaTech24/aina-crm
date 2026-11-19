@@ -2,112 +2,69 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  * GET /api/reports/saved/[id]/export — download a saved report.
  *   ?format=xlsx (default) | csv
+ *   ?filter=<FilterAST JSON> — the viewer's quick filters, so the file is the
+ *   view on screen (ANDed with the saved filter; it can only narrow)
  * Detailed → a row table; matrix → a cross-tab with a totals column;
  * summary → a grouped table with sub-totals + a grand-total row.
  */
 import { NextRequest } from "next/server";
-import { and, eq } from "drizzle-orm";
-import * as XLSX from "xlsx";
+import { and, eq, isNull } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { savedReports } from "@/db/schema";
-import { runDetailed, runMatrix, runSummary, type SummaryGroupNode } from "@/lib/reports/run";
+import { FilterASTSchema, type FilterAST } from "@/lib/filter/ast";
 import { reportSubjectScope } from "@/lib/reports/scope";
+import { canSeeSavedReport } from "@/lib/reports/visibility";
+import { aoaToCsv, aoaToXlsx, fileSlug, reportAoa } from "@/lib/reports/workbook";
 
 export const dynamic = "force-dynamic";
-
-function slug(s: string) {
-  return (s || "report").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
-}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
     const session = await requireSession();
     requireCap(session.roles, "reports.manage", session.permissions);
-    const format = (new URL(req.url).searchParams.get("format") ?? "xlsx").toLowerCase() === "csv" ? "csv" : "xlsx";
+    const url = new URL(req.url);
+    const format = (url.searchParams.get("format") ?? "xlsx").toLowerCase() === "csv" ? "csv" : "xlsx";
+    let extraAst: FilterAST | null = null;
+    const rawFilter = url.searchParams.get("filter");
+    if (rawFilter) {
+      const parsed = FilterASTSchema.safeParse(JSON.parse(rawFilter));
+      if (!parsed.success) return new Response(JSON.stringify({ error: "invalid filter" }), { status: 400 });
+      extraAst = parsed.data as FilterAST;
+    }
 
     const data = await withTenant(session.tenantId, async (tx) => {
-      const r = (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0];
-      if (!r) return null;
-      if (r.reportType === "matrix") {
-        const m = await runMatrix(tx, { subject: r.subject, ast: r.ast as any, matrix: r.matrix as any, tenantId: session.tenantId, scope: await reportSubjectScope(tx, session, r.subject) });
-        return { name: r.name, aoa: matrixAoa(m) };
-      }
-      if (r.reportType === "summary") {
-        const s = await runSummary(tx, { subject: r.subject, ast: r.ast as any, summary: r.summary as any, tenantId: session.tenantId, scope: await reportSubjectScope(tx, session, r.subject) });
-        return { name: r.name, aoa: summaryAoa(s) };
-      }
-      const d = await runDetailed(tx, {
-        scope: await reportSubjectScope(tx, session, r.subject),
-        subject: r.subject,
-        ast: r.ast as any,
-        columns: r.columns as string[] | null,
-        sort: r.sort as any,
-        tenantId: session.tenantId,
-        limit: 5000,
-      });
-      return {
-        name: r.name,
-        aoa: [d.columns.map((c) => c.label), ...d.rows.map((row) => d.columns.map((c) => fmt(row[c.key])))] as (string | number)[][],
-      };
+      const r = (
+        await tx
+          .select()
+          .from(savedReports)
+          .where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId), isNull(savedReports.deletedAt)))
+          .limit(1)
+      )[0];
+      if (!r || !canSeeSavedReport(session, r)) return null;
+      const aoa = await reportAoa(tx, r, { tenantId: session.tenantId, scope: await reportSubjectScope(tx, session, r.subject), extraAst });
+      return { name: r.name, aoa };
     });
     if (!data) return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
 
-    const ws = XLSX.utils.aoa_to_sheet(data.aoa);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Report");
-
     if (format === "csv") {
-      const csv = XLSX.utils.sheet_to_csv(ws);
-      return new Response(csv, {
+      return new Response(aoaToCsv(data.aoa), {
         headers: {
           "content-type": "text/csv; charset=utf-8",
-          "content-disposition": `attachment; filename="${slug(data.name)}.csv"`,
+          "content-disposition": `attachment; filename="${fileSlug(data.name)}.csv"`,
         },
       });
     }
-
-    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-    return new Response(buf, {
+    return new Response(new Uint8Array(aoaToXlsx(data.aoa)), {
       headers: {
         "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "content-disposition": `attachment; filename="${slug(data.name)}.xlsx"`,
+        "content-disposition": `attachment; filename="${fileSlug(data.name)}.xlsx"`,
       },
     });
   } catch (err: any) {
+    if (err instanceof SyntaxError) return new Response(JSON.stringify({ error: "invalid filter" }), { status: 400 });
     return handleApiError(err);
   }
-}
-
-function matrixAoa(m: Awaited<ReturnType<typeof runMatrix>>): (string | number)[][] {
-  return [
-    [m.groupByLabel, ...m.colLabels, "Total"],
-    ...m.rows.map((row) => [row.key, ...row.cells, row.total]),
-  ];
-}
-
-/** Flatten a summary report into a grouped AOA: group cols + Records + aggregates. */
-function summaryAoa(s: Awaited<ReturnType<typeof runSummary>>): (string | number)[][] {
-  const header = [...s.groupLabels, "Records", ...s.aggregateDefs.map((a) => a.label)];
-  const out: (string | number)[][] = [header];
-  const walk = (node: SummaryGroupNode, depth: number) => {
-    const row: (string | number)[] = new Array(s.groupLabels.length).fill("");
-    row[depth] = node.key;
-    out.push([...row, node.count, ...node.aggregates]);
-    for (const c of node.children ?? []) walk(c, depth + 1);
-  };
-  for (const root of s.tree) walk(root, 0);
-  const grandRow: (string | number)[] = new Array(s.groupLabels.length).fill("");
-  grandRow[0] = "Grand Total";
-  out.push([...grandRow, s.grand.count, ...s.grand.aggregates]);
-  return out;
-}
-
-function fmt(v: unknown): string | number {
-  if (v == null) return "";
-  if (typeof v === "number") return v;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  return String(v);
 }

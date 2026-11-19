@@ -58,6 +58,9 @@ const SKIP_FILES = new Set([
   // Self-service — the handler is hard-scoped to session.userId; a user may only
   // ever touch their own row, so a capability check would be meaningless.
   "me/password/route.ts",
+  // Reports favourites / recently viewed / saved views — hard-scoped to
+  // (session.tenantId, session.userId); only catalog report keys are stored.
+  "reports/prefs/route.ts",
   "me/profile/route.ts",
   // SOP acknowledgement — any user records their OWN read receipt (scoped to
   // session.userId, idempotent unique). Mirrors notifications/mark-read.
@@ -105,6 +108,11 @@ const SKIP_FILES = new Set([
   "calculators/scenarios/route.ts",
   "calculators/share/route.ts",
   "calculators/save-to-client/route.ts",
+  // Payroll self-service (phase 2): one's own expense claims and tax
+  // declaration — every write is pinned to session.userId.
+  "me/pay/claims/route.ts",
+  "me/pay/claims/[id]/route.ts",
+  "me/pay/declaration/route.ts",
 ]);
 
 const MUTATION = /export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)/g;

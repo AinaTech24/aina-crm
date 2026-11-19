@@ -33,6 +33,10 @@ export type PlannedLine = {
   notes: string | null;
   /** Lines the registrar will never show as a purchase/redemption of ours. */
   rtaNotApplicable: string | null;
+  /** Zoho's own "Type" on the line (Liquid / Equity / Liquid to Equity …). */
+  sourceType?: string | null;
+  /** Zoho's own "Purchase/Redemption" on the line. */
+  sourceKind?: string | null;
 };
 
 export type PlannedEntry = {
@@ -118,6 +122,8 @@ export function mapPurchaseRow(r: Record<string, unknown>): { product: Product; 
     sipDate: null,
     notes: [remarks, status && !/reject/i.test(status) ? `Zoho status: ${status}` : ""].filter(Boolean).join(" · ") || null,
     rtaNotApplicable: null,
+    sourceType: type || (product !== "mutual_fund" ? zoho(kind) : null),
+    sourceKind: kind ? zoho(kind) : pa ? "Purchase" : ra ? "Redemption" : null,
   };
 
   if (/stp/i.test(options)) {

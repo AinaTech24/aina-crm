@@ -1,5 +1,6 @@
 import { cache } from "react";
 import Link from "next/link";
+import { buttonClass } from "@/components/ui/button-class";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
@@ -770,7 +771,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <NavBlockedNotice />
           ) : (
             <>
-              {license.isRestricted && pathAllowed && <RestrictedBanner license={license} />}
+              {/* A firm that has never paid gets ONE message: on Billing itself the
+                  page says it ("Finish your payment…"), so the banner stays away. */}
+              {license.isRestricted && pathAllowed && !(license.neverPaid && /^\/dashboard\/billing(\/|$)/.test(pathname)) && (
+                <RestrictedBanner license={license} />
+              )}
               {!license.isRestricted && license.renewal?.phase === "grace" && (
                 <RenewalDueBanner
                   daysLeft={license.renewal.daysLeft ?? 0}
@@ -835,6 +840,23 @@ function RenewalDueBanner({ daysLeft, graceEndsOn, canRenew }: { daysLeft: numbe
 }
 
 function RestrictedBanner({ license }: { license: any }) {
+  if (license.neverPaid) {
+    // A firm whose first purchase is not paid yet: nothing to "renew".
+    return (
+      <div role="status" className="mb-6 rounded-xl border border-warning/50 bg-warning/5 p-3.5 flex flex-wrap items-center gap-3 text-sm">
+        <div className="size-9 rounded-lg bg-warning/10 grid place-items-center flex-shrink-0">
+          <AlertTriangle className="size-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold">Finish your payment to open your CRM.</span>{" "}
+          <span className="text-muted-foreground">Your package is saved in Billing. Until it is paid, only Billing and Support are open.</span>
+        </div>
+        <Link href="/dashboard/billing" className={buttonClass("primary", "sm")}>
+          Pay now
+        </Link>
+      </div>
+    );
+  }
   return (
     <div className="mb-6 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-amber-50/60 p-3.5 flex items-center gap-3 text-sm shadow-sm">
       <div className="size-9 rounded-lg bg-amber-100 grid place-items-center flex-shrink-0">
@@ -856,6 +878,27 @@ function RestrictedBanner({ license }: { license: any }) {
 }
 
 function RestrictedNotice({ license }: { license: any }) {
+  if (license.neverPaid) {
+    return (
+      <div className="max-w-2xl mx-auto mt-12 card-elevated p-10 text-center brand-soft">
+        <div className="size-16 mx-auto rounded-2xl bg-warning/10 grid place-items-center shadow-md">
+          <AlertTriangle className="size-8" />
+        </div>
+        <h1 className="text-2xl font-bold mt-5 tracking-tight">Finish your payment to open your CRM</h1>
+        <p className="text-muted-foreground mt-2 max-w-md mx-auto">
+          Your account is ready and your package is saved in Billing. Once it is paid, the setup takes a few minutes and your CRM opens.
+        </p>
+        <div className="mt-6 flex flex-wrap gap-2 justify-center">
+          <Link href="/dashboard/billing" className={buttonClass("primary")}>
+            Pay now
+          </Link>
+          <Link href="/dashboard/support" className={buttonClass("secondary")}>
+            Contact support
+          </Link>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="max-w-2xl mx-auto mt-12 card-elevated p-10 text-center brand-soft">
       <div className="size-16 mx-auto rounded-2xl bg-amber-100 grid place-items-center shadow-md">

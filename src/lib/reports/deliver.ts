@@ -10,7 +10,10 @@ import { withTenant } from "@/db/client";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { loadTenant } from "@/lib/comms/pipeline";
 import { runDetailed, runMatrix, runSummary, type DetailedResult, type MatrixResult, type SummaryResult, type SummaryGroupNode } from "./run";
-import type { SavedReport } from "@/db/schema";
+import { users, type SavedReport } from "@/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
+import type { CategoryColumn } from "./categories";
+import { aoaToXlsx, fileSlug, reportAoa } from "./workbook";
 
 const MAX_EMAIL_ROWS = 50;
 
@@ -43,7 +46,7 @@ function matrixToHtml(m: MatrixResult): string {
     .slice(0, MAX_EMAIL_ROWS)
     .map(
       (row) =>
-        `<tr><td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:600">${esc(row.key)}</td>${row.cells
+        `<tr><td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:600">${esc(row.label)}</td>${row.cells
           .map((v) => `<td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right">${num(v)}</td>`)
           .join("")}<td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right;font-weight:600">${num(row.total)}</td></tr>`
     )
@@ -60,7 +63,7 @@ function summaryToHtml(s: SummaryResult): string {
   const walk = (node: SummaryGroupNode, depth: number) => {
     const indent = depth * 16;
     rows.push(
-      `<tr><td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:600;padding-left:${10 + indent}px">${esc(node.key)}</td><td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right">${num(node.count)}</td>${node.aggregates
+      `<tr><td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:600;padding-left:${10 + indent}px">${esc(node.label)}</td><td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right">${num(node.count)}</td>${node.aggregates
         .map((v) => `<td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right">${num(v)}</td>`)
         .join("")}</tr>`
     );
@@ -94,12 +97,13 @@ export async function renderReportEmail(
 ): Promise<{ subject: string; html: string; text: string }> {
   const appUrl = `${process.env.APP_BASE_URL ?? ""}/dashboard/reports/custom/${report.id}`;
   const tenant = await loadTenant(tx, report.tenantId);
+  const categories = report.categories as CategoryColumn[] | null;
   let inner: string;
   if (report.reportType === "matrix") {
-    const m = await runMatrix(tx, { subject: report.subject, ast: report.ast as any, matrix: report.matrix as any, tenantId: report.tenantId });
+    const m = await runMatrix(tx, { subject: report.subject, ast: report.ast as any, matrix: report.matrix as any, tenantId: report.tenantId, categories });
     inner = matrixToHtml(m);
   } else if (report.reportType === "summary") {
-    const s = await runSummary(tx, { subject: report.subject, ast: report.ast as any, summary: report.summary as any, tenantId: report.tenantId });
+    const s = await runSummary(tx, { subject: report.subject, ast: report.ast as any, summary: report.summary as any, tenantId: report.tenantId, categories });
     inner = summaryToHtml(s);
   } else {
     const d = await runDetailed(tx, {
@@ -109,6 +113,8 @@ export async function renderReportEmail(
       sort: report.sort as any,
       tenantId: report.tenantId,
       limit: 200,
+      skipTotal: true,
+      categories,
     });
     inner = detailedToHtml(d);
   }
@@ -119,11 +125,38 @@ export async function renderReportEmail(
   };
 }
 
-export async function deliverReport(report: SavedReport): Promise<{ sent: number; errors: string[] }> {
-  const emails = (report.schedule?.emails ?? []).filter(Boolean);
-  if (!emails.length) return { sent: 0, errors: ["no recipients"] };
+/**
+ * Who a report goes to: its typed emails plus the CURRENT email of each team
+ * member picked (an active user of the same firm — a departed one is skipped).
+ */
+export async function reportRecipients(
+  tx: Parameters<typeof loadTenant>[0],
+  report: Pick<SavedReport, "tenantId" | "schedule">,
+): Promise<string[]> {
+  const out = new Set((report.schedule?.emails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean));
+  const ids = report.schedule?.userIds ?? [];
+  if (ids.length) {
+    const rows = await tx
+      .select({ email: users.email })
+      .from(users)
+      .where(and(eq(users.tenantId, report.tenantId), inArray(users.id, ids), eq(users.status, "active")));
+    for (const r of rows) if (r.email) out.add(r.email.trim().toLowerCase());
+  }
+  return [...out];
+}
 
-  const { subject, html, text } = await withTenant(report.tenantId, (tx) => renderReportEmail(tx, report));
+export async function deliverReport(report: SavedReport): Promise<{ sent: number; errors: string[] }> {
+  const { emails, subject, html, text, file } = await withTenant(report.tenantId, async (tx) => {
+    const emails = await reportRecipients(tx, report);
+    if (!emails.length) return { emails, subject: "", html: "", text: "", file: null };
+    const rendered = await renderReportEmail(tx, report);
+    // The Excel file is the full report (up to the file limit), not the email's first rows.
+    const file = report.schedule?.attach
+      ? { filename: `${fileSlug(report.name)}.xlsx`, content: aoaToXlsx(await reportAoa(tx, report, { tenantId: report.tenantId })) }
+      : null;
+    return { emails, ...rendered, file };
+  });
+  if (!emails.length) return { sent: 0, errors: ["no recipients"] };
 
   let sent = 0;
   const errors: string[] = [];
@@ -136,6 +169,7 @@ export async function deliverReport(report: SavedReport): Promise<{ sent: number
         recipient: to,
         category: "transactional",
         inlineHtml: html,
+        attachments: file ? [file] : undefined,
       });
       sent++;
     } catch (e: any) {

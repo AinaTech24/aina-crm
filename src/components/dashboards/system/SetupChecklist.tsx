@@ -1,9 +1,14 @@
 /**
  * "Get set up" — shown above an owner's dashboard until the firm has done the
- * four things that make the CRM work day to day. Each step is verified from
- * real data, never ticked by hand, and the card disappears on its own once
+ * things that make the CRM work day to day. Each step is verified from real
+ * data, never ticked by hand, and the card disappears on its own once
  * everything is done (so an established firm never sees it). Dismissable per
  * device before that.
+ *
+ * Four CORE steps carry the progress bar ("2 of 4 done"): clients, team,
+ * WhatsApp, the first automation. Working ON the practice — positions and the
+ * operations manual — waits under a collapsed "Later" (the owner's request of
+ * 2026-11-18). The card also offers the free onboarding call.
  *
  * It used to sit inside the old firm cockpit; it came back here when that
  * cockpit was replaced by named dashboards, because it is the only first-run
@@ -12,6 +17,7 @@
 
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
+import { IMPORT_CLIENTS_HREF, onboardingCallUrl } from "@/lib/onboarding/messages";
 import { SetupChecklistCard, type SetupStep } from "./SetupChecklistCard";
 
 export async function SetupChecklist({ tenantId }: { tenantId: string }) {
@@ -30,17 +36,17 @@ export async function SetupChecklist({ tenantId }: { tenantId: string }) {
       return (res.rows[0] ?? {}) as Record<string, boolean>;
     });
     steps = [
-      { key: "clients", label: "Bring in your clients", hint: "Import from an RTA file or Excel, or add one by hand.", href: "/dashboard/investors/import", done: !!r.has_clients },
+      { key: "clients", label: "Bring in your clients", hint: "Import your CAMS / KFintech files or an Excel sheet, or add one by hand.", href: IMPORT_CLIENTS_HREF, done: !!r.has_clients },
       { key: "team", label: "Invite your team", hint: "RMs and back office get their own logins and task lists.", href: "/dashboard/employees", done: !!r.has_team },
       { key: "whatsapp", label: "Connect WhatsApp", hint: "Send birthday wishes, reminders and updates from your own number.", href: "/dashboard/settings/whatsapp", done: !!r.has_wa },
       { key: "automation", label: "Switch on your first automation", hint: "SIP-bounce recovery and review reminders run on their own.", href: "/dashboard/automations", done: !!r.has_rules },
-      // Working ON the practice (lib/practice): the jobs, then the manual.
-      { key: "positions", label: "Set up your positions", hint: "Organise the firm by jobs, not people, and see which ones only you fill.", href: "/dashboard/practice/positions", done: !!r.has_positions },
-      { key: "manual", label: "Install your operations manual", hint: "Start from the standard MFD SOPs and call scripts, then edit them to fit.", href: "/dashboard/sops", done: !!r.has_manual },
+      // Working ON the practice (lib/practice): the jobs, then the manual — "Later".
+      { key: "positions", later: true, label: "Set up your positions", hint: "Organise the firm by jobs, not people, and see which ones only you fill.", href: "/dashboard/practice/positions", done: !!r.has_positions },
+      { key: "manual", later: true, label: "Install your operations manual", hint: "Start from the standard MFD SOPs and call scripts, then edit them to fit.", href: "/dashboard/sops", done: !!r.has_manual },
     ];
   } catch {
     return null;
   }
   if (steps.every((s) => s.done)) return null;
-  return <SetupChecklistCard steps={steps} />;
+  return <SetupChecklistCard steps={steps} callUrl={onboardingCallUrl()} />;
 }

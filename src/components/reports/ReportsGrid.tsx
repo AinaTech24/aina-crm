@@ -1,17 +1,23 @@
 "use client";
 
 /**
- * Reports hub: "Most used" and "Favourites" as cards on top, then every report
- * grouped by area in collapsible groups, plus search and per-user "hide report".
+ * Reports hub: "Most used", "Favourites" and "Recently viewed" as cards on top,
+ * then every report grouped by area in collapsible groups, plus search and
+ * per-user "hide report". One home for standard AND custom reports (Zoho's
+ * Reports tab, 2026-11-19): the viewer's custom reports are a group of their
+ * own, found by the same search, starred and listed as recent like the rest.
  *
  * The canned reports are built-in (defined in code, shared across tenants) — so
  * an MFD can't truly delete one, but they CAN hide the ones they don't use to
- * declutter their view. Hidden keys, favourites, open counts and which groups
- * are open persist to localStorage per user/device.
+ * declutter their view. Hidden keys, open counts and which groups are open
+ * persist to localStorage per device. FAVOURITES and RECENTLY VIEWED live on
+ * the server (/api/reports/prefs; a custom report's star and last-opened time
+ * on the report) so they follow the person to any device; favourites starred
+ * on this device before that are carried over once.
  *
  * Most used = the six reports this person opens most on this device, topped up
  * from DEFAULT_MOST_USED until they have opened six. Favourites are left out of
- * it (they already sit right beside it). Groups start collapsed: with these two
+ * it (they already sit right beside it). Groups start collapsed: with these
  * rows above them the page is a hub, and a group opens with one click.
  *
  * Search filters across every group by report name, description, aliases or
@@ -35,6 +41,16 @@ const ICONS: Record<string, LucideIcon> = {
 
 type Item = { key: string; label: string; iconName: string; href: string; desc?: string; aliases?: string[] };
 type Section = { group: string; frequency?: ReportFrequency; items: Item[] };
+type CustomReport = { id: string; name: string; description: string | null; starred: boolean; viewedAt: string | null; folder: string | null };
+
+/** A custom report's key in this grid — never collides with a catalog key. */
+const CUSTOM = "custom:";
+const CUSTOM_GROUP = "My custom reports";
+/** A saved view's key: a standard report with the person's filters. */
+const VIEW = "view:";
+const VIEW_GROUP = "My saved views";
+type SavedView = { id: string; key: string; name: string; query: string };
+type Prefs = { favourites: string[]; recent: { key: string; at: string }[]; views?: SavedView[] };
 
 /**
  * Everything a search should match a report on: its name, the description shown
@@ -47,12 +63,14 @@ function haystack(item: Item): string {
 }
 
 const LS_KEY = "aina:hidden-reports:v1";
+/** Device-only favourites from before they moved to the server — read once, carried over. */
 const FAV_KEY = "aina:favorite-reports:v1";
 /** Superseded by OPENS_KEY; read once to seed the counts. */
 const RECENT_KEY = "aina:recent-reports:v1";
 const OPENS_KEY = "aina:report-opens:v1";
 const OPEN_GROUPS_KEY = "aina:open-report-groups:v1";
 const MOST_USED = 6;
+const RECENT_SHOWN = 6;
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -69,47 +87,130 @@ function writeJson(key: string, value: unknown) {
     /* private window / blocked storage: the page still works, it just forgets */
   }
 }
+function postPrefs(body: unknown) {
+  return fetch("/api/reports/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), keepalive: true })
+    .then((r) => (r.ok ? (r.json() as Promise<Prefs>) : null))
+    .catch(() => null);
+}
 
-export function ReportsGrid({ sections }: { sections: Section[] }) {
+export function ReportsGrid({ sections: catalogSections, customEnabled = false }: { sections: Section[]; customEnabled?: boolean }) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [manage, setManage] = useState(false);
   const [ready, setReady] = useState(false);
   const [query, setQuery] = useState("");
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [recent, setRecent] = useState<{ key: string; at: string }[]>([]);
+  const [custom, setCustom] = useState<CustomReport[]>([]);
+  const [views, setViews] = useState<SavedView[]>([]);
   const [opens, setOpens] = useState<Record<string, number>>({});
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setHidden(new Set(readJson<string[]>(LS_KEY, [])));
-    setFavorites(new Set(readJson<string[]>(FAV_KEY, [])));
     setOpenGroups(new Set(readJson<string[]>(OPEN_GROUPS_KEY, [])));
     let counts = readJson<Record<string, number>>(OPENS_KEY, {});
     if (Object.keys(counts).length === 0) {
       // First visit since counts began: the old "Recent" list is the best
       // evidence of use there is, newest weighted highest.
-      const recent = readJson<string[]>(RECENT_KEY, []);
-      counts = Object.fromEntries(recent.map((k, i) => [k, recent.length - i]));
+      const old = readJson<string[]>(RECENT_KEY, []);
+      counts = Object.fromEntries(old.map((k, i) => [k, old.length - i]));
     }
     setOpens(counts);
     setReady(true);
-  }, []);
+
+    let live = true;
+    fetch("/api/reports/prefs")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(async (p: Prefs | null) => {
+        if (!live || !p) return;
+        let favs = p.favourites;
+        const onDevice = readJson<string[]>(FAV_KEY, []);
+        if (!favs.length && onDevice.length) {
+          const carried = await postPrefs({ importFavourites: onDevice });
+          if (carried) favs = carried.favourites;
+        }
+        if (live) {
+          setFavorites(new Set(favs));
+          setRecent(p.recent);
+          setViews(p.views ?? []);
+        }
+      });
+    if (customEnabled) {
+      fetch("/api/reports/saved")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => live && j && setCustom(j.reports ?? []));
+    }
+    return () => {
+      live = false;
+    };
+  }, [customEnabled]);
+
+  // The catalog, plus the viewer's custom reports and saved views as groups of their own.
+  const sections: Section[] = useMemo(() => {
+    const out = [...catalogSections];
+    if (custom.length) {
+      out.push({
+        group: CUSTOM_GROUP,
+        items: custom.map((c) => ({
+          key: `${CUSTOM}${c.id}`,
+          label: c.name,
+          iconName: "BarChart3",
+          href: `/dashboard/reports/custom/${c.id}`,
+          desc: c.description ?? undefined,
+          aliases: ["custom", ...(c.folder ? [c.folder] : [])],
+        })),
+      });
+    }
+    if (views.length) {
+      out.push({
+        group: VIEW_GROUP,
+        items: views.map((v) => ({
+          key: `${VIEW}${v.id}`,
+          label: v.name,
+          iconName: "Filter",
+          href: `/dashboard/reports/${v.key}${v.query ? `?${v.query}` : ""}`,
+          aliases: ["saved view"],
+        })),
+      });
+    }
+    return out;
+  }, [catalogSections, custom, views]);
 
   function save(next: Set<string>) {
     setHidden(new Set(next));
     writeJson(LS_KEY, [...next]);
   }
-  const hide = (k: string) => { const n = new Set(hidden); n.add(k); save(n); };
+  const hide = (k: string) => {
+    // A saved view is the person's own: "hide" deletes it.
+    if (k.startsWith(VIEW)) {
+      const id = k.slice(VIEW.length);
+      setViews((vs) => vs.filter((v) => v.id !== id));
+      void postPrefs({ deleteView: id });
+      return;
+    }
+    const n = new Set(hidden); n.add(k); save(n);
+  };
   const restore = (k: string) => { const n = new Set(hidden); n.delete(k); save(n); };
   const hiddenCount = hidden.size;
 
   const allItems = useMemo(() => sections.flatMap((section) => section.items), [sections]);
   const itemByKey = useMemo(() => new Map(allItems.map((item) => [item.key, item])), [allItems]);
+  const isFavorite = (key: string) =>
+    key.startsWith(CUSTOM) ? !!custom.find((c) => `${CUSTOM}${c.id}` === key)?.starred : favorites.has(key);
 
   function toggleFavorite(key: string) {
+    if (key.startsWith(CUSTOM)) {
+      const id = key.slice(CUSTOM.length);
+      const on = !isFavorite(key);
+      setCustom((cs) => cs.map((c) => (c.id === id ? { ...c, starred: on } : c)));
+      void fetch(`/api/reports/saved/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ star: on }) });
+      return;
+    }
     const next = new Set(favorites);
-    if (next.has(key)) next.delete(key); else next.add(key);
+    const on = !next.has(key);
+    if (on) next.add(key); else next.delete(key);
     setFavorites(next);
-    writeJson(FAV_KEY, [...next]);
+    void postPrefs({ favourite: key, on });
   }
 
   function toggleGroup(group: string) {
@@ -123,13 +224,28 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
     const next = { ...opens, [key]: (opens[key] ?? 0) + 1 };
     setOpens(next);
     writeJson(OPENS_KEY, next);
+    // A custom report records its own open when it runs.
+    if (!key.startsWith(CUSTOM)) void postPrefs({ open: key });
   }
 
   // Top rows: favourites, then the most-opened reports that aren't favourites.
   const favoriteItems = useMemo(
-    () => [...favorites].map((k) => itemByKey.get(k)).filter((i): i is Item => !!i && !hidden.has(i.key)),
-    [favorites, itemByKey, hidden]
+    () =>
+      [...[...favorites].map((k) => itemByKey.get(k)), ...custom.filter((c) => c.starred).map((c) => itemByKey.get(`${CUSTOM}${c.id}`))].filter(
+        (i): i is Item => !!i && !hidden.has(i.key),
+      ),
+    [favorites, custom, itemByKey, hidden]
   );
+  const recentItems = useMemo(() => {
+    const seen = [
+      ...recent.map((r) => ({ key: r.key, at: r.at })),
+      ...custom.filter((c) => c.viewedAt).map((c) => ({ key: `${CUSTOM}${c.id}`, at: c.viewedAt! })),
+    ].sort((a, b) => (a.at < b.at ? 1 : -1));
+    return seen
+      .map((s) => itemByKey.get(s.key))
+      .filter((i): i is Item => !!i && !hidden.has(i.key))
+      .slice(0, RECENT_SHOWN);
+  }, [recent, custom, itemByKey, hidden]);
   const { mostUsed } = useMemo(() => {
     const eligible = (k: string) => itemByKey.has(k) && !hidden.has(k) && !favorites.has(k);
     const used = Object.entries(opens)
@@ -189,6 +305,13 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
               ))
             )}
           </TopRow>
+          {recentItems.length > 0 && (
+            <TopRow title="Recently viewed">
+              {recentItems.map((r) => (
+                <ReportCard key={r.key} r={r} favorite={isFavorite(r.key)} onOpen={recordOpen} onToggleFavorite={toggleFavorite} />
+              ))}
+            </TopRow>
+          )}
         </>
       )}
 
@@ -279,16 +402,16 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
                         <button
                           type="button"
                           onClick={() => hide(r.key)}
-                          aria-label={`Hide ${r.label}`}
-                          title="Hide this report"
+                          aria-label={r.key.startsWith(VIEW) ? `Delete ${r.label}` : `Hide ${r.label}`}
+                          title={r.key.startsWith(VIEW) ? "Delete this saved view" : "Hide this report"}
                           className="px-3 self-stretch grid place-items-center text-muted-foreground hover:bg-rose-50 hover:text-rose-600 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                         >
                           <X className="size-3.5" />
                         </button>
                       )
                     )}
-                    {ready && !isHidden && (
-                      <FavoriteButton label={r.label} on={favorites.has(r.key)} onClick={() => toggleFavorite(r.key)} className="px-3 self-stretch" />
+                    {ready && !isHidden && !r.key.startsWith(VIEW) && (
+                      <FavoriteButton label={r.label} on={isFavorite(r.key)} onClick={() => toggleFavorite(r.key)} className="px-3 self-stretch" />
                     )}
                   </div>
                 );
