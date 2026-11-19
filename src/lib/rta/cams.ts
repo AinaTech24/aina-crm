@@ -22,6 +22,19 @@ export function isCamsFile(header: string[]): boolean {
 }
 
 /**
+ * A CAMS file that is the DEMOGRAPHICS-ONLY investor feed (WBR9 "Investor Static details
+ * feed": FOLIOCHK, INV_NAME, ADDRESS1 … and no balance columns). It can never satisfy the
+ * with-balance signature above, so the importer says exactly that instead of the generic
+ * "did not match any known report". From the vittmantra copy, 2026-11-19.
+ */
+export function isCamsStaticOnlyFile(header: string[]): boolean {
+  const have = new Set(header.map((h) => h.trim().toLowerCase()));
+  const looksCams = have.has("foliochk") && (have.has("inv_name") || have.has("pan_no"));
+  const hasBalances = have.has("rupee_bal") || have.has("clos_bal");
+  return looksCams && !hasBalances;
+}
+
+/**
  * Excel serial (e.g. "46188"), bare "YYYYMMDD", or "DD/MM/YYYY" → ISO yyyy-mm-dd.
  *
  * The bare-YYYYMMDD branch is not optional. CAMS ships dates of birth as plain

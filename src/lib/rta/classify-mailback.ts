@@ -36,6 +36,36 @@ export function sourceFromSender(fromAddress: string | undefined | null): RtaSou
   return null;
 }
 
+/**
+ * Resolve the RTA from a MANUALLY FORWARDED mail's quoted header block.
+ *
+ * A hand-forward (not an auto-forward rule) rewrites `From:` to the forwarder's own
+ * address, so sourceFromSender sees the firm's mailbox and reports no RTA. The original
+ * sender survives in the block Gmail / Zoho / Outlook insert:
+ *
+ *     ---------- Forwarded message ----------
+ *     From: CAMS Mailback Server <donotreply@camsonline.com>
+ *
+ * Taken from the vittmantra self-hosted copy (2026-11-19). This is NOT a trust decision:
+ * body text can be forged. It only lets a file be CLASSIFIED when the sender line cannot
+ * say; the mail is still routed to a firm by its forward address, and a link is still
+ * fetched only from an allow-listed registrar host (`mailback-download.ts`).
+ */
+export function sourceFromForwardedBody(body: string | undefined | null): RtaSource | null {
+  const b = body ?? "";
+  if (!b) return null;
+  // Only the leading part: enough for the quoted header block, without scanning a big
+  // HTML payload on every message. ANY address in it counts — in an HTML forward the
+  // address sits inside markup, so a `From:`-anchored pattern would miss the common case.
+  const head = b.slice(0, 4000);
+  const addrs = head.match(/[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/gi) ?? [];
+  for (const a of addrs) {
+    const hit = sourceFromSender(a);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /** Resolve CAMS vs KFintech from the file name when the sender is ambiguous. */
 function sourceFromFileName(name: string): RtaSource | null {
   const n = name.toLowerCase();
@@ -43,7 +73,22 @@ function sourceFromFileName(name: string): RtaSource | null {
   // "…214436725R9.zip"), so match on a TRAILING boundary (separator or end) —
   // NOT a leading word boundary — mirroring the kind detector. `\br9\b` failed
   // exactly this case and quarantined real R9 masters as "unrecognised".
-  if (/r9(?=[._\-\s]|$)/.test(n) || /wbr/.test(n) || /r2(?=[._\-\s]|$)/.test(n) || /r10(?=[._\-\s]|$)/.test(n) || /cams/.test(n)) {
+  //
+  // r4 / r22 / r49 belong here too: a real WBR4 zip ("…BMB220633086R4.zip") has no "wbr"
+  // or "cams" in its name, so without them a mail whose sender line is not the registrar
+  // (a hand-forward) resolved to NO source and the file was quarantined as unrecognised.
+  // CAMS also ships "Systematic_Registration_Status_P_….xls" with no report code at all.
+  if (
+    /r9(?=[._\-\s]|$)/.test(n) ||
+    /wbr/.test(n) ||
+    /r2(?=[._\-\s]|$)/.test(n) ||
+    /r22(?=[._\-\s]|$)/.test(n) ||
+    /r4(?=[._\-\s]|$)/.test(n) ||
+    /r49(?=[._\-\s]|$)/.test(n) ||
+    /r10(?=[._\-\s]|$)/.test(n) ||
+    /cams/.test(n) ||
+    /systematic[_\- ]?registration|registration[_\- ]?status/.test(n)
+  ) {
     return "cams";
   }
   if (/mfsd|kfin|karvy/.test(n)) return "kfintech";
@@ -84,6 +129,7 @@ const REPORT_TITLES: Array<[RegExp, RtaFileKind, string]> = [
   [/brokerage\s+(statement|report)|commission\s+(statement|report)/i, "monthly_brokerage", "Brokerage statement"],
   [/sip\s+(rejection|bounce|dishonour)/i, "sip_rejection_report", "SIP rejection report"],
   [/sip\s+registrations?/i, "monthly_sip_book", "SIP registrations report"],
+  [/systematic\s*registration/i, "monthly_sip_book", "Systematic registration status"],
 ];
 
 /**
@@ -186,9 +232,15 @@ export function isSipRejectionFileName(fileName: string): boolean {
 
 export function classifyMailback(
   fileName: string,
-  fromAddress: string | undefined | null
+  fromAddress: string | undefined | null,
+  /**
+   * The RTA when it is known by other means than the From: header — a hand-forward
+   * rewrites From:, so the poller reads it from the quoted "Forwarded message" block
+   * (`sourceFromForwardedBody`) and passes it here.
+   */
+  knownSource?: RtaSource | null
 ): MailbackClass | null {
-  const source = sourceFromSender(fromAddress) ?? sourceFromFileName(fileName);
+  const source = sourceFromSender(fromAddress) ?? knownSource ?? sourceFromFileName(fileName);
   if (!source) return null;
   const hit = detectKind(fileName, false);
   if (!hit) return null;
@@ -207,10 +259,12 @@ export function classifyMailback(
 export function classifyMailbackFromText(
   subject: string | undefined | null,
   body: string | undefined | null,
-  fromAddress: string | undefined | null
+  fromAddress: string | undefined | null,
+  knownSource?: RtaSource | null
 ): MailbackClass | null {
   const text = `${subject ?? ""}\n${body ?? ""}`;
-  const source = sourceFromSender(fromAddress) ?? sourceFromFileName(text);
+  const source =
+    sourceFromSender(fromAddress) ?? knownSource ?? sourceFromForwardedBody(body) ?? sourceFromFileName(text);
   if (!source) return null;
   const hit = detectKind(text, true); // codes only — prose is too ambiguous
   if (!hit) return null;

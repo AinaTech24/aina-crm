@@ -36,6 +36,8 @@ import { Q, RTA_BACKGROUND_PRIORITY } from "./queues";
 import {
   classifyMailback,
   classifyMailbackFromText,
+  sourceFromSender,
+  sourceFromForwardedBody,
   isImportableAttachment,
   type MailbackClass,
 } from "@/lib/rta/classify-mailback";
@@ -389,9 +391,13 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
     let recognised = 0;
     const attLogs: AttachmentLog[] = [];
 
+    // A HAND-forwarded mail has the firm's own address in From:, so the registrar is read
+    // from the quoted "Forwarded message" block instead (vittmantra, 2026-11-19).
+    const forwardedSource = sourceFromSender(msg.from) ? null : sourceFromForwardedBody(msg.html ?? msg.text);
+
     for (const att of msg.attachments) {
       if (!isImportableAttachment(att.filename)) continue;
-      const cls = classifyMailback(att.filename, msg.from);
+      const cls = classifyMailback(att.filename, msg.from, forwardedSource);
       if (!cls) {
         console.warn(`[rta-inbox] ${tenantId}: unrecognised attachment ${fileRef(att.filename)} from ${addressRef(msg.from)} — skipped`);
         attLogs.push({
@@ -449,8 +455,8 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
         // report code (…219432120R2.zip). When it doesn't classify, fall back to
         // the mail text, which states the report explicitly ("Report No: MFSD311").
         const cls =
-          classifyMailback(dl.file.filename, msg.from) ??
-          classifyMailbackFromText(msg.subject, `${msg.text ?? ""}\n${msg.html ?? ""}`, msg.from);
+          classifyMailback(dl.file.filename, msg.from, forwardedSource) ??
+          classifyMailbackFromText(msg.subject, `${msg.text ?? ""}\n${msg.html ?? ""}`, msg.from, forwardedSource);
         if (!cls) {
           attLogs.push({
             filename: dl.file.filename,

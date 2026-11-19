@@ -1337,6 +1337,13 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   bounce is read as a SIP rejection report whatever the ZIP's name said (`isSipRejectionFileName`).
   A SIP row whose type text says rejection / dishonoured is a bounce even when the status column says processed
   (`statusWithTypeText`).
+- **Taken from the vittmantra self-hosted copy** (2026-11-19, `docs/RTA_VITTMANTRA_REVIEW.md`, `tests/rta-vittmantra-port.test.ts`):
+  a HAND-forwarded mail rewrites `From:` to the firm's own address, so the registrar is read from the quoted
+  "Forwarded message" block (`sourceFromForwardedBody`, only the first 4000 characters, used to CLASSIFY — never a trust
+  decision; routing is still by forward address, link fetches by allow-listed host). `sourceFromFileName` also knows
+  R4 / R22 / R49 and "Systematic_Registration_Status". A CAMS demographics-only master (WBR9: FOLIOCHK, INV_NAME, no
+  RUPEE_BAL / CLOS_BAL) now says "needs WBR4 with balance" instead of "unrecognised format" (`isCamsStaticOnlyFile`).
+  Everything else in that copy (zip, password, link download, retry) is an OLDER version of what is here — do not port it back.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.

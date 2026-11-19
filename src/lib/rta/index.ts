@@ -8,7 +8,7 @@
 
 import { parseCsv } from "./csv";
 import { isKfintechFolioMaster, parseKfintechFolioMaster, isKfintechHoldings, parseKfintechHoldings } from "./kfintech";
-import { isCamsFile, parseCamsFile } from "./cams";
+import { isCamsFile, isCamsStaticOnlyFile, parseCamsFile } from "./cams";
 import type { RtaParseResult } from "./types";
 
 export * from "./types";
@@ -83,6 +83,24 @@ export function parseRtaRows(allRows: string[][]): RtaParseResult {
   if (isKfintechFolioMaster(header)) {
     const { reportType, folios, missingPan, warnings } = parseKfintechFolioMaster(rows);
     return { source: "kfintech", kind: "master", reportType, totalRows: rows.length - 1, folios, warnings, missingPan };
+  }
+
+  // A CAMS file, but the demographics-only variant that can never satisfy the with-balance
+  // signature. Say exactly that: it once burned a long search for a parser bug that was not one.
+  if (isCamsStaticOnlyFile(header)) {
+    return {
+      source: "unknown",
+      kind: "unknown",
+      reportType: "",
+      totalRows: rows.length - 1,
+      folios: [],
+      warnings: [
+        `This is a CAMS demographics-only report (no balance columns), e.g. WBR9 "Investor Static details feed". ` +
+          `The importer needs the with-balance master — CAMS WBR4 "Investors Static Details with balance" — which carries ` +
+          `rupee_bal / clos_bal. Subscribe to or forward WBR4 instead. Columns (${header.length}): ${header.slice(0, 60).join(", ")}`,
+      ],
+      missingPan: 0,
+    };
   }
 
   return {
