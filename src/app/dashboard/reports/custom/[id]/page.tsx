@@ -8,10 +8,9 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, Download, Pencil, Loader2, BarChart3, AlertCircle, Copy, Mail, Printer, FileSpreadsheet, FileText, ChevronDown, Send } from "lucide-react";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
-import { DateRangeField } from "@/components/ui/DateRangeField";
-import { SelectField } from "@/components/ui/SelectField";
-import { buttonClass } from "@/components/ui/button-class";
 import { CATALOGS } from "@/lib/filter/catalog";
+import { ReportFilterBar, reportFilterQuery, type ReportFilter } from "@/components/reports/ReportFilterBar";
+import { GroupedSummaryTable } from "@/components/reports/GroupedSummaryTable";
 
 // Recharts is heavy + not tree-shakeable; load it only when a report actually
 // has a chart, not on every report view.
@@ -54,24 +53,19 @@ export default function ReportViewPage() {
   // Zoho-style "Filter by" date range + "Show details" — for a firm with the
   // Zoho import flag (We Care, 2026-11-19). They narrow this run only.
   const [zohoParity, setZohoParity] = useState(false);
-  const [range, setRange] = useState<{ field: string; from: string; to: string }>({ field: "", from: "", to: "" });
-  const [details, setDetails] = useState<boolean | null>(null);
+  const [filter, setFilter] = useState<ReportFilter | null>(null);
   const [query, setQuery] = useState("");
   useEffect(() => {
     fetch("/api/imports/zoho/contacts").then((r) => r.json()).then((j) => setZohoParity(!!j?.enabled)).catch(() => {});
   }, []);
   const dateFields = meta?.subject ? (CATALOGS as any)[meta.subject]?.fields?.filter((f: any) => f.type === "date" || f.type === "datetime") ?? [] : [];
-  function applyRange(clear = false) {
-    const q = new URLSearchParams();
-    const r = clear ? { field: "", from: "", to: "" } : range;
-    if (clear) setRange(r);
-    if (r.field && (r.from || r.to)) {
-      q.set("dateField", r.field);
-      if (r.from) q.set("from", r.from);
-      if (r.to) q.set("to", r.to);
-    }
-    if (!clear && details !== null) q.set("details", details ? "1" : "0");
-    setQuery(q.toString());
+  // The bar starts on the module's first date field, all time.
+  useEffect(() => {
+    if (zohoParity && meta && !filter && dateFields.length) setFilter({ field: dateFields[0].key, period: "", from: "", to: "", details: false });
+  }, [zohoParity, meta, filter, dateFields]);
+  function applyFilter(f: ReportFilter) {
+    setFilter(f);
+    setQuery(reportFilterQuery(f));
   }
   const [result, setResult] = useState<RunResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,25 +115,8 @@ export default function ReportViewPage() {
 {meta?.description && <p className="page-subtitle">{meta.description}</p>}
 </PageHeaderCard>
 
-      {zohoParity && meta && dateFields.length > 0 && (
-        <div className="card-surface p-4 flex flex-wrap items-end gap-3 print:hidden">
-          <label className="text-sm">
-            <span className="block text-xs text-muted-foreground mb-1">Filter by</span>
-            <SelectField value={range.field} onChange={(e) => setRange({ ...range, field: e.target.value })}>
-              <option value="">Choose a date</option>
-              {dateFields.map((f: any) => <option key={f.key} value={f.key}>{f.label}</option>)}
-            </SelectField>
-          </label>
-          <DateRangeField from={range.from} to={range.to} onChange={(from, to) => setRange({ ...range, from, to })} />
-          {meta.reportType === "summary" && (
-            <label className="flex items-center gap-2 text-sm pb-2">
-              <input type="checkbox" checked={details ?? false} onChange={(e) => setDetails(e.target.checked)} />
-              Show details
-            </label>
-          )}
-          <button type="button" className={buttonClass("primary", "sm")} disabled={!!range.field && !range.from && !range.to} onClick={() => applyRange()}>Apply filter</button>
-          {query && <button type="button" className={buttonClass("ghost", "sm")} onClick={() => { setDetails(null); applyRange(true); }}>Clear</button>}
-        </div>
+      {zohoParity && meta && filter && (
+        <ReportFilterBar dateFields={dateFields} showDetailsSwitch={meta.reportType === "summary"} value={filter} onApply={applyFilter} />
       )}
 
       {!loading && !err && result?.kind === "matrix" && meta?.chartType && meta.chartType !== "none" && (
@@ -160,7 +137,7 @@ export default function ReportViewPage() {
         ) : result?.kind === "matrix" ? (
           <MatrixTable r={result} />
         ) : result?.kind === "summary" ? (
-          <SummaryTable r={result} />
+          zohoParity ? <GroupedSummaryTable r={result} /> : <SummaryTable r={result} />
         ) : (
           <div className="p-12 text-center text-sm text-muted-foreground">No data.</div>
         )}
