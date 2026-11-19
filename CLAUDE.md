@@ -1344,6 +1344,12 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   R4 / R22 / R49 and "Systematic_Registration_Status". A CAMS demographics-only master (WBR9: FOLIOCHK, INV_NAME, no
   RUPEE_BAL / CLOS_BAL) now says "needs WBR4 with balance" instead of "unrecognised format" (`isCamsStaticOnlyFile`).
   Everything else in that copy (zip, password, link download, retry) is an OLDER version of what is here — do not port it back.
+- **The eye on a saved ZIP password** (2026-11-19, `POST /api/integrations/rta-mailback/reveal`, `RevealedPassword` in
+  `RtaMailbackCard.tsx`): Settings → Integrations → RTA Mailback shows each saved password on request, in quotes with its length,
+  and says when it starts or ends with a space. Owner / `settings.users` only (saving needs only `transactions.execute`), audited as
+  `rta_mailback.password_viewed` (label, never the text), `no-store`, hidden again after 30 s. The list endpoint still returns labels only.
+  `scripts/check-mailback-passwords.ts` tells whether the WORKER can decrypt what the web app saved (a different `ENCRYPTION_KEY` makes
+  `readPwRow` answer "no passwords" quietly — the automatic import then tries nothing while a typed password still works).
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.

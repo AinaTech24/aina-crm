@@ -14,6 +14,8 @@ import {
   Plus,
   X,
   Info,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { PasswordInput } from "@/components/ui/PasswordInput";
@@ -493,10 +495,11 @@ function PasswordManager({
               key={`${e.label}-${i}`}
               className="flex items-center justify-between gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-1.5"
             >
-              <span className="text-xs flex items-center gap-1.5 min-w-0">
+              <span className="text-xs flex items-center gap-1.5 min-w-0 flex-wrap">
                 <KeyRound className="size-3 text-muted-foreground shrink-0" />
                 <span className="truncate">{e.label}</span>
                 <span className="chip text-2xs bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">saved</span>
+                <RevealedPassword source={source} index={i} />
               </span>
               <button
                 type="button"
@@ -554,5 +557,68 @@ function PasswordManager({
         </form>
       )}
     </div>
+  );
+}
+
+/**
+ * The eye on a saved password: shows exactly what the importer will try on an archive.
+ * Owner only (the server says so); the value hides again after 30 seconds. Quotes mark where it
+ * starts and ends, and a leading / trailing space is called out — a space that was not meant is a
+ * classic reason a "right" password opens nothing.
+ */
+function RevealedPassword({ source, index }: { source: "cams" | "kfintech"; index: number }) {
+  const toast = useToast();
+  const [value, setValue] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  function hide() {
+    if (timer.current) clearTimeout(timer.current);
+    setValue(null);
+  }
+
+  async function show() {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/integrations/rta-mailback/reveal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source, index }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Could not show the password.");
+      setValue(String(data.password ?? ""));
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setValue(null), 30_000);
+    } catch (err) {
+      toast.error((err as Error).message, "Could not show");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const edgeSpace = value !== null && value !== value.trim();
+  return (
+    <span className="inline-flex items-center gap-1.5 min-w-0">
+      <button
+        type="button"
+        onClick={value === null ? show : hide}
+        disabled={busy}
+        className="btn-icon text-muted-foreground hover:text-foreground disabled:opacity-50 shrink-0"
+        title={value === null ? "Show this password" : "Hide this password"}
+        aria-label={value === null ? "Show this password" : "Hide this password"}
+      >
+        {busy ? <Loader2 className="size-3.5 animate-spin" /> : value === null ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+      </button>
+      {value !== null && (
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs whitespace-pre break-all select-all">&ldquo;{value}&rdquo;</code>
+          <span className="text-2xs text-muted-foreground shrink-0">{value.length} characters</span>
+          {edgeSpace && <span className="text-2xs text-rose-600 shrink-0">has a space at the start or end</span>}
+        </span>
+      )}
+    </span>
   );
 }
