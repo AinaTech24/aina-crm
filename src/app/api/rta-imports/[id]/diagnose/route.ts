@@ -6,7 +6,8 @@
  * now (if any), and reports what the archive is and whether any candidate — in the
  * forms a writer may have used — passes its exact password check. Read-only: nothing
  * is imported, saved or changed, and no password is ever returned (a candidate is
- * named "typed now" or "saved password #N").
+ * named "typed now", "typed password #K" or "saved password #N"). Several typed
+ * candidates may be given, separated by "|"..
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
@@ -27,7 +28,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   requireCap(session.roles, "transactions.execute", session.permissions);
 
   const body = (await req.json().catch(() => ({}))) as { password?: unknown };
-  const typed = typeof body.password === "string" ? cleanTypedPassword(body.password).slice(0, 200) : "";
+  // Several candidates may be typed at once, separated by "|" (a registrar's default password is
+  // often a guess: ARN, PAN, an old password). Each is kept exactly as typed; at most 20.
+  const typedList = (typeof body.password === "string" ? body.password.slice(0, 2000).split("|") : [])
+    .map((p) => cleanTypedPassword(p).slice(0, 200))
+    .filter((p) => p.trim())
+    .filter((p, i, a) => a.indexOf(p) === i)
+    .slice(0, 20);
 
   const loaded = await withTenant(session.tenantId, async (tx) => {
     const r = await tx.execute(sql`
@@ -60,7 +67,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "The stored file could not be read." }, { status: 404 });
   }
 
-  const candidates = [...(typed.trim() ? [typed] : []), ...loaded.saved];
+  const candidates = [...typedList, ...loaded.saved];
   const report = await diagnoseZip(new Uint8Array(bytes), candidates);
 
   // Name each candidate by who supplied it, never by its text.
@@ -70,9 +77,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!names.has(fp)) {
       names.set(
         fp,
-        typed.trim() && i === 0
-          ? "the password you typed now"
-          : (loaded.labels.get(c) ?? `saved password #${i - (typed.trim() ? 1 : 0) + 1}`)
+        i < typedList.length
+          ? typedList.length === 1
+            ? "the password you typed now"
+            : `typed password #${i + 1}`
+          : (loaded.labels.get(c) ?? `saved password #${i - typedList.length + 1}`)
       );
     }
   });
@@ -84,7 +93,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       action: "rta_import.diagnosed",
       entityType: "rta_file_import",
       entityId: loaded.row.id,
-      after: { typedPassword: !!typed.trim(), savedTried: loaded.saved.length, verdict: report.verdict.slice(0, 120) },
+      after: { typedPassword: typedList.length > 0, typedCount: typedList.length, savedTried: loaded.saved.length, verdict: report.verdict.slice(0, 120) },
       ...clientMetaFromHeaders(req.headers),
     });
   });
@@ -94,7 +103,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     sizeBytes: report.bytes,
     startsWithPK: report.startsWithPK,
     savedTried: loaded.saved.length,
-    typedTried: !!typed.trim(),
+    typedTried: typedList.length > 0,
+    typedCount: typedList.length,
     entries: report.entries.map((e) => ({
       name: e.name,
       kind: e.kind,

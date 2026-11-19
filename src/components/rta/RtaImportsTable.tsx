@@ -114,9 +114,9 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
   async function diagnose(id: string) {
     const typed = await promptDialog({
       title: "Check this file against a password",
-      message: "Type the password you believe locks this file (or leave it blank to test only the saved ones). It is only tested here — never saved or shown. The result names which saved password opens the file.",
-      label: "Password",
-      secret: true,
+      message: "Type the password you believe locks this file — or several guesses separated by | (for example ARN-123456|Abcde1234F|old password). Leave it blank to test only the saved ones. They are only tested here — never saved or shown back. The result names which one opens the file.",
+      label: "Password(s)",
+      secret: false,
       confirmLabel: "Check the file",
     });
     if (typed === null) return;
@@ -130,7 +130,7 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { setDiag((d) => ({ ...d, [id]: j.error ?? "Could not check this file." })); return; }
       const lines = [
-        `${j.file} — ${(j.sizeBytes / 1024).toFixed(0)} KB, ${j.startsWithPK ? "a ZIP" : "NOT a ZIP"}. Tested ${j.typedTried ? "your password + " : ""}${j.savedTried} saved password(s).`,
+        `${j.file} — ${(j.sizeBytes / 1024).toFixed(0)} KB, ${j.startsWithPK ? "a ZIP" : "NOT a ZIP"}. Tested ${j.typedTried ? `${j.typedCount ?? 1} typed + ` : ""}${j.savedTried} saved password(s).`,
         ...j.entries.map((e: { name: string; kind: string; method: string; matches: Array<{ who: string; form: string }> }) =>
           `• ${e.name}: ${e.kind}, ${e.method}${e.matches.length ? ` — OPENED by ${e.matches.map((m) => `${m.who} (${m.form})`).join(", ")}` : e.kind.startsWith("AES") ? " — no tested password fits" : ""}`),
         `Result: ${j.verdict}`,

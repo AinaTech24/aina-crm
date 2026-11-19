@@ -78,6 +78,13 @@ describe.skipIf(!TEST_DB)("POST /api/rta-imports/[id]/diagnose", () => {
     expect(text).not.toContain("Saved#1");
   });
 
+  it("tests several guesses separated by | and names the right one by position", async () => {
+    const r = await call(ids.locked, "ARN-1| Wrong#2 |Real#Pass9|ARN-1");
+    expect(r.json.typedCount).toBe(3);
+    expect(r.json.entries[0].matches).toEqual([{ who: "typed password #3", form: "as typed, UTF-8" }]);
+    expect(JSON.stringify(r.json)).not.toContain("Real#Pass9");
+  });
+
   it("says plainly when the stored bytes are not a ZIP", async () => {
     const r = await call(ids.notzip);
     expect(r.json.startsWithPK).toBe(false);

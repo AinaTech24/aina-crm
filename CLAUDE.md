@@ -1482,6 +1482,7 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   `rta_mailback.password_viewed` (label, never the text), `no-store`, hidden again after 30 s. The list endpoint still returns labels only.
   `scripts/check-mailback-passwords.ts` tells whether the WORKER can decrypt what the web app saved (a different `ENCRYPTION_KEY` makes
   `readPwRow` answer "no passwords" quietly — the automatic import then tries nothing while a typed password still works).
+- **Several guesses at once** (2026-11-19): the stethoscope's box takes candidates separated by `|` (max 20, each kept exactly as typed, duplicates dropped) — for a registrar's default password that is a guess (ARN, PAN, an old password). Matches are named "typed password #K"; a lone one stays "the password you typed now". A password that itself contains `|` cannot be tested this way.
 - **Which saved password opens a file** (2026-11-19): the stethoscope (`POST /api/rta-imports/[id]/diagnose`) now also shows on
   COMPLETED / partial rows that still hold their file (the 14-day keep), and names a match by its Settings label and registrar —
   `saved password "Cams" (under CAMS)` — not by position. Leave the box blank to test only the saved ones. A PDF inside a registrar
