@@ -26,6 +26,17 @@ export const pricingQuotes = pgTable("pricing_quotes", {
   ipHash: text("ip_hash"),
   userAgent: text("user_agent"),
   source: text("source").notNull().default("pricing"),
+  /** The one "continue where you left off" email (lib/onboarding/quote-followup.ts, 0269). */
+  followupSentAt: timestamp("followup_sent_at", { withTimezone: true }),
+  /** SHA-256 of the follow-up email's resume token (the claim token keeps working too). */
+  resumeTokenHash: text("resume_token_hash"),
+  /** SMS code at the account step (lib/onboarding/mobile-otp.ts). null = not verified. */
+  mobileVerifiedAt: timestamp("mobile_verified_at", { withTimezone: true }),
+  mobileOtpHash: text("mobile_otp_hash"),
+  mobileOtpExpiresAt: timestamp("mobile_otp_expires_at", { withTimezone: true }),
+  mobileOtpAttempts: integer("mobile_otp_attempts").notNull().default(0),
+  mobileOtpSentAt: timestamp("mobile_otp_sent_at", { withTimezone: true }),
+  mobileOtpSends: integer("mobile_otp_sends").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

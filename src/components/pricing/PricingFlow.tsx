@@ -8,38 +8,140 @@
  *   3. create the firm's account for the chosen package, then pay in Razorpay
  *      Checkout. The server verifies the payment and opens the setup wizard.
  * Every figure shown comes from the server; nothing typed here sets a price.
+ *
+ * A saved quote can be reopened: `/pricing?quote=<id>&t=<token>` (the
+ * follow-up email's link) lands on the packages, re-priced by the server with
+ * today's settings. Progress (quote id + token, the details typed, the step)
+ * is kept in sessionStorage so a refresh does not lose it — never the password.
+ * At the account step the mobile is verified with a texted code when SMS is
+ * configured (skippable; sign-up never waits on SMS), and a valid GSTIN fills
+ * the firm's state.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, BadgeCheck, Check, FileText, Lock, Minus, Plus, ReceiptText, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, BadgeCheck, CalendarCheck, Check, FileText, Lock, MessageCircle, Minus, Plus, ReceiptText, ShieldCheck } from "lucide-react";
 import { Field } from "@/components/ui/Field";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { PackageCards } from "@/components/billing/PackageCards";
 import { openRazorpayCheckout, verifyCheckout, type CheckoutStart } from "@/components/billing/razorpay-checkout";
 import { cycleLabel, inr, type CycleKey, type CycleQuote } from "@/lib/billing/aum-pricing";
-import { GST_STATES } from "@/lib/legal/gst";
+import { GST_STATES, gstinStateMismatch, stateFromGstin } from "@/lib/legal/gst";
+import { DEMO_URL } from "@/lib/landing/links";
+import { WHATSAPP_US_URL } from "@/lib/onboarding/messages";
 import { cn } from "@/lib/utils";
 
-type Quote = { quoteId: string | null; token: string | null; cycles: CycleQuote[]; tierLabel: string; onlineSignup: boolean };
+type Quote = { quoteId: string | null; token: string | null; cycles: CycleQuote[]; tierLabel: string; onlineSignup: boolean; mobileVerified?: boolean };
 type Step = "details" | "packages" | "account" | "done";
+type Form = { aumCrore: string; users: string; contactName: string; firmName: string; email: string; mobile: string; arn: string; website: string };
+type Notice = { tone: "error" | "info"; text: string; next?: string; nextLabel?: string };
+type ResumeReply = Quote & { converted?: boolean; error?: string; form?: Partial<Form> };
+type CodeReply = { status?: "sent" | "verified" | "skipped" | "wait" | "too_many"; sentTo?: string; error?: string };
+type MobileCheck =
+  | { state: "idle" | "sending" | "skipped" | "verified" }
+  | { state: "sent"; sentTo: string; skippedByUser?: boolean };
+
+const BLANK: Form = { aumCrore: "", users: "1", contactName: "", firmName: "", email: "", mobile: "", arn: "", website: "" };
+const STORE_KEY = "aina:pricing:v1";
+
+type Saved = { quoteId: string; token: string; form: Form; step: Step; cycle: CycleKey; state?: string; gstin?: string };
+
+function readSaved(): Saved | null {
+  try {
+    const raw = sessionStorage.getItem(STORE_KEY);
+    return raw ? (JSON.parse(raw) as Saved) : null;
+  } catch {
+    return null;
+  }
+}
+function writeSaved(s: Saved | null) {
+  try {
+    if (s) sessionStorage.setItem(STORE_KEY, JSON.stringify(s));
+    else sessionStorage.removeItem(STORE_KEY);
+  } catch {
+    /* storage blocked — progress just isn't kept */
+  }
+}
 
 export function PricingFlow() {
   const [step, setStep] = useState<Step>("details");
-  const [form, setForm] = useState({ aumCrore: "", users: "1", contactName: "", firmName: "", email: "", mobile: "", arn: "", website: "" });
+  const [form, setForm] = useState<Form>(BLANK);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [emailTaken, setEmailTaken] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [cycle, setCycle] = useState<CycleKey>("yearly");
   const [account, setAccount] = useState({ password: "", state: "", gstin: "" });
-  const [notice, setNotice] = useState<{ tone: "error" | "info"; text: string; next?: string } | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [mobile, setMobile] = useState<MobileCheck>({ state: "idle" });
+  const [mobileCode, setMobileCode] = useState("");
+  const [mobileBusy, setMobileBusy] = useState(false);
 
-  const set = (k: keyof typeof form, v: string) => setForm((s) => ({ ...s, [k]: v }));
+  const set = (k: keyof Form, v: string) => {
+    setForm((s) => ({ ...s, [k]: v }));
+    if (k === "email") setEmailTaken(false);
+  };
+
+  // Reopen a saved quote: the follow-up email's link wins, else this tab's own progress.
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const fromLink = params.get("quote") && params.get("t") ? { quoteId: params.get("quote")!, token: params.get("t")! } : null;
+    const saved = readSaved();
+    const target = fromLink ?? (saved ? { quoteId: saved.quoteId, token: saved.token } : null);
+    if (fromLink) {
+      // Keep the token out of the address bar (and out of a copied link).
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    if (!target) return;
+    void (async () => {
+      setResuming(true);
+      try {
+        const r = await fetch(`/api/public/pricing/quote?quote=${encodeURIComponent(target.quoteId)}&t=${encodeURIComponent(target.token)}`);
+        const j = (await r.json().catch(() => ({}))) as ResumeReply;
+        if (r.status === 409 && j.converted) {
+          writeSaved(null);
+          setNotice({ tone: "info", text: "An account was already created from this quote — sign in to continue.", next: "/login", nextLabel: "Sign in" });
+          return;
+        }
+        if (!r.ok) {
+          writeSaved(null);
+          if (fromLink) setNotice({ tone: "error", text: j.error ?? "This link has expired. Please get pricing again." });
+          return;
+        }
+        setForm({ ...BLANK, ...(j.form as Partial<Form>) });
+        setQuote(j as Quote);
+        if (j.mobileVerified) setMobile({ state: "verified" });
+        const sameQuote = !fromLink && saved && saved.quoteId === j.quoteId;
+        if (sameQuote && saved.step === "account") {
+          setCycle(saved.cycle);
+          setAccount((a) => ({ ...a, state: saved.state ?? "", gstin: saved.gstin ?? "" }));
+          setStep("account");
+        } else {
+          setStep("packages");
+        }
+      } catch {
+        /* offline — start fresh */
+      } finally {
+        setResuming(false);
+      }
+    })();
+  }, []);
+
+  // Keep progress for a refresh (never the password).
+  useEffect(() => {
+    if (!quote?.quoteId || !quote.token || step === "done") return;
+    writeSaved({ quoteId: quote.quoteId, token: quote.token, form, step, cycle, state: account.state, gstin: account.gstin });
+  }, [quote, form, step, cycle, account.state, account.gstin]);
 
   async function getQuote(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setErrors({});
+    setEmailTaken(false);
     setNotice(null);
     try {
       const r = await fetch("/api/public/pricing/quote", {
@@ -51,9 +153,12 @@ export function PricingFlow() {
       if (!r.ok) {
         if (j.field) setErrors({ [j.field]: j.error });
         else setNotice({ tone: "error", text: j.error ?? "Could not price that — please try again." });
+        if (j.code === "email_taken") setEmailTaken(true);
         return;
       }
       setQuote(j as Quote);
+      setMobile({ state: "idle" });
+      setMobileCode("");
       setStep("packages");
       window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
@@ -61,12 +166,89 @@ export function PricingFlow() {
     }
   }
 
+  // Account step: text a code to the mobile — only when the server says SMS is set up.
+  const codeAskedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (step !== "account" || !quote?.quoteId || !quote.token || mobile.state !== "idle") return;
+    // Once per quote (a re-run of the effect must not ask again and hit the resend wait).
+    if (codeAskedFor.current === quote.quoteId) return;
+    codeAskedFor.current = quote.quoteId;
+    setMobile({ state: "sending" });
+    void (async () => {
+      try {
+        const r = await fetch("/api/public/pricing/mobile-code", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ quoteId: quote.quoteId, token: quote.token }),
+        });
+        const j = (await r.json().catch(() => ({}))) as CodeReply;
+        if (j.status === "sent") setMobile({ state: "sent", sentTo: j.sentTo ?? "your mobile" });
+        else if (j.status === "verified") setMobile({ state: "verified" });
+        else setMobile({ state: "skipped" });
+      } catch {
+        setMobile({ state: "skipped" });
+      }
+    })();
+  }, [step, quote, mobile.state]);
+
+  async function resendCode() {
+    if (!quote?.quoteId || !quote.token) return;
+    setMobileBusy(true);
+    setErrors((e) => ({ ...e, mobileCode: "" }));
+    try {
+      const r = await fetch("/api/public/pricing/mobile-code", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ quoteId: quote.quoteId, token: quote.token }),
+      });
+      const j = (await r.json().catch(() => ({}))) as CodeReply;
+      if (j.status === "sent") setMobile({ state: "sent", sentTo: j.sentTo ?? "your mobile" });
+      else if (j.status === "verified") setMobile({ state: "verified" });
+      else if (j.status === "wait" || j.status === "too_many") setErrors((e) => ({ ...e, mobileCode: j.error ?? "Please wait a moment and try again." }));
+      else setMobile({ state: "skipped" });
+    } finally {
+      setMobileBusy(false);
+    }
+  }
+
+  /** True when the mobile step lets the account be created now. */
+  async function verifyCode(): Promise<boolean> {
+    if (mobile.state !== "sent" || mobile.skippedByUser) return true;
+    if (!/^\d{6}$/.test(mobileCode)) {
+      setErrors((e) => ({ ...e, mobileCode: "Enter the 6-digit code we texted you — or skip it for now." }));
+      return false;
+    }
+    setMobileBusy(true);
+    try {
+      const r = await fetch("/api/public/pricing/mobile-verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ quoteId: quote?.quoteId, token: quote?.token, code: mobileCode }),
+      });
+      const j = (await r.json().catch(() => ({}))) as CodeReply;
+      if (!r.ok) {
+        setErrors((e) => ({ ...e, mobileCode: j.error ?? "That code is not right." }));
+        return false;
+      }
+      setMobile({ state: "verified" });
+      return true;
+    } finally {
+      setMobileBusy(false);
+    }
+  }
+
   async function createAccount(e: React.FormEvent) {
     e.preventDefault();
     if (!quote?.quoteId || !quote.token) return;
-    setBusy(true);
     setErrors({});
     setNotice(null);
+    const mismatch = gstinStateMismatch(account.state, account.gstin);
+    if (mismatch) {
+      setErrors({ state: mismatch });
+      return;
+    }
+    if (!(await verifyCode())) return;
+    setBusy(true);
     try {
       const r = await fetch("/api/public/pricing/signup", {
         method: "POST",
@@ -79,6 +261,8 @@ export function PricingFlow() {
         else setNotice({ tone: "error", text: j.error ?? "Could not create the account." });
         return;
       }
+      // The quote is now an account: a refresh must not reopen it.
+      writeSaved(null);
       if (!j.checkout) {
         setStep("done");
         setNotice({
@@ -119,6 +303,9 @@ export function PricingFlow() {
   }
 
   const chosen = quote?.cycles.find((q) => q.cycle === cycle) ?? null;
+  const gstinState = stateFromGstin(account.gstin);
+  // The same rule the sign-up API enforces (lib/legal/gst.ts).
+  const stateMismatch = gstinStateMismatch(account.state, account.gstin);
   const users = Math.max(1, Number(form.users) || 1);
   const stepIndex = step === "details" ? 0 : step === "packages" ? 1 : 2;
 
@@ -137,13 +324,19 @@ export function PricingFlow() {
           <p>{notice.text}</p>
           {notice.next && (
             <Link href={notice.next} className="mt-2 inline-flex items-center gap-1 font-semibold text-site-crimson">
-              Go to Billing <ArrowRight className="size-4" />
+              {notice.nextLabel ?? "Go to Billing"} <ArrowRight className="size-4" />
             </Link>
           )}
         </div>
       )}
 
-      {step === "details" && (
+      {resuming && (
+        <p role="status" className="rounded-2xl border border-site-sand bg-site-paper p-4 text-sm text-site-muted">
+          Opening your saved packages…
+        </p>
+      )}
+
+      {step === "details" && !resuming && (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
           <form onSubmit={getQuote} className={CARD} noValidate>
             <div className="space-y-6">
@@ -242,21 +435,28 @@ export function PricingFlow() {
                       />
                     )}
                   </Field>
-                  <Field label="Email" required error={errors.email}>
-                    {(id, d, inv) => (
-                      <input
-                        id={id}
-                        aria-describedby={d}
-                        aria-invalid={inv}
-                        type="email"
-                        className="input-base"
-                        autoComplete="email"
-                        value={form.email}
-                        onChange={(e) => set("email", e.target.value)}
-                        required
-                      />
+                  <div className="space-y-1.5">
+                    <Field label="Email" required error={errors.email}>
+                      {(id, d, inv) => (
+                        <input
+                          id={id}
+                          aria-describedby={d}
+                          aria-invalid={inv}
+                          type="email"
+                          className="input-base"
+                          autoComplete="email"
+                          value={form.email}
+                          onChange={(e) => set("email", e.target.value)}
+                          required
+                        />
+                      )}
+                    </Field>
+                    {emailTaken && (
+                      <Link href="/login" className="inline-flex items-center gap-1 text-sm font-semibold text-site-crimson underline">
+                        Sign in instead <ArrowRight className="size-4" aria-hidden />
+                      </Link>
                     )}
-                  </Field>
+                  </div>
                   <Field label="Mobile" required error={errors.mobile}>
                     {(id, d, inv) => (
                       <input
@@ -359,6 +559,7 @@ export function PricingFlow() {
               Online sign-up is paused right now — we have your details and will be in touch, or write to support@ainatech.in.
             </p>
           )}
+          <NotReady />
         </div>
       )}
 
@@ -389,7 +590,12 @@ export function PricingFlow() {
                   />
                 )}
               </Field>
-              <Field label="Your firm's state" required hint="For your GST tax invoice." error={errors.state}>
+              <Field
+                label="Your firm's state"
+                required
+                hint={gstinState ? "Filled in from your GSTIN." : "For your GST tax invoice."}
+                error={errors.state || stateMismatch}
+              >
                 {(id, d, inv) => (
                   <select
                     id={id}
@@ -397,7 +603,11 @@ export function PricingFlow() {
                     aria-invalid={inv}
                     className="input-base"
                     value={account.state}
-                    onChange={(e) => setAccount((a) => ({ ...a, state: e.target.value }))}
+                    onChange={(e) => {
+                      const state = e.target.value;
+                      setAccount((a) => ({ ...a, state }));
+                      setErrors((x) => ({ ...x, state: "" }));
+                    }}
                     required
                   >
                     <option value="">Select…</option>
@@ -417,16 +627,70 @@ export function PricingFlow() {
                     aria-invalid={inv}
                     className="input-base uppercase"
                     value={account.gstin}
-                    onChange={(e) =>
-                      setAccount((a) => ({
-                        ...a,
-                        gstin: e.target.value.toUpperCase(),
-                      }))
-                    }
+                    onChange={(e) => {
+                      const gstin = e.target.value.toUpperCase().replace(/\s/g, "");
+                      // A valid GSTIN names the state (its first two digits) — fill it in.
+                      const st = stateFromGstin(gstin);
+                      setAccount((a) => ({ ...a, gstin, state: st ? st.name : a.state }));
+                      setErrors((x) => ({ ...x, gstin: "", ...(st ? { state: "" } : {}) }));
+                    }}
                     maxLength={15}
                   />
                 )}
               </Field>
+              {mobile.state === "verified" && (
+                <p className="sm:col-span-2 inline-flex items-center gap-1.5 text-sm font-semibold text-site-mint">
+                  <Check className="size-4" aria-hidden /> Mobile verified
+                </p>
+              )}
+              {mobile.state === "sent" && (
+                <div className="sm:col-span-2">
+                  {mobile.skippedByUser ? (
+                    <p className="text-sm text-site-muted">
+                      You can verify your mobile later.{" "}
+                      <button type="button" className="font-semibold text-site-crimson underline" onClick={() => setMobile({ ...mobile, skippedByUser: false })}>
+                        Enter the code now
+                      </button>
+                    </p>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                      <Field label="Code sent to your mobile" required hint={`We texted a 6-digit code to ${mobile.sentTo}. It is valid for 10 minutes.`} error={errors.mobileCode}>
+                        {(id, d, inv) => (
+                          <input
+                            id={id}
+                            aria-describedby={d}
+                            aria-invalid={inv}
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            maxLength={6}
+                            className="input-base tracking-widest"
+                            value={mobileCode}
+                            onChange={(e) => {
+                              setMobileCode(e.target.value.replace(/\D/g, ""));
+                              setErrors((x) => ({ ...x, mobileCode: "" }));
+                            }}
+                          />
+                        )}
+                      </Field>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:pt-7">
+                        <button type="button" className="text-sm font-semibold text-site-ink underline disabled:opacity-60" disabled={mobileBusy} onClick={resendCode}>
+                          Send a new code
+                        </button>
+                        <button
+                          type="button"
+                          className="text-sm font-semibold text-site-muted underline"
+                          onClick={() => {
+                            setMobile({ ...mobile, skippedByUser: true });
+                            setErrors((x) => ({ ...x, mobileCode: "" }));
+                          }}
+                        >
+                          Skip for now
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <p className="mt-6 text-sm text-site-muted">
               You will accept the{" "}
@@ -439,8 +703,9 @@ export function PricingFlow() {
               <span className="inline-flex items-center gap-1.5 text-sm text-site-muted">
                 <ShieldCheck className="size-4 text-site-mint" aria-hidden /> Secure payment by Razorpay
               </span>
-              <button type="submit" disabled={busy} className={PRIMARY}>
-                <Lock className="size-4" aria-hidden /> {busy ? "Creating your account…" : `Create account & pay ${inr(chosen.totalPaise)}`}
+              <button type="submit" disabled={busy || mobileBusy || mobile.state === "sending"} className={PRIMARY}>
+                <Lock className="size-4" aria-hidden />{" "}
+                {busy ? "Creating your account…" : mobileBusy ? "Checking the code…" : `Create account & pay ${inr(chosen.totalPaise)}`}
               </button>
             </div>
           </form>
@@ -483,7 +748,9 @@ const CARD = "rounded-3xl border border-site-sand bg-site-paper p-6 sm:p-8 shado
 const LEGEND = "text-xs font-bold uppercase tracking-widest text-site-crimson";
 const PRIMARY =
   "inline-flex items-center justify-center gap-2 rounded-full bg-site-crimson px-7 py-3.5 text-sm font-bold text-white transition hover:bg-site-crimson-deep disabled:cursor-not-allowed disabled:opacity-60";
-const GHOST = "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-site-ink transition hover:bg-site-cream";
+const OUTLINE =
+  "inline-flex items-center justify-center gap-2 rounded-full border border-site-ink/20 bg-white px-5 py-2.5 text-sm font-bold text-site-ink transition hover:border-site-ink/50";
+const GHOST ="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-site-ink transition hover:bg-site-cream";
 const STEP_BTN =
   "grid w-11 shrink-0 place-items-center rounded-lg border border-site-sand bg-white text-site-ink transition hover:border-site-ink/40 disabled:opacity-40";
 
@@ -541,6 +808,26 @@ function Stepper({ current }: { current: number }) {
       <p className="text-sm font-semibold text-site-ink sm:hidden">
         Step {current + 1} of {STEPS.length} · {STEPS[current]}
       </p>
+    </div>
+  );
+}
+
+/** Below the packages: for someone who wants to talk before buying. */
+function NotReady() {
+  return (
+    <div className="mx-auto flex max-w-4xl flex-col gap-4 rounded-3xl border border-site-sand bg-site-paper p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <div>
+        <h2 className="font-brand text-lg font-bold text-site-ink">Not ready to buy?</h2>
+        <p className="mt-0.5 text-sm text-site-muted">Talk to us first — we are happy to answer questions or show you the CRM.</p>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:shrink-0">
+        <a href={WHATSAPP_US_URL} target="_blank" rel="noopener noreferrer" className={OUTLINE}>
+          <MessageCircle className="size-4" aria-hidden /> WhatsApp us
+        </a>
+        <a href={DEMO_URL} target="_blank" rel="noopener noreferrer" className={OUTLINE}>
+          <CalendarCheck className="size-4" aria-hidden /> Book a demo
+        </a>
+      </div>
     </div>
   );
 }

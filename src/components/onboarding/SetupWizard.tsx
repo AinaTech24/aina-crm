@@ -15,6 +15,7 @@ import { notify } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils";
 import { GST_STATES } from "@/lib/legal/gst";
 import { pincodeFill } from "@/lib/pincode/autofill";
+import { StartHere } from "./StartHere";
 
 export type SetupFirm = {
   legalName: string;
@@ -63,6 +64,8 @@ export function SetupWizard(p: {
   signerName: string;
   signerEmail: string;
   docs: Doc[];
+  /** "Book your free onboarding call" (lib/onboarding/messages.ts — the env is server-side). */
+  callUrl: string;
 }) {
   const steps: StepKey[] = useMemo(
     () => (p.mode === "setup" ? ["firm", "logo", "terms", "nda", "done"] : [...p.pending, "done"]),
@@ -146,7 +149,7 @@ export function SetupWizard(p: {
           onSigned={() => { setDone((d) => ({ ...d, nda: true })); next("nda"); }}
         />
       )}
-      {step === "done" && <DoneStep mode={p.mode} ready={steps.filter((s) => s !== "done" && s !== "logo").every((s) => done[s])} logoSkipped={p.mode === "setup" && !done.logo} />}
+      {step === "done" && <DoneStep mode={p.mode} ready={steps.filter((s) => s !== "done" && s !== "logo").every((s) => done[s])} logoSkipped={p.mode === "setup" && !done.logo} callUrl={p.callUrl} />}
 
       <footer className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-border text-sm">
         <span className="text-muted-foreground">
@@ -473,17 +476,40 @@ function NdaStep({ doc, signed, emailVerified, signerName, signerEmail, onSigned
   );
 }
 
-function DoneStep({ mode, ready, logoSkipped }: { mode: "setup" | "reaccept"; ready: boolean; logoSkipped: boolean }) {
-  const [busy, setBusy] = useState(false);
-  async function finish() {
-    setBusy(true);
+function DoneStep({ mode, ready, logoSkipped, callUrl }: { mode: "setup" | "reaccept"; ready: boolean; logoSkipped: boolean; callUrl: string }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  // Setup is recorded complete first — until it is, the dashboard sends the firm back here.
+  async function finish(to?: string) {
+    setBusy(to ?? "default");
     try {
       const { ok, j } = await post("/api/onboarding/setup/complete", {});
       if (!ok) return notify.error(j.error ?? "Something is still missing.");
-      window.location.assign(j.next ?? "/dashboard");
+      window.location.assign(to ?? j.next ?? "/dashboard");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
+  }
+  if (mode === "setup" && ready) {
+    return (
+      <section className="card-surface p-5 sm:p-6 space-y-5">
+        <div className="text-center space-y-2">
+          <PartyPopper className="size-10 mx-auto text-primary" />
+          <h2 className="text-xl font-bold">All set — your CRM is ready</h2>
+          <p className="text-muted-foreground text-sm max-w-md mx-auto">
+            We will email you a welcome note with your plan.{logoSkipped ? " You can add your logo any time in Settings." : ""}
+          </p>
+        </div>
+        <div className="space-y-2">
+          <h3 className="section-title">Start here</h3>
+          <StartHere callUrl={callUrl} onGo={(href) => void finish(href)} busyHref={busy} />
+        </div>
+        <div className="text-center">
+          <Button variant="link" disabled={!!busy} onClick={() => void finish("/dashboard")}>
+            Skip — take me to my dashboard
+          </Button>
+        </div>
+      </section>
+    );
   }
   return (
     <section className="card-surface p-5 sm:p-6 space-y-4 text-center">
@@ -496,7 +522,7 @@ function DoneStep({ mode, ready, logoSkipped }: { mode: "setup" | "reaccept"; re
             : "Your acceptance is recorded."
           : "Finish the steps above that are not ticked yet."}
       </p>
-      <Button variant="primary" disabled={!ready} loading={busy} onClick={finish}>Go to your CRM</Button>
+      <Button variant="primary" disabled={!ready} loading={!!busy} onClick={() => void finish()}>Go to your CRM</Button>
     </section>
   );
 }

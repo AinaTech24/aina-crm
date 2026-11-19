@@ -16,6 +16,7 @@ import { wizardState } from "@/lib/onboarding/wizard";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ConfirmProvider } from "@/components/ui/ConfirmProvider";
 import { SetupWizard, type SetupFirm } from "@/components/onboarding/SetupWizard";
+import { onboardingCallUrl } from "@/lib/onboarding/messages";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,7 @@ export default async function SetupPage() {
             emailVerified={data.verified}
             signerName={session.name}
             signerEmail={session.email}
+            callUrl={onboardingCallUrl()}
             docs={data.docs.map((d) => ({ id: d.id, kind: d.kind, version: d.version, title: d.title, body: d.body }))}
           />
         </main>

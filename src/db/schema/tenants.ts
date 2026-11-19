@@ -202,6 +202,8 @@ export const tenants = pgTable(
     welcomeEmailAttempts: integer("welcome_email_attempts").notNull().default(0),
     welcomeEmailSentAt: timestamp("welcome_email_sent_at", { withTimezone: true }),
     welcomeEmailLastError: text("welcome_email_last_error"),
+    /** The one "need a hand importing your clients?" email (lib/onboarding/stalled.ts, 0269). */
+    onboardingNudgedAt: timestamp("onboarding_nudged_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => ({

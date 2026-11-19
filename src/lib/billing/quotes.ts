@@ -69,20 +69,32 @@ export async function saveQuote(
   return { id: String((r.rows[0] as { id: string }).id), token };
 }
 
-export type ClaimedQuote = QuoteRequest & { id: string; convertedTenantId: string | null };
+export type ClaimedQuote = QuoteRequest & { id: string; convertedTenantId: string | null; mobileVerifiedAt: Date | null };
 
-/** The quote, only when the token matches (constant-time). */
+const sameHash = (a: string, b: unknown) => {
+  const x = Buffer.from(a);
+  const y = Buffer.from(String(b ?? ""));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+};
+
+/**
+ * The quote, only when the token matches (constant-time) — the browser's claim
+ * token, or the resume token from the follow-up email (`issueResumeToken`).
+ */
 export async function loadQuoteByToken(tx: Tx, quoteId: string, token: string): Promise<ClaimedQuote | null> {
   if (!/^[0-9a-f-]{36}$/i.test(quoteId) || !token) return null;
   const r = await tx.execute(sql`
-    SELECT id, contact_name, firm_name, email, mobile, arn, aum_crore, users, claim_token_hash, converted_tenant_id
+    SELECT id, contact_name, firm_name, email, mobile, arn, aum_crore, users, claim_token_hash, resume_token_hash,
+           converted_tenant_id, mobile_verified_at
       FROM pricing_quotes WHERE id = ${quoteId}::uuid LIMIT 1
   `);
   const row = r.rows[0] as Record<string, unknown> | undefined;
   if (!row) return null;
-  const a = Buffer.from(hashToken(token));
-  const b = Buffer.from(String(row.claim_token_hash ?? ""));
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  const h = hashToken(token);
+  // Both compared every time, so the time taken says nothing about which one matched.
+  const claim = sameHash(h, row.claim_token_hash);
+  const resume = row.resume_token_hash ? sameHash(h, row.resume_token_hash) : false;
+  if (!claim && !resume) return null;
   return {
     id: String(row.id),
     contactName: String(row.contact_name),
@@ -93,6 +105,60 @@ export async function loadQuoteByToken(tx: Tx, quoteId: string, token: string): 
     aumCrore: Number(row.aum_crore),
     users: Number(row.users),
     convertedTenantId: (row.converted_tenant_id as string | null) ?? null,
+    mobileVerifiedAt: row.mobile_verified_at ? new Date(String(row.mobile_verified_at)) : null,
+  };
+}
+
+/** A fresh resume token for the follow-up email's link; only its hash is kept. */
+export async function issueResumeToken(tx: Tx, quoteId: string): Promise<string> {
+  const token = crypto.randomBytes(24).toString("base64url");
+  await tx.execute(sql`UPDATE pricing_quotes SET resume_token_hash = ${hashToken(token)}, updated_at = now() WHERE id = ${quoteId}::uuid`);
+  return token;
+}
+
+/** The resume link a quote's follow-up email carries. */
+export function resumeLink(baseUrl: string, quoteId: string, token: string): string {
+  return `${baseUrl.replace(/\/$/, "")}/pricing?quote=${encodeURIComponent(quoteId)}&t=${encodeURIComponent(token)}`;
+}
+
+export type ResumeForm = { aumCrore: string; users: string; contactName: string; firmName: string; email: string; mobile: string; arn: string };
+
+export type ResumedQuote =
+  | { kind: "converted" }
+  | ({
+      kind: "open";
+      quoteId: string;
+      token: string;
+      onlineSignup: boolean;
+      mobileVerified: boolean;
+      /** What the details step showed, so "Edit details" works after a resume. */
+      form: ResumeForm;
+    } & StoredQuote);
+
+/**
+ * Pure: what GET /api/public/pricing/quote answers for a saved quote. The
+ * packages are RE-PRICED from the saved AUM and users with the settings in
+ * force NOW — a price shown last week is never honoured just because it was
+ * shown, and nothing comes from the browser but the id and the token.
+ */
+export function resumeQuote(q: ClaimedQuote, token: string, s: PricingSettings): ResumedQuote {
+  if (q.convertedTenantId) return { kind: "converted" };
+  return {
+    kind: "open",
+    quoteId: q.id,
+    token,
+    onlineSignup: s.onlineSignup,
+    mobileVerified: !!q.mobileVerifiedAt,
+    form: {
+      aumCrore: String(q.aumCrore),
+      users: String(q.users),
+      contactName: q.contactName,
+      firmName: q.firmName,
+      email: q.email,
+      mobile: q.mobile.replace(/^\+91/, ""),
+      arn: q.arn ?? "",
+    },
+    ...buildStoredQuote({ aumCrore: q.aumCrore, users: q.users }, s, { firstPurchase: true }),
   };
 }
 

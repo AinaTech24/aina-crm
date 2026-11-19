@@ -15,6 +15,7 @@ import { recordAudit } from "@/lib/audit";
 import { sendSystemEmail } from "@/lib/comms/system-email";
 import { LEGAL } from "@/lib/legal/company";
 import { cycleLabel, inr, parseCycle } from "@/lib/billing/aum-pricing";
+import { IMPORT_CLIENTS_HREF, INVITE_TEAM_HREF, onboardingCallUrl } from "./messages";
 
 export const WELCOME_MAX_ATTEMPTS = 8;
 
@@ -31,6 +32,8 @@ export type WelcomeFacts = {
   logoMissing: boolean;
   ndaEmailedTo: string | null;
   baseUrl: string;
+  /** "Book your free onboarding call" (lib/onboarding/messages.ts `onboardingCallUrl`). */
+  callUrl?: string | null;
 };
 
 /** Pure: subject, text and HTML of the welcome email. */
@@ -42,8 +45,9 @@ export function welcomeEmail(f: WelcomeFacts): { subject: string; text: string; 
       : null;
   const renewal = f.nextRenewal && f.nextAmountPaise != null ? `Next renewal: ${f.nextRenewal} — ${inr(f.nextAmountPaise)} incl. GST, by auto-pay.` : null;
   const steps: Array<[string, string]> = [
-    ["Import your clients and your CAMS / KFintech files", `${f.baseUrl}/dashboard/rta-imports`],
-    ["Invite your team", `${f.baseUrl}/dashboard/employees/new`],
+    ["Import your clients and your CAMS / KFintech files", `${f.baseUrl}${IMPORT_CLIENTS_HREF}`],
+    ["Invite your team", `${f.baseUrl}${INVITE_TEAM_HREF}`],
+    ...(f.callUrl ? ([["Book your free onboarding call", f.callUrl]] as Array<[string, string]>) : []),
     ["Connect WhatsApp and email", `${f.baseUrl}/dashboard/settings/integrations`],
     ...(f.logoMissing ? ([["Add your firm's logo", `${f.baseUrl}/dashboard/settings/organisation`]] as Array<[string, string]>) : []),
     ["Browse the Help centre", `${f.baseUrl}/knowledge-base`],
@@ -122,6 +126,7 @@ export async function sendWelcomeEmail(tenantId: string): Promise<"sent" | "skip
       logoMissing: !t.logo_url,
       ndaEmailedTo: nda?.email ?? null,
       baseUrl: process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? LEGAL.url,
+      callUrl: onboardingCallUrl(),
     });
     const cc = nda?.email && nda.email !== owner.email ? [nda.email] : [];
     const res = await sendSystemEmail({ tenantId, to: owner.email, cc, subject: mail.subject, text: mail.text, html: mail.html, idempotencyKey: `welcome:${tenantId}` });

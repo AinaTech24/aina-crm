@@ -111,3 +111,33 @@ export function checkGstin(input: string | null | undefined): GstinCheck {
   }
   return { ok: true, gstin: g, stateCode, pan };
 }
+
+/**
+ * The state a GSTIN is registered in — its first two digits — once the whole
+ * GSTIN checks out (`checkGstin`). Null for a GSTIN that is not valid yet, or
+ * for the special codes (97 other territory, 99 centre) that name no state.
+ * The pricing account step fills "Your firm's state" from it as it is typed.
+ */
+export function stateFromGstin(gstin: string | null | undefined): { code: string; name: string } | null {
+  const g = checkGstin(gstin);
+  if (!g.ok) return null;
+  return GST_STATES.find((s) => s.code === g.stateCode) ?? null;
+}
+
+/**
+ * Does a chosen state contradict a valid GSTIN? The ONE rule behind the
+ * account step's field error and the sign-up API's refusal. Returns the error
+ * for the STATE field, or null when they agree, when no state is chosen yet,
+ * or when there is no valid GSTIN to compare with (a malformed GSTIN is
+ * `checkGstin`'s error, on its own field).
+ */
+export function gstinStateMismatch(stateNameOrCode: string | null | undefined, gstin: string | null | undefined): string | null {
+  const state = gstState(stateNameOrCode);
+  if (!state || !(gstin ?? "").trim()) return null;
+  const g = checkGstin(gstin);
+  if (!g.ok || g.stateCode === state.code) return null;
+  const registered = GST_STATES.find((s) => s.code === g.stateCode);
+  return registered
+    ? `Your GSTIN is registered in ${registered.name}, not ${state.name}.`
+    : `This GSTIN does not name a state, so it cannot be used with ${state.name}.`;
+}

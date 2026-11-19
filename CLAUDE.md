@@ -290,6 +290,63 @@ Append a function to `ALL_RULES` in `src/lib/comms/compliance.ts`. Each rule is 
 
 ---
 
+## Self-serve onboarding — from a price to the first clients
+
+`/pricing` (`PricingFlow`) → account + Razorpay → the setup wizard → "Start
+here". The owner's "smooth onboarding" request of 2026-11-18 (migration 0269,
+columns only) added the pieces below. Shared words and links live in
+`lib/onboarding/messages.ts` — never retype them on a page.
+
+- **Resume a quote.** `GET /api/public/pricing/quote?quote=&t=` takes the
+  quote's claim token OR the follow-up email's resume token
+  (`pricing_quotes.resume_token_hash`; only hashes are stored) and RE-PRICES
+  from the saved AUM and users with today's settings (`resumeQuote`, pure) —
+  a price is never honoured because it was shown. A converted quote answers
+  409 `converted` and the page points to sign-in. The page keeps
+  {quoteId, token, form, step} in sessionStorage (never the password) and
+  strips the token from the address bar.
+- **Email already an account** is caught at step 1 by the quote API with the
+  same `emailInUse` check sign-up uses, after the per-email rate limit
+  ("An account with this email already exists." + Sign in instead).
+- **GSTIN → state**: `stateFromGstin` fills the state; `gstinStateMismatch`
+  is the ONE rule for the field error and the sign-up API's refusal (on
+  `state`). Both in `lib/legal/gst.ts`.
+- **Follow-up** (`lib/onboarding/quote-followup.ts`, the hourly billing tick):
+  a quote ≥ 24 h and < 7 days old, never converted, whose email is not a
+  sign-in, gets ONE email (packages, resume link, WhatsApp, "you asked for a
+  price" footer). One per person — the newest quote; `followup_sent_at` is
+  stamped in the send's transaction, so a failed send retries and a sent one
+  never repeats. Aina Admin → Pricing quotes shows New / Followed up / Firm
+  created (unpaid) / Paid (`quoteStage`).
+- **Mobile code** (`lib/onboarding/mobile-otp.ts`,
+  `/api/public/pricing/mobile-code` + `/mobile-verify`): only when
+  `MSG91_AUTH_KEY` and `MSG91_OTP_TEMPLATE_ID` (DLT; variable
+  `MSG91_OTP_VAR`, default `var1`) are set. State lives on the quote (hash,
+  10 min, 5 tries, 60 s between sends, 5 sends). Unconfigured, MSG91 down, or
+  the buyer skips → carry on unverified with a server log. NEVER make it
+  block a sign-up. `users.mobile_verified_at` is copied from the quote.
+- **Never paid ≠ lapsed.** `LicenseState.neverPaid` (online firm, pending,
+  no payment): the layout says "Finish your payment to open your CRM" + Pay
+  now, and not as a banner on Billing (Billing says it). Renew wording is
+  for paid firms whose licence lapsed.
+- **Start here** (`components/onboarding/StartHere.tsx`): the wizard's last
+  step and `/dashboard/welcome` (where the first completion lands) — import
+  clients (the one primary action), invite the team, book the onboarding call.
+  The call link is `onboardingCallUrl()`: `ONBOARDING_CALL_URL` (https only),
+  else WhatsApp with the agreed first message; it is server-side, so pages
+  pass it down as a prop. Also in the welcome email and the checklist.
+- **"Get set up"** (`SetupChecklist`): four core steps with a progress bar;
+  positions and the operations manual under a collapsed "Later". Same data
+  checks; it disappears when all six are done.
+- **Stalled firms** (`lib/onboarding/stalled.ts`, daily 04:40 UTC): first
+  tax invoice ≥ 3 days old and no clients → one email to the owner,
+  `tenants.onboarding_nudged_at` stamped with the send. Aina Admin → Pricing →
+  Stalled onboarding lists them (owner email / mobile, nudge date).
+- Every new email path logs and returns when SMTP is missing — never a 500,
+  never a stamp for an email that did not go.
+
+---
+
 ## Opportunities — an existing client wants another product
 
 A LEAD is a new person. An existing client asking for insurance, a new SIP,
