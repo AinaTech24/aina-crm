@@ -160,6 +160,8 @@ export async function importZohoBusiness(
           assetClass: l.assetClass,
           txnType: l.txnType,
           typeLabel: l.typeLabel || null,
+          sourceType: e.lines[i]?.sourceType ?? null,
+          sourceKind: e.lines[i]?.sourceKind ?? null,
           amount: String(l.amount),
           frequency: l.frequency ?? null,
           sipDate: l.txnType === "sip" ? l.sipDate ?? null : null,

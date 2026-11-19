@@ -91,6 +91,11 @@ export const businessEntryLines = pgTable(
      *  firm's own picklist value such as Zoho's "Red. Done by Client"
      *  (lib/business/zoho-types.ts, migration 0264). Null = standard label. */
     typeLabel: text("type_label"),
+    /** The line's type as the source system recorded it — Zoho's Liquid /
+     *  Equity / Liquid to Equity (migration 0276). Null when keyed in the CRM. */
+    sourceType: text("source_type"),
+    /** Zoho's "Purchase/Redemption" on the line (0276). */
+    sourceKind: text("source_kind"),
     amount: numeric("amount", { precision: 18, scale: 2 }).notNull().default("0"),
     units: numeric("units", { precision: 18, scale: 4 }),
     /** For SIP / STP / SWP. */

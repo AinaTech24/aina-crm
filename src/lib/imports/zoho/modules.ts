@@ -19,7 +19,7 @@
 
 import { cell, isoDate, zohoId } from "./values";
 
-export const ZOHO_MODULES = ["Leads", "Risk_Profiles", "Query_Tracker", "Calls", "SWP", "Equity"] as const;
+export const ZOHO_MODULES = ["Leads", "Risk_Profiles", "Query_Tracker", "Calls", "SWP", "Equity", "Purchase_and_Redempti_01"] as const;
 export type ZohoModule = (typeof ZOHO_MODULES)[number];
 
 export const MODULE_LABEL: Record<ZohoModule, string> = {
@@ -29,6 +29,7 @@ export const MODULE_LABEL: Record<ZohoModule, string> = {
   Calls: "Calls",
   SWP: "SIP Tracking (rejected SIPs)",
   Equity: "Equity Brokerage",
+  Purchase_and_Redempti_01: "MF Transaction line types (restore)",
 };
 
 export type ZohoRecord = Record<string, unknown>;
@@ -430,6 +431,36 @@ export function mapSipTracking(r: ZohoRecord): MappedSipRejection {
     sipType: cell(r.SIP_Type),
     debitDay: num(r.ECS_Date) || null,
     mft: ref(r.Source_MF_Transaction).name,
+  };
+}
+
+// ── MF Transaction Purchase / Redemption lines → the line's Zoho type ────
+
+export type MappedLineType = {
+  mft: string;
+  scheme: string;
+  toScheme: string;
+  /** The amount the business import gave the line (mapPurchaseRow's rule). */
+  amount: number;
+  type: string;
+  kind: string;
+};
+
+/** One Purchase and Redemption subform row, as the business import read it. */
+export function mapLineType(r: ZohoRecord): MappedLineType {
+  const options = cell(r.Options_C);
+  const pa = num(r.Purchase_Amount);
+  const ra = num(r.Redemption_Amount);
+  const stp = num(r.STP_SWP_Amoount);
+  const kind = cell(r.Purchase_Redemption);
+  const amount = /stp/i.test(options) ? stp || pa || ra : /^swp$/i.test(options) ? stp || ra || pa : /redemption|red\. done|transfer out/i.test(kind) ? ra || pa : pa || ra;
+  return {
+    mft: ref(r.Parent_Id).name,
+    scheme: ref(r.Scheme).name,
+    toScheme: ref(r.To_Scheme).name,
+    amount,
+    type: cell(r.Type_C),
+    kind: kind || (pa ? "Purchase" : ra ? "Redemption" : ""),
   };
 }
 

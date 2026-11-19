@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_RISK_BANDS, brokerageByMonth, categoryFromScore, leadSource, mapCall, mapLead, mapRiskProfile, mapSipTracking, mapTask } from "@/lib/imports/zoho/modules";
+import { DEFAULT_RISK_BANDS, brokerageByMonth, categoryFromScore, leadSource, mapLineType, mapCall, mapLead, mapRiskProfile, mapSipTracking, mapTask } from "@/lib/imports/zoho/modules";
 
 describe("Zoho modules — API records → CRM", () => {
   it("maps a lead's status, source, pipeline and conversion", () => {
@@ -53,6 +53,13 @@ describe("Zoho modules — API records → CRM", () => {
   it("keeps a rejected SIP's amount and date", () => {
     const s = mapSipTracking({ id: "1", Status: "Rejected", Amount: 5000, SWP_Date: "2026-10-05", Client_Name: { id: "5", name: "A" }, Scheme_Name: "HDFC Flexi Cap" });
     expect([s.amount, s.date, s.scheme]).toEqual([5000, "2026-10-05", "HDFC Flexi Cap"]);
+  });
+
+  it("reads a Zoho line's Type, kind and the amount the import gave it", () => {
+    const base = { Parent_Id: { id: "1", name: "MFT14462" }, Scheme: { id: "2", name: "HDFC Liquid Fund" } };
+    expect(mapLineType({ ...base, Purchase_Amount: 400000, Type_C: "Liquid", Purchase_Redemption: "Purchase" })).toMatchObject({ mft: "MFT14462", amount: 400000, type: "Liquid", kind: "Purchase" });
+    expect(mapLineType({ ...base, Redemption_Amount: 3000, Type_C: "Equity", Purchase_Redemption: "Red. Done by Client" })).toMatchObject({ amount: 3000, kind: "Red. Done by Client" });
+    expect(mapLineType({ ...base, Purchase_Amount: 100000, STP_SWP_Amoount: 5000, Options_C: "Normal STP", Type_C: "Liquid to Equity" })).toMatchObject({ amount: 5000, type: "Liquid to Equity", kind: "Purchase" });
   });
 
   it("sums daily brokerage by month", () => {

@@ -25,7 +25,7 @@ import { ownerKey } from "./contacts";
 import type { ImportActor } from "./run-contacts";
 import { ZohoFileError } from "./workbook";
 import {
-  DEFAULT_RISK_BANDS, MODULE_LABEL, brokerageByMonth, categoryFromScore, mapCall, mapLead, mapRiskProfile, mapSipTracking, mapTask,
+  DEFAULT_RISK_BANDS, MODULE_LABEL, brokerageByMonth, categoryFromScore, mapCall, mapLead, mapLineType, mapRiskProfile, mapSipTracking, mapTask,
   type RiskBand, type ZohoModule, type ZohoRecord,
 } from "./modules";
 
@@ -402,6 +402,67 @@ export async function importZohoModule(
         result.created++;
       }
       await insertAll(sipRejections, rows);
+    }
+
+    if (module === "Purchase_and_Redempti_01") {
+      // Restore Zoho's own Type and Purchase/Redemption onto the imported lines
+      // (the Scheme Master mapping re-derived asset_class from the category).
+      const lines = (await tx.execute(sql`
+        SELECT l.id, l.amount::numeric AS amount, l.scheme_name, l.from_scheme_name, COALESCE(l.notes, '') AS notes,
+               substring(e.notes from '^Zoho (MFT[0-9]+)') AS mft
+          FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
+         WHERE l.tenant_id = ${actor.tenantId}::uuid AND e.notes ~ '^Zoho MFT[0-9]'
+           AND l.txn_type NOT IN ('sip', 'sip_topup', 'sip_stop')
+      `)).rows as Array<{ id: string; amount: string; scheme_name: string; from_scheme_name: string | null; notes: string; mft: string }>;
+      const byMft = new Map<string, typeof lines>();
+      for (const l of lines) {
+        if (!byMft.has(l.mft)) byMft.set(l.mft, []);
+        byMft.get(l.mft)!.push(l);
+      }
+      const taken = new Set<string>();
+      const sets: Array<{ id: string; type: string; kind: string }> = [];
+      const key = (s: string) => s.trim().toLowerCase();
+      for (const r of records) {
+        const m = mapLineType(r);
+        if (!m.mft) { skip("No MF Transaction on the line"); continue; }
+        const cands = (byMft.get(m.mft) ?? []).filter((l) => !taken.has(l.id) && Math.abs(Number(l.amount) - m.amount) < 0.01);
+        if (!cands.length) { skip(byMft.has(m.mft) ? "No CRM line with this amount" : "MF Transaction not in the CRM"); continue; }
+        const names = [m.scheme, m.toScheme].filter(Boolean).map(key);
+        const hit =
+          cands.find((l) => names.some((n) => key(l.scheme_name) === n || key(l.from_scheme_name ?? "") === n || key(l.notes).startsWith(`zoho: ${n}`))) ?? cands[0];
+        taken.add(hit.id);
+        sets.push({ id: hit.id, type: m.type, kind: m.kind });
+        count(`${m.kind || "(blank)"} · ${m.type || "(no type)"}`);
+      }
+      for (let i = 0; i < sets.length; i += 500) {
+        const batch = sets.slice(i, i + 500);
+        const ids = batch.map((b) => b.id);
+        const types = batch.map((b) => b.type ?? "");
+        const kinds = batch.map((b) => b.kind ?? "");
+        await tx.execute(sql`
+          UPDATE business_entry_lines l SET source_type = NULLIF(v.t, ''), source_kind = NULLIF(v.k, ''), updated_at = now()
+            FROM unnest(${ids}::uuid[], ${types}::text[], ${kinds}::text[]) AS v(id, t, k)
+           WHERE l.id = v.id AND l.tenant_id = ${actor.tenantId}::uuid
+        `);
+      }
+      result.updated = sets.length;
+      // The old Mutual Fund module has no subform: its Type is the one the import
+      // gave the line, read back from the asset class it set (no Scheme Master
+      // mapping has run on those lines).
+      const old = await tx.execute(sql`
+        UPDATE business_entry_lines l SET
+               source_type = CASE WHEN l.asset_class = 'equity' AND l.from_asset_class = 'liquid' THEN 'Liquid to Equity'
+                                  WHEN l.asset_class = 'liquid' THEN 'Liquid'
+                                  WHEN l.asset_class = 'equity' THEN 'Equity' ELSE NULL END,
+               source_kind = CASE WHEN l.txn_type IN ('redemption', 'swp') THEN 'Redemption' ELSE 'Purchase' END,
+               updated_at = now()
+          FROM business_entries e
+         WHERE e.id = l.entry_id AND l.tenant_id = ${actor.tenantId}::uuid AND e.notes ~ '^Zoho MFT-OLD-'
+           AND e.product_type = 'mutual_fund' AND l.source_type IS NULL
+           AND l.txn_type NOT IN ('sip', 'sip_topup', 'sip_stop')
+        RETURNING l.id
+      `);
+      result.notes.push(`${sets.length} MF Transaction lines took Zoho's Type; ${old.rows.length} old Mutual Fund lines took the Type they were imported with.`);
     }
 
     if (module === "Equity") {
