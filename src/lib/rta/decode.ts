@@ -222,6 +222,15 @@ export function decodeRtaToText(buf: Buffer, fileName: string): string {
     );
   }
 
+  // A PDF (CAMS sends some brokerage statements as one) is a document, not data: read as text it
+  // became "7394 data lines, layout not recognised" with "%PDF-1.4" as the first line. Say what it is.
+  if (buf.length > 4 && buf.toString("latin1", 0, 5) === "%PDF-") {
+    throw new RtaUnreadableSpreadsheetError(
+      "This file is a PDF, not a data file, so there is nothing to import from it. " +
+        "Ask the registrar for the same report as CSV or Excel (for brokerage: the Excel / CSV annexure)."
+    );
+  }
+
   try {
     if (isSpreadsheet) return spreadsheetToPipeText(buf);
     return normalizeDelimitedText(buf.toString("utf8"));
