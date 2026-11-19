@@ -687,6 +687,14 @@ export const businessLineCatalog: SubjectCatalog = {
     // old Mutual Fund module (MFT-OLD-…), another Zoho module, or the CRM.
     { key: "entry_source", label: "Recorded in", type: "string", sql: "(SELECT CASE WHEN e.notes ~ '^Zoho MFT-OLD-' THEN 'Zoho Mutual Fund (old module)' WHEN e.notes ~ '^Zoho MFT[0-9]' THEN 'Zoho MF Transaction' WHEN e.notes ~ '^Zoho ' THEN 'Zoho (other module)' ELSE 'CRM' END FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
     { key: "amount", label: "Amount (₹)", type: "currency", sql: "bl.amount", ops: COMMON_NUMBER_OPS },
+    // We Care plants a tree for every ₹10,000 of a single fresh SIP (2026-11-19):
+    // each SIP on its own, never added together; not top-ups, Daily SIPs,
+    // stops or rejected lines (a rejected line is txn_type other).
+    { key: "trees", label: "Trees (1 per ₹10,000 SIP)", type: "number", sql: "(CASE WHEN bl.txn_type = 'sip' AND COALESCE(bl.type_label, '') !~* 'daily' THEN FLOOR(bl.amount / 10000)::int ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "client_pan", label: "Client PAN", type: "string", sql: "(SELECT i.pan FROM business_entries e JOIN investors i ON i.id = e.investor_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
+    { key: "client_phone", label: "Client phone", type: "string", sql: "(SELECT i.phone FROM business_entries e JOIN investors i ON i.id = e.investor_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
+    { key: "client_email", label: "Client email", type: "string", sql: "(SELECT i.email FROM business_entries e JOIN investors i ON i.id = e.investor_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
+    { key: "client_city", label: "Client city", type: "string", sql: "(SELECT i.address->>'city' FROM business_entries e JOIN investors i ON i.id = e.investor_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
   ],
   relations: {},
 };
