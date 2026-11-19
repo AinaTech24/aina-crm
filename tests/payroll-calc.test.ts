@@ -11,7 +11,7 @@ const line = (r: { earnings?: { code: string; amount: number }[]; deductions?: {
 
 describe("settings", () => {
   it("defaults: calendar days, Basic 50%, HRA 40% of Basic, PF capped, Gujarat", () => {
-    expect(S).toEqual({ payableDaysMethod: "calendar", basicPct: 0.5, hraPctOfBasic: 0.4, pfWageMode: "capped", defaultState: "GJ", payDay: 1 });
+    expect(S).toEqual({ payableDaysMethod: "calendar", basicPct: 0.5, hraPctOfBasic: 0.4, pfWageMode: "capped", defaultState: "GJ", payDay: 1, proofDeadlineMonth: 1 });
   });
 });
 

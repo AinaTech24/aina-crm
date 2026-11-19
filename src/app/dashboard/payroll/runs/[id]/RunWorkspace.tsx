@@ -16,6 +16,7 @@ import { confirmDialog, promptDialog } from "@/components/ui/ConfirmProvider";
 import { notify } from "@/components/ui/Toast";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import type { PayAdjustment } from "@/db/schema/payroll";
+import { FLAG_LABEL, type VarianceRow } from "@/lib/payroll/variance";
 
 export type ItemRow = {
   id: string;
@@ -48,8 +49,68 @@ type Run = {
   paidOn: string | null;
   youPrepared: boolean;
   youAreOwner: boolean;
-  totals: { employees: number; gross: number; net: number; tds: number; pf: number; esi: number; pt: number; employerCost: number; onHold: number };
+  totals: {
+    employees: number; gross: number; net: number; tds: number; pf: number; esi: number; pt: number; employerCost: number; onHold: number;
+    arrears: number; incentives: number; claims: number; loans: number;
+  };
 };
+
+export type RunChecks = { changes: VarianceRow[]; hasPrevious: boolean; noUan: string[]; noEsi: string[] };
+
+/** Who changed against last month, and what the statutory files are missing. */
+function Review({ runId, checks }: { runId: string; checks: RunChecks }) {
+  const { changes, hasPrevious, noUan, noEsi } = checks;
+  if (!changes.length && !noUan.length && !noEsi.length) return null;
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 space-y-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-semibold">Review before approving</h2>
+        <span className="ml-auto">
+          <DownloadButton url={`/api/payroll/runs/${runId}/export?kind=variance`} className="btn-secondary">Variance sheet</DownloadButton>
+        </span>
+      </div>
+      {(noUan.length > 0 || noEsi.length > 0) && (
+        <ul className="space-y-1">
+          {noUan.length > 0 && <li className="flex gap-2"><AlertTriangle className="size-4 shrink-0 text-warning" />No UAN, so left out of the PF ECR file: {noUan.join(", ")}.</li>}
+          {noEsi.length > 0 && <li className="flex gap-2"><AlertTriangle className="size-4 shrink-0 text-warning" />No ESI IP number for the ESIC file: {noEsi.join(", ")}.</li>}
+        </ul>
+      )}
+      {changes.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <th className="text-left">{hasPrevious ? "Changed since last month" : "To look at"}</th>
+                {hasPrevious && <th className="text-right">Last month</th>}
+                <th className="text-right">This month</th>
+                {hasPrevious && <th className="text-right">Change</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {changes.map((c) => (
+                <tr key={c.userId}>
+                  <td>
+                    <div className="font-medium">{c.name}</div>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {c.flags.map((f) => <Badge key={f} tone={f === "zero" || f === "down" ? "warning" : "neutral"}>{FLAG_LABEL[f]}</Badge>)}
+                    </div>
+                  </td>
+                  {hasPrevious && <td className="text-right tabular-nums">{c.lastNet == null ? "—" : rupees(c.lastNet)}</td>}
+                  <td className="text-right tabular-nums">{c.net == null ? "—" : rupees(c.net)}</td>
+                  {hasPrevious && (
+                    <td className="text-right tabular-nums">
+                      {c.change == null ? "—" : `${c.change > 0 ? "+" : ""}${rupees(c.change)}${c.changePct != null ? ` (${c.changePct > 0 ? "+" : ""}${c.changePct}%)` : ""}`}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 const rupees = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
@@ -97,7 +158,7 @@ function Adjustments({ runId, row, onDone }: { runId: string; row: ItemRow; onDo
         </div>
       ))}
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex-1 min-w-[10rem]">
+        <label className="flex-1 min-w-40">
           <span className="block text-xs text-muted-foreground mb-1">What for</span>
           <input className="input-base w-full" placeholder="e.g. Diwali bonus, advance recovery" value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
         </label>
@@ -125,7 +186,7 @@ function Adjustments({ runId, row, onDone }: { runId: string; row: ItemRow; onDo
   );
 }
 
-export function RunWorkspace({ run, rows, canManage }: { run: Run; rows: ItemRow[]; canManage: boolean }) {
+export function RunWorkspace({ run, rows, canManage, checks }: { run: Run; rows: ItemRow[]; canManage: boolean; checks: RunChecks }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -171,7 +232,18 @@ export function RunWorkspace({ run, rows, canManage }: { run: Run; rows: ItemRow
 
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <Tile label="People paid" value={String(run.totals.employees)} hint={run.totals.onHold ? `${run.totals.onHold} on hold` : undefined} />
-        <Tile label="Gross pay" value={rupees(run.totals.gross)} />
+        <Tile
+          label="Gross pay"
+          value={rupees(run.totals.gross)}
+          hint={
+            [
+              run.totals.arrears ? `Arrears ${rupees(run.totals.arrears)}` : null,
+              run.totals.incentives ? `Incentives ${rupees(run.totals.incentives)}` : null,
+              run.totals.claims ? `Claims ${rupees(run.totals.claims)}` : null,
+              run.totals.loans ? `Loans recovered ${rupees(run.totals.loans)}` : null,
+            ].filter(Boolean).join(" · ") || undefined
+          }
+        />
         <Tile label="Net pay to bank" value={rupees(run.totals.net)} />
         <Tile label="Cost to firm" value={rupees(run.totals.employerCost)} hint={`PF ${rupees(run.totals.pf)} · ESI ${rupees(run.totals.esi)} · PT ${rupees(run.totals.pt)} · TDS ${rupees(run.totals.tds)}`} />
       </div>
@@ -226,10 +298,18 @@ export function RunWorkspace({ run, rows, canManage }: { run: Run; rows: ItemRow
           )}
           <span className="ml-auto flex flex-wrap gap-2">
             <DownloadButton url={`/api/payroll/runs/${run.id}/export?kind=register`} className="btn-secondary">Salary register</DownloadButton>
-            {run.status !== "draft" && <DownloadButton url={`/api/payroll/runs/${run.id}/export?kind=bank`} className="btn-secondary">Bank file</DownloadButton>}
+            {run.status !== "draft" && (
+              <>
+                <DownloadButton url={`/api/payroll/runs/${run.id}/export?kind=bank`} className="btn-secondary">Bank file</DownloadButton>
+                <DownloadButton url={`/api/payroll/runs/${run.id}/export?kind=ecr`} className="btn-secondary" title="EPFO ECR text file — upload by the 15th">PF ECR</DownloadButton>
+                <DownloadButton url={`/api/payroll/runs/${run.id}/export?kind=esic`} className="btn-secondary" title="ESIC monthly contribution — upload by the 15th">ESIC</DownloadButton>
+              </>
+            )}
           </span>
         </div>
       )}
+
+      {canManage && <Review runId={run.id} checks={checks} />}
 
       {warnings > 0 && (
         <div className="rounded-xl border border-warning/50 bg-warning/5 p-3 text-sm flex items-center gap-2">

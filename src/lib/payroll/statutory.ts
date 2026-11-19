@@ -42,7 +42,11 @@ export const WAGES_MIN_SHARE: Dated<number> = [{ from: "2025-11-21", value: 0.5 
 export type TaxRegime = {
   standardDeduction: number;
   slabs: Array<{ upTo: number | null; rate: number }>; // annual taxable income
-  rebateLimit: number; // income up to this pays no tax (rebate), with marginal relief above
+  rebateLimit: number; // income up to this gets the rebate
+  /** Largest rebate (old regime ₹12,500); none = the whole tax. */
+  rebateMax?: number;
+  /** Above the limit, tax never more than the excess (new regime only). */
+  marginalRelief?: boolean;
   cess: number;
   surcharge: Array<{ above: number; rate: number }>;
 };
@@ -61,8 +65,35 @@ export const NEW_REGIME: Dated<TaxRegime> = [
         { upTo: null, rate: 0.3 },
       ],
       rebateLimit: 1200000,
+      marginalRelief: true,
       cess: 0.04,
       surcharge: [
+        { above: 20000000, rate: 0.25 },
+        { above: 10000000, rate: 0.15 },
+        { above: 5000000, rate: 0.1 },
+      ],
+    },
+  },
+];
+
+/** Old regime (individual below 60): the employee's choice, with deductions (lib/payroll/tax.ts). */
+export const OLD_REGIME: Dated<TaxRegime> = [
+  {
+    from: "2023-04-01",
+    value: {
+      standardDeduction: 50000,
+      slabs: [
+        { upTo: 250000, rate: 0 },
+        { upTo: 500000, rate: 0.05 },
+        { upTo: 1000000, rate: 0.2 },
+        { upTo: null, rate: 0.3 },
+      ],
+      rebateLimit: 500000,
+      rebateMax: 12500,
+      marginalRelief: false,
+      cess: 0.04,
+      surcharge: [
+        { above: 50000000, rate: 0.37 },
         { above: 20000000, rate: 0.25 },
         { above: 10000000, rate: 0.15 },
         { above: 5000000, rate: 0.1 },
@@ -81,9 +112,9 @@ export function annualTax(taxable: number, r: TaxRegime): number {
     if (taxable > lower) tax += (Math.min(taxable, top) - lower) * s.rate;
     lower = top;
   }
-  // Rebate: nothing up to the limit; just above it, never more than the excess (marginal relief).
-  if (taxable <= r.rebateLimit) tax = 0;
-  else tax = Math.min(tax, taxable - r.rebateLimit);
+  // Rebate up to the limit; just above it (new regime), never more than the excess (marginal relief).
+  if (taxable <= r.rebateLimit) tax = Math.max(0, tax - (r.rebateMax ?? tax));
+  else if (r.marginalRelief) tax = Math.min(tax, taxable - r.rebateLimit);
   const sur = r.surcharge.find((x) => taxable > x.above);
   if (sur) tax += tax * sur.rate;
   return Math.round(tax * (1 + r.cess));

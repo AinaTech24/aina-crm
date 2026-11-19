@@ -105,6 +105,11 @@ const SKIP_FILES = new Set([
   "calculators/scenarios/route.ts",
   "calculators/share/route.ts",
   "calculators/save-to-client/route.ts",
+  // Payroll self-service (phase 2): one's own expense claims and tax
+  // declaration — every write is pinned to session.userId.
+  "me/pay/claims/route.ts",
+  "me/pay/claims/[id]/route.ts",
+  "me/pay/declaration/route.ts",
 ]);
 
 const MUTATION = /export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)/g;

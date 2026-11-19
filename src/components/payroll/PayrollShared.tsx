@@ -13,20 +13,26 @@ export const rupees = (n: number | string | null | undefined) =>
 export const monthLabel = (period: string) =>
   new Date(`${period.slice(0, 7)}-01T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "UTC" });
 
-export function PayrollTabs({ active }: { active: "runs" | "employees" | "settings" }) {
-  const tabs = [
+export type PayrollTab = "runs" | "employees" | "loans" | "claims" | "incentives" | "declarations" | "settings";
+
+export function PayrollTabs({ active }: { active: PayrollTab }) {
+  const tabs: Array<{ key: PayrollTab; href: string; label: string }> = [
     { key: "runs", href: "/dashboard/payroll", label: "Pay runs" },
     { key: "employees", href: "/dashboard/payroll/employees", label: "Employees" },
+    { key: "loans", href: "/dashboard/payroll/loans", label: "Loans" },
+    { key: "claims", href: "/dashboard/payroll/claims", label: "Claims" },
+    { key: "incentives", href: "/dashboard/payroll/incentives", label: "Incentives" },
+    { key: "declarations", href: "/dashboard/payroll/declarations", label: "Tax declarations" },
     { key: "settings", href: "/dashboard/payroll/settings", label: "Settings" },
   ];
   return (
-    <nav aria-label="Payroll" className="inline-flex rounded-lg border border-border bg-card p-0.5 gap-0.5">
+    <nav aria-label="Payroll" className="flex max-w-full overflow-x-auto rounded-lg border border-border bg-card p-0.5 gap-0.5 w-fit">
       {tabs.map((t) => (
         <Link
           key={t.key}
           href={t.href}
           aria-current={active === t.key ? "page" : undefined}
-          className={`px-3 py-1.5 rounded-md text-sm font-medium ${active === t.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-sm font-medium ${active === t.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
           {t.label}
         </Link>
@@ -35,7 +41,23 @@ export function PayrollTabs({ active }: { active: "runs" | "employees" | "settin
   );
 }
 
-type EmployeeMeta = { name: string; employeeCode?: string | null; department?: string | null; workState?: string | null };
+/** My pay: payslips, the tax declaration and expense claims. */
+export function MyPayTabs({ active }: { active: "payslips" | "tax" | "claims" }) {
+  const tabs = [
+    { key: "payslips", href: "/dashboard/my-pay", label: "Payslips" },
+    { key: "tax", href: "/dashboard/my-pay/tax", label: "Tax declaration" },
+    { key: "claims", href: "/dashboard/my-pay/claims", label: "Expense claims" },
+  ] as const;
+  return (
+    <nav aria-label="My pay" className="dash-seg w-fit">
+      {tabs.map((t) => (
+        <Link key={t.key} href={t.href} aria-current={active === t.key ? "page" : undefined}>{t.label}</Link>
+      ))}
+    </nav>
+  );
+}
+
+type EmployeeMeta ={ name: string; employeeCode?: string | null; department?: string | null; workState?: string | null };
 
 /** The payslip — the frozen calculation of one person's month, every line with its reason. */
 export function Payslip({

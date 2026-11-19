@@ -970,11 +970,13 @@ clients and leads; this CRM is its processor. Step 1 of the plan (2026-10-31):
 - **Still to build** (the plan): DPAs between AinaTech and each firm
   (paperwork, step 5).
 
-## Payroll (phase 1)
+## Payroll (phases 1 and 2)
 
 Team → Payroll (owner, or anyone granted `payroll.manage` / `payroll.view`)
-and Team → My pay (everyone's own payslips). Design and later phases:
-`docs/PAYROLL_MODULE_DESIGN.md`. Migration 0261.
+and Team → My pay (everyone's own payslips, tax declaration, expense claims,
+loans and incentives). Design and phase 3: `docs/PAYROLL_MODULE_DESIGN.md`.
+Migrations 0261 and 0273. Payroll and My pay are NOT in the nav-access
+catalog — Payroll is gated by its capabilities, My pay is self-only.
 
 - **The employee is the `users` row.** Payroll adds `payroll_profiles` (PAN
   and bank account encrypted with `lib/crypto`, last digits in clear; work
@@ -997,6 +999,44 @@ and Team → My pay (everyone's own payslips). Design and later phases:
   audited.
 - Salaries are never visible outside payroll: not on the team list, not to
   branch heads, not to the AI.
+- **Phase 2 inputs** (`lib/payroll/inputs.ts`, all read by `calculateRun`):
+  - *Loans and advances* (`payroll_loans`): the balance is the principal less
+    every instalment recorded on an approved / paid run
+    (`result.links.loans`), so reopening a run never recovers twice; someone
+    leaving repays the balance; a month too short of pay cuts the EMI, never
+    the net below nil. A repaid loan closes when the run is marked paid.
+  - *Expense claims* (`reimbursement_claims`): submitted in My pay → decided
+    by the claimant's reporting manager or `payroll.manage`, never the
+    claimant (`canDecideClaim`) → repaid untaxed, with no ESI / PT, by the next
+    run. One bill is never paid twice (claimant + category + date + amount +
+    bill number, letters and digits only). Bill images are not stored yet.
+  - *Incentives* (`incentive_plans` / `incentive_statements`,
+    `lib/payroll/incentive-rules.ts` pure + `incentives.ts`): the measure
+    comes from the CRM on the dashboards' definitions — RTA-processed net or
+    gross business, net SIP, insurance premium booked, new clients — never
+    typed. No RTA data is "nothing to pay, and why", not ₹0 of business.
+    Slabs on achievement of the person's KRA target (pro-rated) or on the
+    figure; % / fixed / per client; a cap. Worked out → approved
+    (`payroll.manage`, not one's own) → paid as taxable pay. Recalculating
+    never touches an approved statement.
+  - Claims and incentives are ATTACHED to the draft run that picks them up
+    (`pay_run_id`); marking the run paid marks them paid and sends a held
+    person's back to wait.
+  - *Arrears*: a salary revision dated back pays the difference for each of
+    the last twelve months already approved / paid, for the days paid, less
+    arrears already paid for that month; their Basic attracts PF. A revision
+    DOWN is only warned about, never recovered automatically.
+  - *Tax declarations* (`tax_declarations`, `lib/payroll/tax.ts`): the
+    employee picks the regime and declares; the old regime (`OLD_REGIME` in
+    statutory.ts) takes HRA, 80C (incl. their PF), 80D, 24(b), 80CCD(1B), PT.
+    After the proof deadline (setting `proofDeadlineMonth`, January) only
+    VERIFIED proofs count. Every result carries `tax` with the other regime's
+    figure, which My pay → Tax declaration shows side by side. A previous
+    employer's income and TDS count in both regimes.
+- **Phase 2 outputs**: the run page's "Review before approving" (variance
+  against last month, `lib/payroll/variance.ts`; people missing a UAN or ESI
+  number) and the PF ECR v2 / ESIC files (`lib/payroll/filings.ts`, approved
+  runs, `payroll.manage`, audited). Every result carries `statutory` wages.
 
 ## Creating a family
 

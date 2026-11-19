@@ -121,3 +121,118 @@ export const payRunItems = pgTable(
 
 export type PayRun = typeof payRuns.$inferSelect;
 export type PayRunItem = typeof payRunItems.$inferSelect;
+
+// ── Phase 2 (migration 0273) ─────────────────────────────────────────────────
+
+/** A salary loan or advance, recovered by EMI through the pay run (lib/payroll/inputs.ts). */
+export const payrollLoans = pgTable(
+  "payroll_loans",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    kind: text("kind").notNull().default("loan"),
+    principal: numeric("principal", { precision: 12, scale: 2 }).notNull(),
+    emi: numeric("emi", { precision: 12, scale: 2 }).notNull(),
+    /** First month recovered (yyyy-mm-01). */
+    startPeriod: date("start_period").notNull(),
+    interestRate: numeric("interest_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+    note: text("note"),
+    status: text("status").notNull().default("active"),
+    createdBy: uuid("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ userIdx: index("payroll_loans_user_idx").on(t.tenantId, t.userId, t.status) })
+);
+
+/** An expense claim: submitted → approved (manager) → paid in a pay run. */
+export const reimbursementClaims = pgTable(
+  "reimbursement_claims",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    category: text("category").notNull(),
+    claimDate: date("claim_date").notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    description: text("description"),
+    billNumber: text("bill_number"),
+    dedupKey: text("dedup_key").notNull(),
+    status: text("status").notNull().default("submitted"),
+    decidedBy: uuid("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decisionNote: text("decision_note"),
+    payRunId: uuid("pay_run_id").references(() => payRuns.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ userIdx: index("reimbursement_claims_user_idx").on(t.tenantId, t.userId, t.status) })
+);
+
+/** The employee's tax declaration for a financial year (lib/payroll/tax.ts). */
+export const taxDeclarations = pgTable(
+  "tax_declarations",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    fyStart: date("fy_start").notNull(),
+    regime: text("regime").notNull().default("new"),
+    declared: jsonb("declared").$type<Record<string, unknown>>().notNull().default({}),
+    proofs: jsonb("proofs").$type<Record<string, unknown>>().notNull().default({}),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ userFyUq: uniqueIndex("tax_declarations_user_fy_uq").on(t.tenantId, t.userId, t.fyStart) })
+);
+
+export type IncentiveSlab = { from: number; rate: number };
+
+/** A sales incentive plan (lib/payroll/incentives.ts). */
+export const incentivePlans = pgTable("incentive_plans", {
+  id,
+  tenantId: tenantId.references(() => tenants.id),
+  name: text("name").notNull(),
+  measure: text("measure").notNull(),
+  periodKind: text("period_kind").notNull().default("quarter"),
+  slabOn: text("slab_on").notNull().default("achievement"),
+  payout: text("payout").notNull().default("percent"),
+  slabs: jsonb("slabs").$type<IncentiveSlab[]>().notNull().default([]),
+  cap: numeric("cap", { precision: 12, scale: 2 }),
+  roles: text("roles").array().notNull().default([]),
+  userIds: uuid("user_ids").array().notNull().default([]),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** One person's incentive for one plan and period: calculated → approved → paid. */
+export const incentiveStatements = pgTable(
+  "incentive_statements",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    planId: uuid("plan_id").notNull().references(() => incentivePlans.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    measureValue: numeric("measure_value", { precision: 16, scale: 2 }),
+    targetValue: numeric("target_value", { precision: 16, scale: 2 }),
+    achievementPct: numeric("achievement_pct", { precision: 9, scale: 2 }),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    working: jsonb("working").$type<Record<string, unknown>>().notNull().default({}),
+    status: text("status").notNull().default("calculated"),
+    approvedBy: uuid("approved_by"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    payRunId: uuid("pay_run_id").references(() => payRuns.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    uq: uniqueIndex("incentive_statements_uq").on(t.tenantId, t.planId, t.userId, t.periodStart),
+    userIdx: index("incentive_statements_user_idx").on(t.tenantId, t.userId, t.status),
+  })
+);

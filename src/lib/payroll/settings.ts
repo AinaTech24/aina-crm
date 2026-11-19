@@ -19,6 +19,8 @@ export const PayrollSettingsSchema = z.object({
   defaultState: z.string().max(3).default("GJ"),
   /** Day of the month salaries are paid. */
   payDay: z.number().int().min(1).max(31).default(1),
+  /** Last month for tax proofs (1 = January): later runs count only verified proofs (lib/payroll/tax.ts). */
+  proofDeadlineMonth: z.number().int().min(1).max(3).default(1),
 });
 export type PayrollSettings = z.infer<typeof PayrollSettingsSchema>;
 

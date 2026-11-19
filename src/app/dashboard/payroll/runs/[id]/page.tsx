@@ -5,7 +5,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Badge } from "@/components/ui/Badge";
 import { withTenant } from "@/db/client";
-import { payRunItems, payRuns, users } from "@/db/schema";
+import { payRunItems, payRuns, payrollProfiles, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { canManagePayroll, canViewPayroll, isOwner } from "@/lib/payroll/access";
 import type { PayResult } from "@/lib/payroll/calc";
@@ -13,6 +13,7 @@ import { formatDate } from "@/lib/format";
 import { monthLabel } from "@/components/payroll/PayrollShared";
 import { RunWorkspace, type ItemRow } from "./RunWorkspace";
 import { RUN_STATUS as STATUS } from "@/lib/payroll/labels";
+import { variance } from "@/lib/payroll/variance";
 
 export const dynamic = "force-dynamic";
 
@@ -26,18 +27,30 @@ export default async function PayRunPage({ params }: { params: Promise<{ id: str
   const data = await withTenant(session.tenantId, async (tx) => {
     const [run] = await tx.select().from(payRuns).where(and(eq(payRuns.tenantId, session.tenantId), eq(payRuns.id, id)));
     if (!run) return null;
-    const items = await tx
-      .select({ item: payRunItems, name: users.name, code: users.employeeCode })
-      .from(payRunItems)
-      .innerJoin(users, eq(users.id, payRunItems.userId))
-      .where(eq(payRunItems.payRunId, id))
-      .orderBy(asc(users.name));
+    const loadItems = (runId: string) =>
+      tx
+        .select({ item: payRunItems, name: users.name, code: users.employeeCode, uan: payrollProfiles.uan, esiNumber: payrollProfiles.esiNumber })
+        .from(payRunItems)
+        .innerJoin(users, eq(users.id, payRunItems.userId))
+        .leftJoin(payrollProfiles, and(eq(payrollProfiles.tenantId, payRunItems.tenantId), eq(payrollProfiles.userId, payRunItems.userId)))
+        .where(eq(payRunItems.payRunId, runId))
+        .orderBy(asc(users.name));
+    const items = await loadItems(id);
+    const p = String(run.period);
+    const prevPeriod = p.slice(5, 7) === "01" ? `${Number(p.slice(0, 4)) - 1}-12-01` : `${p.slice(0, 4)}-${String(Number(p.slice(5, 7)) - 1).padStart(2, "0")}-01`;
+    const [prev] = await tx.select({ id: payRuns.id }).from(payRuns).where(and(eq(payRuns.tenantId, session.tenantId), eq(payRuns.period, prevPeriod)));
+    const prevItems = prev ? await loadItems(prev.id) : null;
     const ids = [run.preparedBy, run.approvedBy, run.paidBy].filter((x): x is string => !!x);
     const people = ids.length ? await tx.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, ids)) : [];
-    return { run, items, names: new Map(people.map((p) => [p.id, p.name])) };
+    return { run, items, prevItems, names: new Map(people.map((x) => [x.id, x.name])) };
   });
   if (!data) notFound();
-  const { run, items, names } = data;
+  const { run, items, prevItems, names } = data;
+  const toV = (list: typeof items) => list.map(({ item, name }) => ({ userId: item.userId, name, gross: Number(item.gross), net: Number(item.net), onHold: item.onHold }));
+  const changes = variance(toV(items), prevItems ? toV(prevItems) : null).filter((r) => r.flags.length > 0);
+  const has = (r: unknown, code: string) => ((r as PayResult).deductions ?? []).some((l) => l.code === code && l.amount > 0);
+  const noUan = items.filter(({ item, uan }) => !item.onHold && has(item.result, "pf") && !uan).map(({ name }) => name);
+  const noEsi = items.filter(({ item, esiNumber }) => !item.onHold && has(item.result, "esi") && !esiNumber).map(({ name }) => name);
 
   const rows: ItemRow[] = items.map(({ item, name, code }) => {
     const r = item.result as unknown as PayResult & { lopWhy?: string };
@@ -88,10 +101,12 @@ export default async function PayRunPage({ params }: { params: Promise<{ id: str
           totals: {
             employees: Number(t.employees ?? 0), gross: Number(t.gross ?? 0), net: Number(t.net ?? 0), tds: Number(t.tds ?? 0),
             pf: Number(t.pf ?? 0), esi: Number(t.esi ?? 0), pt: Number(t.pt ?? 0), employerCost: Number(t.employerCost ?? 0), onHold: Number(t.onHold ?? 0),
+            arrears: Number(t.arrears ?? 0), incentives: Number(t.incentives ?? 0), claims: Number(t.claims ?? 0), loans: Number(t.loans ?? 0),
           },
         }}
         rows={rows}
         canManage={canManagePayroll(session)}
+        checks={{ changes, hasPrevious: !!prevItems, noUan, noEsi }}
       />
     </div>
   );

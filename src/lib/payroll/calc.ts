@@ -4,13 +4,15 @@
  * so it is tested on its own and the salary form previews it live.
  *
  * Order (docs/PAYROLL_MODULE_DESIGN.md §3.5): payable days → the month's
- * components pro-rated → one-time earnings → the Code on Wages check → PF →
- * ESI → Professional Tax → TDS (annual projection less what was already
- * deducted, over the months left) → one-time deductions → net pay.
+ * components pro-rated → arrears, incentives, claims and one-time earnings →
+ * the Code on Wages check → PF → ESI → Professional Tax → TDS (annual
+ * projection less what was already deducted, over the months left; new or old
+ * regime) → loan EMIs → one-time deductions → net pay.
  */
 
 import type { PayrollSettings } from "./settings";
-import { ESI, NEW_REGIME, PF, WAGES_MIN_SHARE, annualTax, inForce, professionalTax } from "./statutory";
+import { ESI, NEW_REGIME, OLD_REGIME, PF, WAGES_MIN_SHARE, annualTax, inForce, professionalTax } from "./statutory";
+import { oldRegimeDeductions, type Declaration, type ExemptLine, type TaxRegimeKey } from "./tax";
 
 export type Line = { code: string; label: string; amount: number; why: string };
 
@@ -26,6 +28,13 @@ export type EmployeeIn = {
   exitDate?: string | null;
 };
 
+/** Pay owed for an earlier month because a salary revision was dated back. */
+export type ArrearIn = { period: string; amount: number; basic: number; why: string };
+/** An approved incentive statement or reimbursement claim paid this month. */
+export type PaidInput = { id: string; label: string; amount: number; why: string };
+/** A loan or advance instalment recovered this month. */
+export type LoanIn = { id: string; label: string; amount: number; why: string };
+
 export type MonthIn = {
   /** First day of the month, yyyy-mm-dd. */
   period: string;
@@ -33,6 +42,27 @@ export type MonthIn = {
   adjustments: Array<{ label: string; amount: number; kind: "earning" | "deduction"; taxable: boolean }>;
   /** This financial year before this month: taxable gross paid and TDS deducted. */
   ytd: { taxableGross: number; tds: number };
+  arrears?: ArrearIn[];
+  incentives?: PaidInput[];
+  claims?: PaidInput[];
+  loans?: LoanIn[];
+  /** The employee's regime and declaration for the year (new regime, nothing declared, when absent). */
+  tax?: { regime: TaxRegimeKey; declaration: Declaration; proofsApplied: boolean };
+};
+
+export type TaxWorking = {
+  regime: TaxRegimeKey;
+  /** Salary for the year: earlier months, this month, the months left at today's salary, and a previous employer's. */
+  projectedIncome: number;
+  standardDeduction: number;
+  exemptions: ExemptLine[];
+  taxable: number;
+  yearTax: number;
+  alreadyDeducted: number;
+  monthsLeft: number;
+  proofsApplied: boolean;
+  /** The year's tax under the other regime, for comparison. */
+  other: { regime: TaxRegimeKey; yearTax: number };
 };
 
 export type PayResult = {
@@ -47,12 +77,17 @@ export type PayResult = {
   deductions: Line[];
   employer: Line[];
   gross: number;
-  /** Gross less one-time payments marked not taxable — what TDS is worked on. */
+  /** Gross less claims and one-time payments marked not taxable — what TDS is worked on. */
   taxableGross: number;
   totalDeductions: number;
   net: number;
   employerCost: number;
   tds: number;
+  tax: TaxWorking;
+  /** Wages the PF ECR and ESIC files report. */
+  statutory: { pfWages: number; epsWages: number; edliWages: number; esiWages: number; ncpDays: number };
+  /** What this month paid or recovered, so the run can mark it done. */
+  links: { incentives: string[]; claims: string[]; loans: Array<{ id: string; amount: number }>; arrears: Array<{ period: string; amount: number }> };
   /** Things the payroll admin should look at (not errors). */
   warnings: string[];
 };
@@ -77,6 +112,21 @@ export function splitSalary(e: Pick<EmployeeIn, "monthlyGross" | "basicOverride"
   const basic = Math.min(gross, e.basicOverride != null ? e.basicOverride : r(gross * s.basicPct));
   const hra = Math.min(gross - basic, e.hraOverride != null ? e.hraOverride : r(basic * s.hraPctOfBasic));
   return { basic, hra, special: gross - basic - hra, gross };
+}
+
+/** The year's tax under one regime. */
+export function yearTaxUnder(
+  regimeKey: TaxRegimeKey,
+  period: string,
+  projectedIncome: number,
+  declaration: Declaration,
+  annual: { basic: number; hra: number; pt: number; pf: number }
+): { standardDeduction: number; exemptions: ExemptLine[]; taxable: number; yearTax: number } {
+  const regime = inForce(regimeKey === "old" ? OLD_REGIME : NEW_REGIME, period);
+  const exemptions =
+    regimeKey === "old" ? oldRegimeDeductions(declaration, { annualBasic: annual.basic, annualHra: annual.hra, annualPt: annual.pt, annualPf: annual.pf }) : [];
+  const taxable = Math.max(0, projectedIncome - regime.standardDeduction - exemptions.reduce((t, l) => t + l.amount, 0));
+  return { standardDeduction: regime.standardDeduction, exemptions, taxable, yearTax: annualTax(taxable, regime) };
 }
 
 export function calculatePay(e: EmployeeIn, m: MonthIn, s: PayrollSettings): PayResult {
@@ -109,12 +159,36 @@ export function calculatePay(e: EmployeeIn, m: MonthIn, s: PayrollSettings): Pay
   add("basic", "Basic", st.basic, e.basicOverride != null ? "Set on this employee's salary" : `${Math.round(s.basicPct * 100)}% of monthly gross ${inr(st.gross)}`);
   add("hra", "House Rent Allowance", st.hra, e.hraOverride != null ? "Set on this employee's salary" : `${Math.round(s.hraPctOfBasic * 100)}% of Basic`);
   add("special", "Special Allowance", st.special, "The rest of the monthly gross");
+
+  const links: PayResult["links"] = { incentives: [], claims: [], loans: [], arrears: [] };
+  let arrearsBasic = 0;
+  for (const a of m.arrears ?? []) {
+    if (a.amount <= 0) continue;
+    earnings.push({ code: "arrears", label: `Arrears — ${monthName(a.period)}`, amount: r(a.amount), why: a.why });
+    arrearsBasic += r(a.basic);
+    links.arrears.push({ period: a.period, amount: r(a.amount) });
+  }
+  for (const i of m.incentives ?? []) {
+    if (i.amount <= 0) continue;
+    earnings.push({ code: "incentive", label: i.label, amount: r(i.amount), why: i.why });
+    links.incentives.push(i.id);
+  }
+  let claimsTotal = 0;
+  for (const c of m.claims ?? []) {
+    if (c.amount <= 0) continue;
+    earnings.push({ code: "claim", label: c.label, amount: r(c.amount), why: c.why });
+    claimsTotal += r(c.amount);
+    links.claims.push(c.id);
+  }
   for (const a of m.adjustments.filter((x) => x.kind === "earning" && x.amount > 0)) {
     earnings.push({ code: "adj", label: a.label, amount: r(a.amount), why: a.taxable ? "One-time payment this month" : "One-time payment, not taxed" });
   }
   const gross = earnings.reduce((t, l) => t + l.amount, 0);
-  const basicEarned = earnings.find((l) => l.code === "basic")?.amount ?? 0;
-  const taxableGross = gross - m.adjustments.filter((a) => a.kind === "earning" && !a.taxable).reduce((t, a) => t + r(a.amount), 0);
+  const basicEarned = (earnings.find((l) => l.code === "basic")?.amount ?? 0) + arrearsBasic;
+  const untaxed = claimsTotal + m.adjustments.filter((a) => a.kind === "earning" && !a.taxable).reduce((t, a) => t + r(a.amount), 0);
+  const taxableGross = gross - untaxed;
+  // Reimbursements of expenses are not wages: no ESI or PT on them.
+  const wageGross = gross - claimsTotal;
 
   // Code on Wages: wages (Basic) at least half of total pay.
   const minShare = inForce(WAGES_MIN_SHARE, m.period);
@@ -125,6 +199,7 @@ export function calculatePay(e: EmployeeIn, m: MonthIn, s: PayrollSettings): Pay
   // ── Deductions and employer contributions ────────────────────────────────
   const deductions: Line[] = [];
   const employer: Line[] = [];
+  const statutory = { pfWages: 0, epsWages: 0, edliWages: 0, esiWages: 0, ncpDays: Math.round(lop + notEmployed) };
 
   if (e.pfEnabled && basicEarned > 0) {
     const pf = inForce(PF, m.period);
@@ -133,46 +208,95 @@ export function calculatePay(e: EmployeeIn, m: MonthIn, s: PayrollSettings): Pay
     const emp = r(pfWages * pf.employee);
     const eps = r(ceilWages * pf.eps);
     const epf = r(pfWages * pf.employer) - eps;
-    const wagesWhy = s.pfWageMode === "capped" && basicEarned > pf.ceiling ? `12% of PF wages ${inr(pfWages)} (Basic, capped at ${inr(pf.ceiling)})` : `12% of PF wages ${inr(pfWages)}`;
+    const basisWhy = arrearsBasic ? `Basic ${inr(basicEarned - arrearsBasic)} + Basic arrears ${inr(arrearsBasic)}` : "Basic";
+    const wagesWhy = s.pfWageMode === "capped" && basicEarned > pf.ceiling ? `12% of PF wages ${inr(pfWages)} (${basisWhy}, capped at ${inr(pf.ceiling)})` : `12% of PF wages ${inr(pfWages)}${arrearsBasic ? ` (${basisWhy})` : ""}`;
     deductions.push({ code: "pf", label: "Provident Fund", amount: emp, why: wagesWhy });
     employer.push({ code: "epf", label: "Employer PF", amount: epf, why: `12% of ${inr(pfWages)}, less the pension share` });
     employer.push({ code: "eps", label: "Employer pension (EPS)", amount: eps, why: `8.33% of ${inr(ceilWages)}` });
     employer.push({ code: "edli", label: "EDLI", amount: r(ceilWages * pf.edli), why: `0.5% of ${inr(ceilWages)}` });
     employer.push({ code: "pf_admin", label: "PF admin charges", amount: r(pfWages * pf.admin), why: `0.5% of ${inr(pfWages)}` });
+    Object.assign(statutory, { pfWages, epsWages: ceilWages, edliWages: ceilWages });
   }
 
   const esi = inForce(ESI, m.period);
-  if (e.esiMode === "auto" && st.gross > 0 && st.gross <= esi.ceiling && gross > 0) {
-    deductions.push({ code: "esi", label: "ESI", amount: Math.ceil(gross * esi.employee), why: `0.75% of gross ${inr(gross)} (monthly salary within ${inr(esi.ceiling)})` });
-    employer.push({ code: "esi_er", label: "Employer ESI", amount: Math.ceil(gross * esi.employer), why: `3.25% of gross ${inr(gross)}` });
+  if (e.esiMode === "auto" && st.gross > 0 && st.gross <= esi.ceiling && wageGross > 0) {
+    deductions.push({ code: "esi", label: "ESI", amount: Math.ceil(wageGross * esi.employee), why: `0.75% of wages ${inr(wageGross)} (monthly salary within ${inr(esi.ceiling)})` });
+    employer.push({ code: "esi_er", label: "Employer ESI", amount: Math.ceil(wageGross * esi.employer), why: `3.25% of wages ${inr(wageGross)}` });
+    statutory.esiWages = wageGross;
   }
 
-  const pt = professionalTax(e.workState, gross, m.period, e.gender);
+  const pt = professionalTax(e.workState, wageGross, m.period, e.gender);
   if (pt.amount > 0) deductions.push({ code: "pt", label: "Professional Tax", amount: pt.amount, why: pt.why });
   else if (e.workState && /enter it as a deduction/.test(pt.why)) warnings.push(pt.why);
 
-  // TDS: project the year — what was paid, this month, and the regular salary
-  // for the months after — tax it, take off what was already deducted, and
-  // spread the rest over the months left.
-  const regime = inForce(NEW_REGIME, m.period);
+  // TDS: project the year — what was paid (here and at a previous employer),
+  // this month, and the regular salary for the months after — tax it under
+  // the employee's regime, take off what was already deducted, and spread the
+  // rest over the months left.
+  const decl = m.tax?.declaration ?? {};
+  const regimeKey: TaxRegimeKey = m.tax?.regime ?? "new";
   const left = monthsLeftInFy(m.period);
-  const projected = m.ytd.taxableGross + taxableGross + st.gross * (left - 1);
-  const taxable = Math.max(0, projected - regime.standardDeduction);
-  const yearTax = annualTax(taxable, regime);
-  const tds = Math.max(0, r((yearTax - m.ytd.tds) / left));
+  const prevIncome = decl.prevIncome ?? 0;
+  const prevTds = decl.prevTds ?? 0;
+  const projectedIncome = m.ytd.taxableGross + taxableGross + st.gross * (left - 1) + prevIncome;
+  const empPf = deductions.find((l) => l.code === "pf")?.amount ?? 0;
+  const annual = { basic: st.basic * 12, hra: st.hra * 12, pt: pt.amount * 12, pf: empPf * 12 };
+  const chosen = yearTaxUnder(regimeKey, m.period, projectedIncome, decl, annual);
+  const otherKey: TaxRegimeKey = regimeKey === "old" ? "new" : "old";
+  const other = yearTaxUnder(otherKey, m.period, projectedIncome, decl, annual);
+  const alreadyDeducted = m.ytd.tds + prevTds;
+  const tds = Math.max(0, r((chosen.yearTax - alreadyDeducted) / left));
+  const tax: TaxWorking = {
+    regime: regimeKey,
+    projectedIncome,
+    standardDeduction: chosen.standardDeduction,
+    exemptions: chosen.exemptions,
+    taxable: chosen.taxable,
+    yearTax: chosen.yearTax,
+    alreadyDeducted,
+    monthsLeft: left,
+    proofsApplied: !!m.tax?.proofsApplied,
+    other: { regime: otherKey, yearTax: other.yearTax },
+  };
   if (tds > 0) {
+    const ded = chosen.exemptions.reduce((t, l) => t + l.amount, 0);
     deductions.push({
       code: "tds", label: "Income Tax (TDS)", amount: tds,
-      why: `Year's tax ${inr(yearTax)} on projected taxable salary ${inr(taxable)} (new regime, after the ${inr(regime.standardDeduction)} standard deduction), less ${inr(m.ytd.tds)} already deducted, over ${left} month${left === 1 ? "" : "s"}`,
+      why: `Year's tax ${inr(chosen.yearTax)} on projected taxable salary ${inr(chosen.taxable)} (${regimeKey} regime, after the ${inr(chosen.standardDeduction)} standard deduction${ded ? ` and ${inr(ded)} of declared deductions` : ""}), less ${inr(alreadyDeducted)} already deducted${prevTds ? " (incl. a previous employer's)" : ""}, over ${left} month${left === 1 ? "" : "s"}`,
     });
   }
 
+  const loanLines: Array<{ line: Line; link: { id: string; amount: number } }> = [];
+  for (const l of m.loans ?? []) {
+    if (l.amount <= 0) continue;
+    const line: Line = { code: "loan", label: l.label, amount: r(l.amount), why: l.why };
+    const link = { id: l.id, amount: r(l.amount) };
+    deductions.push(line);
+    links.loans.push(link);
+    loanLines.push({ line, link });
+  }
   for (const a of m.adjustments.filter((x) => x.kind === "deduction" && x.amount > 0)) {
     deductions.push({ code: "adj", label: a.label, amount: r(a.amount), why: "One-time deduction this month" });
   }
 
   let totalDeductions = deductions.reduce((t, l) => t + l.amount, 0);
   let net = gross - totalDeductions;
+  // Too little pay: recover less of the loans first (the balance carries on).
+  if (net < 0) {
+    let short = -net;
+    for (const { line, link } of [...loanLines].reverse()) {
+      if (short <= 0) break;
+      const cut = Math.min(line.amount, short);
+      line.amount -= cut;
+      link.amount = line.amount;
+      short -= cut;
+      line.why += ` — reduced by ${inr(cut)}: pay was too low this month`;
+    }
+    for (let i = deductions.length - 1; i >= 0; i--) if (deductions[i].code === "loan" && deductions[i].amount <= 0) deductions.splice(i, 1);
+    links.loans = links.loans.filter((x) => x.amount > 0);
+    totalDeductions = deductions.reduce((t, l) => t + l.amount, 0);
+    net = gross - totalDeductions;
+  }
   if (net < 0) {
     warnings.push(`Deductions (${inr(totalDeductions)}) are more than the pay (${inr(gross)}) — net pay is set to nil; recover the rest next month.`);
     net = 0;
@@ -197,6 +321,12 @@ export function calculatePay(e: EmployeeIn, m: MonthIn, s: PayrollSettings): Pay
     net,
     employerCost,
     tds,
+    tax,
+    statutory,
+    links,
     warnings,
   };
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const monthName = (period: string) => `${MONTHS[Number(period.slice(5, 7)) - 1]} ${period.slice(0, 4)}`;
