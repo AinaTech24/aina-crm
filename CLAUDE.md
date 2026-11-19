@@ -1482,6 +1482,10 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   `rta_mailback.password_viewed` (label, never the text), `no-store`, hidden again after 30 s. The list endpoint still returns labels only.
   `scripts/check-mailback-passwords.ts` tells whether the WORKER can decrypt what the web app saved (a different `ENCRYPTION_KEY` makes
   `readPwRow` answer "no passwords" quietly — the automatic import then tries nothing while a typed password still works).
+- **Which saved password opens a file** (2026-11-19): the stethoscope (`POST /api/rta-imports/[id]/diagnose`) now also shows on
+  COMPLETED / partial rows that still hold their file (the 14-day keep), and names a match by its Settings label and registrar —
+  `saved password "Cams" (under CAMS)` — not by position. Leave the box blank to test only the saved ones. A PDF inside a registrar
+  file is named as a PDF (`decodeRtaToText`), not "layout not recognised".
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.

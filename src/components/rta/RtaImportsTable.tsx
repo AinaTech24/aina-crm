@@ -114,7 +114,7 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
   async function diagnose(id: string) {
     const typed = await promptDialog({
       title: "Check this file against a password",
-      message: "Type the password you believe locks this file. It is only tested here — never saved or shown. The saved passwords are tested too.",
+      message: "Type the password you believe locks this file (or leave it blank to test only the saved ones). It is only tested here — never saved or shown. The result names which saved password opens the file.",
       label: "Password",
       secret: true,
       confirmLabel: "Check the file",
@@ -364,13 +364,13 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                                 : <RefreshCw className="size-3.5" />}
                             </button>
                           )}
-                          {r.status === "rejected" && (
+                          {(r.status === "rejected" || ((r.status === "completed" || r.status === "partial") && r.has_file)) && (
                             <>
                             <button
                               onClick={() => diagnose(r.id)}
                               disabled={busy || diagBusy === r.id}
                               className="btn-icon"
-                              title="Why won't this open? Test a password against the file"
+                              title={r.status === "rejected" ? "Why won't this open? Test a password against the file" : "Which saved password opens this file?"}
                               aria-label="Check this file against a password"
                             >
                               {diagBusy === r.id ? <Loader2 className="size-3.5 animate-spin" /> : <Stethoscope className="size-3.5" />}

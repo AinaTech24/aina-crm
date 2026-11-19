@@ -15,7 +15,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { getObjectBytes } from "@/lib/storage/s3";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
+import { getMailbackPasswords, passwordCandidates, passwordsToTry } from "@/lib/rta/mailback-config";
 import { cleanTypedPassword } from "@/lib/rta/password-variants";
 import { diagnoseZip, fingerprint } from "@/lib/rta/zip-diagnose";
 
@@ -38,7 +38,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const row = r.rows[0] as { id: string; source: string; file_name: string; file_key: string | null; status: string } | undefined;
     if (!row) return null;
     const cfg = await getMailbackPasswords(tx, session.tenantId);
-    return { row, saved: passwordsToTry(cfg, row.source) };
+    // The label each saved password carries in Settings, so the answer can say WHICH entry opened a file.
+    const other = row.source === "cams" ? "kfintech" : "cams";
+    const labels = new Map<string, string>();
+    for (const src of [row.source, other]) {
+      for (const e of passwordCandidates(cfg, src)) {
+        if (!labels.has(e.password)) labels.set(e.password, `saved password "${e.label}" (under ${src === "cams" ? "CAMS" : "KFintech"})`);
+      }
+    }
+    return { row, saved: passwordsToTry(cfg, row.source), labels };
   });
   if (!loaded) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (!loaded.row.file_key) {
@@ -59,7 +67,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const names = new Map<string, string>();
   candidates.forEach((c, i) => {
     const fp = fingerprint(c);
-    if (!names.has(fp)) names.set(fp, typed.trim() && i === 0 ? "the password you typed now" : `saved password #${i - (typed.trim() ? 1 : 0) + 1}`);
+    if (!names.has(fp)) {
+      names.set(
+        fp,
+        typed.trim() && i === 0
+          ? "the password you typed now"
+          : (loaded.labels.get(c) ?? `saved password #${i - (typed.trim() ? 1 : 0) + 1}`)
+      );
+    }
   });
 
   await withTenant(session.tenantId, async (tx) => {
