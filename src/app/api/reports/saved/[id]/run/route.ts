@@ -11,30 +11,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { savedReports } from "@/db/schema";
 import { runDetailed, runMatrix, runSummary } from "@/lib/reports/run";
 import { reportSubjectScope } from "@/lib/reports/scope";
-import { and as andAst, p, type FilterAST } from "@/lib/filter/ast";
-import { getField } from "@/lib/filter/catalog";
-
-const ISO = /^d{4}-d{2}-d{2}$/;
-const nextDay = (d: string) => new Date(new Date(`${d}T00:00:00Z`).getTime() + 864e5).toISOString().slice(0, 10);
-
-/**
- * The view page's "Filter by" date range (?dateField=&from=&to=, India dates,
- * both ends inclusive) narrows the saved filter for this run only. The field
- * must be a date / datetime field of the report's module.
- */
-function withRange(subject: string, ast: FilterAST | null, url: URL): FilterAST | null {
-  const field = url.searchParams.get("dateField");
-  const from = url.searchParams.get("from");
-  const to = url.searchParams.get("to");
-  if (!field || (!from && !to)) return ast;
-  const def = getField(subject, field);
-  if (def.type !== "date" && def.type !== "datetime") throw Object.assign(new Error("not a date field"), { status: 400 });
-  const preds: FilterAST[] = [];
-  if (from && ISO.test(from)) preds.push(p(field, "gte", def.type === "date" ? from : `${from}T00:00:00+05:30`));
-  if (to && ISO.test(to)) preds.push(def.type === "date" ? p(field, "lte", to) : p(field, "lt", `${nextDay(to)}T00:00:00+05:30`));
-  if (!preds.length) return ast;
-  return ast ? andAst(ast, ...preds) : andAst(...preds);
-}
+import { withDateRange } from "@/lib/reports/range";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const out = await withTenant(session.tenantId, async (tx) => {
       const r = (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0];
       if (!r) return null;
-      const ast = withRange(r.subject, (r.ast as any) ?? null, url);
+      const ast = withDateRange(r.subject, (r.ast as any) ?? null, { field: url.searchParams.get("dateField"), from: url.searchParams.get("from"), to: url.searchParams.get("to") });
       const details = url.searchParams.get("details");
       if (r.reportType === "matrix") {
         return runMatrix(tx, { subject: r.subject, ast: ast as any, matrix: r.matrix as any, tenantId: session.tenantId, scope: await reportSubjectScope(tx, session, r.subject) });
