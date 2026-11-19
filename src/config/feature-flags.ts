@@ -23,6 +23,7 @@ export const FEATURE_FLAGS: FeatureFlagDef[] = [
   { key: "zohoImport", label: "Zoho CRM import", description: "Clients → Import → \"From Zoho CRM\": load a Zoho Contacts export (clients, families, referrals, products) and a Meetings export. Switch on only for a firm moving off Zoho.", type: "boolean", group: "Data migration" },
   { key: "riskPdfNoAnswers", label: "Risk profile PDF: say when there are no answers", description: "A risk profile with no questionnaire answers (imported, set directly or provisional) prints \"No questionnaire answers on record\", \"Not scored\" and \"Not confirmed by the client\" instead of an empty questionnaire and a client signature line. On for We Care Freedom Wealth.", type: "boolean", group: "Risk profiling" },
   { key: "dashboardAllTime", label: "Dashboard period: All time", description: "The dashboard's Period menu offers \"All time\" (everything on record up to today) after Last FY. On for We Care Freedom Wealth.", type: "boolean", group: "Dashboards" },
+  { key: "reportsOwnOnly", label: "Reports: only the firm's own reports", description: "Hide the CRM's built-in report library (MIS, SIP, team, tax …). Reports opens the firm's own custom reports, and a link to a built-in report lands there. For We Care Freedom Wealth, who rebuild their Zoho reports one by one (2026-11-19).", type: "boolean", group: "Reports" },
   { key: "maxMessagesPerMonth", label: "Monthly message quota", description: "Cap on WhatsApp/SMS/email sends per month (0 or blank = plan default).", type: "number", group: "Limits" },
 ];
 
