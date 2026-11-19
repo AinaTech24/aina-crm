@@ -60,6 +60,7 @@ import { checkRtaFeedHealth } from "@/lib/rta/feed-health";
 import { waitForAumRefresh } from "./aum-refresh";
 import { matchBookedBusiness } from "@/lib/business/rta-match";
 import { retireEmptyPlaceholders } from "@/lib/rta/placeholder-sweep";
+import { purgeDeletedReports } from "@/lib/reports/trash";
 import { holdsMoneySql, restoreTrashedHolders } from "@/lib/investors/holds-money";
 import { syncRtaJourneys } from "@/lib/blueprints/rta-route";
 import { completeExpiredSips } from "@/lib/finance/sip-lifecycle";
@@ -1379,6 +1380,15 @@ export async function runDailyOpsScan(): Promise<{
     if (purgedClients) console.log(`[daily-ops] auto-purged ${purgedClients} trashed client(s) past retention`);
   } catch (e) {
     console.error("[daily-ops] client auto-purge pass failed:", (e as Error)?.message);
+  }
+
+  // ── Custom reports left in "Recently deleted" past 30 days are erased
+  // (lib/reports/trash.ts) — until then their creator can restore them.
+  try {
+    const n = await withSystem((tx) => purgeDeletedReports(tx as any));
+    if (n) console.log(`[daily-ops] erased ${n} custom report(s) past Recently deleted`);
+  } catch (e) {
+    console.error("[daily-ops] report purge failed:", (e as Error)?.message);
   }
 
   const tenants = await listActiveTenants();

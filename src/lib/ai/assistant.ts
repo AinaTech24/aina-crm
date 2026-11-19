@@ -363,7 +363,7 @@ AST shape:
 Predicate:
   { "type": "predicate", "field": { "kind": "attr", "path": "<field_key>" }, "op": "<operator>", "value": <value>, "duration"?: { "amount": <number>, "unit": "day"|"week"|"month"|"year" } }
 
-For date_within / date_in_next / date_in_last provide a "duration". For enum fields use ONLY a value from that field's "values:" list. Use only an operator listed for that field.
+For date_within / date_in_next / date_in_last provide a "duration". For date_period the "value" is one of: today, week, month, last_month, last_30, last_90, quarter, last_6m, last_12m, fy, last_fy ("this month" → month, "last financial year" → last_fy; the FY runs April–March). For enum fields use ONLY a value from that field's "values:" list. Use only an operator listed for that field.
 
 Fields on ${subject} — use ONLY these keys (with their listed ops + enum values):
 ${fieldSummary}

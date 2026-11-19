@@ -1,35 +1,28 @@
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Custom reports collection.
- *   GET  /api/reports/saved   — reports visible to the caller
- *   POST /api/reports/saved   — create a report
+ *   GET  /api/reports/saved            — reports visible to the caller
+ *   GET  /api/reports/saved?deleted=1  — the caller's "Recently deleted" (30 days)
+ *   POST /api/reports/saved            — create a report
  */
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, eq, or, and } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { savedReports, REPORT_SUBJECTS, REPORT_TYPES, REPORT_SHARE_SCOPES, REPORT_AGGREGATES } from "@/db/schema";
+import { savedReports, users, REPORT_SUBJECTS, REPORT_TYPES, REPORT_SHARE_SCOPES } from "@/db/schema";
 import { FilterASTSchema } from "@/lib/filter/ast";
 import { assertValidReport } from "@/lib/reports/run";
+import { assertValidCategories } from "@/lib/reports/categories";
+import { ChartOptionsSchema, ChartTypeSchema, MatrixSchema, ScheduleSchema, SummarySchema, categoryColumnsSchema } from "@/lib/reports/definition";
+import { RECENTLY_DELETED_DAYS } from "@/lib/reports/trash";
 import { zohoImportEnabled } from "@/lib/imports/zoho/access";
 
 export const dynamic = "force-dynamic";
-
-const SummarySchema = z.object({
-  groupBy: z.array(z.string().max(60)).min(1).max(3),
-  columns: z.array(z.string().max(60)).max(40).optional(),
-  aggregates: z
-    .array(z.object({ field: z.string().max(60).optional().default(""), fn: z.enum(REPORT_AGGREGATES), label: z.string().max(60).optional() }))
-    .max(8)
-    .optional(),
-  showDetailRows: z.boolean().optional(),
-  sort: z.object({ field: z.string(), dir: z.enum(["asc", "desc"]) }).nullable().optional(),
-});
 
 const ReportBody = z.object({
   name: z.string().min(1).max(160),
@@ -37,59 +30,73 @@ const ReportBody = z.object({
   subject: z.enum(REPORT_SUBJECTS),
   reportType: z.enum(REPORT_TYPES).default("detailed"),
   ast: FilterASTSchema.nullable().optional(),
-  columns: z.array(z.string().max(60)).max(40).optional(),
+  columns: z.array(z.string().max(80)).max(40).optional(),
   sort: z.object({ field: z.string(), dir: z.enum(["asc", "desc"]) }).nullable().optional(),
-  matrix: z
-    .object({
-      groupBy: z.string(),
-      pivot: z.string().optional(),
-      aggregate: z.enum(REPORT_AGGREGATES),
-      measure: z.string().optional(),
-    })
-    .nullable()
-    .optional(),
+  matrix: MatrixSchema.nullable().optional(),
   summary: SummarySchema.nullable().optional(),
+  categories: categoryColumnsSchema.nullable().optional(),
   folder: z.string().max(80).nullable().optional(),
-  chartType: z.enum(["none", "bar", "pie", "line", "area", "donut"]).optional(),
+  chartType: ChartTypeSchema.optional(),
+  chartOptions: ChartOptionsSchema.nullable().optional(),
   sharedScope: z.enum(REPORT_SHARE_SCOPES).optional(),
-  schedule: z
-    .object({
-      freq: z.enum(["daily", "weekly", "monthly"]),
-      hour: z.number().int().min(0).max(23),
-      day: z.number().int().min(0).max(31).optional(),
-      emails: z.array(z.string().email()).max(20),
-      enabled: z.boolean(),
-    })
-    .nullable()
-    .optional(),
+  schedule: ScheduleSchema.nullable().optional(),
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
     requireCap(session.roles, "reports.manage", session.permissions);
+    const deleted = new URL(req.url).searchParams.get("deleted") === "1";
+    const isOwner = session.roles.includes("owner");
     const rows = await withTenant(session.tenantId, async (tx) =>
       tx
-        .select()
+        .select({ report: savedReports, createdByName: users.name })
         .from(savedReports)
+        .leftJoin(users, eq(users.id, savedReports.createdById))
         .where(
-          or(
-            eq(savedReports.createdById, session.userId),
-            // team/tenant-shared reports are visible to all (RLS already scopes
-            // to the tenant; finer branch scoping is a follow-on).
-            eq(savedReports.sharedScope, "tenant"),
-            eq(savedReports.sharedScope, "team")
-          )
+          deleted
+            ? // Recently deleted: what the caller deleted (the owner sees every one), inside the window.
+              and(
+                isNotNull(savedReports.deletedAt),
+                sql`${savedReports.deletedAt} > now() - make_interval(days => ${RECENTLY_DELETED_DAYS})`,
+                isOwner ? sql`TRUE` : eq(savedReports.createdById, session.userId),
+              )
+            : and(
+                isNull(savedReports.deletedAt),
+                or(
+                  eq(savedReports.createdById, session.userId),
+                  // team/tenant-shared reports are visible to all (RLS already scopes
+                  // to the tenant; finer branch scoping is a follow-on).
+                  eq(savedReports.sharedScope, "tenant"),
+                  eq(savedReports.sharedScope, "team"),
+                  // The owner sees every report, as on GET [id].
+                  isOwner ? sql`TRUE` : sql`FALSE`,
+                ),
+              ),
         )
         .orderBy(desc(savedReports.updatedAt))
         .limit(500)
     );
-    // Surface a per-viewer star flag + whether the caller owns each report.
-    const reports = rows.map((r) => ({
-      ...r,
-      starred: ((r.starredBy as string[] | null) ?? []).includes(session.userId),
-      isMine: r.createdById === session.userId,
-    }));
+    // Per viewer: star, ownership, when they last opened it, whether it is scheduled.
+    const reports = rows.map(({ report: r, createdByName }) => {
+      const sched = r.schedule as { enabled?: boolean } | null;
+      return {
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        subject: r.subject,
+        reportType: r.reportType,
+        sharedScope: r.sharedScope,
+        folder: r.folder,
+        updatedAt: r.updatedAt,
+        deletedAt: r.deletedAt,
+        createdByName: createdByName ?? null,
+        starred: ((r.starredBy as string[] | null) ?? []).includes(session.userId),
+        isMine: r.createdById === session.userId,
+        viewedAt: ((r.viewedBy as Record<string, string> | null) ?? {})[session.userId] ?? null,
+        scheduled: !!sched?.enabled,
+      };
+    });
     return NextResponse.json({ reports });
   } catch (err: any) {
     return handleApiError(err);
@@ -107,7 +114,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
     const body = parse.data;
-    // Meetings reports: only a firm with the Zoho import flag (We Care, 2026-11-19).
+    // Meetings / Business Entry line reports: only a firm with the Zoho import flag (We Care, 2026-11-19).
     if ((body.subject === "review_meeting" || body.subject === "business_line") && !(await zohoImportEnabled(session.tenantId, session.roles))) {
       return NextResponse.json({ error: "This report module is not available for this firm." }, { status: 403 });
     }
@@ -115,6 +122,7 @@ export async function POST(req: NextRequest) {
     // Catalog validation — every referenced field must exist (no injection,
     // no broken reports). Throws a clean message the client can show.
     try {
+      assertValidCategories(body.subject, body.categories);
       assertValidReport(body);
     } catch (e: any) {
       return NextResponse.json({ error: e?.message ?? "invalid report definition" }, { status: 400 });
@@ -136,10 +144,12 @@ export async function POST(req: NextRequest) {
         sort: body.sort ?? null,
         matrix: body.matrix ?? null,
         summary: body.summary ?? null,
+        categories: (body.categories ?? null) as any,
         folder: body.folder ?? null,
         chartType: body.chartType ?? "none",
+        chartOptions: body.chartOptions ?? null,
         sharedScope: body.sharedScope ?? "private",
-        schedule: body.schedule ?? null,
+        schedule: (body.schedule ?? null) as any,
         createdById: session.userId,
         starredBy: [],
       } as any);

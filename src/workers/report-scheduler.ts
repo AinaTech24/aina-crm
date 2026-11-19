@@ -1,8 +1,11 @@
 /**
  * Report scheduler — ticks hourly, finds saved reports whose email schedule is
- * due this hour (daily / weekly-on-day / monthly-on-date), renders + emails
- * each to its recipients, and stamps last_sent_at so it fires at most once per
- * occurrence. Cross-tenant scan via withSystem (same pattern as the other
+ * due this hour (daily / weekly-on-day / monthly-on-date / yearly-on-date),
+ * renders + emails each to its recipients, and stamps last_sent_at so it fires
+ * at most once per occurrence.
+ *
+ * The hour, weekday and date are INDIA time. They were the server clock's,
+ * and production runs UTC — a report set for 9:00 arrived at 14:30. Cross-tenant scan via withSystem (same pattern as the other
  * schedulers); the per-report render is tenant-scoped inside deliverReport.
  */
 import { sql } from "drizzle-orm";
@@ -10,11 +13,19 @@ import { withSystem } from "@/db/client";
 import { savedReports } from "@/db/schema";
 import { deliverReport } from "@/lib/reports/deliver";
 
+/** Hour, weekday (0=Sun), day of month and month (1–12) in India right now. */
+export function indiaClock(now: Date = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", hourCycle: "h23", day: "2-digit", month: "2-digit", weekday: "short" })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value]),
+  );
+  const dow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(parts.weekday);
+  return { hour: Number(parts.hour), dow, dom: Number(parts.day), month: Number(parts.month) };
+}
+
 export async function runReportScheduler(): Promise<{ due: number; delivered: number }> {
-  const now = new Date();
-  const hour = now.getHours();
-  const dow = now.getDay(); // 0=Sun … 6=Sat
-  const dom = now.getDate(); // 1..31
+  const { hour, dow, dom, month } = indiaClock();
 
   const due = await withSystem(async (tx) =>
     tx
@@ -24,12 +35,16 @@ export async function runReportScheduler(): Promise<{ due: number; delivered: nu
         schedule IS NOT NULL
         AND (schedule->>'enabled')::boolean = true
         AND (schedule->>'hour')::int = ${hour}
-        AND jsonb_array_length(COALESCE(schedule->'emails', '[]'::jsonb)) > 0
-        AND (last_sent_at IS NULL OR last_sent_at < date_trunc('day', now()))
+        AND deleted_at IS NULL
+        AND (jsonb_array_length(COALESCE(schedule->'emails', '[]'::jsonb)) > 0
+             OR jsonb_array_length(COALESCE(schedule->'userIds', '[]'::jsonb)) > 0)
+        AND (last_sent_at IS NULL
+             OR last_sent_at < (date_trunc('day', now() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata'))
         AND (
           schedule->>'freq' = 'daily'
           OR (schedule->>'freq' = 'weekly'  AND (schedule->>'day')::int = ${dow})
           OR (schedule->>'freq' = 'monthly' AND (schedule->>'day')::int = ${dom})
+          OR (schedule->>'freq' = 'yearly'  AND (schedule->>'day')::int = ${dom} AND (schedule->>'month')::int = ${month})
         )
       `)
   );

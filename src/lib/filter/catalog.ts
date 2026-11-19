@@ -111,6 +111,7 @@ const COMMON_DATE_OPS: FilterOperator[] = [
   "between",
   "is_null",
   "is_not_null",
+  "date_period",
   "date_within",
   "date_before",
   "date_after",
@@ -260,6 +261,9 @@ export const investorCatalog: SubjectCatalog = {
 
     { key: "rm_id", label: "Relationship manager", type: "uuid", sql: "inv.rm_id", ops: COMMON_ENUM_OPS },
     { key: "branch_id", label: "Branch", type: "uuid", sql: "inv.branch_id", ops: COMMON_ENUM_OPS },
+    // Names for reports — "clients by RM / by branch" (the ids above stay for filters).
+    { key: "rm_name", label: "RM name", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = inv.rm_id)", ops: COMMON_STRING_OPS },
+    { key: "branch_name", label: "Branch name", type: "string", sql: "(SELECT b.name FROM branches b WHERE b.id = inv.branch_id)", ops: COMMON_STRING_OPS },
 
     {
       key: "nominee_name",

@@ -13,6 +13,8 @@ import { clientScopeNarrows, dataWallApplies, investorScopeSql } from "@/lib/inv
 import { leadScopeSql } from "@/lib/leads/access";
 import { familyScopeSql } from "@/lib/families/access";
 import { serviceRequestScopeSql } from "@/lib/service-requests/access";
+import { resolveReportPeriod, type ReportPeriod, type ReportPeriodKey } from "@/lib/reports/period";
+import { StandardReportFilterBar } from "@/components/reports/StandardReportFilterBar";
 
 /**
  * Row scope every report query runs under — the viewer's client / lead /
@@ -23,6 +25,18 @@ import { serviceRequestScopeSql } from "@/lib/service-requests/access";
  *   fam(col)   the family id in `col` is visible
  *   sr         service_requests aliased `sr` is visible
  *   srTable    service_requests (unaliased) is visible
+ *
+ * and the report's own filters (Zoho-style quick filters, 2026-11-19), which
+ * only ever NARROW what the viewer may already see:
+ *   inv / lead / fam / sr / srTable also apply the RM and Branch filter
+ *     (a client fact follows the client's RM and branch; a lead its owner and
+ *     branch; a ticket its client)
+ *   staff(col)  the person in `col` (users.id) passes the RM / Branch filter —
+ *               for per-person reports (RM-wise, employee-wise)
+ *   inPeriod(col) `col` (a date or timestamp) falls in the Period, India time
+ *   limit       the row cap of a list report (LIST_LIMIT)
+ * Calling a helper is what puts its filter on the page (`uses`), so a report
+ * is never offered a filter it would ignore.
  */
 type ReportScope = {
   inv: (col: string) => SQL;
@@ -30,9 +44,75 @@ type ReportScope = {
   fam: (col: string) => SQL;
   sr: SQL;
   srTable: SQL;
+  staff: (col: string) => SQL;
+  inPeriod: (col: string) => SQL;
+  limit: SQL;
 };
 
-async function buildReportScope(tx: any, session: SessionUser, wallOn: boolean): Promise<ReportScope> {
+/** A list report shows at most this many rows, and says so when it hits it. */
+const LIST_LIMIT = 2000;
+
+type ReportFilters = { period: ReportPeriod; rmId: string | null; branchId: string | null };
+type FilterUse = { period: boolean; people: boolean };
+
+/** Wrap the access scope with the report's own filters, and note which it uses. */
+function withReportFilters(base: Omit<ReportScope, "staff" | "inPeriod" | "limit">, f: ReportFilters, uses: FilterUse): ReportScope {
+  const { rmId, branchId, period } = f;
+  const narrowed = !!(rmId || branchId);
+  const and = (a: SQL, b: SQL | null) => (b ? sql`(${a} AND ${b})` : a);
+  const byClient = (col: string): SQL | null =>
+    narrowed
+      ? sql`EXISTS (SELECT 1 FROM investors rf_i WHERE rf_i.id = ${sql.raw(col)}
+          ${rmId ? sql`AND rf_i.rm_id = ${rmId}::uuid` : sql``}
+          ${branchId ? sql`AND rf_i.branch_id = ${branchId}::uuid` : sql``})`
+      : null;
+  const byLead = (col: string): SQL | null =>
+    narrowed
+      ? sql`EXISTS (SELECT 1 FROM leads rf_l WHERE rf_l.id = ${sql.raw(col)}
+          ${rmId ? sql`AND rf_l.owner_id = ${rmId}::uuid` : sql``}
+          ${branchId ? sql`AND rf_l.branch_id = ${branchId}::uuid` : sql``})`
+      : null;
+  const byFamily = (col: string): SQL | null =>
+    narrowed
+      ? sql`EXISTS (SELECT 1 FROM families rf_f WHERE rf_f.id = ${sql.raw(col)}
+          ${rmId ? sql`AND rf_f.rm_id = ${rmId}::uuid` : sql``}
+          ${branchId ? sql`AND rf_f.branch_id = ${branchId}::uuid` : sql``})`
+      : null;
+  const people = <T,>(v: T): T => {
+    uses.people = true;
+    return v;
+  };
+  return {
+    inv: (col) => people(and(base.inv(col), byClient(col))),
+    lead: (col) => people(and(base.lead(col), byLead(col))),
+    fam: (col) => people(and(base.fam(col), byFamily(col))),
+    get sr() {
+      return people(and(base.sr, byClient("sr.investor_id")));
+    },
+    get srTable() {
+      return people(and(base.srTable, byClient("service_requests.investor_id")));
+    },
+    staff: (col) =>
+      people(
+        narrowed
+          ? sql`EXISTS (SELECT 1 FROM users rf_u WHERE rf_u.id = ${sql.raw(col)}
+              ${rmId ? sql`AND rf_u.id = ${rmId}::uuid` : sql``}
+              ${branchId ? sql`AND rf_u.branch_id = ${branchId}::uuid` : sql``})`
+          : sql`TRUE`,
+      ),
+    inPeriod: (col) => {
+      uses.period = true;
+      if (period.unbounded) return sql`TRUE`;
+      // Bounds as India-midnight instants, so an index on `col` still serves
+      // and a date column compares the same whatever the server's zone.
+      return sql`(${sql.raw(col)} >= (${period.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata'
+        AND ${sql.raw(col)} < (${period.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata')`;
+    },
+    limit: sql.raw(String(LIST_LIMIT)),
+  };
+}
+
+async function buildReportScope(tx: any, session: SessionUser, wallOn: boolean): Promise<Omit<ReportScope, "staff" | "inPeriod" | "limit">> {
   // Without the data wall the reports run over the firm's rows, as before.
   if (!wallOn) return { inv: () => sql`TRUE`, lead: () => sql`TRUE`, fam: () => sql`TRUE`, sr: sql`TRUE`, srTable: sql`TRUE` };
   const cap = (c: Parameters<typeof can>[1]) => can(session.roles, c, session.permissions);
@@ -80,12 +160,19 @@ const REPORTS: Record<
     manager?: boolean;
     /** A campaign / content report — the marketing team may open it too. */
     marketing?: boolean;
+    /**
+     * The period the report opens on — the window it was hard-coded to before
+     * it had a Period filter. Only a report whose SQL calls `s.inPeriod` shows
+     * the filter; one that never does has no period and ignores this.
+     */
+    period?: ReportPeriodKey;
     runSql: (sqlTag: typeof sql, s: ReportScope) => any;
   }
 > = {
   daily_sip_added: {
     title: "Daily SIP Added",
     desc: "New SIPs registered, by day.",
+    period: "last_30",
     columns: [
       { key: "day", label: "Date", format: "date" },
       { key: "count", label: "Count", format: "number" },
@@ -93,13 +180,14 @@ const REPORTS: Record<
     ],
     runSql: (sql, s) => sql`
       SELECT created_at::date AS day, COUNT(*)::int AS count, COALESCE(SUM(amount::numeric),0) AS amount
-      FROM sips WHERE created_at >= now() - interval '30 days' AND ${s.inv("sips.investor_id")}
-      GROUP BY 1 ORDER BY 1 DESC LIMIT 30
+      FROM sips WHERE ${s.inPeriod("sips.created_at")} AND ${s.inv("sips.investor_id")}
+      GROUP BY 1 ORDER BY 1 DESC
     `,
   },
   daily_lumpsum: {
     title: "Daily Lumpsum",
     desc: "Lumpsum purchases by day.",
+    period: "last_30",
     columns: [
       { key: "day", label: "Date", format: "date" },
       { key: "count", label: "Count", format: "number" },
@@ -108,13 +196,14 @@ const REPORTS: Record<
     runSql: (sql, s) => sql`
       SELECT order_date::date AS day, COUNT(*)::int AS count, COALESCE(SUM(amount::numeric),0) AS amount
       FROM transactions WHERE type = 'lumpsum' AND status = 'successful'
-        AND order_date >= now() - interval '30 days' AND ${s.inv("transactions.investor_id")}
-      GROUP BY 1 ORDER BY 1 DESC LIMIT 30
+        AND ${s.inPeriod("order_date")} AND ${s.inv("transactions.investor_id")}
+      GROUP BY 1 ORDER BY 1 DESC
     `,
   },
   redemption: {
     title: "Redemption Report",
     desc: "Outflows by day.",
+    period: "last_30",
     columns: [
       { key: "day", label: "Date", format: "date" },
       { key: "count", label: "Count", format: "number" },
@@ -123,13 +212,14 @@ const REPORTS: Record<
     runSql: (sql, s) => sql`
       SELECT order_date::date AS day, COUNT(*)::int AS count, COALESCE(SUM(amount::numeric),0) AS amount
       FROM transactions WHERE type = 'redemption' AND status = 'successful'
-        AND order_date >= now() - interval '30 days' AND ${s.inv("transactions.investor_id")}
-      GROUP BY 1 ORDER BY 1 DESC LIMIT 30
+        AND ${s.inPeriod("order_date")} AND ${s.inv("transactions.investor_id")}
+      GROUP BY 1 ORDER BY 1 DESC
     `,
   },
   net_sales: {
     title: "Net Sales",
     desc: "Gross inflow minus redemption, by day.",
+    period: "last_30",
     columns: [
       { key: "day", label: "Date", format: "date" },
       { key: "gross", label: "Gross inflow", format: "inr" },
@@ -142,13 +232,14 @@ const REPORTS: Record<
         COALESCE(SUM(CASE WHEN direction='outflow' THEN amount::numeric END),0) AS redemption,
         COALESCE(SUM(CASE WHEN direction='inflow' THEN amount::numeric ELSE -amount::numeric END),0) AS net
       FROM transactions WHERE status = 'successful'
-        AND order_date >= now() - interval '30 days' AND ${s.inv("transactions.investor_id")}
-      GROUP BY 1 ORDER BY 1 DESC LIMIT 30
+        AND ${s.inPeriod("order_date")} AND ${s.inv("transactions.investor_id")}
+      GROUP BY 1 ORDER BY 1 DESC
     `,
   },
   sip_rejected: {
     title: "SIP Rejected",
-    desc: "Recently rejected SIPs.",
+    desc: "Rejected SIPs, latest first.",
+    period: "all",
     columns: [
       { key: "name", label: "Investor" },
       { key: "scheme_name", label: "Scheme" },
@@ -159,8 +250,8 @@ const REPORTS: Record<
     runSql: (sql, s) => sql`
       SELECT i.name, t.scheme_name, t.amount, t.reason_code, t.created_at
       FROM transactions t LEFT JOIN investors i ON i.id = t.investor_id
-      WHERE t.type = 'sip' AND t.status = 'rejected' AND ${s.inv("t.investor_id")}
-      ORDER BY t.created_at DESC LIMIT 100
+      WHERE t.type = 'sip' AND t.status = 'rejected' AND ${s.inv("t.investor_id")} AND ${s.inPeriod("t.created_at")}
+      ORDER BY t.created_at DESC LIMIT ${s.limit}
     `,
   },
   active_sip_book: {
@@ -174,7 +265,7 @@ const REPORTS: Record<
     runSql: (sql, s) => sql`
       SELECT scheme_name, COUNT(*)::int AS count, COALESCE(SUM(amount::numeric),0) AS monthly_value
       FROM sips WHERE status = 'active' AND scheme_name IS NOT NULL AND ${s.inv("sips.investor_id")}
-      GROUP BY scheme_name ORDER BY monthly_value DESC LIMIT 50
+      GROUP BY scheme_name ORDER BY monthly_value DESC LIMIT ${s.limit}
     `,
   },
   rm_business: {
@@ -192,7 +283,7 @@ const REPORTS: Record<
         COALESCE(SUM(i.aum::numeric),0) AS aum,
         COALESCE(SUM(i.active_sip_amount::numeric),0) AS sip_book
       FROM users u LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL AND ${s.inv("i.id")}
-      WHERE 'rm' = ANY(u.roles) GROUP BY u.id, u.name ORDER BY aum DESC
+      WHERE 'rm' = ANY(u.roles) AND ${s.staff("u.id")} GROUP BY u.id, u.name ORDER BY aum DESC
     `,
   },
   high_aum: {
@@ -222,7 +313,7 @@ const REPORTS: Record<
       SELECT name, aum, last_transaction_at FROM investors
       WHERE status = 'active' AND deleted_at IS NULL AND ${s.inv("investors.id")}
         AND (last_transaction_at IS NULL OR last_transaction_at < now() - make_interval(days => COALESCE((SELECT dormancy_window_days FROM tenants WHERE id = investors.tenant_id), 180)))
-      ORDER BY last_transaction_at NULLS FIRST LIMIT 100
+      ORDER BY last_transaction_at NULLS FIRST LIMIT ${s.limit}
     `,
   },
   review_pending: {
@@ -237,7 +328,7 @@ const REPORTS: Record<
     runSql: (sql, s) => sql`
       SELECT name, segment_tag, last_review_at, next_review_at FROM investors
       WHERE status = 'active' AND deleted_at IS NULL AND next_review_at IS NOT NULL AND ${s.inv("investors.id")}
-      ORDER BY next_review_at ASC LIMIT 100
+      ORDER BY next_review_at ASC LIMIT ${s.limit}
     `,
   },
   service_pending: {
@@ -252,12 +343,13 @@ const REPORTS: Record<
     runSql: (sql, s) => sql`
       SELECT ticket_no, type, status, sla_resolution_at
       FROM service_requests WHERE status IN ('open', 'in_progress') AND ${s.srTable}
-      ORDER BY sla_resolution_at ASC NULLS LAST LIMIT 100
+      ORDER BY sla_resolution_at ASC NULLS LAST LIMIT ${s.limit}
     `,
   },
   lead_conversion: {
     title: "Lead Conversion",
     desc: "Conversion funnel by source.",
+    period: "all",
     columns: [
       { key: "source", label: "Source" },
       { key: "total", label: "Total", format: "number" },
@@ -268,7 +360,7 @@ const REPORTS: Record<
       SELECT source, COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL)::int AS converted,
         ROUND(100.0 * COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL) / NULLIF(COUNT(*),0), 1) AS rate
-      FROM leads WHERE ${s.lead("leads.id")} GROUP BY source ORDER BY total DESC
+      FROM leads WHERE ${s.lead("leads.id")} AND ${s.inPeriod("leads.created_at")} GROUP BY source ORDER BY total DESC
     `,
   },
   // -------------------- Module 5: Family Mapping reports --------------------
@@ -291,7 +383,7 @@ const REPORTS: Record<
       FROM families f
       LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited') AND ${s.inv("i.id")}
       WHERE ${s.fam("f.id")}
-      GROUP BY f.id ORDER BY aum DESC NULLS LAST LIMIT 200
+      GROUP BY f.id ORDER BY aum DESC NULLS LAST LIMIT ${s.limit}
     `,
   },
   family_sip: {
@@ -313,7 +405,7 @@ const REPORTS: Record<
       WHERE ${s.fam("f.id")}
       GROUP BY f.id
       HAVING SUM(i.active_sip_amount::numeric) > 0
-      ORDER BY monthly_sip DESC LIMIT 200
+      ORDER BY monthly_sip DESC LIMIT ${s.limit}
     `,
   },
   unmapped_family_members: {
@@ -333,7 +425,7 @@ const REPORTS: Record<
       FROM investors i
       LEFT JOIN users u ON u.id = i.rm_id
       WHERE i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited') AND i.family_id IS NULL AND ${s.inv("i.id")}
-      ORDER BY i.aum::numeric DESC NULLS LAST LIMIT 500
+      ORDER BY i.aum::numeric DESC NULLS LAST LIMIT ${s.limit}
     `,
   },
   family_review_due: {
@@ -355,7 +447,7 @@ const REPORTS: Record<
       LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited') AND ${s.inv("i.id")}
       WHERE f.next_review_at IS NOT NULL AND ${s.fam("f.id")}
         AND f.next_review_at <= now() + interval '30 days'
-      GROUP BY f.id ORDER BY f.next_review_at ASC LIMIT 200
+      GROUP BY f.id ORDER BY f.next_review_at ASC LIMIT ${s.limit}
     `,
   },
   next_gen_prospects: {
@@ -389,7 +481,7 @@ const REPORTS: Record<
           i.is_minor = true
           OR EXTRACT(YEAR FROM age(current_date, i.dob)) BETWEEN 18 AND 30
         )
-      ORDER BY age ASC LIMIT 500
+      ORDER BY age ASC LIMIT ${s.limit}
     `,
   },
   // -------------------- Module 8: Goal Planning reports --------------------
@@ -435,7 +527,7 @@ const REPORTS: Record<
       FROM goals g
       LEFT JOIN investors i ON i.id = g.investor_id
       WHERE g.status = 'behind_track' AND ${s.inv("g.investor_id")}
-      ORDER BY g.gap_amount::numeric DESC NULLS LAST LIMIT 200
+      ORDER BY g.gap_amount::numeric DESC NULLS LAST LIMIT ${s.limit}
     `,
   },
   goals_5yr: {
@@ -459,7 +551,7 @@ const REPORTS: Record<
       WHERE g.status NOT IN ('achieved', 'abandoned') AND ${s.inv("g.investor_id")}
         AND g.target_date <= current_date + interval '5 years'
         AND g.target_date >= current_date
-      ORDER BY g.target_date ASC LIMIT 500
+      ORDER BY g.target_date ASC LIMIT ${s.limit}
     `,
   },
   retirement_clients: {
@@ -482,7 +574,7 @@ const REPORTS: Record<
       FROM goals g
       LEFT JOIN investors i ON i.id = g.investor_id
       WHERE g.category = 'retirement' AND g.status NOT IN ('abandoned') AND ${s.inv("g.investor_id")}
-      ORDER BY g.target_date ASC LIMIT 300
+      ORDER BY g.target_date ASC LIMIT ${s.limit}
     `,
   },
   child_edu_clients: {
@@ -506,13 +598,14 @@ const REPORTS: Record<
       LEFT JOIN investors i ON i.id = g.investor_id
       WHERE g.category IN ('child_education', 'education')
         AND g.status NOT IN ('abandoned') AND ${s.inv("g.investor_id")}
-      ORDER BY g.target_date ASC LIMIT 300
+      ORDER BY g.target_date ASC LIMIT ${s.limit}
     `,
   },
   // -------------------- Module 9: MF Transaction reports --------------------
   amc_business: {
     title: "AMC-wise business",
-    desc: "Inflow / outflow / net business per AMC for the last 90 days.",
+    desc: "Inflow / outflow / net business per AMC.",
+    period: "last_90",
     columns: [
       { key: "amc", label: "AMC" },
       { key: "transactions", label: "Txns", format: "number" },
@@ -528,15 +621,16 @@ const REPORTS: Record<
         COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE -amount::numeric END), 0) AS net
       FROM transactions
       WHERE status IN ('successful','processed')
-        AND order_date >= current_date - interval '90 days' AND ${s.inv("transactions.investor_id")}
+        AND ${s.inPeriod("order_date")} AND ${s.inv("transactions.investor_id")}
       GROUP BY COALESCE(amc_name, amc_code, '—')
-      ORDER BY net DESC LIMIT 100
+      ORDER BY net DESC LIMIT ${s.limit}
     `,
   },
   // -------------------- Module 11: SIP Rejection recovery report --------------------
   sip_recovery_monthly: {
     title: "Monthly SIP Rejection Recovery",
-    desc: "Last 6 months — rejections raised vs. recovered, with recovery %.",
+    desc: "By month — rejections raised vs. recovered, with recovery %.",
+    period: "last_6m",
     columns: [
       { key: "month", label: "Month" },
       { key: "rejections", label: "Rejections", format: "number" },
@@ -561,15 +655,16 @@ const REPORTS: Record<
         COALESCE(SUM(CASE WHEN recovery_status NOT IN ('recovered', 'not_recoverable')
           THEN rejection_amount::numeric ELSE 0 END), 0)::numeric AS outstanding
       FROM sip_rejections
-      WHERE rejection_date >= date_trunc('month', now()) - interval '5 months' AND ${s.inv("sip_rejections.investor_id")}
+      WHERE ${s.inPeriod("rejection_date")} AND ${s.inv("sip_rejections.investor_id")}
       GROUP BY date_trunc('month', rejection_date)
       ORDER BY date_trunc('month', rejection_date) DESC
     `,
   },
   // -------------------- Module 10: SIP Tracker reports --------------------
   sip_added_mtd: {
-    title: "SIP Added This Month",
-    desc: "New SIPs registered since the 1st of the current month.",
+    title: "SIP Added",
+    desc: "New SIPs registered in the period.",
+    period: "month",
     columns: [
       { key: "investor_name", label: "Investor" },
       { key: "scheme_name", label: "Scheme" },
@@ -586,8 +681,8 @@ const REPORTS: Record<
       LEFT JOIN investors i ON i.id = s.investor_id
       LEFT JOIN users u ON u.id = COALESCE(s.rm_id, i.rm_id)
       WHERE s.status = 'active' AND ${s.inv("s.investor_id")}
-        AND s.created_at >= date_trunc('month', now())
-      ORDER BY s.created_at DESC LIMIT 500
+        AND ${s.inPeriod("s.created_at")}
+      ORDER BY s.created_at DESC LIMIT ${s.limit}
     `,
   },
   sip_expiring: {
@@ -612,7 +707,7 @@ const REPORTS: Record<
       LEFT JOIN users u ON u.id = COALESCE(s.rm_id, i.rm_id)
       WHERE s.status = 'active' AND s.end_date IS NOT NULL AND ${s.inv("s.investor_id")}
         AND s.end_date BETWEEN current_date AND current_date + interval '120 days'
-      ORDER BY s.end_date ASC LIMIT 500
+      ORDER BY s.end_date ASC LIMIT ${s.limit}
     `,
   },
   sip_topup_opportunity: {
@@ -640,20 +735,21 @@ const REPORTS: Record<
         AND i.active_sip_amount::numeric > 0
       GROUP BY i.id, u.name
       HAVING MAX(s.created_at) < now() - interval '12 months'
-      ORDER BY i.aum::numeric DESC NULLS LAST LIMIT 200
+      ORDER BY i.aum::numeric DESC NULLS LAST LIMIT ${s.limit}
     `,
   },
   rm_sip_book: {
     manager: true,
     title: "RM-wise SIP Book",
-    desc: "Active SIP count + monthly inflow grouped by relationship manager.",
+    desc: "Active SIP count + monthly inflow grouped by relationship manager; added and stopped in the period.",
+    period: "month",
     columns: [
       { key: "rm_name", label: "RM" },
       { key: "active_sips", label: "Active SIPs", format: "number" },
       { key: "monthly_sip", label: "Monthly inflow", format: "inr" },
       { key: "yearly_run_rate", label: "Yearly run-rate", format: "inr" },
-      { key: "added_mtd", label: "Added MTD", format: "number" },
-      { key: "stopped_mtd", label: "Stopped MTD", format: "number" },
+      { key: "added_mtd", label: "Added", format: "number" },
+      { key: "stopped_mtd", label: "Stopped", format: "number" },
     ],
     runSql: (sql, s) => sql`
       SELECT COALESCE(u.name, '— unassigned —') AS rm_name,
@@ -661,20 +757,21 @@ const REPORTS: Record<
         COALESCE(SUM(CASE WHEN s.status = 'active' THEN s.amount::numeric ELSE 0 END), 0)::numeric AS monthly_sip,
         COALESCE(SUM(CASE WHEN s.status = 'active' THEN s.amount::numeric ELSE 0 END), 0)::numeric * 12 AS yearly_run_rate,
         COUNT(*) FILTER (WHERE s.status = 'active'
-          AND s.created_at >= date_trunc('month', now()))::int AS added_mtd,
+          AND ${s.inPeriod("s.created_at")})::int AS added_mtd,
         COUNT(*) FILTER (WHERE s.status IN ('stopped','rejected')
-          AND s.updated_at >= date_trunc('month', now()))::int AS stopped_mtd
+          AND ${s.inPeriod("s.updated_at")})::int AS stopped_mtd
       FROM sips s
       LEFT JOIN investors i ON i.id = s.investor_id
       LEFT JOIN users u ON u.id = COALESCE(s.rm_id, i.rm_id)
       WHERE ${s.inv("s.investor_id")}
       GROUP BY u.id, u.name
-      ORDER BY monthly_sip DESC LIMIT 100
+      ORDER BY monthly_sip DESC LIMIT ${s.limit}
     `,
   },
   scheme_category_business: {
     title: "Scheme category-wise business",
-    desc: "Equity / Debt / Hybrid / etc. — inflow + outflow + net for last 90 days.",
+    desc: "Equity / Debt / Hybrid / etc. — inflow + outflow + net.",
+    period: "last_90",
     columns: [
       { key: "category", label: "Category" },
       { key: "transactions", label: "Txns", format: "number" },
@@ -692,9 +789,9 @@ const REPORTS: Record<
         COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE -amount::numeric END), 0) AS net
       FROM transactions
       WHERE status IN ('successful','processed')
-        AND order_date >= current_date - interval '90 days' AND ${s.inv("transactions.investor_id")}
+        AND ${s.inPeriod("order_date")} AND ${s.inv("transactions.investor_id")}
       GROUP BY COALESCE(scheme_category, '—')
-      ORDER BY net DESC LIMIT 50
+      ORDER BY net DESC LIMIT ${s.limit}
     `,
   },
   // -------------------- Module 14: Complaint Register reports --------------------
@@ -730,12 +827,13 @@ const REPORTS: Record<
       WHERE sr.type = 'complaint' AND ${s.sr}
         AND sr.status IN ('open','in_progress','escalated','waiting_customer')
       ORDER BY sr.sla_resolution_at ASC NULLS LAST, sr.created_at ASC
-      LIMIT 500
+      LIMIT ${s.limit}
     `,
   },
   resolved_complaints: {
     title: "Resolved complaints",
-    desc: "Complaints resolved or closed in the last 90 days — TAT + resolution notes.",
+    desc: "Complaints resolved or closed in the period — TAT + resolution notes.",
+    period: "last_90",
     columns: [
       { key: "ticket_no", label: "Complaint ID" },
       { key: "investor_name", label: "Client" },
@@ -766,14 +864,15 @@ const REPORTS: Record<
       LEFT JOIN users u ON u.id = sr.assigned_to_user_id
       WHERE sr.type = 'complaint' AND ${s.sr}
         AND sr.status IN ('resolved','closed')
-        AND sr.resolved_at >= now() - interval '90 days'
+        AND sr.resolved_at IS NOT NULL AND ${s.inPeriod("sr.resolved_at")}
       ORDER BY sr.resolved_at DESC
-      LIMIT 500
+      LIMIT ${s.limit}
     `,
   },
   complaint_tat: {
     title: "Complaint TAT report",
     desc: "Monthly resolution metrics — average TAT, SEBI 21-day compliance %, breach count.",
+    period: "last_12m",
     columns: [
       { key: "month", label: "Month" },
       { key: "total_resolved", label: "Resolved", format: "number" },
@@ -804,7 +903,7 @@ const REPORTS: Record<
       WHERE type = 'complaint' AND ${s.srTable}
         AND status IN ('resolved','closed')
         AND resolved_at IS NOT NULL
-        AND resolved_at >= date_trunc('month', now()) - interval '11 months'
+        AND ${s.inPeriod("resolved_at")}
       GROUP BY date_trunc('month', resolved_at)
       ORDER BY date_trunc('month', resolved_at) DESC
     `,
@@ -839,7 +938,7 @@ const REPORTS: Record<
       FROM campaigns
       WHERE status != 'cancelled'
       ORDER BY COALESCE(leads_generated, 0) DESC, created_at DESC
-      LIMIT 200
+      LIMIT ${s.limit}
     `,
   },
   campaign_conversion: {
@@ -876,7 +975,7 @@ const REPORTS: Record<
       FROM campaigns
       WHERE status != 'cancelled'
       ORDER BY converted DESC, leads DESC
-      LIMIT 200
+      LIMIT ${s.limit}
     `,
   },
   marketing_calendar: {
@@ -884,6 +983,7 @@ const REPORTS: Record<
     marketing: true,
     title: "Monthly marketing calendar",
     desc: "Campaigns by month — count, total leads, conversions, spend per month.",
+    period: "last_12m",
     columns: [
       { key: "month", label: "Month" },
       { key: "campaigns", label: "Campaigns", format: "number" },
@@ -903,7 +1003,7 @@ const REPORTS: Record<
         COALESCE(SUM(campaign_cost::numeric), 0)::numeric AS spend
       FROM campaigns
       WHERE status != 'cancelled'
-        AND COALESCE(start_date, created_at) >= date_trunc('month', now()) - interval '11 months'
+        AND ${s.inPeriod("COALESCE(start_date, created_at)")}
       GROUP BY date_trunc('month', COALESCE(start_date, created_at))
       ORDER BY date_trunc('month', COALESCE(start_date, created_at)) DESC
     `,
@@ -942,12 +1042,13 @@ const REPORTS: Record<
         CASE WHEN start_date IS NULL THEN 1 ELSE 0 END,
         start_date ASC,
         created_at ASC
-      LIMIT 200
+      LIMIT ${s.limit}
     `,
   },
   complaint_category: {
     title: "Complaint category report",
     desc: "Volume + resolution metrics by SEBI complaint category — drives the FY-end SEBI inspection report.",
+    period: "all",
     columns: [
       { key: "category", label: "SEBI category" },
       { key: "total", label: "Total", format: "number" },
@@ -977,7 +1078,7 @@ const REPORTS: Record<
           ) / NULLIF(COUNT(*), 0),
         1) AS breach_pct
       FROM service_requests
-      WHERE type = 'complaint' AND ${s.srTable}
+      WHERE type = 'complaint' AND ${s.srTable} AND ${s.inPeriod("created_at")}
       GROUP BY COALESCE(sebi_category, 'Other')
       ORDER BY total DESC
     `,
@@ -991,7 +1092,8 @@ const REPORTS: Record<
     manager: true,
     title: "Employee-wise tasks",
     desc:
-      "For every team member: open tasks, overdue, due today, due this week, completed last 30 days, and SLA-breach count.",
+      "For every team member: open tasks, overdue, due today, due this week, completed in the period, and SLA-breach count.",
+    period: "last_30",
     columns: [
       { key: "name", label: "Employee" },
       { key: "department", label: "Dept" },
@@ -999,7 +1101,7 @@ const REPORTS: Record<
       { key: "overdue_tasks", label: "Overdue", format: "number" },
       { key: "due_today", label: "Due today", format: "number" },
       { key: "due_this_week", label: "Due 7d", format: "number" },
-      { key: "completed_30d", label: "Completed 30d", format: "number" },
+      { key: "completed_30d", label: "Completed", format: "number" },
       { key: "sla_breached", label: "SLA breach", format: "number" },
     ],
     runSql: (sql, s) => sql`
@@ -1016,7 +1118,7 @@ const REPORTS: Record<
             AND t.due_at >= now() AND t.due_at < now() + interval '7 days'
         )::int AS due_this_week,
         COUNT(t.id) FILTER (
-          WHERE t.status = 'completed' AND t.completed_at >= now() - interval '30 days'
+          WHERE t.status = 'completed' AND ${s.inPeriod("t.completed_at")}
         )::int AS completed_30d,
         COUNT(t.id) FILTER (
           WHERE t.status IN ('open','in_progress')
@@ -1024,7 +1126,7 @@ const REPORTS: Record<
         )::int AS sla_breached
       FROM users u
       LEFT JOIN tasks t ON t.assignee_id = u.id
-      WHERE u.status IN ('active','invited')
+      WHERE u.status IN ('active','invited') AND ${s.staff("u.id")}
       GROUP BY u.id, u.name, u.department
       ORDER BY open_tasks DESC, overdue_tasks DESC
     `,
@@ -1059,7 +1161,7 @@ const REPORTS: Record<
         COALESCE(SUM(i.aum::numeric), 0) AS aum
       FROM users u
       LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL AND ${s.inv("i.id")}
-      WHERE 'rm' = ANY(u.roles) AND u.status = 'active'
+      WHERE 'rm' = ANY(u.roles) AND u.status = 'active' AND ${s.staff("u.id")}
       GROUP BY u.id, u.name
       ORDER BY total_clients DESC
     `,
@@ -1069,13 +1171,13 @@ const REPORTS: Record<
     manager: true,
     title: "RM-wise reviews",
     desc:
-      "Per-RM review-meeting metrics: scheduled, completed last 30/90 days, overdue follow-ups, and review-cadence health.",
+      "Per-RM review-meeting metrics: upcoming, completed and no-shows in the period, and clients overdue a review.",
+    period: "last_90",
     columns: [
       { key: "rm_name", label: "RM" },
       { key: "upcoming", label: "Upcoming", format: "number" },
-      { key: "completed_30d", label: "Done 30d", format: "number" },
-      { key: "completed_90d", label: "Done 90d", format: "number" },
-      { key: "no_show", label: "No-shows 90d", format: "number" },
+      { key: "completed", label: "Done", format: "number" },
+      { key: "no_show", label: "No-shows", format: "number" },
       { key: "clients_no_recent_review", label: "Clients overdue review", format: "number" },
     ],
     runSql: (sql, s) => sql`
@@ -1085,13 +1187,10 @@ const REPORTS: Record<
           WHERE m.status IN ('scheduled','confirmed') AND m.meeting_date >= now()
         )::int AS upcoming,
         COUNT(m.id) FILTER (
-          WHERE m.status = 'completed' AND m.meeting_date >= now() - interval '30 days'
-        )::int AS completed_30d,
+          WHERE m.status = 'completed' AND ${s.inPeriod("m.meeting_date")}
+        )::int AS completed,
         COUNT(m.id) FILTER (
-          WHERE m.status = 'completed' AND m.meeting_date >= now() - interval '90 days'
-        )::int AS completed_90d,
-        COUNT(m.id) FILTER (
-          WHERE m.status = 'no_show' AND m.meeting_date >= now() - interval '90 days'
+          WHERE m.status = 'no_show' AND ${s.inPeriod("m.meeting_date")}
         )::int AS no_show,
         (
           SELECT COUNT(*)::int FROM investors i
@@ -1100,7 +1199,7 @@ const REPORTS: Record<
         ) AS clients_no_recent_review
       FROM users u
       LEFT JOIN review_meetings m ON m.rm_id = u.id
-      WHERE 'rm' = ANY(u.roles) AND u.status = 'active'
+      WHERE 'rm' = ANY(u.roles) AND u.status = 'active' AND ${s.staff("u.id")}
       GROUP BY u.id, u.name
       ORDER BY clients_no_recent_review DESC, upcoming DESC
     `,
@@ -1110,7 +1209,8 @@ const REPORTS: Record<
     manager: true,
     title: "Lead drop-off analysis",
     desc:
-      "Where leads stall in the lead-to-client journey. Counts every lead that ever entered each stage and how many advanced past it — exposes the funnel's leakiest steps.",
+      "Where leads stall in the lead-to-client journey. Counts every lead that entered each stage in the period and how many advanced past it — exposes the funnel's leakiest steps.",
+    period: "all",
     columns: [
       { key: "stage_name", label: "Stage" },
       { key: "entered", label: "Entered", format: "number" },
@@ -1138,7 +1238,7 @@ const REPORTS: Record<
         1) AS breach_pct,
         ROUND(AVG(lsh.duration_seconds) / 3600.0, 1) AS avg_hours_in_stage
       FROM blueprint_stages bs
-      LEFT JOIN lead_stage_history lsh ON lsh.stage_key = bs.stage_key
+      LEFT JOIN lead_stage_history lsh ON lsh.stage_key = bs.stage_key AND ${s.inPeriod("lsh.entered_at")}
       LEFT JOIN lead_blueprint_instances lbi ON lbi.id = lsh.instance_id
       WHERE bs.blueprint_id IN (
         SELECT id FROM blueprint_definitions WHERE module_name = 'leads' AND is_active = true
@@ -1177,7 +1277,7 @@ const REPORTS: Record<
         AND bs.sla_days IS NOT NULL
         AND lbi.stage_entered_at + (bs.sla_days || ' days')::interval < now()
       ORDER BY overdue_days DESC
-      LIMIT 200
+      LIMIT ${s.limit}
     `,
   },
 
@@ -1185,7 +1285,8 @@ const REPORTS: Record<
     manager: true,
     title: "RM-wise blueprint pipeline",
     desc:
-      "For each RM: how many leads/clients sit in each phase of the Lead → Client SOP. Surfaces who has bandwidth and who's holding the line.",
+      "For each RM: how many leads/clients sit in each phase of the Lead → Client SOP, and how many became active in the period. Surfaces who has bandwidth and who's holding the line.",
+    period: "last_30",
     columns: [
       { key: "rm_name", label: "RM" },
       { key: "new_leads", label: "New", format: "number" },
@@ -1195,7 +1296,7 @@ const REPORTS: Record<
       { key: "onboarding", label: "Docs/KYC", format: "number" },
       { key: "activation", label: "UCC/Mandate/Txn", format: "number" },
       { key: "lost", label: "Lost", format: "number" },
-      { key: "converted_30d", label: "Active 30d", format: "number" },
+      { key: "converted_30d", label: "Became active", format: "number" },
     ],
     // Stage keys mirror the 30-stage SOP in src/lib/blueprints/lead_to_client.ts.
     runSql: (sql, s) => sql`
@@ -1216,12 +1317,12 @@ const REPORTS: Record<
            'rta_forms_ready','rta_client_signed','rta_submitted','rta_processed','rta_rejected'))::int AS activation,
         COUNT(lbi.id) FILTER (WHERE lbi.status = 'lost')::int AS lost,
         COUNT(lbi.id) FILTER (
-          WHERE lbi.status = 'completed' AND lbi.completed_at >= now() - interval '30 days'
+          WHERE lbi.status = 'completed' AND ${s.inPeriod("lbi.completed_at")}
         )::int AS converted_30d
       FROM users u
       LEFT JOIN leads l ON l.owner_id = u.id
       LEFT JOIN lead_blueprint_instances lbi ON lbi.lead_id = l.id
-      WHERE 'rm' = ANY(u.roles) AND u.status = 'active'
+      WHERE 'rm' = ANY(u.roles) AND u.status = 'active' AND ${s.staff("u.id")}
       GROUP BY u.id, u.name
       ORDER BY COUNT(lbi.id) DESC
     `,
@@ -1231,7 +1332,8 @@ const REPORTS: Record<
     manager: true,
     title: "Lead loss reasons",
     desc:
-      "Why leads die — every lost lead grouped by the disposition that closed it, with the average time-to-loss. Answers \"why are we losing leads?\".",
+      "Why leads die — every lead lost in the period grouped by the disposition that closed it, with the average time-to-loss. Answers \"why are we losing leads?\".",
+    period: "all",
     columns: [
       { key: "reason", label: "Disposition / reason" },
       { key: "leads", label: "Leads lost", format: "number" },
@@ -1247,7 +1349,7 @@ const REPORTS: Record<
           ON lsh.instance_id = lbi.id
          AND lsh.stage_key = lbi.current_stage_key
          AND lsh.exited_at IS NULL
-        WHERE lbi.status = 'lost'
+        WHERE lbi.status = 'lost' AND ${s.inPeriod("lsh.entered_at")}
       )
       SELECT reason,
              COUNT(*)::int AS leads,
@@ -1304,7 +1406,7 @@ const REPORTS: Record<
             AND r.recovery_status IN ('pending','client_contacted','bank_issue','mandate_issue')
         ) AS sip_rejections_pending
       FROM users u
-      WHERE 'rm' = ANY(u.roles) AND u.status = 'active'
+      WHERE 'rm' = ANY(u.roles) AND u.status = 'active' AND ${s.staff("u.id")}
       ORDER BY (
         (SELECT COUNT(*) FROM tasks t WHERE t.assignee_id = u.id AND t.status IN ('open','in_progress'))
         + (SELECT COUNT(*) FROM service_requests s WHERE s.assigned_to_user_id = u.id AND s.status IN ('open','in_progress','escalated'))
@@ -1318,7 +1420,8 @@ const REPORTS: Record<
 
   aum_movement: {
     title: "AUM Movement",
-    desc: "Monthly gross inflow, redemption outflow, and net business — last 12 months.",
+    desc: "Monthly gross inflow, redemption outflow, and net business.",
+    period: "last_12m",
     columns: [
       { key: "month", label: "Month" },
       { key: "inflow", label: "Inflow", format: "inr" },
@@ -1332,15 +1435,16 @@ const REPORTS: Record<
         COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE -amount::numeric END), 0) AS net
       FROM transactions
       WHERE status IN ('successful', 'processed') AND ${s.inv("transactions.investor_id")}
-        AND order_date >= date_trunc('month', now()) - interval '11 months'
+        AND ${s.inPeriod("order_date")}
       GROUP BY date_trunc('month', order_date)
       ORDER BY date_trunc('month', order_date) DESC
     `,
   },
 
   sip_stopped: {
-    title: "SIP Stopped This Month",
-    desc: "SIPs stopped or rejected since the 1st of the current month — recovery candidates.",
+    title: "SIP Stopped",
+    desc: "SIPs stopped or rejected in the period — recovery candidates.",
+    period: "month",
     columns: [
       { key: "investor_name", label: "Investor" },
       { key: "scheme_name", label: "Scheme" },
@@ -1357,8 +1461,8 @@ const REPORTS: Record<
       LEFT JOIN investors i ON i.id = s.investor_id
       LEFT JOIN users u ON u.id = COALESCE(s.rm_id, i.rm_id)
       WHERE s.status IN ('stopped', 'rejected') AND ${s.inv("s.investor_id")}
-        AND s.updated_at >= date_trunc('month', now())
-      ORDER BY s.updated_at DESC LIMIT 500
+        AND ${s.inPeriod("s.updated_at")}
+      ORDER BY s.updated_at DESC LIMIT ${s.limit}
     `,
   },
 
@@ -1388,25 +1492,26 @@ const REPORTS: Record<
   team_productivity: {
     manager: true,
     title: "Team Productivity",
-    desc: "Per team member: open tasks, tasks completed (30d), review meetings done (30d), and leads owned.",
+    desc: "Per team member: open tasks, tasks completed and review meetings done in the period, and leads owned.",
+    period: "last_30",
     columns: [
       { key: "name", label: "Member" },
       { key: "department", label: "Dept" },
       { key: "open_tasks", label: "Open tasks", format: "number" },
-      { key: "completed_30d", label: "Completed 30d", format: "number" },
-      { key: "meetings_30d", label: "Meetings 30d", format: "number" },
+      { key: "completed_30d", label: "Completed", format: "number" },
+      { key: "meetings_30d", label: "Meetings", format: "number" },
       { key: "leads_owned", label: "Leads owned", format: "number" },
     ],
     runSql: (sql, s) => sql`
       SELECT u.name, COALESCE(u.department, '—') AS department,
         COUNT(t.id) FILTER (WHERE t.status IN ('open','in_progress'))::int AS open_tasks,
-        COUNT(t.id) FILTER (WHERE t.status = 'completed' AND t.completed_at >= now() - interval '30 days')::int AS completed_30d,
+        COUNT(t.id) FILTER (WHERE t.status = 'completed' AND ${s.inPeriod("t.completed_at")})::int AS completed_30d,
         (SELECT COUNT(*)::int FROM review_meetings m
-           WHERE m.rm_id = u.id AND m.status = 'completed' AND m.meeting_date >= now() - interval '30 days') AS meetings_30d,
+           WHERE m.rm_id = u.id AND m.status = 'completed' AND ${s.inPeriod("m.meeting_date")}) AS meetings_30d,
         (SELECT COUNT(*)::int FROM leads l WHERE l.owner_id = u.id) AS leads_owned
       FROM users u
       LEFT JOIN tasks t ON t.assignee_id = u.id
-      WHERE u.status = 'active'
+      WHERE u.status = 'active' AND ${s.staff("u.id")}
       GROUP BY u.id, u.name, u.department
       ORDER BY completed_30d DESC, open_tasks DESC
     `,
@@ -1438,12 +1543,27 @@ const REPORTS: Record<
 
 export const dynamic = "force-dynamic";
 
-export default async function ReportPage({ params }: { params: Promise<{ key: string }> }) {
+type SP = Record<string, string | string[] | undefined>;
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? null;
+const UUID = /^[0-9a-f-]{36}$/i;
+
+export default async function ReportPage({ params, searchParams }: { params: Promise<{ key: string }>; searchParams: Promise<SP> }) {
   const { key } = await params;
+  const sp = await searchParams;
   const report = REPORTS[key];
   if (!report) notFound();
 
   const session = await requireSession();
+  const period = resolveReportPeriod(one(sp.period), { from: one(sp.from), to: one(sp.to), fallback: report.period ?? "all" });
+  const rmParam = one(sp.rm);
+  const branchParam = one(sp.branch);
+  const filters: ReportFilters = {
+    period,
+    rmId: rmParam && UUID.test(rmParam) ? rmParam : null,
+    branchId: branchParam && UUID.test(branchParam) ? branchParam : null,
+  };
+  const uses: FilterUse = { period: false, people: false };
+
   const result = await withTenant(session.tenantId, async (tx) => {
     const wallOn = await dataWallApplies(tx, session);
     // Under the data wall, per-RM / per-employee / campaign MIS is for the
@@ -1453,12 +1573,27 @@ export default async function ReportPage({ params }: { params: Promise<{ key: st
     if (wallOn && report.manager && !isReportManager(session) && !(report.marketing && isMarketingViewer(session))) {
       return null;
     }
-    const scope = await buildReportScope(tx, session, wallOn);
+    const scope = withReportFilters(await buildReportScope(tx, session, wallOn), filters, uses);
     const r = await tx.execute(report.runSql(sql, scope));
-    return r.rows as any[];
+    // The RM / Branch pickers: for whoever sees more than their own book. The
+    // filter only narrows, so the lists are simply the firm's people and branches.
+    const offerPeople = uses.people && (!wallOn || isReportManager(session));
+    const [people, branchRows] = offerPeople
+      ? await Promise.all([
+          tx.execute(sql`SELECT id, name FROM users WHERE status = 'active' ORDER BY name`),
+          tx.execute(sql`SELECT id, name FROM branches ORDER BY name`),
+        ])
+      : [{ rows: [] }, { rows: [] }];
+    return {
+      rows: r.rows as any[],
+      offerPeople,
+      people: (people.rows as any[]).map((u) => ({ value: String(u.id), label: String(u.name) })),
+      branches: (branchRows.rows as any[]).map((b) => ({ value: String(b.id), label: String(b.name) })),
+    };
   });
   if (!result) notFound();
-  const rows = result;
+  const { rows } = result;
+  const capped = rows.length >= LIST_LIMIT;
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -1467,13 +1602,31 @@ export default async function ReportPage({ params }: { params: Promise<{ key: st
       </Link>
 
       <PageHeaderCard title={<><BarChart3 className="size-5" /> {report.title}</>} actions={<><div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground">{rows.length} rows</span>
+          <span className="text-xs text-muted-foreground">{capped ? `First ${LIST_LIMIT.toLocaleString("en-IN")} rows` : `${rows.length} rows`}</span>
           <ReportExportButtons
             rows={JSON.parse(JSON.stringify(rows))}
             columns={report.columns.map((c) => ({ key: c.key, label: c.label }))}
             filename={key}
           />
         </div></>} />
+
+      {(uses.period || result.offerPeople) && (
+        <StandardReportFilterBar
+          reportKey={key}
+          reportTitle={report.title}
+          period={uses.period ? { key: period.key, from: period.from, to: period.to, label: period.label, defaultKey: report.period ?? "all" } : null}
+          rm={result.offerPeople ? filters.rmId : undefined}
+          branch={result.offerPeople ? filters.branchId : undefined}
+          people={result.people}
+          branches={result.branches}
+        />
+      )}
+
+      {capped && (
+        <p className="text-sm text-muted-foreground">
+          Showing the first {LIST_LIMIT.toLocaleString("en-IN")} rows. Narrow the filters to see the rest.
+        </p>
+      )}
 
       <div className="border rounded-lg bg-card">
         {rows.length === 0 ? (

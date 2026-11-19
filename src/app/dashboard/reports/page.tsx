@@ -4,10 +4,15 @@ import { ReportsGrid } from "@/components/reports/ReportsGrid";
 import { HelpTip } from "@/components/common/HelpTip";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { REPORTS } from "@/lib/reports/catalog";
+import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
-export default function ReportsPage() {
+export default async function ReportsPage() {
+  const session = await requireSession();
+  // Custom reports sit in the same hub for whoever may build them.
+  const customEnabled = can(session.roles, "reports.manage", session.permissions);
   const sections = REPORTS.map((g) => ({
     group: g.group,
     frequency: g.frequency,
@@ -43,7 +48,7 @@ export default function ReportsPage() {
         }
       />
 
-      <ReportsGrid sections={sections} />
+      <ReportsGrid sections={sections} customEnabled={customEnabled} />
     </div>
   );
 }

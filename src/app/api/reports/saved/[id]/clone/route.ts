@@ -13,6 +13,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { savedReports } from "@/db/schema";
+import { canSeeSavedReport } from "@/lib/reports/visibility";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const newId = await withTenant(session.tenantId, async (tx) => {
       const src = (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0];
-      if (!src) return null;
+      if (!src || src.deletedAt || !canSeeSavedReport(session, src)) return null;
       const cid = uuid();
       await tx.insert(savedReports).values({
         id: cid,
@@ -41,6 +42,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         sort: src.sort as any,
         matrix: src.matrix as any,
         summary: src.summary as any,
+        categories: src.categories as any,
+        chartOptions: src.chartOptions as any,
         folder: src.folder,
         chartType: src.chartType,
         sharedScope: "private", // a clone starts private to its creator

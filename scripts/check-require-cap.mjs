@@ -58,6 +58,9 @@ const SKIP_FILES = new Set([
   // Self-service — the handler is hard-scoped to session.userId; a user may only
   // ever touch their own row, so a capability check would be meaningless.
   "me/password/route.ts",
+  // Reports favourites / recently viewed / saved views — hard-scoped to
+  // (session.tenantId, session.userId); only catalog report keys are stored.
+  "reports/prefs/route.ts",
   "me/profile/route.ts",
   // SOP acknowledgement — any user records their OWN read receipt (scoped to
   // session.userId, idempotent unique). Mirrors notifications/mark-read.

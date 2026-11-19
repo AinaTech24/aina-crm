@@ -10,6 +10,7 @@ import { CATALOGS, type FieldDef, type SubjectCatalog } from "@/lib/filter/catal
 import type { FilterOperator } from "@/lib/filter/ast";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { REPORT_PERIOD_KEYS, REPORT_PERIOD_NAMES } from "@/lib/reports/period";
 
 type Group = { type: "group"; op: "AND" | "OR"; not?: boolean; children: Node[] };
 type Predicate = { type: "predicate"; field: { kind: "attr"; path: string }; op: FilterOperator; value?: unknown; duration?: { amount: number; unit: string } };
@@ -24,6 +25,7 @@ const OP_LABELS: Partial<Record<FilterOperator, string>> = {
   date_within: "within last", date_in_last: "in last", date_in_next: "in next",
   date_before: "before", date_after: "after", date_today: "is today", date_yesterday: "was yesterday",
   date_tomorrow: "is tomorrow", date_is_anniversary: "is anniversary today",
+  date_period: "is in",
 };
 
 const NO_VALUE_OPS = new Set<FilterOperator>(["is_empty", "is_not_empty", "is_null", "is_not_null", "is_true", "is_false", "date_today", "date_yesterday", "date_tomorrow", "date_is_anniversary"]);
@@ -151,6 +153,17 @@ function ValueInput({ field, predicate, onChange }: { field: FieldDef; predicate
   const set = (value: unknown) => onChange({ ...predicate, value });
 
   const isDate = field.type === "date" || field.type === "datetime";
+
+  if (op === "date_period") {
+    return (
+      <SelectField value={String(predicate.value ?? "")} onChange={(e) => set(e.target.value)} size="sm" className="shrink-0">
+        <option value="">Select…</option>
+        {REPORT_PERIOD_KEYS.filter((k) => k !== "custom" && k !== "all").map((k) => (
+          <option key={k} value={k}>{REPORT_PERIOD_NAMES[k]}</option>
+        ))}
+      </SelectField>
+    );
+  }
 
   if (DURATION_OPS.has(op)) {
     const d = predicate.duration ?? { amount: 7, unit: "day" };

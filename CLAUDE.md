@@ -134,6 +134,41 @@ The **catalog** (`src/lib/filter/catalog.ts`) is the source of truth for what's 
 
 **Security:** the AST can only reference catalog fields. Values are always parameterized. There is no way for user input to inject SQL.
 
+`date_period` (value: a key from `lib/reports/period.ts` — `month`, `fy`, `last_fy`, `last_30` …) means "is in This month / This FY …", resolved TODAY in India time, so a saved filter always means the current window.
+
+## Reports — Zoho-style (2026-11-19)
+
+The firm asked for Zoho CRM's Reports; what that became:
+
+- **Standard reports** (`/dashboard/reports/[key]`) have quick filters — Period,
+  RM / team member, Branch — in the URL. A report's SQL opts in by calling the
+  scope helpers: `s.inPeriod(col)` (India-midnight bounds, index-friendly),
+  `s.inv` / `s.lead` / `s.fam` / `s.sr` (also apply RM / Branch: a client fact
+  follows the client's RM), `s.staff(col)` for per-person rows, and
+  `s.limit` (2,000, and the page says so when it is hit). A filter is only
+  shown when the report calls its helper; filters only ever narrow the
+  viewer's access. Each report's `period` is the window it was hard-coded to
+  before, so nothing moved until someone picks another. "Save view" stores the
+  report + its filters under the person's name (`report_user_prefs.views`).
+- **Custom reports** (`lib/reports/run.ts`): group / pivot keys may bucket a
+  date — `"<field>@month"` (day · week · month · quarter (FY, Apr–Jun = Q1) ·
+  fy · year, `lib/reports/grouping.ts`) — or use a category column
+  `"cat:<id>"` (number bands / value groups, `lib/reports/categories.ts`; the
+  SQL emits only bucket codes, labels are applied in JS). The run API takes
+  the viewer's quick filter (`filter`, ANDed — narrow only), a `drill` (the
+  group values behind a clicked number) and paging; detailed rows carry
+  `__link` to their record. New definition options go in
+  `lib/reports/definition.ts` (zod strips unknown keys).
+- **Who sees a custom report**: `canSeeSavedReport` — creator, team / firm
+  shared, or the owner — on every route (get, run, export, send, clone).
+- **Delete is "Recently deleted"** (`deleted_at`, 30 days, restore or erase;
+  the nightly ops scan purges). **Favourites and Recently viewed** live on the
+  server (`report_user_prefs`, a custom report's `starred_by` / `viewed_by`).
+- **Schedules run in INDIA time** (they used the server clock — UTC — so 9:00
+  arrived at 14:30), daily / weekly / monthly / yearly, to team members (their
+  current email) and typed emails, optionally with the Excel file
+  (`lib/reports/workbook.ts`, the same rows as Export).
+
 ---
 
 ## The Workflow Engine
