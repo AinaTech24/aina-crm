@@ -127,6 +127,8 @@ const REPORT_TITLES: Array<[RegExp, RtaFileKind, string]> = [
   [/aum\s+on\s+a\s+specific\s+date/i, "cas_holdings", "AUM on a specific date by scheme by investor"],
   [/sip\s*\/?\s*stp\s+procured/i, "monthly_sip_book", "SIP/STP procured for the period"],
   [/brokerage\s+(statement|report)|commission\s+(statement|report)/i, "monthly_brokerage", "Brokerage statement"],
+  // Before "SIP registrations" below: "SIP Registration Rejection Report" contains both.
+  [/sip\s+registrations?\s+(rejection|bounce|dishonour)/i, "sip_rejection_report", "SIP registration rejection report"],
   [/sip\s+(rejection|bounce|dishonour)/i, "sip_rejection_report", "SIP rejection report"],
   [/sip\s+registrations?/i, "monthly_sip_book", "SIP registrations report"],
   [/systematic\s*registration/i, "monthly_sip_book", "Systematic registration status"],
@@ -174,6 +176,13 @@ function detectKind(haystack: string, codesOnly: boolean): { kind: RtaFileKind; 
     return { kind: "monthly_aum_statement", label: "AUM by scheme by investor (CAMS WBR22)" };
   }
 
+  //  KFintech MFSD314 = "SIP Registration Rejection Report" — the registrar's own bounce report.
+  //  Checked before the SIP register: its title contains "SIP Registration", which read as the
+  //  SIP register would have filed rejected registrations as live SIPs.
+  if (/mfsd\s*_?314/.test(n)) {
+    return { kind: "sip_rejection_report", label: "SIP registration rejection report (KFintech MFSD314)" };
+  }
+
   //  SIP register — CAMS WBR49 ("SIP/STP procured for the period"),
   //  KFintech MFSD230/243/313 (313 observed in production 2026-08-05).
   if (new RegExp(`(?:wbr\\s*_?49|r49)${V}`).test(n) || /mfsd\s*_?(230|243|313)/.test(n)) {
@@ -184,6 +193,11 @@ function detectKind(haystack: string, codesOnly: boolean): { kind: RtaFileKind; 
   //  Checked before the looser keyword kinds so an explicit code always wins.
   if (new RegExp(`(?:wbr\\s*_?2|r2|r10)${V}`).test(n) || /mfsd\s*_?(307|201)/.test(n)) {
     return { kind: "daily_transaction_feed", label: "Daily transaction feed" };
+  }
+
+  //  KFintech brokerage: MFSD305 (subscription) / MFSD205 (request).
+  if (/mfsd\s*_?(205|305)/.test(n)) {
+    return { kind: "monthly_brokerage", label: "Brokerage statement (KFintech MFSD205/305)" };
   }
 
   if (codesOnly) {

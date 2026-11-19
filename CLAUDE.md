@@ -1486,6 +1486,12 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   COMPLETED / partial rows that still hold their file (the 14-day keep), and names a match by its Settings label and registrar —
   `saved password "Cams" (under CAMS)` — not by position. Leave the box blank to test only the saved ones. A PDF inside a registrar
   file is named as a PDF (`decodeRtaToText`), not "layout not recognised".
+- **KFintech subscription report codes** (2026-11-19, `tests/rta-kfintech-report-codes.test.ts`): the CRM imports MFSD307 (daily
+  transactions), 310 (client-wise AUM), 311 (investor master), 313 (SIP registrations), 305 / 205 (brokerage) and, new, **314 (SIP
+  Registration Rejection Report → `sip_rejection_report`)**. Its title contains "SIP Registration", which used to file it as the SIP
+  register — rejected registrations would have been read as live SIPs; the rejection title is now matched first. 308 / 309 / 312 /
+  315 / 316 / 331 / 339 / 345 / 352 have no importer and stay unclassified. MFSD314's column layout has not been seen on a real file:
+  check the first one.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.
