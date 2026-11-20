@@ -10,6 +10,7 @@ import {
   FREQUENCIES,
   REQUEST_TYPES,
   REQUEST_TYPE_BY_KEY,
+  fieldLabel,
   categoryOfType,
   requestTypesFor,
 } from "@/lib/tasks/request-types";
@@ -17,8 +18,8 @@ import { FINANCIAL_TASK_TYPES } from "@/lib/dashboard/my/window";
 import { OPS_TYPES } from "@/lib/dashboard/ops/window";
 
 describe("task request types", () => {
-  it("ends every request, financial or not, with an RTA data check sub-task", () => {
-    for (const r of REQUEST_TYPES) {
+  it("ends every MF request, financial or not, with an RTA data check sub-task", () => {
+    for (const r of REQUEST_TYPES.filter((x) => x.category !== "insurance")) {
       expect(r.checklist[r.checklist.length - 1], r.key).toBe("RTA data check");
       expect(r.checklist.filter((c) => c === "RTA data check"), r.key).toHaveLength(1);
     }
@@ -42,6 +43,20 @@ describe("task request types", () => {
   it("treats every request as operations work on the Operations Dashboard", () => {
     const ops = new Set<string>(OPS_TYPES);
     for (const r of REQUEST_TYPES) expect(ops.has(r.key), r.key).toBe(true);
+  });
+
+  it("keeps insurance requests off the registrar check and off the financial count", () => {
+    const fin = new Set<string>(FINANCIAL_TASK_TYPES);
+    const ins = requestTypesFor("insurance");
+    expect(ins.length).toBeGreaterThan(8);
+    for (const r of ins) {
+      expect(r.checklist, r.key).not.toContain("RTA data check");
+      expect(fin.has(r.key), r.key).toBe(false);
+      expect(categoryOfType(r.key)).toBe("insurance");
+      if (r.fields.includes("folio")) expect(fieldLabel("folio", r), r.key).toBe("Policy number");
+    }
+    expect(fieldLabel("folio", REQUEST_TYPE_BY_KEY.nominee_update)).toBe("Folio number");
+    expect(fieldLabel("amount", REQUEST_TYPE_BY_KEY.ins_renewal)).toBe("Renewal premium (₹)");
   });
 
   it("maps stored types to their category", () => {

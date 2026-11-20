@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { EMPTY_REQUEST, KYC_MODES, RequestPicker, emptyRow, num, type RequestValues } from "@/components/tasks/RequestPicker";
-import { REDEMPTION_ROUTE_CHECKLISTS, REQUEST_TYPE_BY_KEY, categoryOfType, type TaskCategory } from "@/lib/tasks/request-types";
+import { CATEGORY_LABEL, INSURANCE_TASKS_FLAG, REDEMPTION_ROUTE_CHECKLISTS, REQUEST_TYPE_BY_KEY, categoryOfType, type TaskCategory } from "@/lib/tasks/request-types";
 import { notify } from "@/components/ui/Toast";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
@@ -98,6 +98,8 @@ export default function NewTaskPage() {
   const [autoChecklistKey, setAutoChecklistKey] = useState<string | null>(null);
   /** The firm's `redemptionOnlineOffline` flag: a redemption asks Online / Offline. */
   const [redemptionRoute, setRedemptionRoute] = useState(false);
+  /** The firm's `insuranceTasks` flag: the Insurance category. */
+  const [insuranceTasks, setInsuranceTasks] = useState(false);
   useEffect(() => {
     (async () => {
       try {
@@ -105,6 +107,7 @@ export default function NewTaskPage() {
         if (!r.ok) return;
         const j = await r.json();
         setRedemptionRoute(j?.license?.featureFlags?.redemptionOnlineOffline === true);
+        setInsuranceTasks(j?.license?.featureFlags?.[INSURANCE_TASKS_FLAG] === true);
       } catch {
         /* the flag is optional — the ordinary form still works */
       }
@@ -294,7 +297,7 @@ export default function NewTaskPage() {
     const req = requestKey ? REQUEST_TYPE_BY_KEY[requestKey] : undefined;
     if (category !== "general") {
       if (!req) {
-        setErr(`Pick the ${category === "financial" ? "financial" : "non-financial"} request.`);
+        setErr(`Pick the ${CATEGORY_LABEL[category].toLowerCase()} request.`);
         return;
       }
       if (!form.relatedInvestorId) {
@@ -574,6 +577,7 @@ export default function NewTaskPage() {
           onKycMode={changeKycMode}
           onValues={setRequestValues}
           routeBelow={redemptionRoute}
+          insurance={insuranceTasks}
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

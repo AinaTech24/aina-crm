@@ -169,6 +169,9 @@ export const OPS_TYPES = [
   "kyc_renewal", "nominee_update", "reconciliation", "transaction_execution", "ucc_creation", "onboarding",
   // The New task form's non-financial requests (lib/tasks/request-types.ts).
   "non_financial", "bank_change", "contact_change", "folio_consolidation", "account_statement", "service_other",
+  // Insurance requests (firms with the insuranceTasks flag) — the insurance back office's queue.
+  "ins_quote", "ins_new_policy", "ins_renewal", "ins_premium_collection", "ins_payment", "ins_endorsement",
+  "ins_policy_entry", "ins_claim_intimation", "ins_claim_followup", "ins_pre_post_claim", "ins_life_service", "ins_other",
 ] as const;
 
 /* ───────────────────────────── SQL helpers ───────────────────────────── */

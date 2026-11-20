@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * "What kind of task?" — General · Financial · Non-financial, then the
+ * "What kind of task?" — General · Financial · Non-financial (· Insurance, for a
+ * firm with the insuranceTasks flag), then the
  * request within the category, then only what that request needs: request
  * fields (mode, a mandate's amount, a folio) and, for a financial request,
  * one or more SCHEME ROWS — a client often invests in several schemes at once.
@@ -17,9 +18,10 @@ import { ThemeSelect } from "@/components/ui/ThemeSelect";
 import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
 import { formatMoney } from "@/lib/format";
 import {
-  FIELD_LABEL,
+  CATEGORY_LABEL,
   FREQUENCIES,
   REQUEST_TYPE_BY_KEY,
+  fieldLabel,
   requestTypesFor,
   rowFieldLabel,
   type RequestType,
@@ -90,6 +92,7 @@ const CATEGORIES: Array<[TaskCategory, string]> = [
   ["general", "General"],
   ["financial", "Financial"],
   ["non_financial", "Non-financial"],
+  ["insurance", "Insurance"],
 ];
 
 const DAYS: [string, string][] = [["", "—"], ...Array.from({ length: 28 }, (_, i) => [String(i + 1), String(i + 1)] as [string, string])];
@@ -103,6 +106,7 @@ export function RequestPicker({
   onKycMode,
   onValues,
   routeBelow = false,
+  insurance = false,
 }: {
   category: TaskCategory;
   requestKey: string;
@@ -114,6 +118,8 @@ export function RequestPicker({
   onValues: (v: RequestValues) => void;
   /** The form asks Online / Offline itself (a redemption, for a firm with the flag): no Mode box here. */
   routeBelow?: boolean;
+  /** Offer the Insurance category (the firm's insuranceTasks flag). */
+  insurance?: boolean;
 }) {
   const req = requestKey ? REQUEST_TYPE_BY_KEY[requestKey] : undefined;
   const set = <K extends keyof RequestValues>(k: K, v: RequestValues[K]) => onValues({ ...values, [k]: v });
@@ -126,7 +132,7 @@ export function RequestPicker({
       <div>
         <div className="mb-1 text-xs font-medium">Type of task</div>
         <div className="inline-flex gap-0.5 rounded-lg border border-border bg-card p-0.5" role="radiogroup" aria-label="Type of task">
-          {CATEGORIES.map(([key, label]) => (
+          {CATEGORIES.filter(([key]) => key !== "insurance" || insurance || category === "insurance").map(([key, label]) => (
             <button
               key={key}
               type="button"
@@ -147,7 +153,7 @@ export function RequestPicker({
         <div className="space-y-3 rounded-lg border border-border bg-secondary/30 p-3">
           <label className="block">
             <div className="mb-1 text-xs font-medium">
-              {category === "financial" ? "Financial request" : "Non-financial request"} <span className="text-destructive">*</span>
+              {CATEGORY_LABEL[category]} request <span className="text-destructive">*</span>
             </div>
             <ThemeSelect
               value={requestKey}
@@ -216,19 +222,19 @@ export function RequestPicker({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {req.fields.includes("amount") && (
                 <label className="block">
-                  <div className="mb-1 text-xs font-medium">{FIELD_LABEL.amount}</div>
+                  <div className="mb-1 text-xs font-medium">{fieldLabel("amount", req)}</div>
                   <input value={values.amount} onChange={(e) => set("amount", e.target.value)} inputMode="decimal" placeholder="e.g. 25000" className="input-base" />
                 </label>
               )}
               {req.fields.includes("folio") && (
                 <label className="block">
-                  <div className="mb-1 text-xs font-medium">{FIELD_LABEL.folio}</div>
-                  <input value={values.folio} onChange={(e) => set("folio", e.target.value)} maxLength={60} placeholder="Folio number" className="input-base" />
+                  <div className="mb-1 text-xs font-medium">{fieldLabel("folio", req)}</div>
+                  <input value={values.folio} onChange={(e) => set("folio", e.target.value)} maxLength={60} placeholder={fieldLabel("folio", req)} className="input-base" />
                 </label>
               )}
               {req.fields.includes("mode") && !(routeBelow && req.key === "redemption") && (
                 <label className="block">
-                  <div className="mb-1 text-xs font-medium">{FIELD_LABEL.mode}</div>
+                  <div className="mb-1 text-xs font-medium">{fieldLabel("mode", req)}</div>
                   <ThemeSelect
                     value={values.mode}
                     onChange={(v) => set("mode", v as RequestValues["mode"])}

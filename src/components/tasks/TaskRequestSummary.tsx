@@ -13,6 +13,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
+  CATEGORY_LABEL,
   FREQUENCIES,
   REQUEST_TYPE_BY_KEY,
   categoryOfType,
@@ -54,15 +55,15 @@ export function TaskRequestSummary({ type, meta }: { type: string | null | undef
   const legacySipDate = legacy && r.sipDate ? r.sipDate : null;
 
   const facts: Array<[string, string]> = [];
-  if (amount != null && (!rows.length || rows.length > 1)) facts.push([rows.length > 1 ? "Total" : "Amount", formatMoney(amount)]);
-  if (r.folio && !rows.length) facts.push(["Folio", r.folio]);
+  if (amount != null && (!rows.length || rows.length > 1)) facts.push([rows.length > 1 ? "Total" : (req?.labels?.amount ?? "Amount").replace(/\s*\(₹\)$/, ""), formatMoney(amount)]);
+  if (r.folio && !rows.length) facts.push([req?.labels?.folio ?? "Folio", r.folio]);
   if (legacySipDate) facts.push(["Instalment date", formatDate(legacySipDate)]);
   if (mode) facts.push(["Mode", mode]);
 
   return (
     <div className="space-y-2 rounded-lg border border-border bg-secondary/40 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge raw>{category === "financial" ? "Financial" : "Non-financial"}</Badge>
+        <Badge raw>{CATEGORY_LABEL[category]}</Badge>
         <span className="text-sm font-semibold">{req?.label ?? "Request type not chosen"}</span>
         {entryId && (
           <Link href={`/dashboard/business-entries/${entryId}`} className="ml-auto text-xs font-medium text-primary hover:underline">
