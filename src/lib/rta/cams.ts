@@ -13,12 +13,27 @@ import type { RtaFolioRecord, RtaNominee, InvestorCategory, Residency } from "./
 import { clientTypeFromTaxStatus } from "@/lib/investors/client-types";
 import { num, amcNameFromDescription, canonicalizeAmcNames, maskAccount, pct, dmyToIso } from "./kfintech";
 
-/** Columns that uniquely identify the CAMS folio statement. */
-const SIGNATURE = ["foliochk", "rupee_bal", "clos_bal", "pan_no", "sch_name"];
+/**
+ * Columns that identify the CAMS folio statement (investor static details WITH
+ * balance). Two layouts exist:
+ *   · the older one — FOLIOCHK, PAN_NO, PRODUCT, SCH_NAME, CLOS_BAL, RUPEE_BAL …
+ *   · the "R9C" one (files named …R9C.csv, Shah Financial 20 Nov 2026) —
+ *     AMC_CODE, PRODUCT_CODE, FOLIOCHK, INV_NAME … PAN_PEKRN … CLOS_BAL, RUPEE_BAL,
+ *     with NO scheme name and dates written "9/14/1982  12:00:00 AM" (month first).
+ * The R9C file was refused as "header did not match any known report" because the
+ * signature demanded pan_no and sch_name, which it does not carry.
+ */
+const SIGNATURE = ["foliochk", "rupee_bal", "clos_bal"];
+const PAN_COLS = ["pan_no", "pan_pekrn"];
+const SCHEME_COLS = ["sch_name", "product", "product_code"];
 
 export function isCamsFile(header: string[]): boolean {
   const have = new Set(header.map((h) => h.trim().toLowerCase()));
-  return SIGNATURE.every((h) => have.has(h));
+  return (
+    SIGNATURE.every((h) => have.has(h)) &&
+    PAN_COLS.some((h) => have.has(h)) &&
+    SCHEME_COLS.some((h) => have.has(h))
+  );
 }
 
 /**
@@ -53,6 +68,26 @@ function camsDate(s?: string): string | null {
   const v = (s ?? "").trim();
   if (!v) return null;
   if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v)) return dmyToIso(v);
+
+  // "9/14/1982  12:00:00 AM" — the R9C layout prints a US-locale date-time:
+  // MONTH first, then a 12-hour clock. Measured on a 27,119-row file: the first
+  // part is never above 12, the second is above 12 in more than half the rows.
+  // The AM/PM clock is what marks the US order; without it a slash date stays
+  // day-first, as before. An impossible month with a possible day is read the
+  // other way round rather than dropped.
+  const us = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+\d{1,2}:\d{2}(?::\d{2})?\s*[AaPp][Mm]$/);
+  if (us) {
+    let mo = Number(us[1]), dy = Number(us[2]);
+    const yr = Number(us[3]);
+    if (mo > 12 && dy <= 12) [mo, dy] = [dy, mo];
+    if (yr < 1900 || yr > 2100 || mo < 1 || mo > 12 || dy < 1 || dy > 31) return null;
+    const d = new Date(Date.UTC(yr, mo - 1, dy));
+    if (d.getUTCMonth() !== mo - 1) return null; // 2/30 and the like
+    return d.toISOString().slice(0, 10);
+  }
+  // A day-first date with a 24-hour time after it: drop the time.
+  const dmyTime = v.match(/^(\d{1,2}\/\d{1,2}\/\d{4})\s+\d{1,2}:\d{2}(?::\d{2})?$/);
+  if (dmyTime) return dmyToIso(dmyTime[1]);
 
   // Bare YYYYMMDD, e.g. "19850612". Must be tested BEFORE the serial branch.
   const ymd = v.match(/^(\d{4})(\d{2})(\d{2})$/);
@@ -103,6 +138,14 @@ export function parseCamsFile(rows: string[][]): {
   const H: Record<string, number> = {};
   header.forEach((h, i) => (H[h.toLowerCase()] = i));
   const col = (name: string) => (name.toLowerCase() in H ? H[name.toLowerCase()] : -1);
+  /** The first of several spellings the file carries (the two CAMS layouts differ). */
+  const colAny = (...names: string[]) => {
+    for (const n of names) {
+      const i = col(n);
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
 
   const C = {
     folio: col("foliochk"),
@@ -113,7 +156,7 @@ export function parseCamsFile(rows: string[][]): {
     city: col("city"),
     pincode: col("pincode"),
     country: col("country"),
-    product: col("product"),
+    product: colAny("product", "product_code"),
     schName: col("sch_name"),
     closBal: col("clos_bal"),
     rupeeBal: col("rupee_bal"),
@@ -122,9 +165,9 @@ export function parseCamsFile(rows: string[][]): {
     phoneRes: col("phone_res"),
     email: col("email"),
     holdNature: col("holding_nature"),
-    pan: col("pan_no"),
+    pan: colAny("pan_no", "pan_pekrn"),
     taxStatus: col("tax_status"),
-    broker: col("broker_code"),
+    broker: colAny("broker_code", "brok_dlr_code"),
     bankName: col("bank_name"),
     acType: col("ac_type"),
     acNo: col("ac_no"),
@@ -133,6 +176,7 @@ export function parseCamsFile(rows: string[][]): {
     mobile: col("mobile_no"),
     occupation: col("occupation"),
     ckyc: col("fh_ckyc_no"),
+    fhKyc: col("fh_kyc"),
     amcCode: col("amc_code"),
     isin: col("isin"),
     repDate: col("rep_date"),
@@ -183,7 +227,9 @@ export function parseCamsFile(rows: string[][]): {
       rec = {
         rta: "cams",
         amcCode: amc,
-        amcName: amcNameFromDescription(get(C.schName)),
+        // R9C has no scheme name to read the fund house from. Leave it blank (the
+        // importer then keeps the name the folio already has) rather than "Unknown AMC".
+        amcName: get(C.schName) ? amcNameFromDescription(get(C.schName)) : "",
         folioNumber: folio,
         schemes: [],
         investor: {
@@ -199,7 +245,8 @@ export function parseCamsFile(rows: string[][]): {
           isMinor: mapCategory(tax) === "minor",
           guardianPan: get(C.guardPan).toUpperCase() || null,
           guardianName: get(C.guardName) || null,
-          kycVerified: !!get(C.ckyc),
+          // R9C carries the KRA verdict itself ("KYC OK", "KYC Pending", "KYC Failed" …).
+          kycVerified: !!get(C.ckyc) || get(C.fhKyc).toUpperCase() === "KYC OK",
           ckycNumber: get(C.ckyc) || null,
           taxStatus: tax || null,
           modeOfHolding: HOLD_MODE[get(C.holdNature).toUpperCase()] ?? (get(C.holdNature) || null),

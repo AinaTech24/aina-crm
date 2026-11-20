@@ -1486,6 +1486,12 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   COMPLETED / partial rows that still hold their file (the 14-day keep), and names a match by its Settings label and registrar —
   `saved password "Cams" (under CAMS)` — not by position. Leave the box blank to test only the saved ones. A PDF inside a registrar
   file is named as a PDF (`decodeRtaToText`), not "layout not recognised".
+- **CAMS R9C — static details with balance, newer layout** (2026-11-20, `isCamsFile` / `parseCamsFile` in
+  `lib/rta/cams.ts`, `tests/rta-cams-r9c-layout.test.ts`): `AMC_CODE, PRODUCT_CODE, FOLIOCHK, INV_NAME … PAN_PEKRN …
+  FH_KYC … CLOS_BAL, RUPEE_BAL`, no `SCH_NAME`, dates "9/14/1982  12:00:00 AM" (MONTH first — an AM/PM clock marks
+  that order; a bare slash date stays day-first). It was refused as "header did not match any known report" because
+  the signature demanded `pan_no` + `sch_name`. With no scheme name the AMC name is sent blank, and the folio upsert
+  never lets a name equal to the AMC code overwrite the folio's real fund-house name.
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.
