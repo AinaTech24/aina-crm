@@ -514,7 +514,12 @@ function OutcomePanel({
           <ul className="space-y-1 text-xs text-muted-foreground max-h-32 overflow-y-auto">
             {outcome.errors.map((e, i) => (
               <li key={i}>
-                <span className="font-mono text-foreground">Row {e.row}:</span> {e.reason}
+                {e.row === 0 ? (
+                  <span className="font-mono text-foreground">Note:</span>
+                ) : (
+                  <span className="font-mono text-foreground">Row {e.row}:</span>
+                )}{" "}
+                {e.reason}
               </li>
             ))}
           </ul>

@@ -1496,6 +1496,13 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   a ZIP are readable without the password, and CAMS names each file after its mailback request (`…_232184868R9C.csv` =
   Query Ref 232184868, R9). `describeZip` appends "CAMS request 232184868 (R9)" and the refusal says to find that Query Ref
   in CAMS → Auto Mailback Queue — the schedule set up with another password (Shah Financial had schedules from 2025 and 2026).
+- **A SIP register's rows left out on purpose are not "skipped"** (2026-11-20, `lib/rta/sip-left-out.ts`, `processSipBook`,
+  `tests/rta-sip-register-left-out.test.ts`). Shah Financial's CAMS R49 read all 15,484 rows yet showed "partial · 6,620 skip":
+  1,777 STP / SWP / dividend-transfer registrations and 4,843 SIPs CAMS shows cancelled that were never in the book. Those (and
+  ones already closed here) are now counted apart and explained in ONE note, `errors` row 0 (the detail page and upload dialog
+  show row 0 as a note); `rows_skipped` is only a row the CRM could not place (no folio / scheme, folio not found, no client).
+  The table and detail page show "left out" = total − imported − skipped − failed, for `monthly_sip_book` ONLY (a folio
+  master counts folios against rows, so its gap means nothing).
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.
