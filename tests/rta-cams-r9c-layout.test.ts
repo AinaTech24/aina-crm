@@ -36,7 +36,7 @@ describe("CAMS R9C layout (PAN_PEKRN, PRODUCT_CODE, no SCH_NAME)", () => {
     expect(f.schemes.map((s) => s.schemeCode)).toEqual(["B1180B", "B51"]);
     expect(f.schemes[0].units).toBe(1000.5);
     expect(f.aum).toBeCloseTo(66000.25, 2);
-    expect(f.investor.address.line1).toBe("1 SAMPLE ROAD, NEAR PARK");
+    expect(f.investor.address?.line1).toBe("1 SAMPLE ROAD, NEAR PARK");
   });
 
   it("leaves the AMC name blank rather than inventing 'Unknown AMC'", () => {
