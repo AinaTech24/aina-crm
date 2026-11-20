@@ -676,6 +676,8 @@ export const businessLineCatalog: SubjectCatalog = {
     { key: "owner_name", label: "Owner / RM", type: "string", sql: "(SELECT u.name FROM business_entries e JOIN users u ON u.id = e.rm_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS, lookup: "user" },
     { key: "associate", label: "Associate", type: "string", sql: "(SELECT NULLIF(btrim(substring(e.notes from 'Associate: ([^·]+)')), '') FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
     { key: "client_name", label: "Client", type: "string", sql: "(SELECT e.client_name FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
+    // Zoho's "Contact Owner": the CLIENT's RM, which can differ from the transaction's owner (Redemption Done By Client report, 2026-11-20).
+    { key: "client_rm", label: "Contact Owner (client's RM)", type: "string", sql: "(SELECT u.name FROM business_entries e JOIN investors i ON i.id = e.investor_id JOIN users u ON u.id = i.rm_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS, lookup: "user" },
     { key: "entry_ref", label: "Zoho MF Transaction", type: "string", sql: "(SELECT substring(e.notes from 'Zoho (MFT[^ ·]*)') FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
     { key: "business_date", label: "Date", type: "date", sql: "(SELECT e.business_date FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_DATE_OPS },
     { key: "entry_status", label: "Entry status", type: "enum", sql: "(SELECT e.status FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_ENUM_OPS, enumValues: ["draft", "confirmed", "emailed", "cancelled"] },
