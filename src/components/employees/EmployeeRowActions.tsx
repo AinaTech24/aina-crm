@@ -10,7 +10,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, Pencil, Power, UserMinus, Trash2, Loader2, X, Mail, Phone, Building2, ShieldCheck, Users } from "lucide-react";
+import { Eye, Pencil, Power, UserMinus, Trash2, Loader2, X, Mail, Phone, Building2, ShieldCheck, Users, KeyRound } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
@@ -45,7 +45,8 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
   const router = useRouter();
   const toast = useToast();
   const [info, setInfo] = useState(false);
-  const [busy, setBusy] = useState<null | "deactivate" | "offboard" | "trash">(null);
+  const [busy, setBusy] = useState<null | "deactivate" | "offboard" | "trash" | "reset">(null);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [confirmOffboard, setConfirmOffboard] = useState(false);
   const [confirmTrash, setConfirmTrash] = useState(false);
 
@@ -73,6 +74,25 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
       router.refresh();
     } catch (e: any) {
       toast.error(e?.message ?? "Network error", "Action failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function sendReset() {
+    setBusy("reset");
+    try {
+      const res = await fetch(`/api/employees/${employee.id}/reset-password`, { method: "POST" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(j.error ?? `Failed (${res.status})`, "Couldn't send the reset link");
+        return;
+      }
+      if (j.emailSent === false) toast.error(`The link was created but the email to ${j.sentTo} could not be sent — check Settings → Email.`, "Email not sent");
+      else toast.success(`Reset link sent to ${j.sentTo} — it works for 1 hour`);
+      setConfirmReset(false);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Network error", "Couldn't send the reset link");
     } finally {
       setBusy(null);
     }
@@ -114,6 +134,17 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
           className={`p-1.5 rounded-md hover:bg-secondary disabled:opacity-50 ${isActive ? "text-amber-600" : "text-emerald-600"}`}
         >
           {busy === "deactivate" ? <Loader2 className="size-4 animate-spin" /> : <Power className="size-4" />}
+        </button>
+      )}
+      {employee.status === "active" && employee.email && (
+        <button
+          onClick={() => setConfirmReset(true)}
+          disabled={busy !== null}
+          title="Send a password reset link"
+          aria-label="Send a password reset link"
+          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-50"
+        >
+          {busy === "reset" ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
         </button>
       )}
       {!isGone && (
@@ -179,6 +210,16 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
         busy={busy === "offboard"}
         onConfirm={() => patchStatus("offboarded", "offboard")}
         onCancel={() => setConfirmOffboard(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmReset}
+        title={`Reset ${employee.name}'s password?`}
+        message={`We'll email ${employee.email ?? "them"} a link to set a new password. It works for 1 hour. Their current password keeps working until they set the new one, and setting it signs them out everywhere. You won't see the link or the password.`}
+        confirmLabel="Send reset link"
+        busy={busy === "reset"}
+        onConfirm={sendReset}
+        onCancel={() => setConfirmReset(false)}
       />
 
       <ConfirmDialog
