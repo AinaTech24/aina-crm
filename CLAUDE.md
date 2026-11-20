@@ -1516,6 +1516,12 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   the last 90 days it reports no SIP at all, SIPs with none marked rejected / failed (the registrar sends bounces only in its own
   SIP rejection report then), or bounces for a folio whose client is missing. The feed's status text is read wide
   (`normaliseFeedStatus`: REJ…, "dishonoured", "unsuccessful", "payment failed"); an unknown word on a posted row is still processed.
+- **The SIP Rejections page never falls over on one read** (2026-11-20, Shah Financial: "Something went wrong" with only a
+  reference). Its four reads (list, columns added, summary, by RM) and the empty-page note each run in their own SAVEPOINT
+  (`safely` in `sip-rejections/page.tsx`); one that fails is listed in a "Part of this page could not be loaded" panel with
+  the database's own reason (drizzle's `cause`, not "Failed query: <sql>") and logged with the tenant, the rest still
+  renders. The empty-page note counts only `type = 'sip'` rows: a firm onboarded in the last 90 days has its WHOLE ledger
+  "imported in the last 90 days".
 - **SIP rejection report** (`processSipRejectionReport`): clients are found with
   the transaction feed's own index (`buildInvestorIndex`: folio with case / spaces
   / slashes ignored, the row's AMC picks between clients holding the same number),

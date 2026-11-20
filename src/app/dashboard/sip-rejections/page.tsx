@@ -56,6 +56,31 @@ export default async function SipRejectionsPage({
   const extraKeys = colPrefs.extra.filter((k) => extraAllowed.has(k));
 
   const data = await withTenant(session.tenantId, async (tx) => {
+    // Each read below runs in its own SAVEPOINT: one that fails (a slow query
+    // cut off by the 30 s statement timeout on a firm's large ledger, a bad
+    // row) is reported on the page instead of taking the whole page down to
+    // "Something went wrong" with only a reference number to show for it.
+    const problems: string[] = [];
+    let savepointNo = 0;
+    async function safely<T>(label: string, fallback: T, run: () => Promise<T>): Promise<T> {
+      const name = sql.raw(`sip_rej_${++savepointNo}`);
+      await tx.execute(sql`SAVEPOINT ${name}`);
+      try {
+        const out = await run();
+        await tx.execute(sql`RELEASE SAVEPOINT ${name}`);
+        return out;
+      } catch (e) {
+        await tx.execute(sql`ROLLBACK TO SAVEPOINT ${name}`);
+        await tx.execute(sql`RELEASE SAVEPOINT ${name}`);
+        // drizzle wraps the database's own reason ("canceling statement due to
+        // statement timeout") as `cause` under a "Failed query: <sql>" message.
+        const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : null;
+        const msg = cause ?? (e instanceof Error ? e.message : String(e));
+        console.error(`[sip-rejections] ${label} failed for tenant ${session.tenantId}:`, e);
+        problems.push(`${label}: ${msg.slice(0, 300)}`);
+        return fallback;
+      }
+    }
     // Viewer scope: a rejection is visible only when its client is. The rows
     // join investors as i; the tiles and the per-RM table test it by EXISTS.
     const filters: any[] = [await visibleClientSql(tx, session, "i")];
@@ -94,7 +119,7 @@ export default async function SipRejectionsPage({
     if (rmIds.length) filters.push(sql`i.rm_id IN (${sql.join(rmIds.map((v) => sql`${v}::uuid`), sql`, `)})`);
     const whereSql = filters.length ? sql` WHERE ${sql.join(filters, sql` AND `)}` : sql``;
 
-    const rows = await tx.execute(sql`
+    const rows = await safely("the rejection list", { rows: [] as Array<Record<string, unknown>> }, () => tx.execute(sql`
       SELECT r.id, r.investor_id, r.rejection_date, r.rejection_amount,
              r.rejection_reason, r.reason_category, r.scheme_name, r.folio_number, r.amc_name,
              r.assigned_rm_id, r.follow_up_date, r.recovery_date,
@@ -110,17 +135,19 @@ export default async function SipRejectionsPage({
       ${whereSql}
       ORDER BY r.rejection_date DESC, r.created_at DESC
       LIMIT 200
-    `);
+    `));
 
     // The fields this person added as columns — only for the rows on screen.
-    const extraValues = await loadSipRejectionExtra(
-      tx,
-      (rows.rows as Array<{ id: unknown }>).map((x) => String(x.id)),
-      extraKeys,
-      extraAllowed,
+    const extraValues = await safely("the columns you added", {} as Record<string, Record<string, string>>, () =>
+      loadSipRejectionExtra(
+        tx,
+        (rows.rows as Array<{ id: unknown }>).map((x) => String(x.id)),
+        extraKeys,
+        extraAllowed,
+      ),
     );
 
-    const stats = await tx.execute(sql`
+    const stats = await safely("the summary figures", { rows: [] as Array<Record<string, unknown>> }, () => tx.execute(sql`
       SELECT
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE recovery_status = 'pending')::int AS pending,
@@ -153,11 +180,12 @@ export default async function SipRejectionsPage({
       FROM sip_rejections
       WHERE tenant_id = ${session.tenantId}::uuid
         AND ${statScope}
-    `);
-    const s = stats.rows[0] as any;
+    `));
+    const s = (stats.rows[0] ?? {}) as any;
+    const statsFailed = !stats.rows.length;
 
     // Per-RM accountability — who's sitting on open / overdue recoveries.
-    const byRm = await tx.execute(sql`
+    const byRm = await safely("open recoveries by RM", { rows: [] as Array<Record<string, unknown>> }, () => tx.execute(sql`
       SELECT COALESCE(u.name, '— Unassigned —') AS rm_name,
              COUNT(*)::int AS open_count,
              COUNT(*) FILTER (WHERE (now() - r.status_changed_at) > interval '2 days')::int AS overdue_count,
@@ -170,29 +198,33 @@ export default async function SipRejectionsPage({
       GROUP BY COALESCE(u.name, '— Unassigned —')
       ORDER BY overdue_count DESC, open_count DESC
       LIMIT 12
-    `);
+    `));
     const recoveryRate =
-      Number(s.rejected_amt_mtd) > 0
-        ? (Number(s.recovered_amt_mtd) / Number(s.rejected_amt_mtd)) * 100
+      Number(s.rejected_amt_mtd ?? 0) > 0
+        ? (Number(s.recovered_amt_mtd ?? 0) / Number(s.rejected_amt_mtd ?? 0)) * 100
         : 0;
 
     // An empty page must say WHY. What the registrar's transaction feed (imported in the last
     // 90 days, the window the rows are made from) holds about SIPs tells apart "no SIP in the
     // feed", "SIPs came, none bounced" and "a bounce came but is not linked to a client".
     let feedNote: string | null = null;
-    if (Number(s.total) === 0 && !q) {
+    if (!statsFailed && Number(s.total) === 0 && !q) {
+      // Only SIP rows are counted, so the (tenant, type) index narrows it: a firm
+      // onboarded in the last 90 days has its WHOLE ledger "imported in the last
+      // 90 days", and counting every row of it was the slowest read on this page.
       const f = (
-        await tx.execute(sql`
-          SELECT COUNT(*) FILTER (WHERE type = 'sip')::int AS sip_total,
-                 COUNT(*) FILTER (WHERE type = 'sip' AND status IN ('rejected','failed'))::int AS sip_bounced,
-                 COUNT(*) FILTER (WHERE type = 'sip' AND status IN ('rejected','failed') AND investor_id IS NULL)::int AS bounced_unlinked,
-                 COUNT(*) FILTER (WHERE type = 'sip' AND status = 'cancelled')::int AS sip_cancelled,
-                 COUNT(*) FILTER (WHERE type = 'sip' AND reason_code IN ('REVERSAL','REVERSED'))::int AS sip_reversed,
-                 COUNT(*) FILTER (WHERE type = 'sip' AND status = 'pending')::int AS sip_pending
+        await safely("the note on why the list is empty", { rows: [] as Array<Record<string, unknown>> }, () => tx.execute(sql`
+          SELECT COUNT(*)::int AS sip_total,
+                 COUNT(*) FILTER (WHERE status IN ('rejected','failed'))::int AS sip_bounced,
+                 COUNT(*) FILTER (WHERE status IN ('rejected','failed') AND investor_id IS NULL)::int AS bounced_unlinked,
+                 COUNT(*) FILTER (WHERE status = 'cancelled')::int AS sip_cancelled,
+                 COUNT(*) FILTER (WHERE reason_code IN ('REVERSAL','REVERSED'))::int AS sip_reversed,
+                 COUNT(*) FILTER (WHERE status = 'pending')::int AS sip_pending
             FROM transactions
            WHERE tenant_id = ${session.tenantId}::uuid
+             AND type = 'sip'
              AND created_at >= now() - interval '90 days'
-        `)
+        `))
       ).rows[0] as any;
       const total = Number(f?.sip_total ?? 0);
       const bounced = Number(f?.sip_bounced ?? 0);
@@ -206,8 +238,9 @@ export default async function SipRejectionsPage({
         pending > 0 ? `${pending.toLocaleString("en-IN")} pending` : "",
       ].filter(Boolean);
       const alsoSeen = others.length ? ` (also seen: ${others.join(", ")})` : "";
-      feedNote =
-        total === 0
+      feedNote = !f
+        ? null
+        : total === 0
           ? "No SIP instalment is in the transaction feed imported in the last 90 days. Import the daily transaction feed (RTA File Imports) and bounced SIPs will appear here."
           : bounced === 0
             ? `The transaction feed imported in the last 90 days holds ${total.toLocaleString("en-IN")} SIP instalment${total === 1 ? "" : "s"}, and the registrar marked none of them rejected or failed${alsoSeen}. If your registrar sends bounces in a separate SIP rejection report, import that report; a bounce is added here only when the registrar reports it.`
@@ -217,23 +250,24 @@ export default async function SipRejectionsPage({
     }
 
     return {
+      problems,
       feedNote,
-      total: Number(s.total),
-      pending: Number(s.pending),
-      inProgress: Number(s.in_progress),
-      recovered: Number(s.recovered),
-      lost: Number(s.lost),
-      overdue: Number(s.overdue),
-      rejectedMtd: Number(s.rejected_mtd),
-      rejectedAmtMtd: Number(s.rejected_amt_mtd),
-      recoveredAmtMtd: Number(s.recovered_amt_mtd),
+      total: Number(s.total ?? 0),
+      pending: Number(s.pending ?? 0),
+      inProgress: Number(s.in_progress ?? 0),
+      recovered: Number(s.recovered ?? 0),
+      lost: Number(s.lost ?? 0),
+      overdue: Number(s.overdue ?? 0),
+      rejectedMtd: Number(s.rejected_mtd ?? 0),
+      rejectedAmtMtd: Number(s.rejected_amt_mtd ?? 0),
+      recoveredAmtMtd: Number(s.recovered_amt_mtd ?? 0),
       recoveryRate,
       reasonMix: {
-        insufficient_balance: Number(s.rc_balance),
-        mandate_expired: Number(s.rc_mandate),
-        technical: Number(s.rc_technical),
+        insufficient_balance: Number(s.rc_balance ?? 0),
+        mandate_expired: Number(s.rc_mandate ?? 0),
+        technical: Number(s.rc_technical ?? 0),
       },
-      aging: { a0_2: Number(s.age_0_2), a3_7: Number(s.age_3_7), a7p: Number(s.age_7p) },
+      aging: { a0_2: Number(s.age_0_2 ?? 0), a3_7: Number(s.age_3_7 ?? 0), a7p: Number(s.age_7p ?? 0) },
       byRm: byRm.rows as any[],
       rows: (rows.rows as Array<{ id: unknown }>).map((x) => ({ ...x, extra: extraValues[String(x.id)] })),
     };
@@ -259,6 +293,20 @@ export default async function SipRejectionsPage({
         </div></>} />
 
       <ModuleTabs tabs={SIP_TABS} />
+
+      {data.problems.length > 0 && (
+        <div className="rounded-lg border border-warning/50 bg-warning/5 px-4 py-3 text-sm">
+          <div className="font-semibold">Part of this page could not be loaded</div>
+          <ul className="mt-1 list-disc pl-5 text-xs text-muted-foreground space-y-0.5">
+            {data.problems.map((p, i) => (
+              <li key={i}>{p}</li>
+            ))}
+          </ul>
+          <div className="mt-1 text-xs text-muted-foreground">
+            The rest of the page is correct. Refresh to try again; if this stays, send this message to support.
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-6 gap-3">
         <Stat icon={AlertTriangle} label="Total" value={data.total} />
