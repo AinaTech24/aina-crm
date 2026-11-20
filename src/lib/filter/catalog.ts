@@ -58,7 +58,8 @@ export interface SubjectCatalog {
     | "claim"
     | "review_meeting"
     | "business_entry"
-    | "business_line";
+    | "business_line"
+    | "equity_brokerage";
   /** Primary table + alias used in compiled SQL. */
   table: string;
   alias: string;
@@ -699,6 +700,24 @@ export const businessLineCatalog: SubjectCatalog = {
   relations: {},
 };
 
+/**
+ * Monthly equity brokerage — one row per firm per month ('YYYY-MM'), the figure
+ * the Equity Team MIS reads; We Care's Zoho "Equity" module lands here
+ * (2026-11-20, Equity Brokerage MoM report). Report-only, behind zohoImport.
+ */
+export const equityBrokerageCatalog: SubjectCatalog = {
+  subject: "equity_brokerage",
+  table: "equity_brokerage",
+  alias: "ebk",
+  fields: [
+    { key: "month", label: "Month", type: "date", sql: "to_date(ebk.period || '-01', 'YYYY-MM-DD')", ops: COMMON_DATE_OPS },
+    { key: "brokerage", label: "Brokerage (₹)", type: "currency", sql: "ebk.amount", ops: COMMON_NUMBER_OPS },
+    { key: "trading_days", label: "Trading days", type: "integer", sql: "(substring(ebk.notes from 'Zoho Equity Brokerage: ([0-9]+) day'))::int", ops: COMMON_NUMBER_OPS },
+    { key: "notes", label: "Notes", type: "string", sql: "ebk.notes", ops: COMMON_STRING_OPS },
+  ],
+  relations: {},
+};
+
 export const CATALOGS: Record<string, SubjectCatalog> = {
   investor: investorCatalog,
   lead: leadCatalog,
@@ -713,6 +732,7 @@ export const CATALOGS: Record<string, SubjectCatalog> = {
   review_meeting: reviewMeetingCatalog,
   business_entry: businessEntryCatalog,
   business_line: businessLineCatalog,
+  equity_brokerage: equityBrokerageCatalog,
 };
 
 export function getCatalog(subject: string): SubjectCatalog {

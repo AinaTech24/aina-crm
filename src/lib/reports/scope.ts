@@ -75,6 +75,9 @@ export async function reportSubjectScope(tx: any, session: SessionUser, subject:
         OR (rsc_e.investor_id IS NOT NULL AND EXISTS (SELECT 1 FROM investors rsc_i WHERE rsc_i.id = rsc_e.investor_id AND ${clientScope}))
         OR (rsc_e.investor_id IS NULL AND ${firm ? sql`TRUE` : sql`FALSE`})))`;
     }
+    case "equity_brokerage":
+      // A firm figure, not a client's: whoever may read the business MIS (as the Equity Team board).
+      return cap("reports.business") || cap("reports.manage") ? sql`TRUE` : sql`FALSE`;
     case "user":
       return sql`TRUE`;
     default:

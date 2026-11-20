@@ -27,7 +27,7 @@ import { groupField } from "./grouping";
 import { growthByKey } from "./growth";
 import { findCategory, categorySql, isCategoryKey, type CategoryColumn } from "./categories";
 
-export type ReportSubject = "investor" | "lead" | "task" | "user" | "transaction" | "sip" | "insurance" | "goal" | "service_request" | "claim" | "review_meeting" | "business_line";
+export type ReportSubject = "investor" | "lead" | "task" | "user" | "transaction" | "sip" | "insurance" | "goal" | "service_request" | "claim" | "review_meeting" | "business_line" | "equity_brokerage";
 
 export type ReportAggregate = "count" | "sum" | "avg" | "min" | "max";
 

@@ -31,6 +31,8 @@ export const REPORT_SUBJECTS = [
   // (Zoho report parity for We Care, 2026-11-19); the API refuses it elsewhere.
   "review_meeting",
   "business_line",
+  // Monthly equity brokerage (Zoho "Equity" module → equity_brokerage) — same flag (2026-11-20).
+  "equity_brokerage",
 ] as const;
 export const REPORT_TYPES = ["detailed", "summary", "matrix"] as const;
 export const REPORT_SHARE_SCOPES = ["private", "team", "tenant"] as const;
