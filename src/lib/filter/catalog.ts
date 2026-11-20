@@ -41,6 +41,12 @@ export interface FieldDef {
   table?: string;
   /** Help text shown in the UI */
   help?: string;
+  /**
+   * The value is a team member's NAME (the SQL compares users.name): the filter
+   * builder offers a dropdown of the firm's people instead of a text box, so a
+   * typed "rajesh chauhan" can never silently match nothing (We Care, 2026-11-20).
+   */
+  lookup?: "user";
 }
 
 export interface SubjectCatalog {
@@ -621,7 +627,7 @@ export const reviewMeetingCatalog: SubjectCatalog = {
     { key: "meeting_mode", label: "Mode", type: "enum", sql: "mtg.meeting_mode", ops: COMMON_ENUM_OPS, enumValues: ["office", "client_place", "online", "phone"] },
     { key: "status", label: "Status", type: "enum", sql: "mtg.status", ops: COMMON_ENUM_OPS, enumValues: ["scheduled", "confirmed", "in_progress", "completed", "rescheduled", "cancelled", "no_show"] },
     { key: "outcome", label: "Outcome", type: "enum", sql: "mtg.outcome", ops: COMMON_ENUM_OPS },
-    { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = mtg.rm_id)", ops: COMMON_STRING_OPS },
+    { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = mtg.rm_id)", ops: COMMON_STRING_OPS, lookup: "user" },
     { key: "rm_id", label: "RM (id)", type: "uuid", sql: "mtg.rm_id", ops: COMMON_ENUM_OPS },
     { key: "client_name", label: "Client / lead", type: "string", sql: "COALESCE((SELECT i.name FROM investors i WHERE i.id = mtg.investor_id), (SELECT l.name FROM leads l WHERE l.id = mtg.lead_id))", ops: COMMON_STRING_OPS },
     { key: "meeting_kind", label: "Meeting type (New / Existing)", type: "string", sql: "(CASE mtg.category WHEN 'new' THEN 'New' WHEN 'review' THEN 'Existing' ELSE 'Follow-up' END)", ops: COMMON_STRING_OPS },
@@ -665,7 +671,7 @@ export const businessLineCatalog: SubjectCatalog = {
   table: "business_entry_lines",
   alias: "bl",
   fields: [
-    { key: "owner_name", label: "Owner / RM", type: "string", sql: "(SELECT u.name FROM business_entries e JOIN users u ON u.id = e.rm_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
+    { key: "owner_name", label: "Owner / RM", type: "string", sql: "(SELECT u.name FROM business_entries e JOIN users u ON u.id = e.rm_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS, lookup: "user" },
     { key: "associate", label: "Associate", type: "string", sql: "(SELECT NULLIF(btrim(substring(e.notes from 'Associate: ([^·]+)')), '') FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
     { key: "client_name", label: "Client", type: "string", sql: "(SELECT e.client_name FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
     { key: "entry_ref", label: "Zoho MF Transaction", type: "string", sql: "(SELECT substring(e.notes from 'Zoho (MFT[^ ·]*)') FROM business_entries e WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
@@ -727,7 +733,7 @@ export const equityDmatCatalog: SubjectCatalog = {
   fields: [
     { key: "opened_date", label: "Opened on", type: "date", sql: "edm.opened_date", ops: COMMON_DATE_OPS },
     { key: "client_name", label: "Client", type: "string", sql: "edm.client_name", ops: COMMON_STRING_OPS },
-    { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = edm.rm_id)", ops: COMMON_STRING_OPS },
+    { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = edm.rm_id)", ops: COMMON_STRING_OPS, lookup: "user" },
     { key: "broker", label: "Broker / DP", type: "string", sql: "edm.broker", ops: COMMON_STRING_OPS },
     { key: "dmat_number", label: "DP ID / Client ID", type: "string", sql: "edm.dmat_number", ops: COMMON_STRING_OPS },
     { key: "status", label: "Status", type: "enum", sql: "edm.status", ops: COMMON_ENUM_OPS, enumValues: ["active", "dormant", "closed"] },

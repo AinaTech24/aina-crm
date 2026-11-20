@@ -5,6 +5,7 @@
  * driven entirely by the field catalog. Used by the custom report builder; the
  * segment builder keeps its own inline copy so this can evolve independently.
  */
+import { useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { CATALOGS, type FieldDef, type SubjectCatalog } from "@/lib/filter/catalog";
 import type { FilterOperator } from "@/lib/filter/ast";
@@ -145,9 +146,72 @@ function PredicateEditor({ cat, predicate, onChange, onRemove }: { cat: SubjectC
   );
 }
 
+/** The firm's active people, fetched once per page (the same list RmSelector reads). */
+let teamCache: Promise<string[]> | null = null;
+function loadTeamNames(): Promise<string[]> {
+  teamCache ??= fetch("/api/employees")
+    .then((r) => (r.ok ? r.json() : { rows: [] }))
+    .then((j: { rows?: { name?: string | null }[] }) =>
+      [...new Set((j.rows ?? []).map((u) => (u.name ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    )
+    .catch(() => {
+      teamCache = null;
+      return [];
+    });
+  return teamCache;
+}
+
+/** A team-member field (`lookup: "user"`): pick one person, or several for "is any of" / "is none of". */
+function UserValue({ predicate, onChange }: { predicate: Predicate; onChange: (p: Predicate) => void }) {
+  const [names, setNames] = useState<string[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadTeamNames().then((n) => live && setNames(n));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const set = (value: unknown) => onChange({ ...predicate, value });
+  const list = names ?? [];
+
+  if (LIST_OPS.has(predicate.op)) {
+    const chosen = Array.isArray(predicate.value) ? (predicate.value as unknown[]).map(String) : [];
+    const left = list.filter((n) => !chosen.includes(n));
+    return (
+      <span className="flex flex-wrap items-center gap-1">
+        {chosen.map((n) => (
+          <span key={n} className="chip bg-secondary text-foreground inline-flex items-center gap-1">
+            {n}
+            <button type="button" aria-label={`Remove ${n}`} onClick={() => set(chosen.filter((x) => x !== n))} className="text-muted-foreground hover:text-destructive">
+              <X className="size-3" />
+            </button>
+          </span>
+        ))}
+        <SelectField value="" onChange={(e) => e.target.value && set([...chosen, e.target.value])} size="sm" className="shrink-0" disabled={names == null}>
+          <option value="">{names == null ? "Loading team…" : chosen.length ? "Add another…" : "Pick people…"}</option>
+          {left.map((n) => <option key={n} value={n}>{n}</option>)}
+        </SelectField>
+      </span>
+    );
+  }
+
+  const current = String(predicate.value ?? "");
+  // A value saved before the dropdown (or a person who has left) stays selectable.
+  const options = current && !list.includes(current) ? [current, ...list] : list;
+  return (
+    <SelectField value={current} onChange={(e) => set(e.target.value)} size="sm" className="shrink-0" disabled={names == null}>
+      <option value="">{names == null ? "Loading team…" : "Select a person…"}</option>
+      {options.map((n) => <option key={n} value={n}>{n}</option>)}
+    </SelectField>
+  );
+}
+
 function ValueInput({ field, predicate, onChange }: { field: FieldDef; predicate: Predicate; onChange: (p: Predicate) => void }) {
   const op = predicate.op;
   if (NO_VALUE_OPS.has(op)) return null;
+  if (field.lookup === "user" && (op === "eq" || op === "ne" || LIST_OPS.has(op))) {
+    return <UserValue predicate={predicate} onChange={onChange} />;
+  }
 
   const cls = "text-xs rounded-md border border-border bg-card px-2 py-1";
   const set = (value: unknown) => onChange({ ...predicate, value });
