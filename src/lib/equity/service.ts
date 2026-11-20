@@ -152,7 +152,7 @@ export async function listDmat(tx: Tx) {
   const names = new Map<string, string>();
   if (rmIds.length) {
     const res = await tx.execute(sql`SELECT id, name FROM users WHERE id IN (SELECT jsonb_array_elements_text(${JSON.stringify(rmIds)}::jsonb)::uuid)`);
-    for (const u of res.rows as any[]) names.set(u.id, u.name);
+    for (const u of res.rows as { id: string; name: string }[]) names.set(u.id, u.name);
   }
   return rows.map((r) => ({ ...r, rmName: r.rmId ? names.get(r.rmId) ?? null : null }));
 }
@@ -164,7 +164,7 @@ export async function listDmat(tx: Tx) {
  */
 async function clientForDmat(tx: Tx, investorId: string): Promise<{ name: string; rmId: string | null } | null> {
   const res = await tx.execute(sql`SELECT name, rm_id FROM investors WHERE id = ${investorId}::uuid AND deleted_at IS NULL`);
-  const r = res.rows[0] as any;
+  const r = res.rows[0] as { name: string; rm_id: string | null } | undefined;
   return r ? { name: r.name, rmId: r.rm_id ?? null } : null;
 }
 async function markDematHeld(tx: Tx, investorId: string): Promise<void> {

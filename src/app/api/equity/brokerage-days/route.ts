@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { assertEquityDesk } from "@/lib/equity/access";
 import { brokerageMonths, createBrokerageDay, listBrokerageDays } from "@/lib/equity/brokerage-days";
@@ -19,6 +20,7 @@ const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kol
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     await assertEquityDesk(session);
     const m = req.nextUrl.searchParams.get("month");
     const month = m && /^\d{4}-\d{2}$/.test(m) ? m : today().slice(0, 7);
@@ -44,6 +46,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     await assertEquityDesk(session);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "invalid input", issues: parsed.error.issues }, { status: 400 });

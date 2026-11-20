@@ -30,6 +30,9 @@ export type BrokerageDayInput = {
   notes?: string | null;
 };
 
+type Row = Record<string, unknown>;
+const rowsOf = (res: { rows: unknown[] }): Row[] => res.rows as Row[];
+
 const num = (v: unknown): number | null => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 
 /** "2026-11-05" → "2026-11". */
@@ -45,15 +48,15 @@ export async function listBrokerageDays(tx: Tx, tenantId: string, period: string
      WHERE d.tenant_id = ${tenantId}::uuid AND to_char(d.trade_date, 'YYYY-MM') = ${period}
      ORDER BY d.trade_date DESC, d.created_at DESC
   `);
-  return (res.rows as any[]).map((r) => ({
-    id: r.id,
-    tradeDate: r.trade_date,
+  return rowsOf(res).map((r) => ({
+    id: String(r.id),
+    tradeDate: String(r.trade_date),
     brokerage: num(r.brokerage) ?? 0,
     turnover: num(r.turnover),
     activeClients: num(r.active_clients),
-    notes: r.notes ?? null,
+    notes: (r.notes as string | null) ?? null,
     fromZoho: !!r.from_zoho,
-    createdByName: r.created_by_name ?? null,
+    createdByName: (r.created_by_name as string | null) ?? null,
   }));
 }
 
@@ -67,7 +70,7 @@ export async function brokerageMonths(tx: Tx, tenantId: string, months = 13): Pr
      ORDER BY b.period DESC
      LIMIT ${months}
   `);
-  return (res.rows as any[]).map((r) => ({ period: r.period, amount: num(r.amount) ?? 0, days: r.days ? Number(r.days) : null }));
+  return rowsOf(res).map((r) => ({ period: String(r.period), amount: num(r.amount) ?? 0, days: r.days ? Number(r.days) : null }));
 }
 
 /**
@@ -82,7 +85,7 @@ export async function syncBrokerageMonth(tx: Tx, tenantId: string, period: strin
       FROM equity_brokerage_days
      WHERE tenant_id = ${tenantId}::uuid AND to_char(trade_date, 'YYYY-MM') = ${period}
   `);
-  const r = res.rows[0] as any;
+  const r = rowsOf(res)[0];
   const days = Number(r?.days ?? 0);
   const turnover = num(r?.turnover) ?? 0;
   const notes = `Daily entries: ${days} day${days === 1 ? "" : "s"}${turnover ? ` · turnover ₹${Math.round(turnover).toLocaleString("en-IN")}` : ""}${r?.active != null ? ` · active clients up to ${r.active}` : ""}`;
@@ -101,7 +104,7 @@ export async function createBrokerageDay(tx: Tx, tenantId: string, userId: strin
     RETURNING id
   `);
   await syncBrokerageMonth(tx, tenantId, periodOf(input.tradeDate));
-  return { id: (res.rows[0] as any).id };
+  return { id: String(rowsOf(res)[0].id) };
 }
 
 export async function updateBrokerageDay(tx: Tx, tenantId: string, id: string, input: Partial<BrokerageDayInput>): Promise<boolean> {
@@ -129,7 +132,7 @@ export async function deleteBrokerageDay(tx: Tx, tenantId: string, id: string): 
     DELETE FROM equity_brokerage_days WHERE id = ${id}::uuid AND tenant_id = ${tenantId}::uuid
     RETURNING to_char(trade_date, 'YYYY-MM-DD') AS d
   `);
-  const d = (res.rows[0] as any)?.d as string | undefined;
+  const d = rowsOf(res)[0]?.d as string | undefined;
   if (!d) return false;
   await syncBrokerageMonth(tx, tenantId, periodOf(d));
   return true;
@@ -160,7 +163,7 @@ export async function upsertZohoBrokerageDays(
         active_clients = EXCLUDED.active_clients, updated_at = now()
       RETURNING (xmax = 0) AS ins
     `);
-    for (const r of res.rows as any[]) (r.ins ? inserted++ : updated++);
+    for (const r of rowsOf(res)) (r.ins ? inserted++ : updated++);
     for (const r of batch) periods.add(periodOf(r.d));
   }
   for (const p of periods) await syncBrokerageMonth(tx, tenantId, p);
