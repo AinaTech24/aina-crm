@@ -68,7 +68,8 @@ export interface SubjectCatalog {
     | "business_entry"
     | "business_line"
     | "equity_brokerage"
-    | "equity_dmat";
+    | "equity_dmat"
+    | "new_client";
   /** Primary table + alias used in compiled SQL. */
   table: string;
   alias: string;
@@ -747,6 +748,32 @@ export const equityDmatCatalog: SubjectCatalog = {
   relations: {},
 };
 
+/**
+ * New clients (We Care, 2026-11-20 — the firm's monthly "new clients added" sheet):
+ * one row per client, dated by onboarded_at, with where they came from and the
+ * business booked IN THEIR ONBOARDING MONTH (India time). "From whom" is the
+ * referring client when Zoho named one, else the Zoho Lead Source (SELF, Family
+ * Member, Client Referrals …). Rejected lines are txn_type other, so they never count.
+ */
+export const newClientCatalog: SubjectCatalog = {
+  subject: "new_client",
+  table: "investors",
+  alias: "nci",
+  fields: [
+    { key: "onboarded_at", label: "Onboarded on", type: "date", sql: "(nci.onboarded_at AT TIME ZONE 'Asia/Kolkata')::date", ops: COMMON_DATE_OPS },
+    { key: "client_name", label: "Client", type: "string", sql: "nci.name", ops: COMMON_STRING_OPS },
+    { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = nci.rm_id)", ops: COMMON_STRING_OPS, lookup: "user" },
+    { key: "source", label: "Source", type: "string", sql: "NULLIF(btrim(nci.custom_fields->>'cf_zoho_lead_source'), '')", ops: COMMON_STRING_OPS },
+    { key: "referred_by", label: "Referred by (client)", type: "string", sql: "NULLIF(btrim(nci.referral_client_name), '')", ops: COMMON_STRING_OPS },
+    { key: "from_whom", label: "From whom", type: "string", sql: "COALESCE(NULLIF(btrim(nci.referral_client_name), ''), NULLIF(btrim(nci.custom_fields->>'cf_zoho_lead_source'), ''))", ops: COMMON_STRING_OPS },
+    { key: "sip_first_month", label: "SIP (onboarding month)", type: "currency", sql: "(SELECT COALESCE(SUM(l.amount), 0) FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id WHERE e.investor_id = nci.id AND e.status <> 'cancelled' AND l.txn_type IN ('sip', 'sip_topup') AND to_char(e.business_date, 'YYYY-MM') = to_char(nci.onboarded_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM'))", ops: COMMON_NUMBER_OPS },
+    { key: "lumpsum_first_month", label: "Lumpsum (onboarding month)", type: "currency", sql: "(SELECT COALESCE(SUM(l.amount), 0) FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id WHERE e.investor_id = nci.id AND e.status <> 'cancelled' AND l.txn_type IN ('lumpsum', 'additional_purchase', 'switch', 'stp') AND to_char(e.business_date, 'YYYY-MM') = to_char(nci.onboarded_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM'))", ops: COMMON_NUMBER_OPS },
+    { key: "insurance_first_month", label: "Insurance premium (onboarding month)", type: "currency", sql: "(SELECT COALESCE(SUM(p.annual_premium), 0) FROM insurance_policies p WHERE p.investor_id = nci.id AND p.status NOT IN ('cancelled', 'proposed') AND to_char(COALESCE(p.risk_cover_start_date, p.policy_start_date), 'YYYY-MM') = to_char(nci.onboarded_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM'))", ops: COMMON_NUMBER_OPS },
+    { key: "client_status", label: "Client status", type: "string", sql: "(CASE WHEN nci.deleted_at IS NOT NULL OR nci.merged_into_id IS NOT NULL THEN 'removed' ELSE nci.status END)", ops: COMMON_STRING_OPS },
+  ],
+  relations: {},
+};
+
 export const CATALOGS: Record<string, SubjectCatalog> = {
   investor: investorCatalog,
   lead: leadCatalog,
@@ -763,6 +790,7 @@ export const CATALOGS: Record<string, SubjectCatalog> = {
   business_line: businessLineCatalog,
   equity_brokerage: equityBrokerageCatalog,
   equity_dmat: equityDmatCatalog,
+  new_client: newClientCatalog,
 };
 
 export function getCatalog(subject: string): SubjectCatalog {

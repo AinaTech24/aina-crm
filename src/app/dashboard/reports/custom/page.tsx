@@ -50,6 +50,7 @@ const SUBJECT_LABEL: Record<string, string> = {
   business_line: "Business Entries",
   equity_brokerage: "Equity Brokerage",
   equity_dmat: "DMAT Accounts",
+  new_client: "New Clients",
 };
 const TYPE_META: Record<string, { label: string; icon: typeof Table2 }> = {
   detailed: { label: "Detailed", icon: Table2 },

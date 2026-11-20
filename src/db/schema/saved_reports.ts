@@ -35,6 +35,8 @@ export const REPORT_SUBJECTS = [
   "equity_brokerage",
   // DMAT accounts opened by the equity desk (New DMAT MoM, 2026-11-20) — same flag.
   "equity_dmat",
+  // Clients onboarded, with source, referrer and the business of their first month (2026-11-20) — same flag.
+  "new_client",
 ] as const;
 export const REPORT_TYPES = ["detailed", "summary", "matrix"] as const;
 export const REPORT_SHARE_SCOPES = ["private", "team", "tenant"] as const;
