@@ -51,6 +51,7 @@ import {
   IndianRupee,
   Landmark,
   Crosshair,
+  LineChart,
 } from "lucide-react";
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -103,6 +104,8 @@ type NavItem = {
    *  moved keeps the key firms' grants, Module Controls and people's module
    *  lists were stored under (see src/config/nav-access.ts: never change a key). */
   accessKey?: string;
+  /** A per-firm feature flag that must be on (Aina Admin → the firm → feature flags). */
+  flag?: string;
 };
 
 type NavSection = { title: string; items: NavItem[] };
@@ -198,6 +201,9 @@ const NAV: NavSection[] = [
         roles: ["owner", "branch_head", "rm", "back_office", "ops"] },
       { href: "/dashboard/fixed-deposits", label: "Fixed Deposits", icon: Landmark,
         roles: ["owner", "branch_head", "rm", "back_office", "ops", "compliance"] },
+      // Daily brokerage + DMAT accounts — We Care's Zoho "Equity" module (2026-11-20).
+      { href: "/dashboard/equity", label: "Equity desk", icon: LineChart, flag: "zohoImport",
+        caps: ["reports.business", "reports.manage"] },
       { href: "/dashboard/expected-inflows", label: "Expected Inflows", icon: IndianRupee,
         roles: ["owner", "branch_head", "rm", "back_office", "ops"] },
     ],
@@ -577,6 +583,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     if (moduleControls[key] === "disabled" || moduleControls[i.href] === "disabled") return false;
     if (i.roles && !session.roles.some((r) => i.roles!.includes(r) || r === "owner")) return false;
     if (i.caps && !i.caps.some((c) => can(session.roles, c, session.permissions))) return false;
+    if (i.flag && license.featureFlags?.[i.flag] !== true) return false;
     if (isGatableNav(key)) {
       // Admin → MFD: the firm must have access to this sidebar item.
       if (!tenantAllowedSet.has(key)) return false;
