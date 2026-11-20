@@ -1492,6 +1492,10 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   that order; a bare slash date stays day-first). It was refused as "header did not match any known report" because
   the signature demanded `pan_no` + `sch_name`. With no scheme name the AMC name is sent blank, and the folio upsert
   never lets a name equal to the AMC code overwrite the folio's real fund-house name.
+- **A refused CAMS ZIP names its request** (2026-11-20, `camsRequestFromNames` in `lib/rta/unzip.ts`): file names inside
+  a ZIP are readable without the password, and CAMS names each file after its mailback request (`…_232184868R9C.csv` =
+  Query Ref 232184868, R9). `describeZip` appends "CAMS request 232184868 (R9)" and the refusal says to find that Query Ref
+  in CAMS → Auto Mailback Queue — the schedule set up with another password (Shah Financial had schedules from 2025 and 2026).
 - The worker's lock was BullMQ's default 30 s, which a long synchronous parse
   cannot renew; it is 5 minutes (`lockDuration`), so a big file is not judged
   stalled and run twice.
