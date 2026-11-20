@@ -107,11 +107,35 @@ export async function extractRtaFileFromZip(
  * kind of encryption we cannot read" look the same from outside; this tells them
  * apart without anyone having to send the file. Never throws.
  */
+/**
+ * The CAMS mailback request a file belongs to, read from its NAME. CAMS names a
+ * report file after the request (query reference + report code): the R9C master
+ * of 20 Nov 2026 was "20112026150728_232184868R9C.csv" — request 232184868, R9.
+ * The same "196525976R2" is what CAMS's Auto Mailback Queue lists as "Query Ref".
+ * File names inside a ZIP are readable WITHOUT the password, so a refused archive
+ * can still say which scheduled request — and therefore which password — it was.
+ */
+export function camsRequestFromNames(names: string[]): { queryRef: string; report: string }[] {
+  const out: { queryRef: string; report: string }[] = [];
+  const seen = new Set<string>();
+  for (const n of names) {
+    const base = n.split(/[\\/]/).pop() ?? n;
+    const m = base.match(/(?:^|[_\-\s.])(\d{7,12})(R\d{1,3})(?=[A-Z]?(?:[_\-\s.]|$))/i);
+    if (!m) continue;
+    const key = `${m[1]}${m[2].toUpperCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ queryRef: m[1], report: m[2].toUpperCase() });
+  }
+  return out;
+}
+
 export async function describeZip(buf: Uint8Array): Promise<string> {
   try {
     const reader = new ZipReader(new Uint8ArrayReader(buf));
     try {
       const entries = ((await reader.getEntries()) as unknown as Array<{
+        filename: string;
         directory: boolean;
         encrypted?: boolean;
         compressionMethod?: number;
@@ -132,7 +156,11 @@ export async function describeZip(buf: Uint8Array): Promise<string> {
           return `ZipCrypto${e.dataDescriptor ? ", data descriptor" : ""}`;
         })
       );
-      return `${[...kinds].join(" + ")}, ${entries.length} file${entries.length === 1 ? "" : "s"}`;
+      const requests = camsRequestFromNames(entries.map((e) => e.filename ?? ""));
+      const from = requests.length
+        ? `; CAMS request ${requests.map((r) => `${r.queryRef} (${r.report})`).join(", ")}`
+        : "";
+      return `${[...kinds].join(" + ")}, ${entries.length} file${entries.length === 1 ? "" : "s"}${from}`;
     } finally {
       await reader.close();
     }

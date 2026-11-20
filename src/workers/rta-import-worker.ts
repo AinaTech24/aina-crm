@@ -210,10 +210,17 @@ function classifyUnzipFailure(
       triedCount > 1
         ? `none of the ${triedCount} different passwords tried (saved ones and any you typed) opened the archive`
         : `the only password tried (the saved one — a typed one that matches it counts as the same) did not open the archive`;
+    // CAMS names the request inside the archive (describeZip); point at it, so the
+    // firm can find that schedule in CAMS's Auto Mailback Queue and the password it was set up with.
+    const camsReq = zipInfo?.match(/CAMS request ([^\]]+)$/)?.[1];
+    const where = camsReq
+      ? `It came from CAMS request ${camsReq} — find that Query Ref in CAMS → Auto Mailback Queue: that request was set up with a different password. `
+      : "";
     return {
       rejected: true,
       message:
         `Not opened — ${tried}${zipInfo ? ` [ZIP: ${zipInfo}]` : ""}. ` +
+        where +
         `This file was protected with another password: a registrar lets one be set on each request or schedule. ` +
         `Type that one on the key button (it must differ from the ones already saved), or re-create the schedule with the saved password.`,
     };
