@@ -41,6 +41,7 @@ import {
 } from "./parsers";
 import { registrarSipState } from "./sip-registrar-status";
 import { clientIdForFolio, clientIdForPan, followMerges, resolvePanClients, type ClientHint } from "./client-match";
+import { leftOutNote, notASipLabel } from "./sip-left-out";
 
 // A registrar reason this import wrote earlier, replaced (not stacked) on the next report.
 const REG_PREFIX_RE = "^(CAMS|KFintech|Registrar): [^·]*( · ceased [^·]*)?( · )?";
@@ -1104,6 +1105,14 @@ async function processSipBook(
   let imported = 0;
   let skipped = 0;
   let failed = 0;
+  // Rows LEFT OUT ON PURPOSE — not a SIP, or a registration the registrar shows
+  // cancelled — are neither imported nor "skipped". Counted here and explained
+  // in one note (row 0), so an import that read every row of the file no longer
+  // shows as "partial · 6,620 skip" (Shah Financial's R49, 20 Nov 2026: 1,777
+  // STP / SWP / dividend-transfer rows and 4,843 SIPs cancelled before they
+  // were ever in the book). Only a row the CRM COULD NOT place is skipped.
+  const leftOut = new Map<string, number>();
+  const leaveOut = (why: string) => leftOut.set(why, (leftOut.get(why) ?? 0) + 1);
 
   // An unrecognised amount column is INVISIBLE without this. The header lookup
   // returns only the columns it matched, so an unknown spelling leaves the field
@@ -1157,7 +1166,7 @@ async function processSipBook(
                    = lower(regexp_replace(${r.schemeName || r.schemeCode}, '[^a-zA-Z0-9]', '', 'g')))
         `);
       }
-      skipped++;
+      leaveOut(notASipLabel(regType, !!r.targetScheme));
       continue;
     }
     // What the registrar says (KFintech's Status column, a CAMS cease date and
@@ -1265,7 +1274,7 @@ async function processSipBook(
       `);
       if (transfer.rows.length) {
         await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
-        skipped++;
+        leaveOut("registrations already identified as an STP / SWP");
         continue;
       }
 
@@ -1354,7 +1363,7 @@ async function processSipBook(
               `);
             }
             await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
-            skipped++;
+            leaveOut("SIPs already closed in the CRM (cease date, completed or stopped)");
             continue;
           }
           existingId = c.id;
@@ -1390,7 +1399,7 @@ async function processSipBook(
         // A cancelled SIP we never had on record: history, not part of the
         // book — nothing to add.
         await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
-        skipped++;
+        leaveOut("SIPs the registrar shows cancelled (cease date) that were never in the CRM's book");
         continue;
       } else {
         await tx.execute(sql`
@@ -1439,6 +1448,9 @@ async function processSipBook(
   // (lib/finance/sip-lifecycle.ts) before the cache is refreshed.
   const transfers = await markSystematicTransfers(tx, args.tenantId);
   if (imported > 0 || transfers > 0) await refreshActiveSipAmount(tx, { tenantId: args.tenantId });
+
+  const note = leftOutNote(leftOut);
+  if (note) errors.unshift({ row: 0, reason: note });
 
   return {
     rowsTotal: rows.length,

@@ -70,7 +70,15 @@ export default async function RtaImportDetailPage({
       ?.label ?? row.kind;
 
   const summary = row.summary;
-  const errors = row.errors ?? [];
+  // Row 0 is never a data line: it carries a note about the whole file (a SIP
+  // register's rows left out on purpose), shown as a note, not an error.
+  const notes = (row.errors ?? []).filter((e) => e.row === 0);
+  const errors = (row.errors ?? []).filter((e) => e.row !== 0);
+  // Only a SIP register counts this way (a folio master counts folios against rows).
+  const leftOut = row.kind !== "monthly_sip_book" ? 0 : Math.max(
+    0,
+    (row.rows_total ?? 0) - (row.rows_imported ?? 0) - (row.rows_skipped ?? 0) - (row.rows_failed ?? 0),
+  );
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -132,13 +140,19 @@ export default async function RtaImportDetailPage({
         {summary ? (
           <Reconciliation summary={summary} />
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className={`grid grid-cols-2 ${leftOut > 0 ? "sm:grid-cols-5" : "sm:grid-cols-4"} gap-3`}>
             <KpiTile label="Rows total" value={fmtNum(row.rows_total)} tone="muted" />
             <KpiTile label="Imported" value={fmtNum(row.rows_imported)} tone="emerald" />
             <KpiTile label="Skipped" value={fmtNum(row.rows_skipped)} tone="amber" />
             <KpiTile label="Failed" value={fmtNum(row.rows_failed)} tone="rose" />
+            {leftOut > 0 && <KpiTile label="Left out on purpose" value={fmtNum(leftOut)} tone="muted" />}
           </div>
         )}
+        {notes.map((n, i) => (
+          <div key={i} className="mt-3 rounded-lg bg-secondary/40 border border-border px-3 py-2 text-xs text-muted-foreground">
+            {n.reason}
+          </div>
+        ))}
       </section>
 
       {/* Errors */}

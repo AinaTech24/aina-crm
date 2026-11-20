@@ -68,6 +68,14 @@ function canReimport(r: Row): boolean {
   );
 }
 
+/** Rows neither imported, skipped nor failed: a SIP register's STP / SWP and cancelled rows, left out on purpose. */
+function leftOutOf(r: Row): number {
+  // Only a SIP register counts its rows this way; a folio master counts FOLIOS
+  // as imported against ROWS in the file, so the gap there means nothing.
+  if (r.kind !== "monthly_sip_book" || (r.status !== "completed" && r.status !== "partial")) return 0;
+  return Math.max(0, (r.rows_total ?? 0) - (r.rows_imported ?? 0) - (r.rows_skipped ?? 0) - (r.rows_failed ?? 0));
+}
+
 function reimportHint(r: Row): string {
   if (r.status === "rejected") return "Re-import — retries with every password saved since";
   if ((r.rows_skipped ?? 0) > 0) return `Re-import — retries the ${r.rows_skipped} skipped row(s)`;
@@ -337,6 +345,11 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                       <span className="text-emerald-700 font-medium">{r.rows_imported ?? 0}</span>
                       {(r.rows_skipped ?? 0) > 0 && <span className="text-amber-700"> · {r.rows_skipped} skip</span>}
                       {(r.rows_failed ?? 0) > 0 && <span className="text-rose-700"> · {r.rows_failed} fail</span>}
+                      {leftOutOf(r) > 0 && (
+                        <span className="text-muted-foreground" title="Not missing data: rows that are not SIPs (STP / SWP) or SIPs the registrar shows cancelled. Open the file for the breakdown.">
+                          {" "}· {leftOutOf(r)} left out
+                        </span>
+                      )}
                     </td>
                     <td className="py-2.5 pl-4">
                       <StatusBadge status={r.status} />
