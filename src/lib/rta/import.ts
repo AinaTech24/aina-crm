@@ -603,11 +603,16 @@ export async function importRtaFolios(
      )
   ) || COALESCE(excluded.schemes, '[]'::jsonb)`;
 
+  const keepRealAmcName = sql`CASE WHEN excluded.amc_name = excluded.amc_code
+                                    THEN COALESCE(NULLIF(trim(${foliosTable.amcName}), ''), excluded.amc_name)
+                                    ELSE excluded.amc_name END`;
   const folioSet =
     kind !== "master"
       ? {
           investorId: sql`excluded.investor_id`,
-          amcName: sql`excluded.amc_name`,
+          // A file with no scheme names (CAMS R9C) sends the AMC CODE as the name;
+          // never let that placeholder overwrite a real fund-house name.
+          amcName: keepRealAmcName,
           rta: sql`excluded.rta`,
           schemes: mergedSchemes,
           // Re-total from the MERGED array — `excluded.aum` only covers the legs
@@ -622,7 +627,9 @@ export async function importRtaFolios(
         }
       : {
           investorId: sql`excluded.investor_id`,
-          amcName: sql`excluded.amc_name`,
+          // A file with no scheme names (CAMS R9C) sends the AMC CODE as the name;
+          // never let that placeholder overwrite a real fund-house name.
+          amcName: keepRealAmcName,
           rta: sql`excluded.rta`,
           schemes: sql`case when jsonb_array_length(coalesce(${foliosTable.schemes}, '[]'::jsonb)) = 0 then excluded.schemes else ${foliosTable.schemes} end`,
           updatedAt: sql`now()`,
