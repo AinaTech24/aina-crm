@@ -283,7 +283,7 @@ function Builder() {
 
       {/* 2. Filter */}
       <Section title="2. Filter rows">
-        <FilterBuilder subject={form.subject} value={ast} onChange={setAst} />
+        <FilterBuilder subject={form.subject} value={ast} onChange={setAst} teamLookup={meetingsOn} />
       </Section>
 
       {/* Category columns */}

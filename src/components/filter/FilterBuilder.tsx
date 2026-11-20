@@ -5,7 +5,7 @@
  * driven entirely by the field catalog. Used by the custom report builder; the
  * segment builder keeps its own inline copy so this can evolve independently.
  */
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { CATALOGS, type FieldDef, type SubjectCatalog } from "@/lib/filter/catalog";
 import type { FilterOperator } from "@/lib/filter/ast";
@@ -34,9 +34,16 @@ const DURATION_OPS = new Set<FilterOperator>(["date_within", "date_in_last", "da
 const TWO_VALUE_OPS = new Set<FilterOperator>(["between", "not_between"]);
 const LIST_OPS = new Set<FilterOperator>(["in", "not_in"]);
 
-export function FilterBuilder({ subject, value, onChange }: { subject: string; value: Group; onChange: (g: Group) => void }) {
+/** Whether team-member fields get a dropdown of people (the report pages turn it on for a firm with the zohoImport flag). */
+const TeamLookup = createContext(false);
+
+export function FilterBuilder({ subject, value, onChange, teamLookup = false }: { subject: string; value: Group; onChange: (g: Group) => void; teamLookup?: boolean }) {
   const cat = CATALOGS[subject] ?? CATALOGS.investor;
-  return <GroupEditor cat={cat} group={value} onChange={onChange} depth={0} />;
+  return (
+    <TeamLookup.Provider value={teamLookup}>
+      <GroupEditor cat={cat} group={value} onChange={onChange} depth={0} />
+    </TeamLookup.Provider>
+  );
 }
 
 function GroupEditor({ cat, group, onChange, depth }: { cat: SubjectCatalog; group: Group; onChange: (g: Group) => void; depth: number }) {
@@ -147,12 +154,16 @@ function PredicateEditor({ cat, predicate, onChange, onRemove }: { cat: SubjectC
 }
 
 /** The firm's active people, fetched once per page (the same list RmSelector reads). */
-let teamCache: Promise<string[]> | null = null;
-function loadTeamNames(): Promise<string[]> {
+type Person = { id: string; name: string };
+let teamCache: Promise<Person[]> | null = null;
+function loadTeam(): Promise<Person[]> {
   teamCache ??= fetch("/api/employees")
     .then((r) => (r.ok ? r.json() : { rows: [] }))
-    .then((j: { rows?: { name?: string | null }[] }) =>
-      [...new Set((j.rows ?? []).map((u) => (u.name ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    .then((j: { rows?: { id?: string; name?: string | null }[] }) =>
+      (j.rows ?? [])
+        .map((u) => ({ id: String(u.id ?? ""), name: (u.name ?? "").trim() }))
+        .filter((u) => u.id && u.name)
+        .sort((a, b) => a.name.localeCompare(b.name)),
     )
     .catch(() => {
       teamCache = null;
@@ -161,18 +172,25 @@ function loadTeamNames(): Promise<string[]> {
   return teamCache;
 }
 
-/** A team-member field (`lookup: "user"`): pick one person, or several for "is any of" / "is none of". */
-function UserValue({ predicate, onChange }: { predicate: Predicate; onChange: (p: Predicate) => void }) {
-  const [names, setNames] = useState<string[] | null>(null);
+/**
+ * A team-member field: pick one person, or several for "is any of" / "is none of".
+ * `byId` (lookup "user_id") stores the person's id and shows the name; otherwise
+ * the name itself is the value.
+ */
+function UserValue({ predicate, onChange, byId }: { predicate: Predicate; onChange: (p: Predicate) => void; byId: boolean }) {
+  const [team, setTeam] = useState<Person[] | null>(null);
   useEffect(() => {
     let live = true;
-    loadTeamNames().then((n) => live && setNames(n));
+    loadTeam().then((t) => live && setTeam(t));
     return () => {
       live = false;
     };
   }, []);
   const set = (value: unknown) => onChange({ ...predicate, value });
-  const list = names ?? [];
+  const names = team == null ? null : team.map((p) => p.name);
+  const keyOf = (p: Person) => (byId ? p.id : p.name);
+  const labelOf = (v: string) => (byId ? team?.find((p) => p.id === v)?.name ?? "Former team member" : v);
+  const list = (team ?? []).map(keyOf);
 
   if (LIST_OPS.has(predicate.op)) {
     const chosen = Array.isArray(predicate.value) ? (predicate.value as unknown[]).map(String) : [];
@@ -181,15 +199,15 @@ function UserValue({ predicate, onChange }: { predicate: Predicate; onChange: (p
       <span className="flex flex-wrap items-center gap-1">
         {chosen.map((n) => (
           <span key={n} className="chip bg-secondary text-foreground inline-flex items-center gap-1">
-            {n}
-            <button type="button" aria-label={`Remove ${n}`} onClick={() => set(chosen.filter((x) => x !== n))} className="text-muted-foreground hover:text-destructive">
+            {labelOf(n)}
+            <button type="button" aria-label={`Remove ${labelOf(n)}`} onClick={() => set(chosen.filter((x) => x !== n))} className="text-muted-foreground hover:text-destructive">
               <X className="size-3" />
             </button>
           </span>
         ))}
         <SelectField value="" onChange={(e) => e.target.value && set([...chosen, e.target.value])} size="sm" className="shrink-0" disabled={names == null}>
           <option value="">{names == null ? "Loading team…" : chosen.length ? "Add another…" : "Pick people…"}</option>
-          {left.map((n) => <option key={n} value={n}>{n}</option>)}
+          {left.map((n) => <option key={n} value={n}>{labelOf(n)}</option>)}
         </SelectField>
       </span>
     );
@@ -201,16 +219,17 @@ function UserValue({ predicate, onChange }: { predicate: Predicate; onChange: (p
   return (
     <SelectField value={current} onChange={(e) => set(e.target.value)} size="sm" className="shrink-0" disabled={names == null}>
       <option value="">{names == null ? "Loading team…" : "Select a person…"}</option>
-      {options.map((n) => <option key={n} value={n}>{n}</option>)}
+      {options.map((n) => <option key={n} value={n}>{labelOf(n)}</option>)}
     </SelectField>
   );
 }
 
 function ValueInput({ field, predicate, onChange }: { field: FieldDef; predicate: Predicate; onChange: (p: Predicate) => void }) {
+  const teamLookup = useContext(TeamLookup);
   const op = predicate.op;
   if (NO_VALUE_OPS.has(op)) return null;
-  if (field.lookup === "user" && (op === "eq" || op === "ne" || LIST_OPS.has(op))) {
-    return <UserValue predicate={predicate} onChange={onChange} />;
+  if (teamLookup && field.lookup && (op === "eq" || op === "ne" || LIST_OPS.has(op))) {
+    return <UserValue predicate={predicate} onChange={onChange} byId={field.lookup === "user_id"} />;
   }
 
   const cls = "text-xs rounded-md border border-border bg-card px-2 py-1";

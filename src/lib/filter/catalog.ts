@@ -45,8 +45,10 @@ export interface FieldDef {
    * The value is a team member's NAME (the SQL compares users.name): the filter
    * builder offers a dropdown of the firm's people instead of a text box, so a
    * typed "rajesh chauhan" can never silently match nothing (We Care, 2026-11-20).
+   * "user_id": the value is the person's id — the dropdown shows names, stores ids.
+   * Shown only where the page asks for it (FilterBuilder teamLookup).
    */
-  lookup?: "user";
+  lookup?: "user" | "user_id";
 }
 
 export interface SubjectCatalog {
@@ -267,10 +269,10 @@ export const investorCatalog: SubjectCatalog = {
       ops: COMMON_DATE_OPS,
     },
 
-    { key: "rm_id", label: "Relationship manager", type: "uuid", sql: "inv.rm_id", ops: COMMON_ENUM_OPS },
+    { key: "rm_id", label: "Relationship manager", type: "uuid", sql: "inv.rm_id", ops: COMMON_ENUM_OPS, lookup: "user_id" },
     { key: "branch_id", label: "Branch", type: "uuid", sql: "inv.branch_id", ops: COMMON_ENUM_OPS },
     // Names for reports — "clients by RM / by branch" (the ids above stay for filters).
-    { key: "rm_name", label: "RM name", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = inv.rm_id)", ops: COMMON_STRING_OPS },
+    { key: "rm_name", label: "RM name", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = inv.rm_id)", ops: COMMON_STRING_OPS, lookup: "user" },
     { key: "branch_name", label: "Branch name", type: "string", sql: "(SELECT b.name FROM branches b WHERE b.id = inv.branch_id)", ops: COMMON_STRING_OPS },
 
     {
@@ -418,7 +420,7 @@ export const leadCatalog: SubjectCatalog = {
       sql: "ld.next_follow_up_at",
       ops: COMMON_DATE_OPS,
     },
-    { key: "owner_id", label: "Owner", type: "uuid", sql: "ld.owner_id", ops: COMMON_ENUM_OPS, writable: true },
+    { key: "owner_id", label: "Owner", type: "uuid", sql: "ld.owner_id", ops: COMMON_ENUM_OPS, writable: true, lookup: "user_id" },
     {
       key: "days_in_stage",
       label: "Days in current stage",
@@ -453,7 +455,7 @@ export const taskCatalog: SubjectCatalog = {
       ops: COMMON_ENUM_OPS,
       enumValues: ["low", "normal", "high", "urgent"],
     },
-    { key: "assignee_id", label: "Assignee", type: "uuid", sql: "tk.assignee_id", ops: COMMON_ENUM_OPS },
+    { key: "assignee_id", label: "Assignee", type: "uuid", sql: "tk.assignee_id", ops: COMMON_ENUM_OPS, lookup: "user_id" },
     { key: "due_at", label: "Due date", type: "datetime", sql: "tk.due_at", ops: COMMON_DATE_OPS },
     { key: "sla_due_at", label: "SLA due", type: "datetime", sql: "tk.sla_due_at", ops: COMMON_DATE_OPS },
     {
@@ -609,7 +611,7 @@ export const claimCatalog: SubjectCatalog = {
     { key: "submission_date", label: "Submission date", type: "date", sql: "icl.submission_date", ops: COMMON_DATE_OPS },
     { key: "settlement_date", label: "Settlement date", type: "date", sql: "icl.settlement_date", ops: COMMON_DATE_OPS },
     { key: "investor_id", label: "Client (id)", type: "uuid", sql: "icl.investor_id", ops: COMMON_ENUM_OPS },
-    { key: "rm_id", label: "RM (id)", type: "uuid", sql: "icl.rm_id", ops: COMMON_ENUM_OPS },
+    { key: "rm_id", label: "RM (id)", type: "uuid", sql: "icl.rm_id", ops: COMMON_ENUM_OPS, lookup: "user_id" },
     { key: "created_at", label: "Created", type: "datetime", sql: "icl.created_at", ops: COMMON_DATE_OPS },
   ],
   relations: {},
@@ -628,7 +630,7 @@ export const reviewMeetingCatalog: SubjectCatalog = {
     { key: "status", label: "Status", type: "enum", sql: "mtg.status", ops: COMMON_ENUM_OPS, enumValues: ["scheduled", "confirmed", "in_progress", "completed", "rescheduled", "cancelled", "no_show"] },
     { key: "outcome", label: "Outcome", type: "enum", sql: "mtg.outcome", ops: COMMON_ENUM_OPS },
     { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = mtg.rm_id)", ops: COMMON_STRING_OPS, lookup: "user" },
-    { key: "rm_id", label: "RM (id)", type: "uuid", sql: "mtg.rm_id", ops: COMMON_ENUM_OPS },
+    { key: "rm_id", label: "RM (id)", type: "uuid", sql: "mtg.rm_id", ops: COMMON_ENUM_OPS, lookup: "user_id" },
     { key: "client_name", label: "Client / lead", type: "string", sql: "COALESCE((SELECT i.name FROM investors i WHERE i.id = mtg.investor_id), (SELECT l.name FROM leads l WHERE l.id = mtg.lead_id))", ops: COMMON_STRING_OPS },
     { key: "meeting_kind", label: "Meeting type (New / Existing)", type: "string", sql: "(CASE mtg.category WHEN 'new' THEN 'New' WHEN 'review' THEN 'Existing' ELSE 'Follow-up' END)", ops: COMMON_STRING_OPS },
     { key: "title", label: "Title", type: "string", sql: "mtg.subject", ops: COMMON_STRING_OPS },
@@ -653,7 +655,7 @@ export const businessEntryCatalog: SubjectCatalog = {
     { key: "client_name", label: "Client", type: "string", sql: "bze.client_name", ops: COMMON_STRING_OPS },
     { key: "amc_name", label: "AMC", type: "string", sql: "bze.amc_name", ops: COMMON_STRING_OPS },
     { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = bze.rm_id)", ops: COMMON_STRING_OPS },
-    { key: "rm_id", label: "RM (id)", type: "uuid", sql: "bze.rm_id", ops: COMMON_ENUM_OPS },
+    { key: "rm_id", label: "RM (id)", type: "uuid", sql: "bze.rm_id", ops: COMMON_ENUM_OPS, lookup: "user_id" },
     { key: "business_date", label: "Business date", type: "date", sql: "bze.business_date", ops: COMMON_DATE_OPS },
     { key: "created_at", label: "Created", type: "datetime", sql: "bze.created_at", ops: COMMON_DATE_OPS },
     { key: "total_amount", label: "Total business (₹)", type: "currency", sql: "bze.total_amount", ops: COMMON_NUMBER_OPS },

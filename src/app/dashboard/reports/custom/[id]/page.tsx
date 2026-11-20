@@ -225,7 +225,7 @@ export default function ReportViewPage() {
       {showFilters && meta && (
         <div className="card-surface p-4 space-y-3 print:hidden">
           <div className="text-sm font-medium">Filter this view</div>
-          <FilterBuilder subject={meta.subject} value={draft} onChange={setDraft} />
+          <FilterBuilder subject={meta.subject} value={draft} onChange={setDraft} teamLookup={zohoParity} />
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="primary" onClick={applyFilters}>
               Apply
