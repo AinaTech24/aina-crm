@@ -35,9 +35,12 @@ const inr = (n: number) =>
 export function FamilyHeadPicker({
   value,
   onPick,
+  label = "Head of family",
 }: {
   value: HeadCandidate | null;
   onPick: (c: HeadCandidate | null) => void;
+  /** What the chosen client is (the Equity desk reuses this as a plain client picker). */
+  label?: string;
 }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<HeadCandidate[]>([]);
@@ -80,7 +83,7 @@ export function FamilyHeadPicker({
       <div className="flex items-center justify-between gap-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2">
         <span className="min-w-0">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
-            <UserCheck className="size-3.5" /> Head of family
+            <UserCheck className="size-3.5" /> {label}
           </span>
           <span className="block text-sm font-medium truncate">{value.name}</span>
           <span className="block text-2xs text-muted-foreground tabular-nums truncate">
@@ -92,7 +95,7 @@ export function FamilyHeadPicker({
           type="button"
           onClick={() => { onPick(null); setQ(""); }}
           className="text-muted-foreground hover:text-foreground shrink-0"
-          aria-label="Clear head of family"
+          aria-label={`Clear ${label.toLowerCase()}`}
         >
           <X className="size-4" />
         </button>

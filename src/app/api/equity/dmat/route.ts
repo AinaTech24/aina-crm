@@ -1,6 +1,6 @@
 /**
  * GET  /api/equity/dmat  → list DMAT accounts
- * POST /api/equity/dmat  → create { clientName, dmatNumber?, broker?, openedDate, status? }
+ * POST /api/equity/dmat  → create { clientName? | investorId?, rmId?, dmatNumber?, broker?, openedDate, status? }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -24,7 +24,10 @@ export async function GET() {
 }
 
 const CreateBody = z.object({
-  clientName: z.string().trim().min(1).max(160),
+  // A CRM client (investorId) or a typed name for someone not yet a client.
+  clientName: z.string().trim().max(160).nullish(),
+  investorId: z.string().uuid().nullish(),
+  rmId: z.string().uuid().nullish(),
   dmatNumber: z.string().trim().max(60).nullish(),
   broker: z.string().trim().max(80).nullish(),
   openedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

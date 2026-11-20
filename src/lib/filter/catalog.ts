@@ -59,7 +59,8 @@ export interface SubjectCatalog {
     | "review_meeting"
     | "business_entry"
     | "business_line"
-    | "equity_brokerage";
+    | "equity_brokerage"
+    | "equity_dmat";
   /** Primary table + alias used in compiled SQL. */
   table: string;
   alias: string;
@@ -712,8 +713,26 @@ export const equityBrokerageCatalog: SubjectCatalog = {
   fields: [
     { key: "month", label: "Month", type: "date", sql: "to_date(ebk.period || '-01', 'YYYY-MM-DD')", ops: COMMON_DATE_OPS },
     { key: "brokerage", label: "Brokerage (₹)", type: "currency", sql: "ebk.amount", ops: COMMON_NUMBER_OPS },
-    { key: "trading_days", label: "Trading days", type: "integer", sql: "(substring(ebk.notes from 'Zoho Equity Brokerage: ([0-9]+) day'))::int", ops: COMMON_NUMBER_OPS },
+    { key: "trading_days", label: "Trading days", type: "integer", sql: "(substring(ebk.notes from '([0-9]+) days?'))::int", ops: COMMON_NUMBER_OPS },
     { key: "notes", label: "Notes", type: "string", sql: "ebk.notes", ops: COMMON_STRING_OPS },
+  ],
+  relations: {},
+};
+
+/** DMAT accounts the equity desk opened (equity_dmat_accounts) — New DMAT MoM (2026-11-20). */
+export const equityDmatCatalog: SubjectCatalog = {
+  subject: "equity_dmat",
+  table: "equity_dmat_accounts",
+  alias: "edm",
+  fields: [
+    { key: "opened_date", label: "Opened on", type: "date", sql: "edm.opened_date", ops: COMMON_DATE_OPS },
+    { key: "client_name", label: "Client", type: "string", sql: "edm.client_name", ops: COMMON_STRING_OPS },
+    { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = edm.rm_id)", ops: COMMON_STRING_OPS },
+    { key: "broker", label: "Broker / DP", type: "string", sql: "edm.broker", ops: COMMON_STRING_OPS },
+    { key: "dmat_number", label: "DP ID / Client ID", type: "string", sql: "edm.dmat_number", ops: COMMON_STRING_OPS },
+    { key: "status", label: "Status", type: "enum", sql: "edm.status", ops: COMMON_ENUM_OPS, enumValues: ["active", "dormant", "closed"] },
+    { key: "closed_date", label: "Closed on", type: "date", sql: "edm.closed_date", ops: COMMON_DATE_OPS },
+    { key: "is_client", label: "CRM client", type: "string", sql: "(CASE WHEN edm.investor_id IS NULL THEN 'No' ELSE 'Yes' END)", ops: COMMON_STRING_OPS },
   ],
   relations: {},
 };
@@ -733,6 +752,7 @@ export const CATALOGS: Record<string, SubjectCatalog> = {
   business_entry: businessEntryCatalog,
   business_line: businessLineCatalog,
   equity_brokerage: equityBrokerageCatalog,
+  equity_dmat: equityDmatCatalog,
 };
 
 export function getCatalog(subject: string): SubjectCatalog {

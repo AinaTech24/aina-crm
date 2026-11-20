@@ -33,6 +33,8 @@ export const REPORT_SUBJECTS = [
   "business_line",
   // Monthly equity brokerage (Zoho "Equity" module → equity_brokerage) — same flag (2026-11-20).
   "equity_brokerage",
+  // DMAT accounts opened by the equity desk (New DMAT MoM, 2026-11-20) — same flag.
+  "equity_dmat",
 ] as const;
 export const REPORT_TYPES = ["detailed", "summary", "matrix"] as const;
 export const REPORT_SHARE_SCOPES = ["private", "team", "tenant"] as const;

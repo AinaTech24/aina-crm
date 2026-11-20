@@ -15,6 +15,8 @@ export const dynamic = "force-dynamic";
 
 const PatchBody = z.object({
   clientName: z.string().trim().min(1).max(160).optional(),
+  investorId: z.string().uuid().nullish(),
+  rmId: z.string().uuid().nullish(),
   dmatNumber: z.string().trim().max(60).nullish(),
   broker: z.string().trim().max(80).nullish(),
   openedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),

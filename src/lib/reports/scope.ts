@@ -78,6 +78,9 @@ export async function reportSubjectScope(tx: any, session: SessionUser, subject:
     case "equity_brokerage":
       // A firm figure, not a client's: whoever may read the business MIS (as the Equity Team board).
       return cap("reports.business") || cap("reports.manage") ? sql`TRUE` : sql`FALSE`;
+    case "equity_dmat":
+      // The desk sees every account; anyone else the accounts of their own clients.
+      return cap("reports.business") || cap("reports.manage") ? sql`TRUE` : sql`(${sql.raw(`${a}.rm_id`)} = ${session.userId}::uuid)`;
     case "user":
       return sql`TRUE`;
     default:

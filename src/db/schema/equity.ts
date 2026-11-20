@@ -1,4 +1,4 @@
-import { date, index, numeric, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { date, index, integer, numeric, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { investors } from "./investors";
@@ -52,5 +52,30 @@ export const equityBrokerage = pgTable(
   })
 );
 
+/**
+ * One trading day of the equity desk (migration 0282, We Care 2026-11-20): the
+ * Zoho "Equity" module's row. The month's equity_brokerage figure is the sum of
+ * its days (lib/equity/brokerage-days.ts keeps it so on every write).
+ */
+export const equityBrokerageDays = pgTable(
+  "equity_brokerage_days",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    tradeDate: date("trade_date").notNull(),
+    brokerage: numeric("brokerage", { precision: 18, scale: 2 }).notNull().default("0"),
+    turnover: numeric("turnover", { precision: 20, scale: 2 }),
+    activeClients: integer("active_clients"),
+    notes: text("notes"),
+    zohoId: text("zoho_id"),
+    createdBy: uuid("created_by").references(() => users.id),
+    ...timestamps,
+  },
+  (t) => ({
+    dateIdx: index("equity_brokerage_days_date_idx").on(t.tenantId, t.tradeDate),
+  })
+);
+
 export type EquityDmatAccount = typeof equityDmatAccounts.$inferSelect;
+export type EquityBrokerageDay = typeof equityBrokerageDays.$inferSelect;
 export type EquityBrokerage = typeof equityBrokerage.$inferSelect;

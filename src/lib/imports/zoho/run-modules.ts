@@ -24,8 +24,10 @@ import { normalizeEmail, normalizePhoneLast10 } from "@/lib/leads/normalize";
 import { ownerKey } from "./contacts";
 import type { ImportActor } from "./run-contacts";
 import { ZohoFileError } from "./workbook";
+import { upsertZohoBrokerageDays } from "@/lib/equity/brokerage-days";
+import { cell as zCell, isoDate as zIsoDate, zohoId as zId } from "./values";
 import {
-  DEFAULT_RISK_BANDS, MODULE_LABEL, brokerageByMonth, categoryFromScore, mapCall, mapLead, mapLineType, mapRiskProfile, mapSipTracking, mapTask,
+  DEFAULT_RISK_BANDS, MODULE_LABEL, brokerageByMonth, categoryFromScore, mapCall, mapLead, mapLineType, mapRiskProfile, mapSipTracking, mapTask, num,
   type RiskBand, type ZohoModule, type ZohoRecord,
 } from "./modules";
 
@@ -481,6 +483,24 @@ export async function importZohoModule(
         count(m.period.slice(0, 4));
       }
       result.notes.push(`${months.length} months of brokerage; a month already in the CRM takes Zoho's total.`);
+      // The Equity desk keeps each trading day (0282): store Zoho's days by record
+      // id, then every touched month is re-summed from its days — the same total.
+      const dayRows = records
+        .map((r) => {
+          const d = zIsoDate(r.Date);
+          const id = zId(r.id ?? r.Record_Id ?? r["Record Id"]);
+          const active = Number(zCell(r.Name).replace(/[^0-9.]/g, ""));
+          return d && id
+            ? { zohoId: id, tradeDate: d, brokerage: num(r.Brokerge_Amount), turnover: zCell(r.Turn_Over) ? num(r.Turn_Over) : null, activeClients: zCell(r.Name) && Number.isFinite(active) ? Math.round(active) : null }
+            : null;
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+      if (dayRows.length) {
+        const d = await upsertZohoBrokerageDays(tx, actor.tenantId, dayRows);
+        result.notes.push(`${d.inserted} trading days added and ${d.updated} updated on the Equity desk.`);
+      } else if (records.length) {
+        result.notes.push("No Zoho record ids in the file, so the trading days were not stored — only the month totals.");
+      }
     }
 
     result.skippedByReason = [...skipped.entries()].map(([reason, c]) => ({ reason, count: c })).sort((a, b) => b.count - a.count);

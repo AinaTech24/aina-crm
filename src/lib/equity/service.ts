@@ -147,34 +147,75 @@ export async function setEquityTarget(tx: Tx, tenantId: string, fy: string, metr
 }
 
 export async function listDmat(tx: Tx) {
-  return tx.select().from(equityDmatAccounts).orderBy(desc(equityDmatAccounts.openedDate), asc(equityDmatAccounts.clientName));
+  const rows = await tx.select().from(equityDmatAccounts).orderBy(desc(equityDmatAccounts.openedDate), asc(equityDmatAccounts.clientName));
+  const rmIds = [...new Set(rows.map((r) => r.rmId).filter((x): x is string => !!x))];
+  const names = new Map<string, string>();
+  if (rmIds.length) {
+    const res = await tx.execute(sql`SELECT id, name FROM users WHERE id IN (SELECT jsonb_array_elements_text(${JSON.stringify(rmIds)}::jsonb)::uuid)`);
+    for (const u of res.rows as any[]) names.set(u.id, u.name);
+  }
+  return rows.map((r) => ({ ...r, rmName: r.rmId ? names.get(r.rmId) ?? null : null }));
+}
+
+/**
+ * A DMAT opened for a CRM client (Equity desk, 2026-11-20): the account takes
+ * the client's name and RM unless given, and the client's Cross-sell card
+ * shows "Demat A/c — Held with us". Returns null when the client is not found.
+ */
+async function clientForDmat(tx: Tx, investorId: string): Promise<{ name: string; rmId: string | null } | null> {
+  const res = await tx.execute(sql`SELECT name, rm_id FROM investors WHERE id = ${investorId}::uuid AND deleted_at IS NULL`);
+  const r = res.rows[0] as any;
+  return r ? { name: r.name, rmId: r.rm_id ?? null } : null;
+}
+async function markDematHeld(tx: Tx, investorId: string): Promise<void> {
+  await tx.execute(sql`
+    UPDATE investors
+       SET cross_sell = COALESCE(cross_sell, '{}'::jsonb) || jsonb_build_object('demat', 'held_with_us'), updated_at = now()
+     WHERE id = ${investorId}::uuid AND COALESCE(cross_sell ->> 'demat', '') <> 'held_with_us'
+  `);
 }
 
 export async function createDmat(
   tx: Tx,
   tenantId: string,
-  input: { clientName: string; dmatNumber?: string | null; broker?: string | null; openedDate: string; status?: string }
+  input: { clientName?: string | null; investorId?: string | null; rmId?: string | null; dmatNumber?: string | null; broker?: string | null; openedDate: string; status?: string }
 ): Promise<{ id: string }> {
+  const client = input.investorId ? await clientForDmat(tx, input.investorId) : null;
+  if (input.investorId && !client) throw Object.assign(new Error("That client was not found."), { status: 400 });
+  const clientName = (input.clientName?.trim() || client?.name || "").trim();
+  if (!clientName) throw Object.assign(new Error("Pick a client or type the account holder's name."), { status: 400 });
   const [row] = await tx
     .insert(equityDmatAccounts)
     .values({
       tenantId,
-      clientName: input.clientName.trim(),
+      investorId: input.investorId ?? null,
+      rmId: input.rmId ?? client?.rmId ?? null,
+      clientName,
       dmatNumber: input.dmatNumber?.trim() || null,
       broker: input.broker?.trim() || null,
       openedDate: input.openedDate,
       status: (input.status as any) ?? "active",
     })
     .returning({ id: equityDmatAccounts.id });
+  if (input.investorId && (input.status ?? "active") !== "closed") await markDematHeld(tx, input.investorId);
   return row;
 }
 
 export async function updateDmat(
   tx: Tx,
   id: string,
-  patch: { clientName?: string; dmatNumber?: string | null; broker?: string | null; openedDate?: string; closedDate?: string | null; status?: string }
+  patch: { clientName?: string; investorId?: string | null; rmId?: string | null; dmatNumber?: string | null; broker?: string | null; openedDate?: string; closedDate?: string | null; status?: string }
 ): Promise<void> {
   const set: Record<string, unknown> = { updatedAt: new Date() };
+  if (patch.investorId !== undefined) {
+    const client = patch.investorId ? await clientForDmat(tx, patch.investorId) : null;
+    if (patch.investorId && !client) throw Object.assign(new Error("That client was not found."), { status: 400 });
+    set.investorId = patch.investorId || null;
+    if (client && patch.clientName == null) set.clientName = client.name;
+    if (client && patch.rmId === undefined) set.rmId = client.rmId;
+    if (patch.investorId) await markDematHeld(tx, patch.investorId);
+  }
+  if (patch.rmId !== undefined) set.rmId = patch.rmId || null;
   if (patch.clientName != null) set.clientName = patch.clientName.trim();
   if (patch.dmatNumber !== undefined) set.dmatNumber = patch.dmatNumber?.trim() || null;
   if (patch.broker !== undefined) set.broker = patch.broker?.trim() || null;
