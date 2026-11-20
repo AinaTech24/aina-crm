@@ -62,7 +62,7 @@ export default async function SipRejectionsPage({
     // "Something went wrong" with only a reference number to show for it.
     const problems: string[] = [];
     let savepointNo = 0;
-    async function safely<T>(label: string, fallback: T, run: () => Promise<T>): Promise<T> {
+    async function safely<T, F>(label: string, fallback: F, run: () => Promise<T>): Promise<T | F> {
       const name = sql.raw(`sip_rej_${++savepointNo}`);
       await tx.execute(sql`SAVEPOINT ${name}`);
       try {
