@@ -195,12 +195,12 @@ const looksLikeTest = (policyNo: string) => /^(test|demo|dd|\d)$/i.test(policyNo
 /** One record of the Insurance register or a line module (`_module` set on line-module records). */
 export function mapIoPolicy(raw: ZohoRecord): MappedPolicy {
   const r = ioUsers(raw);
-  const module = cell(r._module) || "Insurance";
-  const register = module === "Insurance";
+  const zModule = cell(r._module) || "Insurance";
+  const register = zModule === "Insurance";
   const client = ref(register ? r.Client_Name : r.Policy_Holder_Name);
   const product = na(register ? r.Policy : r.Product) || na(r.Plan_Name1) || na(r.Plan_Name);
   const plan = na(r.Plan_Name1) || na(r.Plan_Name) || product;
-  const policyType = policyTypeOf(product || module, register ? undefined : module);
+  const policyType = policyTypeOf(product || zModule, register ? undefined : zModule);
   let start = isoDate(na(r.DOC) || na(r.Commencement_Date) || na(r.Policy_Start_Date)) ?? null;
   let renewal = isoDate(na(r.FUP) || na(r.Renewal_Expiry_Date) || na(r.Date_7)) ?? null;
   const termMonths = num(r.Policy_Term_in_months);
@@ -216,7 +216,7 @@ export function mapIoPolicy(raw: ZohoRecord): MappedPolicy {
   const nomineeName = na(r.Nominee_Name);
   const details: Record<string, unknown> = {
     zohoId: zohoId(r.id),
-    zohoModule: module,
+    zohoModule: zModule,
     ...(product ? { zohoProduct: product } : {}),
     ...(businessType ? { businessType } : {}),
     ...(na(r.Type) ? { zohoType: na(r.Type) } : {}),
@@ -245,7 +245,7 @@ export function mapIoPolicy(raw: ZohoRecord): MappedPolicy {
   const agent = na(r.Agency) || na(r.Agent_Code);
   return {
     zohoId: zohoId(r.id),
-    module,
+    module: zModule,
     policyNumber: na(r.Name) || null,
     clientZohoId: client.id,
     clientName: client.name,
