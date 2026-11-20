@@ -198,6 +198,54 @@ export type MappedContact = {
   referralName: string;
   /** Things the preview should tell the user about this row. */
   warnings: string[];
+  /**
+   * More client columns a firm's own Zoho mapping fills (Investment Options,
+   * io/contacts.ts): written on a new client, and on an existing one only where
+   * the CRM field is blank.
+   */
+  extra?: InvestorExtra;
+};
+
+/** The client columns a firm-specific Zoho mapping may add (Drizzle keys of `investors`). */
+export type InvestorExtra = Partial<{
+  maritalStatus: string;
+  incomeRange: string;
+  taxStatus: string;
+  residencyStatus: "indian_resident" | "nri" | "oci" | "pio" | "foreign_national";
+  anniversaryDate: string;
+  birthPlace: string;
+  motherName: string;
+  mobileRelation: string;
+  emailRelation: string;
+  alternatePhone: string;
+  dateOfDemise: string;
+  modeOfHolding: string;
+  bankName: string;
+  bankIfsc: string;
+  bankAccountNumberMasked: string;
+  bankAccounts: Array<{ bankName: string; accountMasked?: string; ifsc?: string }>;
+  kycStatus: "verified" | "registered" | "rejected";
+  panAadhaarLinkStatus: "linked" | "not_linked";
+}>;
+
+/** InvestorExtra key → its column (text and date columns; bank_accounts and kyc_status are handled on their own). */
+export const EXTRA_COLUMNS: Record<Exclude<keyof InvestorExtra, "bankAccounts" | "kycStatus">, { column: string; cast?: "date" }> = {
+  maritalStatus: { column: "marital_status" },
+  incomeRange: { column: "income_range" },
+  taxStatus: { column: "tax_status" },
+  residencyStatus: { column: "residency_status" },
+  anniversaryDate: { column: "anniversary_date", cast: "date" },
+  birthPlace: { column: "birth_place" },
+  motherName: { column: "mother_name" },
+  mobileRelation: { column: "mobile_relation" },
+  emailRelation: { column: "email_relation" },
+  alternatePhone: { column: "alternate_phone" },
+  dateOfDemise: { column: "date_of_demise", cast: "date" },
+  modeOfHolding: { column: "mode_of_holding" },
+  bankName: { column: "bank_name" },
+  bankIfsc: { column: "bank_ifsc" },
+  bankAccountNumberMasked: { column: "bank_account_masked" },
+  panAadhaarLinkStatus: { column: "pan_aadhaar_link_status" },
 };
 
 const RISK_SYNONYMS: Array<[RegExp, RiskCategory]> = [

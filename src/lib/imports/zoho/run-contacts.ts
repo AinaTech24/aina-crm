@@ -41,12 +41,14 @@ import { onClientFamilyMapped } from "@/lib/families/journey";
 import { HEAD_ROLE } from "@/lib/families/roles";
 import {
   CONTACT_CUSTOM_FIELDS,
+  EXTRA_COLUMNS,
   IGNORED_CONTACT_COLUMNS,
   ZOHO_ID_FIELD,
   PICKLISTS,
   mapZohoContact,
   ownerKey,
   type MappedContact,
+  type ZohoCustomField,
 } from "./contacts";
 import { ZohoFileError } from "./workbook";
 import { ensureZohoClientFields, type PicklistResult } from "./fields";
@@ -95,10 +97,21 @@ export async function importZohoContacts(
   actor: ImportActor,
   headers: string[],
   rows: Record<string, unknown>[],
-  opts: { dryRun: boolean; unmatchedOwnersToMe: boolean; now?: Date; /** Run inside this transaction (tenant already set) — tests. */ tx?: Tx }
+  opts: {
+    dryRun: boolean;
+    unmatchedOwnersToMe: boolean;
+    now?: Date;
+    /** Run inside this transaction (tenant already set) — tests. */
+    tx?: Tx;
+    /** A firm's own row mapping (Investment Options: io/contacts.ts); default We Care's export columns. */
+    mapRow?: (row: Record<string, unknown>, now: Date) => MappedContact;
+    /** The custom fields that mapping fills; default CONTACT_CUSTOM_FIELDS. */
+    customFields?: readonly ZohoCustomField[];
+  }
 ): Promise<ContactImportResult> {
   const now = opts.now ?? new Date();
-  const mapped = rows.map((r) => mapZohoContact(r, now));
+  const mapRow = opts.mapRow ?? mapZohoContact;
+  const mapped = rows.map((r) => mapRow(r, now));
 
   const run = async (tx: Tx): Promise<ContactImportResult> => {
     const result: ContactImportResult = {
@@ -149,7 +162,7 @@ export async function importZohoContacts(
     // ── The firm's Zoho client fields (all of them, even ones this file leaves blank) ──
     const fileValues: Record<string, string[]> = {};
     for (const pl of PICKLISTS) fileValues[pl.field.key] = mapped.map((m) => String(m.custom[pl.field.key] ?? "")).filter(Boolean);
-    const fields = await ensureZohoClientFields(tx, actor.tenantId, actor.userId, fileValues);
+    const fields = await ensureZohoClientFields(tx, actor.tenantId, actor.userId, fileValues, opts.customFields);
     result.customFieldsCreated = fields.created;
     result.picklists = Object.values(fields.picklists);
     for (const pl of [...PICKLISTS].reverse()) {
@@ -263,9 +276,10 @@ export async function importZohoContacts(
               crossSell: Object.keys(m.crossSell).length ? m.crossSell : null,
               customFields: Object.keys(m.custom).length ? m.custom : null,
               notes: m.notes,
-              kycStatus: "pending",
+              ...(m.extra ?? {}),
+              kycStatus: m.extra?.kycStatus ?? "pending",
               status: "active",
-              ...healthFields({ status: "active", kycStatus: "pending" }, now),
+              ...healthFields({ status: "active", kycStatus: m.extra?.kycStatus ?? "pending" }, now),
             });
             if (m.riskProfile) {
               await applyRiskCategory({ ...riskArgs(sp, actor, id, m), currentCategory: null });
@@ -421,11 +435,31 @@ async function fillBlanks(tx: Tx, tenantId: string, id: string, m: MappedContact
         ? sql`nominee_name = COALESCE(NULLIF(nominee_name, ''), ${m.nominee.name}),
               nominees = CASE WHEN jsonb_array_length(COALESCE(nominees, '[]'::jsonb)) = 0 THEN ${JSON.stringify([m.nominee])}::jsonb ELSE nominees END,`
         : sql``}
+      ${extraBlanks(m)}
       ${Object.keys(m.crossSell).length ? sql`cross_sell = COALESCE(cross_sell, '{}'::jsonb) || ${JSON.stringify(m.crossSell)}::jsonb,` : sql``}
       ${Object.keys(m.custom).length ? sql`custom_fields = ${JSON.stringify(m.custom)}::jsonb || COALESCE(custom_fields, '{}'::jsonb),` : sql``}
       updated_at = now()
      WHERE id = ${id}::uuid AND tenant_id = ${tenantId}::uuid
   `);
+}
+
+/** The firm-specific extra columns, each only where the client has it blank. */
+function extraBlanks(m: MappedContact) {
+  const e = m.extra;
+  if (!e) return sql``;
+  const parts = [];
+  for (const [key, def] of Object.entries(EXTRA_COLUMNS) as Array<[keyof typeof EXTRA_COLUMNS, { column: string; cast?: "date" }]>) {
+    const v = e[key];
+    if (v === undefined || v === null || v === "") continue;
+    parts.push(def.cast === "date"
+      ? sql`${sql.raw(def.column)} = COALESCE(${sql.raw(def.column)}, ${v}::date),`
+      : sql`${sql.raw(def.column)} = COALESCE(NULLIF(${sql.raw(def.column)}, ''), ${v}),`);
+  }
+  if (e.bankAccounts?.length) {
+    parts.push(sql`bank_accounts = CASE WHEN jsonb_array_length(COALESCE(bank_accounts, '[]'::jsonb)) = 0 THEN ${JSON.stringify(e.bankAccounts)}::jsonb ELSE bank_accounts END,`);
+  }
+  if (e.kycStatus) parts.push(sql`kyc_status = CASE WHEN kyc_status = 'pending' THEN ${e.kycStatus} ELSE kyc_status END,`);
+  return parts.length ? sql.join(parts, sql` `) : sql``;
 }
 
 type HeadRow = {

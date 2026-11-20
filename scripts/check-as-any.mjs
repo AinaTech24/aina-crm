@@ -34,7 +34,7 @@ import { join } from "node:path";
  * are debt: lower this as they are replaced with real types, starting with
  * daily-ops-scanner.ts (72) and investors/[id]/page.tsx (61).
  */
-const BASELINE = 3429;
+const BASELINE = 3426;
 
 function* walk(dir) {
   for (const e of readdirSync(dir)) {

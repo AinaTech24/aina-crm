@@ -16,7 +16,7 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { customFieldDefs } from "@/db/schema";
-import { CONTACT_CUSTOM_FIELDS, PICKLISTS, picklistOption, picklistOptions } from "./contacts";
+import { CONTACT_CUSTOM_FIELDS, PICKLISTS, picklistOption, picklistOptions, type ZohoCustomField } from "./contacts";
 
 export type PicklistResult = { label: string; options: string[]; addedFromFile: string[]; convertedFromText: boolean };
 
@@ -33,7 +33,9 @@ export async function ensureZohoClientFields(
   tenantId: string,
   userId: string,
   /** Picklist values in the file being imported, by custom-field key. */
-  fileValues: Record<string, string[]> = {}
+  fileValues: Record<string, string[]> = {},
+  /** The fields to create — a firm's own Zoho mapping passes its list (io/contacts.ts). */
+  fieldList: readonly ZohoCustomField[] = CONTACT_CUSTOM_FIELDS
 ): Promise<FieldsResult> {
   const defs = (await tx.execute(sql`
     SELECT id, key, type, options, sort_order FROM custom_field_defs
@@ -79,7 +81,7 @@ export async function ensureZohoClientFields(
   }
 
   let sortOrder = defs.reduce((mx, d) => Math.max(mx, Number(d.sort_order) || 0), 0);
-  for (const f of CONTACT_CUSTOM_FIELDS) {
+  for (const f of fieldList) {
     if (byKey.has(f.key)) continue;
     await tx.insert(customFieldDefs).values({
       tenantId,

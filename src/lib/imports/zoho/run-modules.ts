@@ -28,7 +28,7 @@ import { upsertZohoBrokerageDays } from "@/lib/equity/brokerage-days";
 import { cell as zCell, isoDate as zIsoDate, zohoId as zId } from "./values";
 import {
   DEFAULT_RISK_BANDS, MODULE_LABEL, brokerageByMonth, categoryFromScore, mapCall, mapLead, mapLineType, mapRiskProfile, mapSipTracking, mapTask, num,
-  type RiskBand, type ZohoModule, type ZohoRecord,
+  type MappedTask, type RiskBand, type ZohoModule, type ZohoRecord,
 } from "./modules";
 
 export type ModuleImportResult = {
@@ -58,7 +58,19 @@ export async function importZohoModule(
   actor: ImportActor,
   module: ZohoModule,
   records: ZohoRecord[],
-  opts: { dryRun: boolean; unmatchedToMe: boolean; now?: Date; tx?: Tx }
+  opts: {
+    dryRun: boolean;
+    unmatchedToMe: boolean;
+    now?: Date;
+    tx?: Tx;
+    /**
+     * Query_Tracker only — a firm's own task mapping (Investment Options:
+     * io/modules.ts). With it, an unfinished task is judged by its DUE date
+     * (overdue by more than 30 days → closed) and one still ahead keeps its
+     * normal reminders, since Zoho pre-creates recurring reminders for years.
+     */
+    mapTask?: (r: ZohoRecord) => MappedTask;
+  }
 ): Promise<ModuleImportResult> {
   const now = opts.now ?? new Date();
 
@@ -257,7 +269,8 @@ export async function importZohoModule(
     }
 
     if (module === "Query_Tracker") {
-      const mapped = records.map(mapTask);
+      const mapped = records.map(opts.mapTask ?? mapTask);
+      const byDue = !!opts.mapTask;
       for (const m of mapped) {
         noteOwner(m.owner);
         noteOwner(m.assignee);
@@ -277,7 +290,11 @@ export async function importZohoModule(
         const created = m.created ?? m.start ?? now;
         // Unfinished work older than 30 days comes in closed (the firm's choice):
         // years-old "open" Zoho tasks would otherwise sit on every dashboard as overdue.
-        const stale = (m.status === "open" || m.status === "in_progress") && now.getTime() - created.getTime() > 30 * DAY;
+        const due = m.end ?? m.start ?? created;
+        const unfinished = m.status === "open" || m.status === "in_progress";
+        const stale = unfinished && now.getTime() - (byDue ? due : created).getTime() > 30 * DAY;
+        // A reminder still ahead (or due in the last 30 days) behaves like every other task.
+        const live = byDue && unfinished && !stale;
         const status = stale ? "cancelled" : m.status;
         const finished = status === "completed" || status === "cancelled";
         const remarks = stale ? [`Closed at the move from Zoho — it was "${m.statusText || "no status"}" there`, m.remarks].filter(Boolean).join(" · ") : m.remarks;
@@ -303,8 +320,8 @@ export async function importZohoModule(
           startedAt: m.status === "open" ? null : m.start ?? created,
           completedAt: finished ? m.end ?? m.start ?? created : null,
           remindAt: null,
-          reminderFiredAt: finished ? null : now,
-          overdueNotifiedAt: finished ? null : now,
+          reminderFiredAt: finished || (live && due.getTime() > now.getTime()) ? null : now,
+          overdueNotifiedAt: finished || (live && due.getTime() > now.getTime()) ? null : now,
           meta: {
             ...m.meta,
             ...(m.clientZohoId && !client ? { zohoClient: m.clientName } : {}),
