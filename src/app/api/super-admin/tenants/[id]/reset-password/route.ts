@@ -1,24 +1,31 @@
 import { handleApiError } from "@/lib/api/error-handler";
 /**
- * POST /api/super-admin/tenants/[id]/reset-password
+ * POST /api/super-admin/tenants/[id]/reset-password   body: { userId? }
  *
- * Platform-admin action: send a password-reset link to the tenant's owner (or,
- * if there's no owner, the oldest active user with an email). Mirrors the
+ * Platform-admin action: send a password-reset link to one of the firm's team
+ * members (`userId`, from the firm page's Team list), or — with no userId — to
+ * the firm's owner (else the oldest active user with an email). Mirrors the
  * self-service /api/auth/forgot flow — a one-time hashed token + emailed link,
- * valid for 1 hour — but initiated by AINA support. The admin never sees or
- * sets the password; the user picks a new one via the link.
+ * valid for 1 hour — but initiated by AINA support. The admin never sees the
+ * link or the password; the user picks a new one via the link, and setting it
+ * signs them out everywhere (/api/auth/reset). Audited.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { v4 as uuid } from "uuid";
 import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
+import { recordAudit } from "@/lib/audit";
+import { PLATFORM_TENANT_ID } from "@/lib/platform";
 import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
 
 export const dynamic = "force-dynamic";
+
+const Body = z.object({ userId: z.string().uuid().optional() });
 
 function maskEmail(email: string): string {
   const [user, domain] = email.split("@");
@@ -32,18 +39,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     requirePlatform(session.roles, "platform.tenant.edit");
+    const parse = Body.safeParse(await req.json().catch(() => ({})));
+    if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
+    const targetId = parse.data.userId ?? null;
 
     const built = await withPlatformAdmin(session.userId, async (tx) => {
-      // Prefer the owner; fall back to the oldest active user with an email.
-      const userRows = await tx.execute(sql`
-        SELECT id, email, name
-        FROM users
-        WHERE tenant_id = ${tenantId}::uuid AND status = 'active' AND email IS NOT NULL AND email <> ''
-        ORDER BY (roles::text ILIKE '%owner%') DESC, created_at ASC
-        LIMIT 1
-      `);
-      const user = (userRows.rows[0] as any) ?? null;
-      if (!user) return null;
+      // A named team member of THIS firm; else the owner, else the oldest active user with an email.
+      const userRows = targetId
+        ? await tx.execute(sql`
+            SELECT id, email, name, status
+            FROM users
+            WHERE tenant_id = ${tenantId}::uuid AND id = ${targetId}::uuid AND deleted_at IS NULL
+          `)
+        : await tx.execute(sql`
+            SELECT id, email, name, status
+            FROM users
+            WHERE tenant_id = ${tenantId}::uuid AND status = 'active' AND email IS NOT NULL AND email <> ''
+            ORDER BY (roles::text ILIKE '%owner%') DESC, created_at ASC
+            LIMIT 1
+          `);
+      const user = (userRows.rows[0] as { id: string; email: string | null; name: string | null; status: string } | undefined) ?? null;
+      if (!user) return { error: targetId ? "That team member is not in this firm." : "No active user with an email to reset for this tenant.", status: 404 } as const;
+      if (!user.email) return { error: "This team member has no email address to send the link to.", status: 409 } as const;
+      if (user.status !== "active") {
+        return {
+          error:
+            user.status === "invited"
+              ? "This team member has not accepted their invite yet — resend the invite from the firm's Team page instead."
+              : `This team member's login is ${user.status}, so a reset link would not let them in.`,
+          status: 409,
+        } as const;
+      }
 
       const token = crypto.randomBytes(32).toString("base64url");
       const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
@@ -58,14 +84,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 ${req.headers.get("user-agent") ?? ""},
                 now(), now())
       `);
+      await recordAudit(tx, {
+        tenantId: PLATFORM_TENANT_ID,
+        actorUserId: session.userId,
+        action: "tenant.user_password_reset_sent",
+        entityType: "user",
+        entityId: user.id,
+        after: { tenantId, email: maskEmail(email) },
+      });
 
       const base = process.env.APP_URL ?? "http://localhost:3000";
-      return { resetUrl: `${base}/reset-password?token=${token}`, email, name: (user.name as string) ?? null };
+      return { resetUrl: `${base}/reset-password?token=${token}`, email, name: user.name ?? null };
     });
 
-    if (!built) {
-      return NextResponse.json({ error: "No active user with an email to reset for this tenant." }, { status: 404 });
-    }
+    if ("error" in built) return NextResponse.json({ error: built.error }, { status: built.status });
 
     const res = await sendSystemEmail({
       tenantId,
@@ -92,7 +124,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // Dev convenience only — never leak the live link in production.
       ...(process.env.NODE_ENV !== "production" ? { devResetUrl: built.resetUrl } : {}),
     });
-  } catch (err: any) {
+  } catch (err) {
     return handleApiError(err);
   }
 }

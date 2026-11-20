@@ -8,6 +8,7 @@ import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative, formatINR } from "@/lib/utils";
 import { TenantActions } from "@/components/super-admin/TenantActions";
 import { TenantAdminPanel } from "@/components/super-admin/TenantAdminPanel";
+import { TenantTeamPanel, type TeamMember } from "@/components/super-admin/TenantTeamPanel";
 import { TenantAccessControl } from "@/components/super-admin/TenantAccessControl";
 import { TenantDataScope } from "@/components/super-admin/TenantDataScope";
 import { tenantAccessibleNavKeys } from "@/config/nav-access";
@@ -37,6 +38,14 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
       SELECT id, name, email FROM users WHERE tenant_id = ${id}::uuid AND 'owner' = ANY(roles) AND status <> 'inactive'
       ORDER BY created_at ASC LIMIT 1
     `)).rows[0] as { id: string; name: string; email: string } | undefined;
+    // Every login the firm has — the Team panel sends any of them a reset link.
+    const team = (await tx.execute(sql`
+      SELECT id::text, name, email, roles, status, last_login_at
+        FROM users
+       WHERE tenant_id = ${id}::uuid AND deleted_at IS NULL
+         AND NOT (roles && ARRAY['platform_admin', 'platform_support', 'investor']::text[])
+       ORDER BY (status = 'active') DESC, ('owner' = ANY(roles)) DESC, name
+    `)).rows as Array<{ id: string; name: string | null; email: string | null; roles: string[] | null; status: string; last_login_at: Date | string | null }>;
     const allPackages = await tx.select({ key: packages.key, name: packages.name }).from(packages).orderBy(packages.name);
     const events = await tx
       .select()
@@ -57,7 +66,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
            AND created_at >= now() - interval '30 days') AS runs_30d,
         (SELECT COALESCE(SUM(aum::numeric),0) FROM investors WHERE tenant_id = ${id}) AS aum
     `);
-    return { tenant, subscription: sub, package: pkg, owner, allPackages, events, usage: usage.rows[0] as any };
+    return { tenant, subscription: sub, package: pkg, owner, team, allPackages, events, usage: usage.rows[0] as any };
   });
 
   if (!data) notFound();
@@ -183,6 +192,20 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
         packageKey={data.subscription?.packageKey ?? ""}
         billingCycle={data.subscription?.billingCycle ?? "yearly"}
         packages={data.allPackages ?? []}
+      />
+
+      <TenantTeamPanel
+        tenantId={id}
+        members={data.team.map(
+          (u): TeamMember => ({
+            id: u.id,
+            name: u.name ?? "(no name)",
+            email: u.email,
+            roles: u.roles ?? [],
+            status: u.status,
+            lastLoginAt: u.last_login_at ? new Date(u.last_login_at).toISOString() : null,
+          })
+        )}
       />
 
       {data.subscription && (
