@@ -22,6 +22,7 @@ export const SummarySchema = z.object({
   showDetailRows: z.boolean().optional(),
   sort: z.object({ field: z.string(), dir: z.enum(["asc", "desc"]) }).nullable().optional(),
   groupSort: z.enum(["key", "count", "value"]).optional(),
+  growth: z.boolean().optional(),
 });
 
 export const MatrixSchema = z.object({

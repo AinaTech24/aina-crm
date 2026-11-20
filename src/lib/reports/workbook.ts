@@ -34,18 +34,19 @@ export function matrixAoa(m: MatrixResult): Aoa {
 
 /** Flatten a summary report into a grouped AOA: group cols + Records + aggregates. */
 export function summaryAoa(s: SummaryResult): Aoa {
-  const header = [...s.groupLabels, "Records", ...s.aggregateDefs.map((a) => a.label)];
+  const g = !!s.growthLabel;
+  const header = [...s.groupLabels, "Records", ...s.aggregateDefs.map((a) => a.label), ...(g ? [s.growthLabel as string] : [])];
   const out: Aoa = [header];
   const walk = (node: SummaryGroupNode, depth: number) => {
     const row: (string | number)[] = new Array(s.groupLabels.length).fill("");
     row[depth] = node.label;
-    out.push([...row, node.count, ...node.aggregates]);
+    out.push([...row, node.count, ...node.aggregates, ...(g ? [depth === 0 && node.growth != null ? `${node.growth}%` : ""] : [])]);
     for (const c of node.children ?? []) walk(c, depth + 1);
   };
   for (const root of s.tree) walk(root, 0);
   const grandRow: (string | number)[] = new Array(s.groupLabels.length).fill("");
   grandRow[0] = "Grand Total";
-  out.push([...grandRow, s.grand.count, ...s.grand.aggregates]);
+  out.push([...grandRow, s.grand.count, ...s.grand.aggregates, ...(g ? [""] : [])]);
   return out;
 }
 

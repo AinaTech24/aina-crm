@@ -10,8 +10,9 @@
  */
 
 import { Fragment } from "react";
+import { formatGrowth } from "@/lib/reports/growth";
 
-type Node = { key: string; count: number; aggregates: number[]; children?: Node[]; rows?: Record<string, unknown>[] };
+type Node = { key: string; label?: string; count: number; aggregates: number[]; children?: Node[]; rows?: Record<string, unknown>[]; growth?: number | null };
 export type GroupedSummary = {
   groupLabels: string[];
   aggregateDefs: { key: string; label: string; fn: string; type: string }[];
@@ -19,6 +20,8 @@ export type GroupedSummary = {
   showDetailRows: boolean;
   tree: Node[];
   grand: { count: number; aggregates: number[] };
+  /** "MoM % · Net" when the report asks for growth (top-level date groups only). */
+  growthLabel?: string | null;
 };
 
 const num = (v: number) => Number(v ?? 0).toLocaleString("en-IN");
@@ -45,7 +48,13 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
   const onlyCount = r.aggregateDefs.length === 1 && r.aggregateDefs[0].fn === "count";
   const numCols = onlyCount ? [{ key: "count", label: "Count" }] : [{ key: "records", label: "Records" }, ...r.aggregateDefs.map((a) => ({ key: a.key, label: a.label }))];
   const values = (n: Node) => (onlyCount ? [n.count] : [n.count, ...n.aggregates]);
-  const span = levels + numCols.length;
+  const growth = !!r.growthLabel;
+  const span = levels + numCols.length + (growth ? 1 : 0);
+  // Growth sits on a top-level group's own row: the leaf row when there is one level, its subtotal row otherwise.
+  const growthCell = (n: Node | null, bold = false) =>
+    growth ? (
+      <td className={`px-4 py-2 text-right tabular-nums ${bold ? "font-semibold" : ""} ${n?.growth != null && n.growth < 0 ? "text-destructive" : ""}`}>{n ? formatGrowth(n.growth) : ""}</td>
+    ) : null;
 
   // Flatten: a row per leaf; each group's name only on its first leaf row.
   const lines: Line[] = [];
@@ -71,16 +80,18 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
             {numCols.map((c) => (
               <th key={c.key} className="text-right px-4 py-2.5 font-semibold w-32">{c.label}</th>
             ))}
+            {growth && <th className="text-right px-4 py-2.5 font-semibold w-32">{r.growthLabel}</th>}
           </tr>
         </thead>
         <tbody>
           {lines.map((ln, i) =>
             ln.kind === "subtotal" ? (
               <tr key={`s${i}`} className="border-b bg-secondary/40">
-                <td colSpan={levels} className="px-4 py-2 text-xs text-muted-foreground">Total · {ln.node.key}</td>
+                <td colSpan={levels} className="px-4 py-2 text-xs text-muted-foreground">Total · {ln.node.label ?? ln.node.key}</td>
                 {values(ln.node).map((v, j) => (
                   <td key={j} className="px-4 py-2 text-right tabular-nums font-semibold">{num(v)}</td>
                 ))}
+                {growthCell(ln.node, true)}
               </tr>
             ) : (
               <Fragment key={`l${i}`}>
@@ -91,6 +102,7 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
                   {values(ln.node).map((v, j) => (
                     <td key={j} className="px-4 py-2 text-right tabular-nums text-primary">{num(v)}</td>
                   ))}
+                  {growthCell(levels === 1 ? ln.node : null)}
                 </tr>
                 {r.showDetailRows && ln.node.rows?.length ? (
                   <tr className="border-b">
@@ -124,6 +136,7 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
             {values({ ...r.grand, key: "", children: [] } as Node).map((v, j) => (
               <td key={j} className="px-4 py-2.5 text-right tabular-nums">{num(v)}</td>
             ))}
+            {growthCell(null)}
           </tr>
         </tbody>
       </table>

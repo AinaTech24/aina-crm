@@ -24,6 +24,7 @@ import { getCatalog, getField, type FieldType } from "@/lib/filter/catalog";
 import { compileToSql, bindCompiled } from "@/lib/filter/compiler";
 import { sql as dsql, type SQL } from "drizzle-orm";
 import { groupField } from "./grouping";
+import { growthByKey } from "./growth";
 import { findCategory, categorySql, isCategoryKey, type CategoryColumn } from "./categories";
 
 export type ReportSubject = "investor" | "lead" | "task" | "user" | "transaction" | "sip" | "insurance" | "goal" | "service_request" | "claim" | "review_meeting" | "business_line";
@@ -132,6 +133,8 @@ export interface SummaryDef {
   sort?: { field: string; dir: "asc" | "desc" } | null;
   /** Group order at every level: by value (default), record count, or the first total — largest first. */
   groupSort?: "key" | "count" | "value";
+  /** Grouped by a date first: add the first total's growth on the previous period (We Care's MoM %, 2026-11-20). */
+  growth?: boolean;
 }
 export interface SummaryGroupNode {
   key: string;
@@ -143,6 +146,8 @@ export interface SummaryGroupNode {
   children?: SummaryGroupNode[];
   /** Detail rows (leaf level only, when showDetailRows). */
   rows?: Record<string, unknown>[];
+  /** Top level only, when summary.growth: % change of the first total on the previous period; null = not meaningful. */
+  growth?: number | null;
 }
 export interface SummaryResult {
   kind: "summary";
@@ -156,6 +161,8 @@ export interface SummaryResult {
   linkBase: string | null;
   tree: SummaryGroupNode[];
   grand: { count: number; aggregates: number[] };
+  /** Set when the report asks for growth: the column's heading ("MoM % · Net"). */
+  growthLabel?: string | null;
 }
 
 /** One group value behind a clicked number: `field` is a group key, `value` the raw group value ("—" = blank). */
@@ -491,6 +498,14 @@ export async function runSummary(
     }
   }
 
+  // Growth on the previous period, from the first total of each top-level date bucket.
+  const grain = groupDefs[0]?.grain ?? null;
+  const wantGrowth = !!opts.summary.growth && (grain === "month" || grain === "quarter" || grain === "fy" || grain === "year") && aggDefs.length > 0;
+  if (wantGrowth) {
+    const g = growthByKey(grain, roots);
+    for (const r of roots) r.growth = g[r.key] ?? null;
+  }
+
   // "Top RMs by AUM": order every level by count or the first total.
   const gs = opts.summary.groupSort;
   if (gs === "count" || gs === "value") {
@@ -539,5 +554,6 @@ export async function runSummary(
     linkBase: page?.path ?? null,
     tree: roots,
     grand,
+    growthLabel: wantGrowth ? `${grain === "month" ? "MoM" : grain === "quarter" ? "QoQ" : "YoY"} % · ${aggDefs[0].label}` : null,
   };
 }
