@@ -191,7 +191,9 @@ export async function GET(req: NextRequest) {
         if (typeFilter.length) conds.push(inArray(tasks.type, typeFilter as any));
         if (deptFilter.length) conds.push(inArray(tasks.department, deptFilter as any));
         if (assigneeFilter.length) conds.push(inArray(tasks.assigneeId, assigneeFilter as any));
-        if (due === "today") conds.push(sql`due_at::date = current_date`);
+        // The India day — the database session runs in UTC, so due_at::date =
+        // current_date was off between 00:00 and 05:30 IST.
+        if (due === "today") conds.push(sql`(due_at AT TIME ZONE 'Asia/Kolkata')::date = (now() AT TIME ZONE 'Asia/Kolkata')::date`);
         else if (due === "overdue") conds.push(sql`due_at < now()`);
         else if (due === "sla_risk") conds.push(sql`sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours'`);
         if (isDate(createdFrom)) conds.push(sql`${tasks.createdAt} >= ${createdFrom}::date`);

@@ -128,12 +128,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // Other types (email, whatsapp, note) just refresh the lastContactAt
       // without moving the funnel.
       if (parse.data.activityType === "call") {
+        // forwardOnly: a call logged on a lead already at Meeting Done or
+        // Proposal Sent must not move it back to Contacted.
         await autoAdvance(tx, session.tenantId, id, "call.logged", {
           remarks: `Auto: call logged on ${formatDate(ts)} — "${parse.data.note.slice(0, 60)}".`,
+          forwardOnly: true,
         });
       } else if (parse.data.activityType === "meeting") {
         await autoAdvance(tx, session.tenantId, id, "meeting.completed", {
           remarks: `Auto: past meeting logged — "${parse.data.note.slice(0, 60)}".`,
+          forwardOnly: true,
         });
       }
 

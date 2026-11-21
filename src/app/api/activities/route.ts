@@ -87,7 +87,8 @@ export async function GET(req: NextRequest) {
         if (subjectId) conds.push(sql`a.subject_id = ${subjectId}::uuid`);
         if (q) conds.push(sql`(a.subject_name ILIKE ${`%${q}%`} OR a.subject ILIKE ${`%${q}%`} OR a.notes ILIKE ${`%${q}%`})`);
         if (from) conds.push(sql`a.occurred_at >= ${from}::timestamptz`);
-        if (to) conds.push(sql`a.occurred_at < (${to}::date + 1)`);
+        // End of the India day (a bare date would be midnight UTC = 05:30 IST).
+        if (to) conds.push(sql`a.occurred_at < ((${to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata')`);
         if (mine || (!session.mobile && !firmWide)) conds.push(sql`a.owner_user_id = ${session.userId}::uuid`);
         // Own entries, or (firm-wide) entries whose client / lead / family is
         // in the viewer's scope (lib/activities/scope.ts).
@@ -112,9 +113,9 @@ export async function GET(req: NextRequest) {
         const statsRes = await tx.execute(sql`
           SELECT
             COUNT(*)::int AS total,
-            COUNT(*) FILTER (WHERE kind = 'call' AND occurred_at::date = current_date)::int AS calls_today,
-            COUNT(*) FILTER (WHERE kind = 'visit' AND occurred_at >= current_date - 6)::int AS visits_week,
-            COUNT(*) FILTER (WHERE next_followup_at IS NOT NULL AND next_followup_at::date <= current_date)::int AS followups_due
+            COUNT(*) FILTER (WHERE kind = 'call' AND (occurred_at AT TIME ZONE 'Asia/Kolkata')::date = (now() AT TIME ZONE 'Asia/Kolkata')::date)::int AS calls_today,
+            COUNT(*) FILTER (WHERE kind = 'visit' AND (occurred_at AT TIME ZONE 'Asia/Kolkata')::date >= (now() AT TIME ZONE 'Asia/Kolkata')::date - 6)::int AS visits_week,
+            COUNT(*) FILTER (WHERE next_followup_at IS NOT NULL AND (next_followup_at AT TIME ZONE 'Asia/Kolkata')::date <= (now() AT TIME ZONE 'Asia/Kolkata')::date)::int AS followups_due
           FROM activities WHERE tenant_id = ${session.tenantId}::uuid${scope} AND ${await activityScopeSql(tx, session, "activities")}
         `);
         return { activities: r.rows as any[], stats: (statsRes.rows[0] ?? {}) as any };
