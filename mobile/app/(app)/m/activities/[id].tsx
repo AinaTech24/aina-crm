@@ -16,7 +16,8 @@ import { StatusPill } from "../../../../src/components/ui/StatusPill";
 import { Skeleton } from "../../../../src/components/ui/Skeleton";
 import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
 import { TextField } from "../../../../src/components/ui/TextField";
-import { Segmented } from "../../../../src/components/ui/Segmented";
+import { SelectField } from "../../../../src/components/ui/SelectField";
+import { ErrorState } from "../../../../src/components/states";
 import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
 import {
   useActivity, useActivityTimeline, useUpdateActivity, useDeleteActivity,
@@ -42,7 +43,7 @@ export default function ActivityDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const aid = String(id);
-  const { data: a, isLoading } = useActivity(aid);
+  const { data: a, isLoading, isError, refetch } = useActivity(aid);
   const update = useUpdateActivity(aid);
   const del = useDeleteActivity();
   const timeline = useActivityTimeline(a?.subject_type, a?.subject_id);
@@ -55,7 +56,10 @@ export default function ActivityDetail() {
     return (
       <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
         <ScreenHeader title="Activity" />
-        <View style={{ padding: spacing.lg }}><Skeleton width="100%" height={120} /><Skeleton width="100%" height={80} style={{ marginTop: spacing.md }} /></View>
+        {/* A deleted / out-of-scope entry (404) used to leave the skeleton up for good. */}
+        {isError || !isLoading ? <ErrorState message="This activity could not be loaded." onRetry={() => refetch()} /> : (
+          <View style={{ padding: spacing.lg }}><Skeleton width="100%" height={120} /><Skeleton width="100%" height={80} style={{ marginTop: spacing.md }} /></View>
+        )}
       </View>
     );
   }
@@ -70,12 +74,17 @@ export default function ActivityDetail() {
     else if (a.subject_type === "lead" && a.subject_id) router.push(`/m/leads/${a.subject_id}` as any);
   };
 
+  // expectedNotes: the server refuses (409) when the notes changed since this
+  // screen read them (an after-call summary saved meanwhile), instead of this
+  // edit silently writing over them.
   const saveEdit = () => {
     update.mutate(
-      { notes: notesVal, status: outcomeVal || null },
-      { onSuccess: (saved) => { if (saved !== null) toast.success("Activity updated"); setEditOpen(false); } }
+      { notes: notesVal, status: outcomeVal || null, expectedNotes: a.notes ?? null },
+      { onSuccess: (saved) => { if (saved !== null) toast.success("Activity updated"); closeEdit(); } }
     );
   };
+  /** Closing without saving drops the unsaved edits (they showed as if saved). */
+  const closeEdit = () => { setEditOpen(false); setNotes(null); setOutcome(null); };
   const remove = () => {
     confirmDelete({ title: "Delete activity?", message: "Removes this log entry.", confirmLabel: "Delete" }, () => {
       del.mutate(aid, { onSuccess: () => { toast.success("Activity deleted"); router.back(); } });
@@ -167,14 +176,16 @@ export default function ActivityDetail() {
       </Screen>
 
       {/* Edit sheet */}
-      <BottomSheet visible={editOpen} onClose={() => setEditOpen(false)} title="Edit activity">
-        <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>Outcome</Text>
-        <Segmented
-          options={ACTIVITY_OUTCOMES.slice(0, 4).map((o) => ({ key: o.value, label: o.label }))}
-          value={outcomeVal || "completed"}
+      <BottomSheet visible={editOpen} onClose={closeEdit} title="Edit activity">
+        {/* Every outcome, and "Not set" — it used to show "Completed" picked for
+            an entry with none (and then saved none), and could not show
+            Left voicemail / No-show / Failed at all. */}
+        <SelectField
+          label="Outcome"
+          value={outcomeVal}
+          options={[{ value: "", label: "— Not set —" }, ...ACTIVITY_OUTCOMES.map((o) => ({ value: o.value, label: o.label }))]}
           onChange={(v) => setOutcome(v)}
         />
-        <View style={{ height: spacing.lg }} />
         <TextField label="Discussion notes" value={notesVal} onChangeText={setNotes} multiline placeholder="What was discussed…" />
         <Pressable style={[styles.actBtn, { backgroundColor: palette.brand }]} onPress={saveEdit} disabled={update.isPending}>
           <Text style={styles.actTxt}>{update.isPending ? "Saving…" : "Save"}</Text>

@@ -112,7 +112,11 @@ export function SchemePicker({ amc: initialAmc, onClose, onPick }: { amc?: strin
   const [amc, setAmc] = React.useState<string | null>(initialAmc ?? null);
   const amcs = useAmcs();
   const res = useSchemeSearch(q, amc);
-  const rows = res.data?.schemes ?? [];
+  const searching = q.trim().length >= 2 || !!amc;
+  // Regular plans only — the route filters with plan=regular; a row the master
+  // marks Direct is still never offered. And a cleared search shows nothing,
+  // not the last search's rows (placeholderData keeps them).
+  const rows = searching ? (res.data?.schemes ?? []).filter((s) => s.plan !== "direct") : [];
   const empty = res.data?.masterEmpty || amcs.data?.masterEmpty;
   return (
     <BottomSheet visible onClose={onClose} title="Pick a scheme">

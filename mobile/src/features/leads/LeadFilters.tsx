@@ -14,7 +14,7 @@ import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
 import { DateField } from "../../components/form/DateField";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
-import { LEAD_STAGES } from "./api";
+import { LEAD_STAGES, LEAD_SOURCE_OPTIONS } from "./api";
 
 export interface UiLeadFilters {
   stage: string[];
@@ -30,12 +30,8 @@ export const EMPTY_LEAD_FILTERS: UiLeadFilters = {
   stage: [], source: [], owner: [], quick: [], created_from: "", created_to: "", sort: "score", dir: "desc",
 };
 
-const SOURCES = [
-  { v: "referral", l: "Client Referral" }, { v: "website", l: "Website" },
-  { v: "social_media", l: "Social Media" }, { v: "webinar", l: "Webinar" }, { v: "seminar", l: "Seminar" },
-  { v: "walk_in", l: "Walk-in" }, { v: "google", l: "Google" }, { v: "cold_call", l: "Cold Call" },
-  { v: "manual", l: "Manual" }, { v: "other", l: "Other" },
-];
+/** The web's source list and labels (one list for the form, the filter and the card). */
+const SOURCES = LEAD_SOURCE_OPTIONS.map((o) => ({ v: o.value, l: o.label }));
 const QUICK = [
   { v: "mine", l: "Mine" }, { v: "unassigned", l: "Unassigned" }, { v: "hot", l: "Hot" }, { v: "stuck", l: "Stuck 14d+" },
   { v: "followup_today", l: "Follow-up today" }, { v: "followup_overdue", l: "Overdue" }, { v: "new_week", l: "New this week" },

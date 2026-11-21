@@ -22,6 +22,13 @@
 
 import type { FormSpec } from "./types";
 import { LeadDuplicateNotice } from "../leads/LeadDuplicateNotice";
+import { LEAD_SOURCE_OPTIONS } from "../leads/api";
+
+/** The API's email check (zod .email()) — catch it here instead of a bare "invalid body". */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** A follow-up DAY becomes 10:00 IST that day (the CRM's follow-up time).
+ *  `new Date("2026-11-21")` is UTC midnight — the task fell due at 05:30. */
+const followUpAtIst = (day: string) => new Date(`${String(day).slice(0, 10)}T10:00:00+05:30`).toISOString();
 
 export const leadForm: FormSpec = {
   title: "New lead",
@@ -63,9 +70,17 @@ export const leadForm: FormSpec = {
 
   validate: (v) => {
     const e: Record<string, string> = {};
+    // The API needs 2–120 characters (create and edit); a 1-letter name was a 400.
     if (!v.name?.trim()) e.name = "Name is required";
+    else if (v.name.trim().length < 2) e.name = "Enter at least 2 characters";
+    if (v.email?.trim() && !EMAIL_RE.test(v.email.trim())) e.email = "Enter a valid email address";
+    if (v._edit !== "1" && v.altEmail?.trim() && !EMAIL_RE.test(v.altEmail.trim())) e.altEmail = "Enter a valid email address";
+    if (v._edit !== "1" && String(v.expectedBusinessAmount ?? "").trim() && !(Number(v.expectedBusinessAmount) >= 0)) e.expectedBusinessAmount = "Enter an amount in rupees";
     // Web requires a linked referrer when source is referral / existing_client.
+    // Only on create: the edit form has no referrer field, so an imported
+    // referral lead without one could never be saved.
     if (
+      v._edit !== "1" &&
       (v.source === "referral" || v.source === "existing_client") &&
       !v.referredByInvestorId
     ) {
@@ -93,18 +108,7 @@ export const leadForm: FormSpec = {
           key: "source",
           label: "Source",
           type: "select",
-          options: [
-            { value: "referral", label: "Client Referral" },
-            { value: "website", label: "Website" },
-            { value: "social_media", label: "Social Media" },
-            { value: "webinar", label: "Webinar" },
-            { value: "seminar", label: "Seminar" },
-            { value: "walk_in", label: "Walk-in" },
-            { value: "google", label: "Google" },
-            { value: "cold_call", label: "Cold Call" },
-            { value: "other", label: "Other" },
-            { value: "manual", label: "Manual entry" },
-          ],
+          options: LEAD_SOURCE_OPTIONS,
         },
         // An existing client who wants more is an opportunity, not a lead, so the
         // CRM no longer offers "Existing Client Reference"; "Other" asks where from.
@@ -119,7 +123,7 @@ export const leadForm: FormSpec = {
           searchLabel: (r) => r.name,
           searchSublabel: (r) => [r.pan_display, r.phone].filter(Boolean).join(" · "),
           placeholder: "Type the existing client's name, PAN, or mobile…",
-          help: "Required for Client Referral / Existing Client Reference. Links the referring client so referral credit is tracked.",
+          help: "Required for Client Referral. Links the referring client so referral credit is tracked.",
           visibleIf: (v) => v._edit !== "1" && ["referral", "existing_client"].includes(v.source),
         },
         {
@@ -240,29 +244,39 @@ export const leadForm: FormSpec = {
   buildBody: (form) => {
     // Edit mode → PATCH body (mirrors the web LeadEditPanel's editable fields).
     if (form._edit === "1") {
-      const u = (v: string) => (v?.trim() ? v.trim() : undefined);
-      return {
-        name: form.name,
-        email: form.email || "",
-        phone: u(form.phone),
-        pan: u(form.pan),
-        city: u(form.city),
-        pincode: u(form.pincode),
-        source: form.source,
-        sourceCampaign: u(form.sourceCampaign),
-        intendedAmount: form.intendedAmount ? String(form.intendedAmount) : undefined,
-        nextFollowUpAt: form.nextFollowUpAt ? new Date(form.nextFollowUpAt + "T09:00:00").toISOString() : undefined,
-        followUpNotes: u(form.followUpNotes),
-        lostReason: u(form.lostReason),
-        notes: u(form.notes),
+      // A field the record HAD and the user cleared is sent as "" (the API
+      // nulls it); one that was empty all along is left out, so an edit never
+      // turns NULLs into empty strings.
+      const had: Record<string, boolean> = form._had ?? {};
+      const u = (key: string) => {
+        const v = String(form[key] ?? "").trim();
+        return v ? v : had[key] ? "" : undefined;
       };
+      const body: Record<string, unknown> = {
+        name: form.name.trim(),
+        email: (form.email || "").trim(),
+        phone: u("phone"),
+        pan: u("pan"),
+        city: u("city"),
+        pincode: u("pincode"),
+        source: form.source,
+        sourceCampaign: u("sourceCampaign"),
+        intendedAmount: u("intendedAmount"),
+        nextFollowUpAt: form.nextFollowUpAt ? followUpAtIst(form.nextFollowUpAt) : had.nextFollowUpAt ? "" : undefined,
+        followUpNotes: u("followUpNotes"),
+        lostReason: u("lostReason"),
+        notes: u("notes"),
+      };
+      // "Assign RM" shows in edit too; it used to be dropped from the PATCH.
+      if (form.ownerId) body.ownerId = form.ownerId;
+      return body;
     }
     const products = Array.isArray(form.interestProducts) ? form.interestProducts : [];
     const current = Array.isArray(form.currentInvestments) ? form.currentInvestments : [];
     const payload: any = {
-      name: form.name,
+      name: form.name.trim(),
       avatarUrl: form.avatarUrl || undefined,
-      email: form.email || undefined,
+      email: form.email?.trim() || undefined,
       phone: form.phone || undefined,
       city: form.city || undefined,
       source: form.source,
@@ -272,16 +286,14 @@ export const leadForm: FormSpec = {
       aumPotential: form.aumPotential || undefined,
       occupation: form.occupation || undefined,
       altPhone: form.altPhone || undefined,
-      altEmail: form.altEmail || undefined,
+      altEmail: form.altEmail?.trim() || undefined,
       interestProducts: products.length ? products : undefined,
       currentInvestments: current.length ? current : undefined,
       expectedBusinessAmount: form.expectedBusinessAmount
         ? Number(form.expectedBusinessAmount)
         : undefined,
-      // datetime-local is local + tz-naive; send a proper ISO instant.
-      followUpDate: form.followUpDate
-        ? new Date(form.followUpDate).toISOString()
-        : undefined,
+      // The day picked, at 10:00 IST (the web sends its datetime-local instant).
+      followUpDate: form.followUpDate ? followUpAtIst(form.followUpDate) : undefined,
     };
     if (form.referredByInvestorId) {
       payload.referredByInvestorId = form.referredByInvestorId;
@@ -300,9 +312,20 @@ export const leadForm: FormSpec = {
   editTitle: "Edit lead",
   // GET /api/leads/[id] returns the lead object directly (no envelope).
   editInitial: (rec) => {
-    const dstr = (v: any) => (v ? String(v).slice(0, 10) : "");
+    // The IST calendar day of a stored instant.
+    const dstr = (v: any) => {
+      if (!v) return "";
+      const t = new Date(v).getTime();
+      return Number.isFinite(t) ? new Date(t + 5.5 * 3600e3).toISOString().slice(0, 10) : String(v).slice(0, 10);
+    };
+    const has = (v: unknown) => v != null && String(v).trim() !== "";
     return {
       _edit: "1",
+      _had: {
+        phone: has(rec.phone), pan: has(rec.pan), city: has(rec.city), pincode: has(rec.pincode),
+        sourceCampaign: has(rec.sourceCampaign), intendedAmount: has(rec.intendedAmount), nextFollowUpAt: has(rec.nextFollowUpAt),
+        followUpNotes: has(rec.followUpNotes), lostReason: has(rec.lostReason), notes: has(rec.notes),
+      },
       name: rec.name ?? "",
       email: rec.email ?? "",
       phone: rec.phone ?? "",

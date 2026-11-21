@@ -9,11 +9,12 @@
  *    reached from that proposal's versions, never counted twice.
  *  - Each row opens the proposal; the PDF button downloads the document the
  *    client receives.
+ *  - ?leadId= (a lead journey's "Open proposals") lists that lead's only.
  */
 
 import React from "react";
 import { View, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { FlashList } from "@shopify/flash-list";
 import { Feather } from "@expo/vector-icons";
 import { Card } from "../../../../src/components/ui/Card";
@@ -77,6 +78,8 @@ function validTill(p: Proposal): string {
 
 export default function ProposalsList() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ leadId?: string }>();
+  const [leadId, setLeadId] = React.useState<string | null>(typeof params.leadId === "string" && params.leadId ? params.leadId : null);
   const { data, isLoading, isError, isRefetching, refetch } = useProposals();
   const { data: me } = useMe();
   const team = useTeam();
@@ -95,9 +98,19 @@ export default function ProposalsList() {
 
   const term = q.trim().toLowerCase();
   const current = (data ?? []).filter((p) => p.status !== "superseded")
+    .filter((p) => !leadId || p.leadId === leadId)
     .filter((p) => !term || [p.proposalNumber, p.title, p.recipientName].some((s) => String(s ?? "").toLowerCase().includes(term)));
   const counts = Object.fromEntries(TABS.map((t) => [t.key, current.filter(t.match).length])) as Record<string, number>;
   const active = TABS.find((t) => t.key === tab)!;
+  const leadName = leadId ? current.find((p) => p.recipientName)?.recipientName ?? "this lead" : null;
+  // One lead's proposals have usually gone out: open on the first tab holding any.
+  const tabPicked = React.useRef(false);
+  React.useEffect(() => {
+    if (!leadId || tabPicked.current || !data) return;
+    tabPicked.current = true;
+    if (!counts[tab]) { const first = TABS.find((t) => counts[t.key] > 0); if (first) setTab(first.key); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId, data]);
   const rows = current.filter(active.match).sort((a, b) =>
     sort === "created_asc" ? +new Date(a.createdAt) - +new Date(b.createdAt)
       : sort === "invest_desc" ? num(b.totalInvestment) - num(a.totalInvestment)
@@ -139,6 +152,12 @@ export default function ProposalsList() {
           </Pressable>
         ) : null}
       </View>
+      {leadId ? (
+        <Pressable onPress={() => setLeadId(null)} style={[styles.tab, { alignSelf: "flex-start" }]} accessibilityRole="button" accessibilityLabel="Show every proposal">
+          <Text variant="label" style={{ color: palette.ink70, fontWeight: fontWeight.semibold }}>For {leadName}</Text>
+          <Feather name="x" size={14} color={palette.muted} />
+        </Pressable>
+      ) : null}
       {view === "list" ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
           {TABS.map((t) => {

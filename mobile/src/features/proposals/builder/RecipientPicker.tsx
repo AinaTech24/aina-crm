@@ -13,6 +13,7 @@ import { SearchBar } from "../../../components/ui/SearchBar";
 import { useSearch } from "../../search/api";
 import { useFamilySearch, useFamilyMembers, type RecipientType } from "../api";
 import { proposalStyles } from "../ui";
+import { stageDisplay, leadSourceLabel } from "../../leads/api";
 import { initials, titleCase } from "../../../lib/format";
 import { spacing, palette, radius, fontWeight } from "../../../theme/tokens";
 
@@ -77,7 +78,7 @@ export function RecipientPicker({ value, onChange, familyMemberId, onFamilyMembe
               <ResultRow key={i.id} name={i.name} sub={[i.pan_display, i.phone].filter(Boolean).join(" · ") || "Client"} onPress={() => pick({ type: "investor", id: i.id, name: i.name })} />
             )) : null}
             {mode === "lead" && q.trim().length >= 2 ? (search.data?.leads ?? []).slice(0, 12).map((l) => (
-              <ResultRow key={l.id} name={l.name} sub={[l.phone ?? "—", l.stage ? titleCase(l.stage) : null, l.source ? titleCase(l.source) : null].filter(Boolean).join(" · ")} onPress={() => pick({ type: "lead", id: l.id, name: l.name })} />
+              <ResultRow key={l.id} name={l.name} sub={[l.phone ?? "—", l.stage ? stageDisplay(l.stage) : null, l.source ? leadSourceLabel(l.source) : null].filter(Boolean).join(" · ")} onPress={() => pick({ type: "lead", id: l.id, name: l.name })} />
             )) : null}
             {mode === "family" ? (families.data ?? []).map((f) => (
               <ResultRow key={f.id} name={f.name} sub={`Head · ${f.head ?? "—"}`} onPress={() => pick({ type: "family", id: f.id, name: f.name })} />

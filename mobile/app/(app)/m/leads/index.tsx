@@ -1,7 +1,10 @@
 /**
- * Leads / Pipeline — web parity. List or Board (kanban by the 10 canonical
- * stages). Search + a full filter/sort sheet (stage / source / owner / quick
- * filters / date + score/recency sort). Tap → detail; long-press → edit / delete.
+ * Leads / Pipeline — web parity. List or Board (kanban by the CRM's seven
+ * columns, LEAD_PIPELINE: New → Contacted → Meeting Scheduled → Meeting Done →
+ * Proposal Sent → Won / Lost). Search + a full filter/sort sheet (stage /
+ * source / owner / quick filters / date + score/recency sort). Tap → detail
+ * (edit / delete are in its ⋯ menu; the row sheet below opens on long-press
+ * once LeadCard passes onLongPress through).
  */
 
 import React, { useState, useEffect, useMemo } from "react";

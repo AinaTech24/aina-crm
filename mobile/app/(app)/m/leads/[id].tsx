@@ -20,11 +20,13 @@ import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
 import { Text } from "../../../../src/components/ui/Text";
 import { Button } from "../../../../src/components/ui/Button";
 import { TextField } from "../../../../src/components/ui/TextField";
+import { SelectField } from "../../../../src/components/ui/SelectField";
 import { Segmented } from "../../../../src/components/ui/Segmented";
 import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
 import { LoadingState, ErrorState } from "../../../../src/components/states";
 import { Section, FieldRow, Empty } from "../../../../src/features/investors/detail/primitives";
-import { useLeadFull, useLogActivity, useConvertLead, useDeleteLead, LEAD_STAGES, stageMeta, stageDisplay, canonicalStage } from "../../../../src/features/leads/api";
+import { useLeadFull, useLogActivity, useConvertLead, useDeleteLead, LEAD_STAGES, stageMeta, stageDisplay, canonicalStage, leadSourceLabel } from "../../../../src/features/leads/api";
+import { LEAD_PHASE, journeyStage } from "../../../../src/features/leads/journey";
 import { JourneyPanel } from "../../../../src/features/leads/JourneyPanel";
 import { RecordNotes } from "../../../../src/features/notes/RecordNotes";
 import { DocumentsSection } from "../../../../src/features/investors/detail/DocumentsSection";
@@ -43,9 +45,10 @@ import { asIcon } from "../../../../src/lib/icons";
 type Tab = "overview" | "details" | "activity";
 const TABS = [{ key: "overview", label: "Overview" }, { key: "details", label: "Details" }, { key: "activity", label: "Activity" }];
 const BAND_TONE: Record<string, string> = { hot: palette.danger, warm: palette.warning, cold: palette.muted };
+/** The web Convert dialog's categories (client types the convert route accepts). */
+const CATEGORIES = [{ value: "individual", label: "Individual" }, { value: "huf", label: "HUF" }, { value: "corporate", label: "Corporate" }, { value: "trust", label: "Trust" }, { value: "nri", label: "NRI" }, { value: "minor", label: "Minor" }];
 const SEGMENTS = [{ key: "Retail", label: "Retail" }, { key: "Affluent", label: "Affluent" }, { key: "HNI", label: "HNI" }, { key: "NRI", label: "NRI" }, { key: "Corporate", label: "Corporate" }];
 const ACTIVITY_TYPES = [{ key: "note", label: "Note" }, { key: "call", label: "Call" }, { key: "meeting", label: "Meeting" }, { key: "email", label: "Email" }, { key: "whatsapp", label: "WhatsApp" }];
-const waNumber = (p?: string | null) => (p ? p.replace(/[^\d]/g, "").replace(/^0+/, "") : "");
 const toneColor = (t?: string) => (t === "success" ? palette.success : t === "warning" ? palette.warning : t === "danger" ? palette.danger : t === "violet" ? palette.violet : t === "info" ? palette.info : palette.muted);
 
 export default function LeadDetail() {
@@ -78,6 +81,8 @@ export default function LeadDetail() {
   const phone = l.phone as string | null;
   const email = l.email as string | null;
   const amount = l.intendedAmount ?? l.expectedBusinessAmount;
+  // No amount captured is "—", never "₹0".
+  const hasAmount = amount != null && String(amount).trim() !== "";
   const stats = d.stats ?? {};
 
   const doDelete = () => {
@@ -103,15 +108,15 @@ export default function LeadDetail() {
             <View style={{ flex: 1 }}>
               <View style={styles.badgeRow}>
                 {l.scoreBand ? <Badge label={String(l.scoreBand).toUpperCase()} tone={BAND_TONE[l.scoreBand] ?? palette.muted} /> : null}
-                {converted ? <Badge label="Converted" tone={palette.success} /> : meta ? <Badge label={stageDisplay(l.stage)} tone={toneColor(meta.tone)} /> : null}
+                {converted ? <Badge label="Converted" tone={palette.success} /> : meta ? <Badge label={stageDisplay(l.stage)} tone={toneColor(meta.tone)} /> : l.stage ? <Badge label={titleCase(l.stage)} tone={palette.muted} /> : null}
               </View>
               <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>
-                {titleCase(l.source) || "—"}{l.city ? ` · ${l.city}` : ""}{d.owner?.name ? ` · RM ${d.owner.name}` : ""}
+                {leadSourceLabel(l.source)}{l.city ? ` · ${l.city}` : ""}{d.owner?.name ? ` · RM ${d.owner.name}` : ""}
               </Text>
             </View>
             <View style={{ alignItems: "flex-end" }}>
               <Text variant="caption" tone="faint">Intended</Text>
-              <Text variant="subtitle">{inr(amount)}</Text>
+              <Text variant="subtitle">{hasAmount ? inr(amount) : "—"}</Text>
             </View>
           </View>
 
@@ -177,7 +182,10 @@ function Overview({ d, id, converted, onLog }: { d: any; id: string; converted: 
   const steps = LEAD_STAGES.filter((s) => s.key !== "not_qualified");
   const col = canonicalStage(d.lead.stage);
   const lost = col === "not_qualified";
-  const curIdx = steps.findIndex((s) => s.key === col);
+  // Past Won (KYC, UCC, mandate… — client onboarding) every lead step is done;
+  // such a stage is in no column, which used to leave the stepper blank.
+  const onboarding = !!d.lead.stage && !LEAD_PHASE.has(journeyStage(d.lead.stage));
+  const curIdx = onboarding ? steps.length : steps.findIndex((s) => s.key === col);
   return (
     <View>
       <Section title="Pipeline stage" icon="git-branch" right={lost ? <Text variant="caption" style={{ color: palette.danger, fontWeight: fontWeight.semibold }}>Lost</Text> : undefined}>
@@ -210,7 +218,7 @@ function Details({ l, owner }: { l: any; owner: any }) {
   return (
     <View>
       <Section title="Lead details" icon="file-text">
-        <FieldRow label="Source" value={titleCase(l.source)} />
+        <FieldRow label="Source" value={leadSourceLabel(l.source)} />
         <FieldRow label="Campaign" value={l.sourceCampaign} />
         <FieldRow label="Phone" value={l.phone} />
         <FieldRow label="Email" value={l.email} />
@@ -278,7 +286,7 @@ function LogActivitySheet({ visible, initialType, onClose, onSubmit, pending }: 
   // (logging it is what moves the lead on).
   useEffect(() => { if (visible) setType(initialType); }, [visible, initialType]);
   const [next, setNext] = useState("");
-  const submit = async () => { if (!note.trim()) return; if (next && !Number.isFinite(new Date(next).getTime())) { toast.error("Choose a valid follow-up time"); return; } try { await onSubmit({ note: note.trim(), activityType: type, nextFollowUpAt: next ? new Date(next).toISOString() : undefined }); setNote(""); setNext(""); setType("note"); } catch { /* Mutation displays the error; preserve the draft. */ } };
+  const submit = async () => { if (!note.trim()) { toast.error("Write what happened first"); return; } if (next && !Number.isFinite(new Date(next).getTime())) { toast.error("Choose a valid follow-up time"); return; } try { await onSubmit({ note: note.trim(), activityType: type, nextFollowUpAt: next ? new Date(next).toISOString() : undefined }); setNote(""); setNext(""); setType("note"); } catch { /* Mutation displays the error; preserve the draft. */ } };
   return (
     <BottomSheet visible={visible} onClose={onClose} title={type === "call" ? "Log the call" : type === "meeting" ? "Log the meeting" : "Log activity"}>
       <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>Type</Text>
@@ -295,15 +303,21 @@ function LogActivitySheet({ visible, initialType, onClose, onSubmit, pending }: 
 function ConvertSheet({ visible, onClose, onSubmit, pending, defaultPan, error }: { visible: boolean; onClose: () => void; onSubmit: (v: { pan?: string; segmentTag: string; investorCategory: string }) => void; pending: boolean; defaultPan?: string | null; error?: string }) {
   const [pan, setPan] = useState(defaultPan ?? "");
   const [segment, setSegment] = useState("Retail");
+  const [category, setCategory] = useState("individual");
+  // PAN is optional; a typed one must look like ABCDE1234F (the convert route's rule).
+  const panBad = pan.trim() !== "" && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan.trim());
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Convert to client">
       <Text variant="caption" tone="muted" style={{ marginBottom: spacing.md }}>Creates a client from this lead and carries over risk profile, proposals, meetings and documents.</Text>
-      <TextField label="PAN (optional)" value={pan} onChangeText={(v) => setPan(v.toUpperCase())} placeholder="ABCDE1234F" autoCapitalize="characters" />
+      <TextField label="PAN (optional)" value={pan} onChangeText={(v) => setPan(v.toUpperCase().replace(/\s/g, "").slice(0, 10))} placeholder="ABCDE1234F" autoCapitalize="characters" error={panBad && pan.trim().length >= 10 ? "PAN must look like ABCDE1234F" : undefined} />
       <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>Segment</Text>
       <Segmented<string> options={SEGMENTS} value={segment} onChange={setSegment} />
+      <View style={{ height: spacing.md }} />
+      <SelectField label="Category" value={category} options={CATEGORIES} onChange={setCategory} />
       {error ? <Text variant="caption" style={{ color: palette.danger, marginTop: spacing.sm }}>{error}</Text> : null}
       <View style={{ height: spacing.md }} />
-      <Button label="Convert to client" full loading={pending} onPress={() => onSubmit({ pan: pan.trim() || undefined, segmentTag: segment, investorCategory: "individual" })} icon={<Feather name="user-check" size={15} color="#fff" />} />
+      <Button label="Convert to client" full loading={pending} disabled={panBad}
+        onPress={() => onSubmit({ pan: pan.trim() || undefined, segmentTag: segment, investorCategory: category })} icon={<Feather name="user-check" size={15} color="#fff" />} />
     </BottomSheet>
   );
 }

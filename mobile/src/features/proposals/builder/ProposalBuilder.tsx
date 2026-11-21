@@ -191,8 +191,10 @@ export function ProposalBuilder({ params }: { params: { editId?: string; investo
       );
     }
     if (!suitabilityNote.trim()) out.push("Write why this proposal suits the client (suitability note).");
+    // The send route refuses a proposal past its validity (409) — say so before the tap.
+    if (validUntil && validUntil < dayOf(new Date().toISOString())) out.push("The valid-until date has passed — pick a later date.");
     return out;
-  }, [missing, riskBlocked, snapshot, suitabilityNote]);
+  }, [missing, riskBlocked, snapshot, suitabilityNote, validUntil]);
 
   /** The builder's content, as the preview and the save both send it. */
   const content = () => ({

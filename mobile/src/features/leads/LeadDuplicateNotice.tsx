@@ -19,6 +19,7 @@ import { Feather } from "@expo/vector-icons";
 import { Text } from "../../components/ui/Text";
 import { Button } from "../../components/ui/Button";
 import { api } from "../../api/client";
+import { stageDisplay } from "./api";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
 import type { FormValues } from "../forms/types";
 
@@ -59,7 +60,11 @@ export function LeadDuplicateNotice({ form, isEdit }: { form: FormValues; isEdit
         if (!alive) return;
         setLeads(j.matches ?? []);
         setClients(j.clients ?? []);
-      }).catch(() => { /* best-effort warning */ });
+      }).catch(() => {
+        // Best-effort warning — but never leave the previous number's matches
+        // on screen against what is typed now.
+        if (alive) { setLeads([]); setClients([]); }
+      });
     }, 450);
     return () => { alive = false; clearTimeout(t); };
   }, [phone, email, isEdit]);
@@ -101,7 +106,7 @@ export function LeadDuplicateNotice({ form, isEdit }: { form: FormValues; isEdit
           {leads.map((m) => (
             <Pressable key={m.id} style={styles.row} onPress={() => router.push(`/m/leads/${m.id}` as any)} accessibilityRole="button">
               <Text variant="caption" style={{ fontWeight: fontWeight.semibold }} numberOfLines={1}>{m.name}</Text>
-              <Text variant="caption" tone="muted" numberOfLines={1}>matched on {joined(m.matchedOn)}{m.stage ? ` · ${m.stage.replace(/_/g, " ")}` : ""} · Open</Text>
+              <Text variant="caption" tone="muted" numberOfLines={1}>matched on {joined(m.matchedOn)}{m.stage ? ` · ${stageDisplay(m.stage)}` : ""} · Open</Text>
             </Pressable>
           ))}
         </View>

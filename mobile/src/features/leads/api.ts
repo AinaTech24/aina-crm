@@ -135,7 +135,11 @@ export function useDeleteLead() {
 // ── Stages: the CRM's Leads pipeline (src/lib/leads/stages.ts LEAD_PIPELINE) ──
 // Seven columns. The call-loop stages (call back later / not connected / contact
 // in future) live in Contacted and show as a TAG, and a tentative meeting lives
-// in Meeting Scheduled — exactly as on the web board. Legacy values fold in.
+// in Meeting Scheduled — exactly as on the web board. Legacy values fold in:
+// the web adds every LEAD_STAGE_ALIASES value (lib/leads/normalize) that folds
+// onto a member, so "proposal_shared" sits in Proposal Sent and
+// "risk_profiled" in Meeting Done there too — without them such a lead got a
+// stray column of its own here and slipped past the stage filter.
 export interface LeadColumn { key: string; label: string; tone: Tone; members: readonly string[] }
 export const LEAD_STAGES: LeadColumn[] = [
   { key: "new", label: "New", tone: "info", members: ["new"] },
@@ -143,11 +147,34 @@ export const LEAD_STAGES: LeadColumn[] = [
     members: ["call_done", "call_back_later", "call_not_connected", "contact_in_future", "contacted", "first_call_pending", "follow_up"] },
   { key: "meeting_scheduled", label: "Meeting Scheduled", tone: "warning",
     members: ["meeting_scheduled", "meeting_pending", "appointment_scheduled", "qualified"] },
-  { key: "meeting_done", label: "Meeting Done", tone: "violet", members: ["meeting_done"] },
-  { key: "proposal_sent", label: "Proposal Sent", tone: "violet", members: ["proposal_sent"] },
-  { key: "won_lead", label: "Won", tone: "success", members: ["won_lead", "converted", "post_meeting_qualified"] },
+  { key: "meeting_done", label: "Meeting Done", tone: "violet", members: ["meeting_done", "risk_profile_sent", "risk_profiled"] },
+  { key: "proposal_sent", label: "Proposal Sent", tone: "violet", members: ["proposal_sent", "proposal_shared", "proposal_drafted"] },
+  { key: "won_lead", label: "Won", tone: "success", members: ["won_lead", "converted", "post_meeting_qualified", "proposal_approved"] },
   { key: "not_qualified", label: "Lost", tone: "danger", members: ["not_qualified", "lost", "not_interested", "cold"] },
 ];
+
+/** The web's lead sources (lib/leads/sources LEAD_SOURCE_OPTIONS), in its order. */
+export const LEAD_SOURCE_OPTIONS: { value: string; label: string }[] = [
+  { value: "referral", label: "Client Referral" },
+  { value: "website", label: "Website" },
+  { value: "social_media", label: "Social Media" },
+  { value: "webinar", label: "Webinar" },
+  { value: "seminar", label: "Seminar" },
+  { value: "walk_in", label: "Walk-in" },
+  { value: "google", label: "Google" },
+  { value: "cold_call", label: "Cold Call" },
+  { value: "manual", label: "Manual entry" },
+  { value: "other", label: "Other" },
+];
+/** A source as the web reads it (leadSourceLabel): "existing_client" is a Client Referral. */
+export function leadSourceLabel(source?: string | null): string {
+  if (!source) return "—";
+  const s = source === "existing_client" ? "referral" : source;
+  const hit = LEAD_SOURCE_OPTIONS.find((o) => o.value === s);
+  if (hit) return hit.label;
+  const words = s.replace(/_/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "—";
+}
 
 /** The outcome a loop stage stands for, shown as a tag (web LEAD_STAGE_TAG). */
 export const LEAD_STAGE_TAG: Record<string, string> = {
@@ -187,9 +214,11 @@ export function groupByStage(leads: Lead[]): { key: string; label: string; tone:
     .sort((a, b) => (STAGE_INDEX.get(a.key) ?? 99) - (STAGE_INDEX.get(b.key) ?? 99));
 }
 
-/** Client-side search fallback (name/phone/email/city). */
+/** Client-side search fallback (name/phone/email/city/RM). The server's search
+ *  also matches the owner's name, so this must too — or searching an RM's name
+ *  fetched their leads and then hid every one of them. */
 export function filterLeads(leads: Lead[], q: string): Lead[] {
   const s = q.trim().toLowerCase();
   if (!s) return leads;
-  return leads.filter((l) => `${l.name ?? ""} ${l.phone ?? ""} ${l.email ?? ""} ${l.city ?? ""}`.toLowerCase().includes(s));
+  return leads.filter((l) => `${l.name ?? ""} ${l.phone ?? ""} ${l.email ?? ""} ${l.city ?? ""} ${l.ownerName ?? ""}`.toLowerCase().includes(s));
 }

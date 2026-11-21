@@ -12,7 +12,13 @@ function todayIso(): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
-const toIso = (day?: string) => (day ? new Date(`${day}T12:00:00`).toISOString() : undefined);
+/** An earlier day is logged at noon IST that day. */
+const noonIst = (day: string) => new Date(`${day}T12:00:00+05:30`).toISOString();
+/** "Occurred on" today is NOW — noon stamped a 9 a.m. call three hours in the
+ *  future. Taken when the form is saved, so a log queued offline keeps it. */
+const occurredAt = (day?: string) => (!day || day >= todayIso() ? new Date().toISOString() : noonIst(day));
+/** The follow-up day at 10:00 IST (the CRM's follow-up time). */
+const followUpAt = (day?: string) => (day ? new Date(`${day}T10:00:00+05:30`).toISOString() : undefined);
 
 export const activityForm: FormSpec = {
   title: "Log activity",
@@ -38,6 +44,10 @@ export const activityForm: FormSpec = {
     const e: Record<string, string> = {};
     if (v.subjectType === "investor" && !v.investorId) e.investorId = "Pick a client";
     if (v.subjectType === "lead" && !v.leadId) e.leadId = "Pick a lead";
+    // The API takes 0 – 86,400 seconds; a typo like 600 hours was a bare 400.
+    const min = String(v.durationMin ?? "").trim();
+    if (v.kind === "call" && min && !(Number(min) >= 0 && Number(min) <= 1440)) e.durationMin = "Enter minutes between 0 and 1,440";
+    if (v.nextFollowupDay && v.nextFollowupDay < todayIso()) e.nextFollowupDay = "Pick today or a later day";
     return Object.keys(e).length ? e : null;
   },
 
@@ -92,7 +102,7 @@ export const activityForm: FormSpec = {
       fields: [
         { key: "subject", label: "Summary", placeholder: "e.g. SIP top-up discussion" },
         { key: "notes", label: "Notes / outcome", type: "textarea" },
-        { key: "occurredDay", label: "Occurred on", type: "date" },
+        { key: "occurredDay", label: "Occurred on", type: "date", maxToday: true },
         { key: "nextFollowupDay", label: "Next follow-up (optional)", type: "date" },
       ],
     },
@@ -106,14 +116,14 @@ export const activityForm: FormSpec = {
       kind: form.kind,
       subject: form.subject || undefined,
       notes: form.notes || undefined,
-      occurredAt: toIso(form.occurredDay),
-      nextFollowupAt: toIso(form.nextFollowupDay),
+      occurredAt: occurredAt(form.occurredDay),
+      nextFollowupAt: followUpAt(form.nextFollowupDay),
     };
     if (form.kind === "call") {
       body.direction = form.direction || undefined;
       if (form.status) body.status = form.status;
       const min = parseFloat(form.durationMin);
-      if (min > 0) body.durationSec = Math.round(min * 60);
+      if (min > 0) body.durationSec = Math.min(86400, Math.round(min * 60));
     }
     return body;
   },

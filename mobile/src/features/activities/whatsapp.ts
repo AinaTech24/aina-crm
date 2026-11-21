@@ -18,9 +18,13 @@
 import { Linking } from "react-native";
 import { queuedPost } from "../../lib/offlineQueue";
 
-/** 10 digits → +91. Anything else is passed through as-is (already has a code). */
+/** 10 digits → +91. A trunk "0" (09876543210) or an international "00" prefix
+ *  is dropped first — wa.me took "09876…" as a number that doesn't exist.
+ *  Anything else is passed through as-is (already has a code). */
 export function waNumber(phone?: string | null): string {
-  const d = (phone ?? "").replace(/\D/g, "");
+  let d = (phone ?? "").replace(/\D/g, "");
+  if (d.startsWith("00")) d = d.slice(2);
+  else if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
   return d.length === 10 ? "91" + d : d;
 }
 

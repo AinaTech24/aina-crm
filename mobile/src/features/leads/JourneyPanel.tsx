@@ -23,8 +23,9 @@ import { api } from "../../api/client";
 import { toast } from "../../lib/toast";
 import { fmtDate, titleCase } from "../../lib/format";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
+import { leadSourceLabel } from "./api";
 import {
-  LEAD_JOURNEY, LEAD_PHASE, NEXT_TOUCH_STAGES, LOST_REASONS, LEAD_PRODUCTS,
+  LEAD_JOURNEY, LEAD_PHASE, NEXT_TOUCH_STAGES, LOST_REASONS, LEAD_PRODUCTS, journeyStage,
   useLeadBlueprint, useLeadProposal, useRefreshLead, canAdvance, advanceLead, markLeadWon, proposalAware, ctaToMobile,
   type JourneyAction, type Prereq, type MissingField,
 } from "./journey";
@@ -41,7 +42,9 @@ export function JourneyPanel({ leadId, leadStage, onLog }: {
 }) {
   const router = useRouter();
   const bp = useLeadBlueprint(leadId);
-  const stage = bp.data?.current?.key ?? leadStage ?? "new";
+  // The blueprint's own step; until it arrives, the lead's stored stage read
+  // through the legacy aliases ("contacted" IS Contacted).
+  const stage = journeyStage(bp.data?.current?.key ?? leadStage);
   const pipeline = bp.data?.pipeline ?? "mf";
   const hasProposalStep = (LEAD_JOURNEY[stage] ?? []).some((a) => a.behaviour.kind === "proposal");
   const proposal = useLeadProposal(leadId, hasProposalStep);
@@ -52,6 +55,16 @@ export function JourneyPanel({ leadId, leadStage, onLog }: {
   const [transition, setTransition] = useState<{ action: JourneyAction; missing: MissingField[] } | null>(null);
   const [wonOpen, setWonOpen] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
+
+  // The pipeline (MF / insurance) decides which Won actions show, so don't
+  // offer buttons for a guessed one while the journey is still loading.
+  if (bp.isLoading) {
+    return (
+      <Section title="Next step" icon="zap">
+        <Text variant="caption" tone="muted">Loading…</Text>
+      </Section>
+    );
+  }
 
   // After Won the journey is client onboarding — run in the CRM.
   if (!LEAD_PHASE.has(stage)) {
@@ -65,6 +78,9 @@ export function JourneyPanel({ leadId, leadStage, onLog }: {
 
   const actions = (LEAD_JOURNEY[stage] ?? [])
     .filter((a) => !a.pipelines || a.pipelines.includes(pipeline))
+    // "View Proposal" needs a proposal to open (web GuidedStageActions) — with
+    // none it used to start a brand-new one.
+    .filter((a) => !(a.behaviour.kind === "proposal" && a.behaviour.step === "open" && !proposal.data))
     .map((a) => proposalAware(a, proposal.data));
 
   const scheduleMeeting = () => router.push(`/m/review-meetings/new?leadId=${leadId}` as any);
@@ -272,7 +288,10 @@ function TransitionSheet({ leadId, transition, onClose, onDone }: { leadId: stri
     <BottomSheet visible={!!transition} onClose={close} title={transition?.action.label ?? ""}>
       {transition?.missing.map((f) =>
         f.options?.length ? (
-          <SelectField key={f.key} label={f.label} value={vals[f.key] ?? null} options={f.options.map((o) => ({ value: o, label: titleCase(o) }))} onChange={(v) => setVals((s) => ({ ...s, [f.key]: v }))} />
+          <SelectField key={f.key} label={f.label} value={vals[f.key] ?? null}
+            // A source reads as the web names it; "existing_client" is a second Client Referral (retired).
+            options={(f.key === "source" ? f.options.filter((o) => o !== "existing_client") : f.options).map((o) => ({ value: o, label: f.key === "source" ? leadSourceLabel(o) : titleCase(o) }))}
+            onChange={(v) => setVals((s) => ({ ...s, [f.key]: v }))} />
         ) : (
           <TextField key={f.key} label={f.label} value={vals[f.key] ?? ""} onChangeText={(v) => setVals((s) => ({ ...s, [f.key]: v }))}
             keyboardType={f.type === "number" || f.type === "currency" ? "numeric" : f.type === "email" ? "email-address" : f.type === "phone" ? "phone-pad" : "default"} />

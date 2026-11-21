@@ -97,6 +97,8 @@ export const LEAD_JOURNEY: Record<string, JourneyAction[]> = {
     a("follow_up_meeting", "Schedule Follow-up Meeting", "secondary", "meeting_scheduled", { kind: "schedule_meeting" }),
     a("not_qualified", "Proposal Declined", "danger", "not_qualified", ADVANCE),
   ],
+  // "Documents Already Received" opens the web's collect-details page (the
+  // client's KYC / account details typed on their behalf) — that stays in the CRM.
   won_lead: [
     a("request_docs", "Request Documents", "primary", "request_documents",
       { kind: "call_api", endpoint: "/api/leads/{id}/send-doc-checklist", afterStage: "documents_pending" }, ["mf", "general"]),
@@ -109,6 +111,26 @@ export const LEAD_PHASE = new Set([
   "new", "call_done", "call_back_later", "call_not_connected", "contact_in_future",
   "meeting_scheduled", "meeting_pending", "meeting_done", "proposal_sent", "won_lead", "not_qualified",
 ]);
+
+/**
+ * Legacy / imported stage values and the journey step each one IS (the
+ * server's LEAD_STAGE_ALIASES, lib/leads/normalize). The journey panel reads
+ * the blueprint's own step, but until that arrives — or when it can't be read —
+ * it falls back to leads.stage, which may still hold one of these; looked up
+ * raw, a "contacted" or "proposal_shared" lead read as "onboarding continues in
+ * the CRM" with no next step.
+ */
+const STAGE_ALIASES: Record<string, string> = {
+  contacted: "call_done", first_call_pending: "call_done", follow_up: "contact_in_future",
+  appointment_scheduled: "meeting_scheduled", qualified: "meeting_scheduled",
+  proposal_shared: "proposal_sent", proposal_drafted: "proposal_sent", proposal_approved: "won_lead",
+  risk_profile_sent: "meeting_done", risk_profiled: "meeting_done",
+  docs_requested: "request_documents", docs_received: "documents_received",
+  converted: "won_lead", post_meeting_qualified: "won_lead",
+  lost: "not_qualified", not_interested: "not_qualified", cold: "not_qualified",
+  mandate_rejected: "mandate_reject",
+};
+export const journeyStage = (s?: string | null): string => (s ? STAGE_ALIASES[s] ?? s : "new");
 
 /** These always ask when to follow up next (web NEXT_TOUCH_STAGES). */
 export const NEXT_TOUCH_STAGES = new Set(["call_back_later", "call_not_connected", "contact_in_future"]);

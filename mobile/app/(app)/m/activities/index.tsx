@@ -101,7 +101,9 @@ export default function ActivitiesList({ embedded = false }: { embedded?: boolea
   const [checkinOpen, setCheckinOpen] = useState(false);
   const debounced = useDebounced(search);
 
-  const apiFilters = useMemo(() => ({ q: debounced, kind, mine: filters.mine ? "1" : "", from: filters.from, to: filters.to,
+  // "From" is the start of that day in India: the API casts it to a timestamp
+  // in the server's zone (UTC), which dropped the day's calls before 05:30.
+  const apiFilters = useMemo(() => ({ q: debounced, kind, mine: filters.mine ? "1" : "", from: filters.from ? `${filters.from}T00:00:00+05:30` : "", to: filters.to,
     direction: kind === "call" && ["inbound", "outbound"].includes(callView) ? callView as "inbound" | "outbound" : undefined,
     status: kind === "call" && callView === "missed" ? "no_answer" : undefined,
     needsNotes: kind === "call" && callView === "notes" ? "1" : undefined,
@@ -201,7 +203,9 @@ function EditActivitySheet({ row, onClose }: { row: Activity | null; onClose: ()
   const save = async () => {
     setErr(null);
     try {
-      await update.mutateAsync({ subject: subject || null, notes: notes || null, status: status || null, direction: direction || null });
+      // expectedNotes: refused (409) if the notes changed since the list loaded —
+      // e.g. an after-call summary saved on the detail screen — not overwritten.
+      await update.mutateAsync({ subject: subject || null, notes: notes || null, status: status || null, direction: direction || null, expectedNotes: row?.notes ?? null });
       onClose();
     } catch (e) { setErr(errorMessage(e, "Could not save.")); }
   };

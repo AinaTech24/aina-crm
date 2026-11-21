@@ -34,7 +34,7 @@ import { SendFormSheet } from "../../../../src/features/client-forms/SendFormShe
 import { useMe, hasCap } from "../../../../src/api/me";
 import {
   useProposal, useProposals, useUpdateProposal, useSendProposal, useCancelProposal, useReviseProposal, useRecipientSnapshot,
-  num, describeError, isDraft, isCancelled, pastValidity, phoneOk, formatPhone, stripHtml,
+  num, describeError, isDraft, isCancelled, pastValidity, phoneOk, formatPhone, stripHtml, riskReady,
   CLOSED_FOR_SEND, AWAITING_CLIENT, REVISABLE, STATUS_LABEL, STATUS_TONE, TYPE_LABEL,
   type SendChannel, type SendPreview,
 } from "../../../../src/features/proposals/api";
@@ -132,10 +132,32 @@ export default function ProposalPage() {
     } catch (e) { setPreviewing(null); onGate(e, channel); }
   };
 
-  const markSent = () => Alert.alert("Record it as sent?", "Nothing goes to the client from here — use this when you gave it in person or by your own email.", [
-    { text: "Cancel", style: "cancel" },
-    { text: "Mark as sent", onPress: () => update.mutate({ status: "sent" }, { onSuccess: () => toast.success("Proposal marked as sent.") }) },
-  ]);
+  // Recording it as sent (given in person / by the RM's own email) skips the
+  // send route, and with it the route's gates — PATCH status "sent" checks
+  // nothing. The firm's rules hold either way, so the same three are checked
+  // here: a past validity, a mutual fund line without the client's CONFIRMED
+  // risk profile (a provisional or year-old one doesn't count; a minor needs
+  // none), and the suitability note every send requires.
+  const markSent = () => {
+    setGate(null);
+    if (pastValidity(p)) { toast.error("This proposal's validity date has passed — extend it first."); setValidityOpen(true); return; }
+    if ((p.products ?? []).some((it) => it.kind === "mf")) {
+      if (!s) { toast.error(snap.isError ? "Couldn't read the client's risk profile — pull to refresh and try again." : "Checking the client's risk profile — try again in a moment."); return; }
+      if (!riskReady(s)) {
+        const why = s.risk.status === "Provisional" ? "is only provisional (not confirmed by the client)" : s.risk.status === "Due for review" ? "is more than a year old" : "is not on record";
+        setGate({ field: "riskProfile", message: `A mutual fund proposal needs the client's confirmed risk profile, and theirs ${why}. Send them the risk profile link first.` });
+        return;
+      }
+    }
+    if (!p.suitabilityNote?.trim() && !p.suitabilityOverrideReason?.trim()) {
+      setGate({ field: "suitabilityNote", message: "Write why this proposal suits the client in Suitability & Compliance below, save it, then record it as sent." });
+      return;
+    }
+    Alert.alert("Record it as sent?", "Nothing goes to the client from here — use this when you gave it in person or by your own email.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Mark as sent", onPress: () => update.mutate({ status: "sent" }, { onSuccess: () => toast.success("Proposal marked as sent.") }) },
+    ]);
+  };
   const accept = () => Alert.alert(
     `Mark ${p.proposalNumber} accepted?`,
     "The lead becomes Won and the client is sent the document checklist to start onboarding.",
@@ -188,7 +210,7 @@ export default function ProposalPage() {
           <Kpi label="Total investment" value={invest > 0 ? inr(invest) : "—"} />
           <Kpi label="Projected corpus" value={corpus > 0 ? inr(corpus) : "—"} tint={palette.success} />
           <Kpi label="Risk rating" value={p.riskRating ? titleCase(p.riskRating) : "—"} />
-          <Kpi label="Recommendations" value={String(p.products.length)} />
+          <Kpi label="Recommendations" value={String((p.products ?? []).length)} />
         </View>
 
         {/* Who it goes to, the record, the next step */}
@@ -286,8 +308,8 @@ export default function ProposalPage() {
         />
 
         <Card style={proposalStyles.card}>
-          <CardHeader title={`Products (${p.products.length})`} />
-          <ProductList products={p.products} acceptedItems={p.acceptedItems} />
+          <CardHeader title={`Products (${(p.products ?? []).length})`} />
+          <ProductList products={p.products ?? []} acceptedItems={p.acceptedItems} />
         </Card>
 
         {p.disclaimer ? (
