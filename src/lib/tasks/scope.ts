@@ -32,6 +32,16 @@ export function canViewAllTasks(session: SessionUser) {
   return can(session.roles, "task.view.all", session.permissions);
 }
 
+/**
+ * A sub-task (checklist item) of the task is delegated to this user. Such a
+ * task belongs to them as much as one they are assigned: it is in their Tasks
+ * list and under "Assigned to me" (bug fixed 2026-11-21 — it only reached them
+ * through a notification).
+ */
+export function subTaskAssignedToSql(metaCol: SQL, userId: string): SQL {
+  return sql`(${metaCol} -> 'checklist' @> ${JSON.stringify([{ assigneeId: userId }])}::jsonb)`;
+}
+
 function own(session: SessionUser, alias: string): SQL {
   const c = (x: string) => sql.raw(`${alias}.${x}`);
   return sql`(${c("assignee_id")} = ${session.userId}::uuid OR ${c("created_by_id")} = ${session.userId}::uuid
