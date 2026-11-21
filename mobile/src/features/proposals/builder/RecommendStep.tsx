@@ -8,6 +8,10 @@
  * the footer shows the equity share once this money goes in against the
  * profile's ceiling. A row kept above the band asks for a reason, which goes
  * into the suitability record.
+ *
+ * With several lines the list folds: a line shows its name and money on one
+ * row until tapped. A new line, a line without a name and a line above the
+ * band without its reason stay open — what is missing is never folded away.
  */
 
 import React from "react";
@@ -20,7 +24,7 @@ import { Segmented } from "../../../components/ui/Segmented";
 import { StatusPill } from "../../../components/ui/StatusPill";
 import { useAmcs, riskometerLevel, INSURERS, type ProposalLine, type MfLine, type InsuranceLine, type PmsLine, type AifLine, type OtherLine, type RecommendationType, type ProposalSnapshot, type SchemeHit } from "../api";
 import { equityAfter, lineFit } from "../shared/fit";
-import { itemKindLabel, recommendationType, totals } from "../shared/items";
+import { itemAmountText, itemKindLabel, itemName, recommendationType, totals } from "../shared/items";
 import { NumField, Pair, SchemeButton, SchemePicker, Banner } from "../ui";
 import { spacing, palette, radius, fontWeight } from "../../../theme/tokens";
 
@@ -55,9 +59,12 @@ export function RecommendStep({ items, setItems, snapshot, locked }: { items: It
   // Stable row keys, so a row added at the top doesn't hand its neighbours' typing state around.
   const keys = React.useRef<string[]>([]);
   if (keys.current.length !== items.length) keys.current = items.map(() => newKey());
+  // Folding: each line's open-at-first-sight is decided once; a tap changes it after.
+  const firstOpen = React.useRef<Record<string, boolean>>({});
+  const [openMap, setOpenMap] = React.useState<Record<string, boolean>>({});
 
   const patch = (i: number, p: Partial<ProposalLine>) => setItems((prev) => prev.map((it, j) => (j === i ? ({ ...it, ...p } as ProposalLine) : it)));
-  const add = (make: () => ProposalLine) => { keys.current = [newKey(), ...keys.current]; setItems((prev) => [make(), ...prev]); };
+  const add = (make: () => ProposalLine) => { const k = newKey(); firstOpen.current[k] = true; keys.current = [k, ...keys.current]; setItems((prev) => [make(), ...prev]); };
   const remove = (i: number) => { keys.current = keys.current.filter((_, j) => j !== i); setItems((prev) => prev.filter((_, j) => j !== i)); };
   const amcCode = (name?: string) => {
     if (!name) return null;
@@ -102,31 +109,56 @@ export function RecommendStep({ items, setItems, snapshot, locked }: { items: It
       ) : (
         items.map((it, i) => {
           const fit = lineFit(it, profile);
+          const k = keys.current[i];
+          const name = itemName(it);
+          const named = name !== "Recommendation";
+          // Something to do on this line: keep it open.
+          const attention = !locked && (!named || (it.kind === "mf" && fit.status === "above" && !(it as MfLine).suitabilityReason?.trim()));
+          if (!(k in firstOpen.current)) firstOpen.current[k] = items.length <= 1 || attention;
+          const folds = items.length > 1 && !attention;
+          const open = !folds || (openMap[k] ?? firstOpen.current[k]);
+          const toggle = () => setOpenMap((m) => ({ ...m, [k]: !open }));
           return (
-            <View key={keys.current[i]} style={styles.row}>
-              <View style={styles.rowHead}>
-                <View style={styles.kind}><Text variant="caption" style={{ color: palette.brandDark, fontWeight: fontWeight.semibold }}>{itemKindLabel(it)}</Text></View>
-                {it.kind === "mf" && fit.status === "fits" ? <StatusPill size="sm" tone="success" label="Fits the profile" /> : null}
-                {it.kind === "mf" && fit.status === "above" ? <StatusPill size="sm" tone="warning" label="Above the risk band" /> : null}
-                <View style={{ flex: 1 }} />
+            <View key={k} style={styles.row}>
+              <View style={[styles.rowHead, !open && { marginBottom: spacing.xs }]}>
+                <Pressable
+                  onPress={folds ? toggle : undefined}
+                  disabled={!folds}
+                  style={styles.headTap}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: open }}
+                  accessibilityLabel={`${itemKindLabel(it)}${named ? ` ${name}` : ""}`}
+                >
+                  <View style={styles.kind}><Text variant="caption" style={{ color: palette.brandDark, fontWeight: fontWeight.semibold }}>{itemKindLabel(it)}</Text></View>
+                  {it.kind === "mf" && fit.status === "fits" ? <StatusPill size="sm" tone="success" label="Fits the profile" /> : null}
+                  {it.kind === "mf" && fit.status === "above" ? <StatusPill size="sm" tone="warning" label="Above the risk band" /> : null}
+                  <View style={{ flex: 1 }} />
+                  {folds ? <Feather name={open ? "chevron-up" : "chevron-down"} size={18} color={palette.muted} /> : null}
+                </Pressable>
                 {!locked ? (
                   <Pressable onPress={() => remove(i)} hitSlop={8} style={styles.icon} accessibilityRole="button" accessibilityLabel="Remove this recommendation">
                     <Feather name="trash-2" size={16} color={palette.muted} />
                   </Pressable>
                 ) : null}
               </View>
-              {it.kind === "mf" ? (
+              {!open ? (
+                <Pressable onPress={toggle} accessibilityRole="button" accessibilityLabel={`Open ${name}`}>
+                  <Text variant="body" numberOfLines={1} style={{ color: palette.ink }}>{name}</Text>
+                  <Text variant="caption" tone="muted" numberOfLines={1}>{itemAmountText(it)}</Text>
+                </Pressable>
+              ) : null}
+              {open && it.kind === "mf" ? (
                 <MFRow item={it} onPatch={(p) => patch(i, p)} goals={goals} locked={locked} amcs={amcs.data?.amcs ?? []}
                   onPickScheme={(target) => setSchemeFor({ index: i, target })} />
               ) : null}
-              {it.kind === "insurance" ? <InsRow item={it} onPatch={(p) => patch(i, p)} locked={locked} /> : null}
-              {it.kind === "pms" ? <PMSRow item={it} onPatch={(p) => patch(i, p)} locked={locked} /> : null}
-              {it.kind === "aif" ? <AIFRow item={it} onPatch={(p) => patch(i, p)} locked={locked} /> : null}
-              {it.kind === "other" ? <OtherRow item={it} onPatch={(p) => patch(i, p)} locked={locked} /> : null}
-              {it.kind === "mf" && fit.status !== "fits" && fit.message ? (
+              {open && it.kind === "insurance" ? <InsRow item={it} onPatch={(p) => patch(i, p)} locked={locked} /> : null}
+              {open && it.kind === "pms" ? <PMSRow item={it} onPatch={(p) => patch(i, p)} locked={locked} /> : null}
+              {open && it.kind === "aif" ? <AIFRow item={it} onPatch={(p) => patch(i, p)} locked={locked} /> : null}
+              {open && it.kind === "other" ? <OtherRow item={it} onPatch={(p) => patch(i, p)} locked={locked} /> : null}
+              {open && it.kind === "mf" && fit.status !== "fits" && fit.message ? (
                 <Text variant="caption" style={{ color: fit.status === "above" ? palette.warning : palette.muted, marginBottom: spacing.sm }}>{fit.message}</Text>
               ) : null}
-              {it.kind === "mf" && fit.status === "above" ? (
+              {open && it.kind === "mf" && fit.status === "above" ? (
                 <TextField
                   label="Reason to keep it — saved to the client's suitability record"
                   value={it.suitabilityReason ?? ""}
@@ -508,7 +540,8 @@ const styles = StyleSheet.create({
   addBtn: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.surface, borderRadius: radius.pill, paddingHorizontal: spacing.md, minHeight: 36 },
   empty: { borderRadius: radius.md, backgroundColor: palette.surfaceSunken, padding: spacing.xl },
   row: { borderWidth: 1, borderColor: palette.line, borderRadius: radius.lg, backgroundColor: palette.surface, padding: spacing.lg },
-  rowHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md, flexWrap: "wrap" },
+  rowHead: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  headTap: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap", minHeight: 32 },
   kind: { backgroundColor: palette.brandLight, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 3 },
   icon: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   totals: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, borderRadius: radius.md, backgroundColor: palette.surfaceSunken, padding: spacing.md },

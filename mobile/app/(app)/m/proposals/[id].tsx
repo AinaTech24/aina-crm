@@ -13,6 +13,8 @@
  *  - "Client accepted" asks first: the lead becomes Won and onboarding starts.
  *  - Then what the client did (timeline), versions, cover letter, Suitability
  *    & Compliance, the products and any extra disclosure.
+ *  - Present opens the client's view full screen (presenter mode): the PDF's
+ *    figures, the recommendations and its disclosures — nothing internal.
  */
 
 import React from "react";
@@ -45,6 +47,8 @@ import { Banner, CardHeader, proposalStyles } from "../../../../src/features/pro
 import { ProposalTimeline } from "../../../../src/features/proposals/page/Timeline";
 import { SuitabilityPanel } from "../../../../src/features/proposals/page/SuitabilityPanel";
 import { ProductList } from "../../../../src/features/proposals/page/Products";
+import { usePresenter } from "../../../../src/features/presenter/Presenter";
+import { ProposalPresentation } from "../../../../src/features/presenter/ProposalPresentation";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { toast } from "../../../../src/lib/toast";
 import { inr, fmtDate, titleCase } from "../../../../src/lib/format";
@@ -72,6 +76,7 @@ export default function ProposalPage() {
   const [declineOpen, setDeclineOpen] = React.useState(false);
   const [validityOpen, setValidityOpen] = React.useState(false);
   const [pdfBusy, setPdfBusy] = React.useState(false);
+  const presenter = usePresenter();
 
   if (isLoading || !p) {
     return (
@@ -184,9 +189,9 @@ export default function ProposalPage() {
       <Screen scroll padded contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }} refreshing={isRefetching} onRefresh={() => { refetch(); snap.refetch(); }}>
         {/* Hero */}
         <View style={styles.hero}>
-          <Text variant="caption" style={{ color: "rgba(255,255,255,0.75)", letterSpacing: 1.2, fontWeight: fontWeight.semibold }}>{p.proposalNumber}{vLabel}</Text>
+          <Text variant="caption" style={{ color: palette.onBrandMuted, letterSpacing: 1.2, fontWeight: fontWeight.semibold }}>{p.proposalNumber}{vLabel}</Text>
           <Text variant="title" style={{ color: palette.white, marginTop: 4 }}>{p.title}</Text>
-          <Text variant="caption" style={{ color: "rgba(255,255,255,0.88)", marginTop: 4 }}>
+          <Text variant="caption" style={{ color: palette.onBrandMuted, marginTop: 4 }}>
             {[TYPE_LABEL[p.type] ?? titleCase(p.type), `For ${p.recipientName}`, p.validUntil ? `Valid till ${fmtDate(p.validUntil)}` : null].filter(Boolean).join("  ·  ")}
           </Text>
           <View style={{ marginTop: spacing.md }}><StatusPill label={STATUS_LABEL[p.status] ?? titleCase(p.status)} tone={STATUS_TONE[p.status] ?? "neutral"} size="sm" /></View>
@@ -229,6 +234,7 @@ export default function ProposalPage() {
           </View>
           <View style={styles.actions}>
             <Button label="Download PDF" size="sm" variant="secondary" loading={pdfBusy} icon={<Feather name="download" size={14} color={palette.ink} />} onPress={downloadPdf} />
+            <Button label="Present" size="sm" variant="secondary" icon={<Feather name="maximize-2" size={14} color={palette.ink} />} onPress={presenter.open} accessibilityLabel="Present to the client" />
             {canWrite && draft ? <Button label="Edit" size="sm" variant="secondary" icon={<Feather name="edit-2" size={14} color={palette.ink} />} onPress={() => router.push(`/m/proposals/new?editId=${p.id}` as any)} /> : null}
             {canWrite && REVISABLE.has(p.status) ? (
               <Button label={`Revise (creates v${(p.version ?? 1) + 1})`} size="sm" variant={p.status === "changes_requested" ? "primary" : "secondary"} loading={revise.isPending}
@@ -352,6 +358,7 @@ export default function ProposalPage() {
       <ValiditySheet visible={validityOpen} onClose={() => setValidityOpen(false)} busy={update.isPending}
         onSave={(day) => update.mutate({ validUntil: new Date(`${day}T23:59:59+05:30`).toISOString() }, { onSuccess: () => { toast.success(`Valid until ${fmtDate(day)}`); setValidityOpen(false); } })} />
       {riskSubject ? <SendFormSheet visible={riskFormOpen} onClose={() => setRiskFormOpen(false)} subjectType={riskSubject.type} subjectId={riskSubject.id} name={p.recipientName} /> : null}
+      <ProposalPresentation visible={presenter.visible} onClose={presenter.close} proposal={p} />
     </View>
   );
 }

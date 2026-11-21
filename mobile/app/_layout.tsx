@@ -4,8 +4,17 @@
  * correct on the FIRST paint — no post-mount padding jump), the TanStack Query
  * cache (persisted to disk, so a cold start paints from the last good data),
  * crash reporting, localisation, and a one-time session hydration that decides
- * login vs app. The boot screen shows the "A" logo + version while the session
- * hydrates.
+ * login vs app.
+ *
+ * Start-up: the native splash stays up while the session is read from the
+ * keychain (milliseconds — a stored, unexpired session opens straight into the
+ * app and is renewed in the background, see state/session.ts). Only when that
+ * takes longer — an expired session being renewed over the network — does the
+ * animated boot screen (logo, spinner, version) take over.
+ *
+ * Colours: the light / dark set and the firm's accent were fixed when
+ * theme/tokens.ts was first imported (above every screen). The status bar, the
+ * navigators' default colours and the native root background follow that.
  */
 
 import "react-native-gesture-handler";
@@ -18,8 +27,11 @@ import { StatusBar } from "expo-status-bar";
 import Constants from "expo-constants";
 import Animated, { FadeIn, FadeInDown, Easing, useSharedValue, useAnimatedStyle, withDelay, withTiming } from "react-native-reanimated";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { Stack, type ErrorBoundaryProps } from "expo-router";
+import { Stack, ThemeProvider, DarkTheme, DefaultTheme, type ErrorBoundaryProps } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import * as SystemUI from "expo-system-ui";
 import { queryClient } from "../src/api/queryClient";
+import { ME_KEY } from "../src/api/me";
 import { createQueryPersister, shouldPersistQuery, CACHE_MAX_AGE_MS } from "../src/api/queryPersist";
 import { initSentry, captureException, withSentry } from "../src/lib/sentry";
 import { initI18n, setLanguage } from "../src/i18n";
@@ -29,12 +41,36 @@ import { setPushHandler } from "../src/push";
 import { BrandLogo } from "../src/components/BrandLogo";
 import { ToastHost } from "../src/components/ui/ToastHost";
 import { Text } from "../src/components/ui/Text";
-import { palette, spacing, fontWeight } from "../src/theme/tokens";
+import { palette, spacing, fontWeight, colorScheme } from "../src/theme/tokens";
 
 // Module-scope, once: crash reporting first so even a boot failure is reported.
 initSentry();
 initI18n("en");
 setPushHandler();
+// Hold the native splash until we know login vs app (hidden in RootLayout).
+SplashScreen.preventAutoHideAsync().catch(() => {});
+// The window behind every screen (seen during transitions and under the
+// keyboard) — white would flash in dark mode.
+SystemUI.setBackgroundColorAsync(palette.surfaceAlt).catch(() => {});
+
+/** Navigators' own defaults (stack cards, headers, tab bar) in our colours. */
+const NAV_THEME = {
+  ...(colorScheme === "dark" ? DarkTheme : DefaultTheme),
+  dark: colorScheme === "dark",
+  colors: {
+    ...(colorScheme === "dark" ? DarkTheme : DefaultTheme).colors,
+    primary: palette.brand,
+    background: palette.surfaceAlt,
+    card: palette.surface,
+    text: palette.ink,
+    border: palette.line,
+    notification: palette.danger,
+  },
+};
+
+/** How long a cold start may sit on the native splash before the animated boot
+ *  screen (with its spinner) explains the wait. */
+const SPLASH_HOLD_MS = 600;
 
 const VERSION = Constants.expoConfig?.version ?? "1.0.0";
 
@@ -69,6 +105,15 @@ function RootLayout() {
   const prefsHydrated = usePrefs((s) => s.hydrated);
   const owner = useSession((s) => s.owner);
   const persister = useMemo(() => owner ? createQueryPersister(owner) : null, [owner]);
+  // The app lock reads its preference from the same keychain; never paint the
+  // signed-in app before it knows whether to cover it.
+  const booting = status === "loading" || (status === "authed" && !prefsHydrated);
+
+  useEffect(() => {
+    if (!booting) { SplashScreen.hideAsync().catch(() => {}); return; }
+    const t = setTimeout(() => SplashScreen.hideAsync().catch(() => {}), SPLASH_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [booting]);
 
   useEffect(() => {
     hydrate();
@@ -80,15 +125,15 @@ function RootLayout() {
     if (prefsHydrated) setLanguage(language);
   }, [prefsHydrated, language]);
 
-  const content = <>
-    <StatusBar style="dark" />
-    {status === "loading" ? <BootScreen /> : (
+  const content = <ThemeProvider value={NAV_THEME}>
+    <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+    {booting ? <BootScreen /> : (
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.surfaceAlt } }}>
         <Stack.Screen name="index" /><Stack.Screen name="login" /><Stack.Screen name="(app)" />
       </Stack>
     )}
     <ToastHost />
-  </>;
+  </ThemeProvider>;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -103,6 +148,10 @@ function RootLayout() {
             buster: `${VERSION}.${owner}`,
             dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
           }}
+          // The saved copy is on screen now. Anything older than its freshness
+          // window refetches as its screen mounts; /api/me (capabilities and the
+          // license gate) is refreshed on every start regardless.
+          onSuccess={() => { queryClient.invalidateQueries({ queryKey: ME_KEY }).catch(() => {}); }}
         >
           {content}
         </PersistQueryClientProvider> : <QueryClientProvider client={queryClient}>{content}</QueryClientProvider>}
@@ -123,6 +172,8 @@ export default withSentry(RootLayout);
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   useEffect(() => {
     captureException(error, { where: "root-error-boundary" });
+    // A crash before the root layout hid the native splash must not leave it up.
+    SplashScreen.hideAsync().catch(() => {});
   }, [error]);
 
   return (
@@ -141,7 +192,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 }
 
 const styles = StyleSheet.create({
-  splash: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" },
+  splash: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: palette.surface },
   crash: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing["2xl"], backgroundColor: palette.surfaceAlt },
   retryBtn: { marginTop: spacing.xl, backgroundColor: palette.brand, paddingHorizontal: spacing["2xl"], paddingVertical: spacing.md, borderRadius: 12 },
   brandWrap: { alignItems: "center" },

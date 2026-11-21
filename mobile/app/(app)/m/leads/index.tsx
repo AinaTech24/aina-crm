@@ -4,7 +4,9 @@
  * Proposal Sent → Won / Lost). Search + a full filter/sort sheet (stage /
  * source / owner / quick filters / date + score/recency sort). Tap → detail
  * (edit / delete are in its ⋯ menu; the row sheet below opens on long-press
- * once LeadCard passes onLongPress through).
+ * once LeadCard passes onLongPress through). In the list, the List / Board
+ * switch, search and filters slide away as you scroll down and come back as
+ * you scroll up.
  */
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -25,6 +27,7 @@ import { LeadCard } from "../../../../src/components/domain/LeadCard";
 import { LeadFilters, EMPTY_LEAD_FILTERS, countLeadFilters, type UiLeadFilters } from "../../../../src/features/leads/LeadFilters";
 import { useLeads, useDeleteLead, filterLeads, groupByStage, stageFilterValues, type Lead } from "../../../../src/features/leads/api";
 import { useTeam } from "../../../../src/features/team/api";
+import { CollapsingHeader, useCollapsingHeader } from "../../../../src/features/lists/CollapsingHeader";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
 
@@ -57,6 +60,7 @@ export default function LeadsList() {
   const listLeads = useMemo(() => filterLeads(all, debounced), [all, debounced]);
   const columns = useMemo(() => groupByStage(all), [all]);
   const activeCount = countLeadFilters(filters);
+  const ch = useCollapsingHeader();
 
   const open = (id: string) => router.push(`/m/leads/${id}`);
   const doDelete = (l: Lead) => {
@@ -77,28 +81,41 @@ export default function LeadsList() {
     </View>
   );
 
+  const switcher = (
+    <View style={styles.controls}>
+      <Segmented options={[{ key: "list", label: "List" }, { key: "board", label: "Board" }]} value={view} onChange={setView} />
+    </View>
+  );
+  const floating = view === "list" && !isLoading && !isError;
+
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       <ScreenHeader title="Leads" subtitle={isLoading ? undefined : `${data?.total ?? all.length} in pipeline`} />
-      <View style={styles.controls}>
-        <Segmented options={[{ key: "list", label: "List" }, { key: "board", label: "Board" }]} value={view} onChange={setView} />
-      </View>
+      {floating ? null : switcher}
 
       {isLoading ? (
         <><View style={{ paddingHorizontal: spacing.lg }}>{toolbar}</View><SkeletonList count={8} /></>
       ) : isError ? (
         <ErrorState message={(error as any)?.message} onRetry={() => refetch()} />
       ) : view === "list" ? (
-        <FlashList
-          data={listLeads}
-          keyExtractor={(l) => l.id}
-          renderItem={({ item }) => <LeadCard lead={item} onPress={() => open(item.id)} />}
-          ListHeaderComponent={toolbar}
-          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 96 }}
-          refreshing={isRefetching}
-          onRefresh={() => refetch()}
-          ListEmptyComponent={debounced || activeCount ? <SearchEmptyState query={debounced || "these filters"} /> : <EmptyState icon="trending-up" title="No leads" message="New leads will appear here." />}
-        />
+        // The switch, search and filters float over the list and slide away on scroll down.
+        <View style={{ flex: 1, overflow: "hidden" }}>
+          <FlashList
+            data={listLeads}
+            keyExtractor={(l) => l.id}
+            renderItem={({ item }) => <LeadCard lead={item} onPress={() => open(item.id)} />}
+            {...ch.listProps}
+            ListHeaderComponent={ch.spacer}
+            contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 96 }}
+            refreshing={isRefetching}
+            onRefresh={() => refetch()}
+            ListEmptyComponent={debounced || activeCount ? <SearchEmptyState query={debounced || "these filters"} /> : <EmptyState icon="trending-up" title="No leads" message="New leads will appear here." />}
+          />
+          <CollapsingHeader controller={ch}>
+            {switcher}
+            <View style={{ paddingHorizontal: spacing.lg }}>{toolbar}</View>
+          </CollapsingHeader>
+        </View>
       ) : (
         <View style={{ flex: 1 }}>
           <View style={{ paddingHorizontal: spacing.lg }}>{toolbar}</View>
@@ -125,7 +142,7 @@ export default function LeadsList() {
 
       <BottomSheet visible={!!rowAction} onClose={() => setRowAction(null)} title={rowAction?.name ?? "Lead"}>
         <Button label="Edit lead" variant="secondary" full icon={<Feather name="edit-2" size={15} color={palette.ink} />} onPress={() => { const id = rowAction?.id; setRowAction(null); if (id) router.push(`/m/leads/new?editId=${id}` as any); }} style={{ marginBottom: spacing.sm }} />
-        <Button label="Delete lead" variant="danger" full loading={del.isPending} icon={<Feather name="trash-2" size={15} color="#fff" />} onPress={() => rowAction && doDelete(rowAction)} />
+        <Button label="Delete lead" variant="danger" full loading={del.isPending} icon={<Feather name="trash-2" size={15} color={palette.white} />} onPress={() => rowAction && doDelete(rowAction)} />
       </BottomSheet>
     </View>
   );

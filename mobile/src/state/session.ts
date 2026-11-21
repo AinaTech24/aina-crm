@@ -4,12 +4,21 @@
  *
  * Importable outside React (`useSession.getState()`) so the API client can read
  * the token and force a sign-out on an unrecoverable 401 without prop-drilling.
+ *
+ * Cold start never waits on the network when it doesn't have to: a stored,
+ * UNEXPIRED session opens the app at once (the screens paint from the query
+ * cache saved on this phone, scoped to the same account) and is renewed in the
+ * background. If the server says the session is gone, that renewal signs out
+ * → login. Only an EXPIRED stored session must be renewed before anything is
+ * shown. Offline with an unexpired session is the same rule as before: the app
+ * opens, read-only data from the saved copy, writes queue.
  */
 
 import { create } from "zustand";
 import { storageGet, storageSet, storageDelete } from "../lib/storage";
 import { TOKEN_KEY, PUSH_TOKEN_KEY } from "../config";
-import { refreshToken, unregisterDevice } from "../api";
+import { unregisterDevice } from "../api";
+import { sharedRefresh } from "../api/refresh";
 import { useRecentlyViewed } from "./recentlyViewed";
 import { accountFromToken, setAccountScope } from "../lib/accountScope";
 import { queryClient } from "../api/queryClient";
@@ -18,6 +27,37 @@ import { isUnexpiredSession } from "../lib/offlineSession";
 import { useConnectivity } from "./connectivity";
 
 type Status = "loading" | "authed" | "guest";
+
+/** Set by signIn(), read once by the first tenant-brand load (settings/api.ts):
+ *  a fresh sign-in may need one bundle reload to carry the firm's colour. Only
+ *  within 15 s of signing in (the brand normally loads in under a second) —
+ *  never a reload under someone half-way through a form on a slow network. */
+let signedInAt = 0;
+export function consumeFreshSignIn(): boolean {
+  const ok = signedInAt > 0 && Date.now() - signedInAt < 15_000;
+  signedInAt = 0;
+  return ok;
+}
+
+/** Renew a session the app has ALREADY opened on. Network trouble keeps it
+ *  (the token is unexpired; the API client renews on its first 401); a server
+ *  "no" signs out; a renewal for an account no longer on screen is dropped. */
+async function renewInBackground(saved: string, owner: string): Promise<void> {
+  let fresh: string | null;
+  try {
+    fresh = await sharedRefresh(saved);
+  } catch {
+    useConnectivity.getState().setOnline(false);
+    return;
+  }
+  const s = useSession.getState();
+  if (s.status !== "authed" || s.owner !== owner) return;
+  let sameAccount = false;
+  try { sameAccount = !!fresh && accountFromToken(fresh) === owner; } catch { sameAccount = false; }
+  if (!fresh || !sameAccount) { await s.signOut(); return; }
+  // The API client may already have renewed it (a 401 raced us) — keep the newer.
+  if (s.token === saved) await s.setToken(fresh);
+}
 
 interface SessionState {
   token: string | null;
@@ -43,13 +83,16 @@ export const useSession = create<SessionState>((set, get) => ({
     try {
       const saved = await storageGet(TOKEN_KEY);
       if (!saved) { setAccountScope(null); return set({ status: "guest", token: null, owner: null }); }
-      let fresh: string | null;
-      try { fresh = await refreshToken(saved); }
-      catch {
-        if (!isUnexpiredSession(saved)) throw new Error("Reconnect to renew your session");
-        fresh = saved;
-        useConnectivity.getState().setOnline(false);
+      if (isUnexpiredSession(saved)) {
+        // Fast start: open now on the saved session; renew behind the first paint.
+        const owner = accountFromToken(saved);
+        setAccountScope(owner);
+        set({ token: saved, owner, status: "authed" });
+        void renewInBackground(saved, owner);
+        return;
       }
+      // Expired: nothing is shown until the server renews it.
+      const fresh = await sharedRefresh(saved);
       if (fresh) {
         const owner = accountFromToken(fresh);
         if (owner !== accountFromToken(saved)) throw new Error("Account changed during refresh");
@@ -69,6 +112,7 @@ export const useSession = create<SessionState>((set, get) => ({
 
   signIn: async (token) => {
     const owner = accountFromToken(token);
+    signedInAt = Date.now();
     queryClient.clear();
     await useRecentlyViewed.getState().clear();
     await storageSet(TOKEN_KEY, token);

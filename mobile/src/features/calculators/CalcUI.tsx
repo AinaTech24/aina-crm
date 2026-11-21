@@ -15,6 +15,7 @@ import { spacing, palette, radius, fontSize, fontWeight } from "../../theme/toke
 import { toneColors } from "../../theme";
 import { inr } from "./fmt";
 import { SchemeInput } from "./SchemeInput";
+import { GrowthChart } from "./GrowthChart";
 import type { InputSpec, ResultBlock, Tone } from "./types";
 
 const TONE_FALLBACK: Tone = "neutral";
@@ -151,6 +152,9 @@ export function ResultBlockView({ block }: { block: ResultBlock }) {
   if (block.type === "note") {
     return <Text variant="caption" tone="faint" style={styles.note}>{block.text}</Text>;
   }
+  if (block.type === "chart") {
+    return <GrowthChart spec={block.chart} />;
+  }
   if (block.type === "stat") {
     const tc = toneColors((block.tone ?? TONE_FALLBACK) as any);
     return (
@@ -201,23 +205,8 @@ export function ResultBlockView({ block }: { block: ResultBlock }) {
   );
 }
 
-/** Flatten result blocks into a shareable plain-text summary (WhatsApp). */
-export function resultsToText(name: string, firm: string, blocks: ResultBlock[]): string {
-  const lines: string[] = [`*${name}*`];
-  for (const b of blocks) {
-    if (b.type === "section") lines.push(`\n_${b.text}_`);
-    else if (b.type === "stat") lines.push(`${b.label}: *${b.value}*`);
-    else if (b.type === "insight") lines.push(`💡 ${b.text}`);
-    else if (b.type === "note") lines.push(`_${b.text}_`);
-    else if (b.type === "table") {
-      lines.push(b.head.join(" | "));
-      b.rows.slice(0, 12).forEach((r) => lines.push(r.join(" | ")));
-      if (b.rows.length > 12) lines.push(`… ${b.rows.length - 12} more rows`);
-    }
-  }
-  lines.push(`\n_Illustration by ${firm}. Mutual fund investments are subject to market risks._`);
-  return lines.join("\n");
-}
+/** The WhatsApp text of a result (pure, in ./share). */
+export { resultsToText } from "./share";
 
 const styles = StyleSheet.create({
   field: { marginBottom: spacing.lg },

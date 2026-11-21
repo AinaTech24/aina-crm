@@ -17,7 +17,7 @@ import { asIcon } from "../../lib/icons";
 const TONE: Record<ToastTone, { bg: string; icon: string }> = {
   success: { bg: palette.success, icon: "check-circle" },
   danger: { bg: palette.danger, icon: "alert-circle" },
-  info: { bg: palette.ink, icon: "info" },
+  info: { bg: palette.inverse, icon: "info" },
 };
 
 export function ToastHost() {
@@ -50,5 +50,5 @@ function Row({ item }: { item: ToastItem }) {
 
 const styles = StyleSheet.create({
   wrap: { position: "absolute", left: spacing.lg, right: spacing.lg, gap: spacing.sm, alignItems: "stretch" },
-  toast: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.md, shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
+  toast: { flexDirection: "row", alignItems: "center", gap: spacing.sm, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.md, shadowColor: palette.shadow, shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
 });

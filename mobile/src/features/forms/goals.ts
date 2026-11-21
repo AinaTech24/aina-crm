@@ -20,6 +20,7 @@
 
 import type { FormSpec } from "./types";
 import { clientPickerLine } from "../investors/picker";
+import { clientNameById } from "./pickers";
 
 // monthsBetween(from, to) — mirrors src/lib/goal-planning/calc.ts.
 function monthsBetween(from: Date, to: Date): number {
@@ -85,9 +86,11 @@ export const goalForm: FormSpec = {
           searchEnvelope: "investors",
           searchLabel: (i) => i.name,
           searchSublabel: clientPickerLine,
+          searchInitialLabel: clientNameById,
+          required: true,
           placeholder: "Search a client by name or PAN…",
         },
-        { key: "name", label: "Goal name", placeholder: "e.g. Riya's college fund" },
+        { key: "name", label: "Goal name", required: true, placeholder: "e.g. Riya's college fund" },
         {
           key: "category",
           label: "Category",
@@ -119,8 +122,8 @@ export const goalForm: FormSpec = {
     {
       title: "Amount & horizon",
       fields: [
-        { key: "targetAmount", label: "Target amount (₹)", type: "number", placeholder: "5000000" },
-        { key: "targetYear", label: "Target year", type: "number" },
+        { key: "targetAmount", label: "Target amount (₹)", type: "number", required: true, placeholder: "5000000" },
+        { key: "targetYear", label: "Target year", type: "number", required: true },
         { key: "currentValue", label: "Current investment (₹)", type: "number", placeholder: "0" },
         { key: "existingMonthlySip", label: "Existing monthly SIP (₹)", type: "number", placeholder: "0" },
       ],

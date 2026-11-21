@@ -19,6 +19,7 @@ import { Text } from "./ui/Text";
 import { usePrefs } from "../state/prefs";
 import { useSession } from "../state/session";
 import { palette, spacing, radius, fontWeight } from "../theme/tokens";
+import { consumeReloadUnlock } from "../theme/reload";
 
 /** Quick app switches (a call, a WhatsApp reply) shouldn't demand a face scan. */
 const LOCK_AFTER_MS = 30_000;
@@ -61,14 +62,22 @@ export function AppLock() {
   const [label, setLabel] = useState("biometrics");
   const bgAt = useRef<number | null>(null);
   const coldStartDone = useRef(false);
+  // Our own bundle reload (dark mode switched, the firm's colour applied) right
+  // after an unlocked moment is not a new launch — read once per bundle.
+  const reloadUnlocked = useRef<boolean | null>(null);
+  if (reloadUnlocked.current === null) reloadUnlocked.current = Platform.OS !== "web" && consumeReloadUnlock();
 
   const enabled = Platform.OS !== "web" && hydrated && appLock && status === "authed";
+  // Decided during render, not in an effect: the cold-start lock must cover the
+  // very first frame of the signed-in app (it now opens without waiting on the
+  // network, so there is no spinner in front of it any more).
+  const coldStartPending = enabled && !coldStartDone.current && !reloadUnlocked.current;
 
   // Cold start: the first time we know the pref is on for a signed-in user, lock.
   useEffect(() => {
     if (!enabled || coldStartDone.current) return;
     coldStartDone.current = true;
-    setLocked(true);
+    if (!reloadUnlocked.current) setLocked(true);
   }, [enabled]);
 
   useEffect(() => { if (enabled) biometricLabel().then(setLabel); }, [enabled]);
@@ -98,10 +107,10 @@ export function AppLock() {
   // Prompt the moment the lock screen appears — the user shouldn't have to tap first.
   useEffect(() => { if (locked && enabled) unlock(); }, [locked, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!enabled || !locked) return null;
+  if (!enabled || !(locked || coldStartPending)) return null;
 
   return (
-    <Modal visible animationType="fade" statusBarTranslucent onRequestClose={() => {}}>
+    <Modal visible animationType={coldStartPending ? "none" : "fade"} statusBarTranslucent onRequestClose={() => {}}>
       <View style={styles.root}>
         <BrandLogo size={72} />
         <Text variant="title" center style={{ marginTop: spacing.lg }}>Aina CRM is locked</Text>

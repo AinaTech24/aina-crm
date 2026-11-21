@@ -18,6 +18,7 @@ import {
 } from "../fixed-deposits/terms";
 import { inr } from "../../lib/format";
 import { clientPickerLine } from "../investors/picker";
+import { clientNameById } from "./pickers";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const u = (v: any) => (typeof v === "string" && v.trim() ? v.trim() : null);
@@ -147,7 +148,7 @@ export const fixedDepositForm: FormSpec = {
         { key: "_investorName", label: "Client", type: "readonly", visibleIf: (v) => !!v._investorName && !v._edit },
         {
           key: "investorId", label: "Client", type: "typeahead", required: true, searchEndpoint: "/api/search", searchEnvelope: "investors",
-          searchLabel: (i) => i.name, searchSublabel: clientPickerLine, placeholder: "Search a client by name, PAN, mobile…",
+          searchLabel: (i) => i.name, searchSublabel: clientPickerLine, searchInitialLabel: clientNameById, placeholder: "Search a client by name, PAN, mobile…",
           visibleIf: (v) => !v._investorName && !v._edit,
         },
       ],

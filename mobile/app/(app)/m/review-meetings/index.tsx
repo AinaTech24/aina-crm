@@ -4,7 +4,8 @@
  * type / RM / date range / sort), an upgraded meeting card, and a FAB that opens
  * the schedule form. Tap → detail; long-press → edit / cancel. A List / Kanban
  * switch opens the web's status board (long-press a card to move it; a
- * reschedule needs a new date, so it is never a destination).
+ * reschedule needs a new date, so it is never a destination). A move is made
+ * at once and the toast offers Undo (the status back) for ~5 s.
  */
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -32,7 +33,8 @@ import { titleCase } from "../../../../src/lib/format";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
 import { asIcon } from "../../../../src/lib/icons";
-import { KanbanBoard } from "../../../../src/components/domain/KanbanBoard";
+import { KanbanBoard, type KanbanMoveOutcome } from "../../../../src/components/domain/KanbanBoard";
+import { UndoToastHost } from "../../../../src/features/lists/UndoToastHost";
 import { LayoutSwitch } from "../../../../src/components/ui/LayoutSwitch";
 import { api } from "../../../../src/api/client";
 import { toast } from "../../../../src/lib/toast";
@@ -140,15 +142,28 @@ export default function MeetingsList({ embedded = false }: { embedded?: boolean 
   const activeCount = countMeetingFilters(filters) - filters.status.length; // status shown as chips
 
   const open = (id: string) => router.push(`/m/review-meetings/${id}`);
-  const moveMeeting = async (m: Meeting, to: string) => {
+  const refreshMeeting = (id: string) => Promise.all([qc.invalidateQueries({ queryKey: ["meetings"] }), qc.invalidateQueries({ queryKey: ["meeting", id] })]);
+  const moveMeeting = async (m: Meeting, to: string): Promise<KanbanMoveOutcome | undefined> => {
+    const from = m.status ?? "scheduled";
     try {
       await api.patch(`/api/review-meetings/${m.id}`, { status: to });
-      toast.success(`Moved to ${meetingStatusBadge(to).label}`);
+      // Undo puts the status back through the same PATCH.
+      return {
+        message: `Moved to ${meetingStatusBadge(to).label}`,
+        undo: from !== to
+          ? async () => {
+              try { await api.patch(`/api/review-meetings/${m.id}`, { status: from }); }
+              catch (e: any) { toast.error(e?.message ?? "Couldn't undo"); }
+              finally { await refreshMeeting(m.id); }
+            }
+          : undefined,
+      };
     } catch (e: any) {
       toast.error(e?.message ?? "Couldn't move the meeting");
+      return undefined;
     } finally {
       // Awaited, so the board keeps the card where it was dropped until the fresh list lands.
-      await Promise.all([qc.invalidateQueries({ queryKey: ["meetings"] }), qc.invalidateQueries({ queryKey: ["meeting", m.id] })]);
+      await refreshMeeting(m.id);
     }
   };
   const doCancel = (m: Meeting) => {
@@ -237,13 +252,14 @@ export default function MeetingsList({ embedded = false }: { embedded?: boolean 
         />
       )}
       <FAB icon="plus" label="Schedule meeting" onPress={() => router.push("/m/review-meetings/new" as any)} />
+      <UndoToastHost />
 
       <MeetingFilters visible={sheetOpen} onClose={() => setSheetOpen(false)} value={filters} onApply={setFilters} rmOptions={rmOptions} />
 
       <BottomSheet visible={!!rowAction} onClose={() => setRowAction(null)} title={rowAction?.subject ?? "Meeting"}>
         <Button label="Open & edit meeting" variant="secondary" full icon={<Feather name="edit-2" size={15} color={palette.ink} />} onPress={() => { const id = rowAction?.id; setRowAction(null); if (id) open(id); }} style={{ marginBottom: spacing.sm }} />
         {rowAction && rowAction.status !== "cancelled" && rowAction.status !== "completed" && canCancelMeeting(rowAction, me?.user?.id, manageAll) ? (
-          <Button label="Cancel meeting" variant="danger" full loading={cancel.isPending} icon={<Feather name="x-circle" size={15} color="#fff" />} onPress={() => rowAction && doCancel(rowAction)} />
+          <Button label="Cancel meeting" variant="danger" full loading={cancel.isPending} icon={<Feather name="x-circle" size={15} color={palette.white} />} onPress={() => rowAction && doCancel(rowAction)} />
         ) : null}
       </BottomSheet>
     </View>

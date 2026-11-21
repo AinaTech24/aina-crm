@@ -38,5 +38,5 @@ export function OfflineBanner() {
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingBottom: 6, backgroundColor: palette.ink },
+  bar: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingBottom: 6, backgroundColor: palette.inverse },
 });

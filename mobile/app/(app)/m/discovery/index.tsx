@@ -45,7 +45,7 @@ export default function DiscoveryList() {
     <View>
       {submitted > 0 ? (
         <View style={styles.banner}>
-          <Text variant="label" style={{ color: "#92400e" }}>
+          <Text variant="label" style={{ color: palette.warning }}>
             {submitted} discovery{submitted === 1 ? "" : "s"} submitted by clients and awaiting your review.
           </Text>
         </View>
@@ -113,5 +113,5 @@ function Row({ r, onPress }: { r: DiscoveryRow; onPress: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  banner: { borderWidth: 1, borderColor: "#fde68a", backgroundColor: palette.warningBg, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.md },
+  banner: { borderWidth: 1, borderColor: palette.warning, backgroundColor: palette.warningBg, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.md },
 });

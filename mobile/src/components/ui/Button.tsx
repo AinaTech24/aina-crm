@@ -38,9 +38,8 @@ const VARIANTS: Record<Variant, { bg: string; fg: string; border: string }> = {
 };
 
 function useButtonBits(size: Size, variant: Variant) {
-  // Buttons are the app's "accent" surface (matches the Appearance screen's
-  // Primary=chrome vs Accent=highlights split) — chrome (header/tabs/avatars)
-  // stays on `brand` elsewhere.
+  // The app's one accent — the firm's colour (theme/brand.ts); `accent` is
+  // the same colour as `brand`, kept so this reads the same as before.
   const { accent, accentDark } = useBrand();
   const height = size === "lg" ? 54 : size === "sm" ? 38 : TOUCH_MIN;
   const v =
@@ -57,7 +56,7 @@ function Inner({ loading, icon, label, size, fg }: { loading?: boolean; icon?: R
   return (
     <View style={styles.row}>
       {icon}
-      <Text style={{ color: fg, fontSize: size === "sm" ? fontSize.sm : fontSize.md, fontWeight: fontWeight.semibold }}>{label}</Text>
+      <Text dense style={{ color: fg, fontSize: size === "sm" ? fontSize.sm : fontSize.md, fontWeight: fontWeight.semibold, flexShrink: 1 }}>{label}</Text>
     </View>
   );
 }

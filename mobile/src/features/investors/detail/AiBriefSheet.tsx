@@ -43,7 +43,7 @@ export function AiBriefSheet({ id, visible, onClose, phone }: { id: string; visi
             {brief.suggestedOpener ? (
               <Block title="Suggested opener">
                 <View style={styles.opener}><Text variant="caption">{brief.suggestedOpener}</Text></View>
-                {phone ? <Button label="Send on WhatsApp" icon={<Feather name="message-circle" size={15} color="#fff" />} onPress={() => openWhatsApp({ phone, text: brief.suggestedOpener, subjectType: "investor", subjectId: id, purpose: "AI opener" })} full style={{ marginTop: spacing.sm }} /> : null}
+                {phone ? <Button label="Send on WhatsApp" icon={<Feather name="message-circle" size={15} color={palette.white} />} onPress={() => openWhatsApp({ phone, text: brief.suggestedOpener, subjectType: "investor", subjectId: id, purpose: "AI opener" })} full style={{ marginTop: spacing.sm }} /> : null}
               </Block>
             ) : null}
           </View>

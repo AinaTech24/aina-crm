@@ -5,6 +5,9 @@
  *
  * Fund Research calculators name the schemes they need (`navSchemes`); their
  * NAV histories load here and reach the pure compute as `ctx.nav`.
+ *
+ * Present opens the same result full screen for the client (presenter mode) —
+ * every calculator but the firm's own AUM Opportunity (`present: false`).
  */
 
 import React from "react";
@@ -21,6 +24,8 @@ import { useNavHistories } from "../../../../src/features/calculators/SchemeInpu
 import type { CalcContext, CalculatorDef, ResultBlock } from "../../../../src/features/calculators/types";
 import { useTenant } from "../../../../src/features/settings/api";
 import { toast } from "../../../../src/lib/toast";
+import { usePresenter } from "../../../../src/features/presenter/Presenter";
+import { CalculatorPresentation } from "../../../../src/features/presenter/CalculatorPresentation";
 import { spacing, palette, radius, fontWeight } from "../../../../src/theme/tokens";
 
 const seedValues = (def: CalculatorDef | undefined): Record<string, any> => {
@@ -43,6 +48,7 @@ export default function CalculatorScreen() {
     try { return Array.from(new Set(def.navSchemes(values).filter(Boolean))); } catch { return []; }
   }, [def, values]);
   const navs = useNavHistories(codes);
+  const presenter = usePresenter();
 
   const loading = navs.filter((n) => n.status === "loading");
   const failed = navs.filter((n) => n.status === "error");
@@ -124,8 +130,21 @@ export default function CalculatorScreen() {
           )}
         </View>
 
+        {def.present !== false ? (
+          <Pressable
+            style={({ pressed }) => [styles.presentCta, (blocks.length === 0 || pressed) && { opacity: blocks.length === 0 ? 0.5 : 0.8 }]}
+            onPress={presenter.open}
+            disabled={blocks.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel="Present to the client"
+          >
+            <Feather name="maximize-2" size={16} color={palette.ink} />
+            <Text style={{ color: palette.ink, fontWeight: fontWeight.semibold }}>Present</Text>
+          </Pressable>
+        ) : null}
+
         {/* Share CTA */}
-        <Pressable style={styles.shareCta} onPress={share}>
+        <Pressable style={[styles.shareCta, def.present === false && { marginTop: spacing.xl }]} onPress={share}>
           <Feather name="message-circle" size={16} color={palette.white} />
           <Text style={{ color: palette.white, fontWeight: fontWeight.semibold }}>Share on WhatsApp</Text>
         </Pressable>
@@ -133,12 +152,16 @@ export default function CalculatorScreen() {
           Illustration only. Mutual fund investments are subject to market risks.
         </Text>
       </Screen>
+      {def.present !== false ? (
+        <CalculatorPresentation visible={presenter.visible} onClose={presenter.close} name={def.name} blocks={blocks} />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   shareBtn: { width: 34, height: 34, borderRadius: radius.pill, backgroundColor: palette.success, alignItems: "center", justifyContent: "center" },
-  shareCta: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: palette.success, borderRadius: radius.md, paddingVertical: spacing.md, marginTop: spacing.xl },
+  shareCta: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: palette.success, borderRadius: radius.md, paddingVertical: spacing.md, marginTop: spacing.md },
+  presentCta: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, paddingVertical: spacing.md, marginTop: spacing.xl, minHeight: 48 },
   reset: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-end", paddingVertical: 4, minHeight: 28 },
 });

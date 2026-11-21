@@ -1,14 +1,19 @@
 /**
  * Typed text primitive. Variants encode the type scale so screens never
  * hard-code font sizes/weights. `tone` picks a semantic color.
+ *
+ * Secondary facts: `caption` (12px) for the smallest grey line, `secondary`
+ * (14px, the same grey) for the second line of a list row — the client's city,
+ * a due date, an amount — where 12px was too small to read at arm's length.
+ * The grey (`palette.muted`) is ≥4.5:1 on every surface in both colour sets.
  */
 
 import React from "react";
 import { Text as RNText, type TextProps as RNTextProps, type TextStyle } from "react-native";
-import { fontSize, fontWeight, palette } from "../../theme/tokens";
+import { fontSize, fontWeight, fontScale, palette } from "../../theme/tokens";
 import { useBrand } from "../../theme/brand";
 
-type Variant = "display" | "title" | "heading" | "subtitle" | "body" | "label" | "caption";
+type Variant = "display" | "title" | "heading" | "subtitle" | "body" | "label" | "secondary" | "caption";
 type ColorTone = "default" | "muted" | "faint" | "brand" | "success" | "warning" | "danger" | "inverse";
 
 const VARIANT: Record<Variant, TextStyle> = {
@@ -18,6 +23,7 @@ const VARIANT: Record<Variant, TextStyle> = {
   subtitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: palette.ink },
   body: { fontSize: fontSize.base, fontWeight: fontWeight.regular, color: palette.ink70 },
   label: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: palette.ink70 },
+  secondary: { fontSize: fontSize.sm, fontWeight: fontWeight.regular, color: palette.muted },
   caption: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: palette.muted },
 };
 
@@ -37,16 +43,20 @@ export interface TextProps extends RNTextProps {
   tone?: ColorTone;
   weight?: keyof typeof fontWeight;
   center?: boolean;
+  /** Fixed-height UI (chips, pills, tab labels, segmented tabs): grows less
+   *  with the phone's font size so it never clips. */
+  dense?: boolean;
 }
 
-export function Text({ variant = "body", tone, weight, center, style, ...rest }: TextProps) {
+export function Text({ variant = "body", tone, weight, center, dense, style, ...rest }: TextProps) {
   const { brandDark } = useBrand();
   return (
     <RNText
       // Honour the OS accessibility text size, but cap it: past ~1.35× the
       // fixed-height rows, tab bar and pills clip or overflow instead of
       // helping anyone. Callers can still override per-instance.
-      maxFontSizeMultiplier={1.35}
+      allowFontScaling
+      maxFontSizeMultiplier={dense ? fontScale.dense : fontScale.text}
       style={[
         VARIANT[variant],
         tone ? { color: tone === "brand" ? brandDark : COLOR[tone] } : null,

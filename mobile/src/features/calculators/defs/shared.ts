@@ -7,6 +7,10 @@
 import type { InputSpec, ResultBlock, Tone } from "../types";
 import { scenarioRates } from "../web/sip-suite";
 
+/** The growth chart under a result (chart.ts): `chart(xLabel, x, lines)` gives
+ *  one chart block, or none when it cannot be drawn honestly. */
+export { chartBlock as chart, cumulative } from "../chart";
+
 /** The web's ScenarioFields: return 1, "Compare scenario 2" toggle, return 2. */
 export function scenarioInputs(r1 = 12, r2 = 15, useR2 = true, labels = { r1: "Return, scenario 1", r2: "Return, scenario 2" }): InputSpec[] {
   return [

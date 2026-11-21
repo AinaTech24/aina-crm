@@ -17,9 +17,8 @@
  */
 
 import React from "react";
-import { View, Pressable, KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from "react-native";
+import { View, Pressable, KeyboardAvoidingView, ScrollView, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { Card } from "../../../components/ui/Card";
 import { Text } from "../../../components/ui/Text";
@@ -28,6 +27,7 @@ import { TextField } from "../../../components/ui/TextField";
 import { SelectField } from "../../../components/ui/SelectField";
 import { ScreenHeader } from "../../../components/ui/ScreenHeader";
 import { LoadingState } from "../../../components/states";
+import { StickyActionBar } from "../../../components/form/StickyActionBar";
 import { api } from "../../../api/client";
 import {
   useProposal, useRecipientSnapshot, useFamilyMembers, useRefreshProposals, proposalTypeFor, describeError, PROFILE_LABEL,
@@ -67,7 +67,6 @@ const dayOf = (iso?: string | null) => {
 
 export function ProposalBuilder({ params }: { params: { editId?: string; investorId?: string; leadId?: string; familyId?: string; opportunityId?: string } }) {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const editing = useProposal(params.editId ?? "");
   const scrollRef = React.useRef<ScrollView>(null);
 
@@ -271,8 +270,10 @@ export function ProposalBuilder({ params }: { params: { editId?: string; investo
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       <ScreenHeader title={heading} subtitle={subtitle} />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView ref={scrollRef} contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
+      {/* The step bar sits inside the keyboard-avoiding view (Android is edge to
+          edge, so the OS no longer resizes for the keyboard): it rides above it. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        <ScrollView ref={scrollRef} contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xl }} keyboardShouldPersistTaps="handled">
           {locked ? (
             <Banner>
               <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -382,18 +383,18 @@ export function ProposalBuilder({ params }: { params: { editId?: string; investo
             />
           ) : null}
         </ScrollView>
-      </KeyboardAvoidingView>
 
-      {/* One bar for moving through the steps — always in reach. */}
-      <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-        {step > 0 ? (
-          <Button label="Back" size="sm" variant="ghost" accessibilityLabel={`Back to ${STEPS[step - 1]}`} icon={<Feather name="chevron-left" size={16} color={palette.brandDark} />} onPress={() => go(step - 1)} style={{ paddingHorizontal: spacing.sm }} />
-        ) : <View />}
-        <View style={{ flexDirection: "row", gap: spacing.sm }}>
-          {!locked ? <Button label="Save draft" size="sm" variant="secondary" loading={busy === "draft"} disabled={busy !== null || !recipient} onPress={saveDraft} style={{ paddingHorizontal: spacing.md }} /> : null}
-          {step < STEPS.length - 1 ? <Button label={`${STEPS[step + 1]} ›`} size="sm" disabled={!recipient} onPress={() => go(step + 1)} style={{ paddingHorizontal: spacing.md }} /> : null}
-        </View>
-      </View>
+        {/* One bar for moving through the steps — always in reach. */}
+        <StickyActionBar style={styles.bar}>
+          {step > 0 ? (
+            <Button label="Back" size="sm" variant="ghost" accessibilityLabel={`Back to ${STEPS[step - 1]}`} icon={<Feather name="chevron-left" size={16} color={palette.brandDark} />} onPress={() => go(step - 1)} style={{ paddingHorizontal: spacing.sm }} />
+          ) : <View />}
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            {!locked ? <Button label="Save draft" size="sm" variant="secondary" loading={busy === "draft"} disabled={busy !== null || !recipient} onPress={saveDraft} style={{ paddingHorizontal: spacing.md }} /> : null}
+            {step < STEPS.length - 1 ? <Button label={`${STEPS[step + 1]} ›`} size="sm" disabled={!recipient} onPress={() => go(step + 1)} style={{ paddingHorizontal: spacing.md }} /> : null}
+          </View>
+        </StickyActionBar>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -403,5 +404,5 @@ const styles = StyleSheet.create({
   step: { flex: 1, alignItems: "center", gap: 4, paddingVertical: spacing.sm, paddingHorizontal: 2, borderBottomWidth: 2, borderBottomColor: palette.line },
   stepOn: { borderBottomColor: palette.brand },
   dot: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: palette.surfaceSunken },
-  bar: { position: "absolute", left: 0, right: 0, bottom: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, backgroundColor: palette.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
+  bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
 });

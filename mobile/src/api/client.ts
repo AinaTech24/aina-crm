@@ -15,7 +15,7 @@
 import { API_BASE_URL } from "../config";
 import { useSession } from "../state/session";
 import { useConnectivity } from "../state/connectivity";
-import { refreshToken } from "../api";
+import { sharedRefresh } from "./refresh";
 import { getAccountScope } from "../lib/accountScope";
 
 export class ApiError extends Error {
@@ -53,8 +53,6 @@ interface RequestOptions {
   /** FormData for uploads — skips JSON encoding. */
   form?: FormData;
 }
-
-const refreshes = new Map<string, Promise<string | null>>();
 
 function buildUrl(path: string, params?: RequestOptions["params"]): string {
   const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
@@ -120,9 +118,8 @@ export async function apiRequest<T = any>(path: string, opts: RequestOptions = {
     if (isSessionFailure(safeJson(text))) {
       text = null;
       const oldToken = token;
-      if (!refreshes.has(oldToken)) refreshes.set(oldToken, refreshToken(oldToken).finally(() => refreshes.delete(oldToken)));
       let fresh: string | null | undefined;
-      try { fresh = await refreshes.get(oldToken); }
+      try { fresh = await sharedRefresh(oldToken); }
       catch { throw new ApiError(0, "Session service unavailable. Your offline changes are safe.", undefined, "network"); }
       assertSameAccount();
       if (fresh) {

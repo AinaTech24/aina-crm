@@ -31,7 +31,7 @@ import {
   epfCalc, EPF_DEFAULT_RATE_PCT, EPF_EMPLOYEE_PCT, EPF_EMPLOYER_SHARE_PCT, EPF_RETIREMENT_AGE, EPS_WAGE_CEILING,
   type EpfEmployerMode,
 } from "../web/epf";
-import { scenarioInputs, ratesOf, reportInput, stat, section, table, insight, note, opts, TONE } from "./shared";
+import { scenarioInputs, ratesOf, reportInput, stat, section, table, insight, note, opts, TONE, chart, cumulative } from "./shared";
 
 /** The web's clampNum: a non-negative finite number, 0 on garbage. */
 const nn = (x: unknown): number => {
@@ -198,7 +198,12 @@ const multipurpose: CalcBody = {
       stat("Horizon", `${result.totalYears} yrs`),
     );
     if (result.fundProjection && result.fundProjection.length > 0) {
+      const fp = result.fundProjection;
       out.push(
+        ...chart("Age", fp.map((r) => r.age), [
+          { label: "Invested", role: "invested", values: fp.map((r) => r.invested) },
+          { label: "Fund value", values: fp.map((r) => r.fundValue) },
+        ]),
         section("1. Fund value projection (no withdrawals)"),
         table(["Age", "Years", "Invested", "Fund value"], result.fundProjection.map((r) => [`${r.age}`, `${r.years}`, inr(r.invested), inr(r.fundValue)])),
         insight("With no withdrawals, the corpus compounds uninterrupted — ideal for legacy and long-term wealth creation.", "success"),
@@ -242,7 +247,7 @@ const multipurpose: CalcBody = {
 /* ───────────────────────── Vacation Planner ───────────────────────── */
 
 /** CalculatorsApp.tsx VacationPlannerCalc — Advanced Vacation Planner
- *  (vacationPlan). The drawdown chart is not drawn; the "First vacation" /
+ *  (vacationPlan). The drawdown is the growth chart; the "First vacation" /
  *  "Final vacation" boxes are stats under their headings. */
 const vacation: CalcBody = {
   inputs: [
@@ -284,6 +289,10 @@ const vacation: CalcBody = {
       stat("Growing SIP — annual (yr 1)", fullyFunded ? "—" : inr(res.annualSip), "success"),
       stat("Or one-time lumpsum today", fullyFunded ? "—" : inr(res.lumpsumToday), "success"),
       stat("Total vacation spend (nominal)", inrCompact(res.totalNominalSpend)),
+      ...chart("Vacation", res.drawdown.map((d) => d.index), [
+        { label: "Corpus left", values: res.drawdown.map((d) => Math.max(0, d.balanceAfter)) },
+        { label: "Vacation cost", values: res.drawdown.map((d) => d.cost) },
+      ]),
       section("First vacation"),
       stat("Year 1 cost", inr(res.drawdown[0]?.cost ?? vacationCost)),
       stat("Growth-adjusted rate", `${res.realRatePct.toFixed(2)}%`),
@@ -399,7 +408,7 @@ const childedu: CalcBody = {
 /* ───────────────────────── Early-Start Child SIP ───────────────────────── */
 
 /** EarlyStartChildSip.tsx — Early-Start Child SIP (computeChildSip). The web's
- *  section 3 is a growth chart only, which the app does not draw. */
+ *  section 3 (its growth chart) is the chart under the headline. */
 const childsip: CalcBody = {
   inputs: [
     { key: "startAge", label: "Child's current age", type: "years", default: 0 },
@@ -421,6 +430,7 @@ const childsip: CalcBody = {
       stat(`Value at age ${res.finalAge}`, inr(res.finalValue), "success"),
       stat("Multiple on invested", `${res.finalMultiple.toFixed(1)}×`, "success"),
       insight(`A ${inr(monthlySip)}/month SIP from age ${startAge} to ${investTillAge} (${inr(res.totalInvested)} invested over ${res.investYears} years), left to compound at ${returnPct}%, grows to ${inr(res.finalValue)} by age ${res.finalAge} — about ${res.finalMultiple.toFixed(1)}× the amount invested, without adding a rupee after age ${investTillAge}.`, "success"),
+      ...chart("Age", res.series.map((p) => p.age), [{ label: "Corpus value", values: res.series.map((p) => p.value) }]),
       section("2. Value at each milestone age"),
       table(
         ["Age", "Corpus value", "× of invested"],
@@ -482,6 +492,7 @@ const collision: CalcBody = {
           isDueNow(g.yearsAway) ? `Due now — lumpsum ${inr(g.lumpsumToday)}` : `${inr(g.monthlySip)}/mo or ${inr(g.lumpsumToday)} today`,
         ]),
       ),
+      ...chart("Year", result.timeline.map((y) => y.year), [{ label: "Total monthly outflow", values: result.timeline.map((y) => y.totalMonthly) }]),
       section("2. Total monthly outflow by year"),
       table(["Year", "Total monthly outflow"], result.timeline.map((y) => [`Y${y.year}`, `${inr(y.totalMonthly)}/mo`])),
       insight(`The household's monthly investment commitment is highest now — ${inr(result.peakMonthly)}/month while ${running} goals run together — and eases as each goal is reached. Funding every goal with a one-time lumpsum instead would take ${inr(result.totalLumpsumToday)} invested today.`, "warning"),
@@ -580,7 +591,7 @@ const inflation: CalcBody = {
 /* ───────────────────────── SIP for a Target & Cost of Delay ───────────────────────── */
 
 /** SipForTargetCalculator.tsx — SIP for a Target & Cost of Delay (sipForTarget).
- *  The year-wise chart is not drawn. */
+ *  The year-wise chart is the growth chart. */
 const delay: CalcBody = {
   inputs: [
     { key: "target", label: "Target amount (₹)", type: "money", default: 5000000 },
@@ -619,6 +630,11 @@ const delay: CalcBody = {
       ),
       insight(`To reach ${inr(target)} in ${n} years at ${fmtPct(s1.ratePct)}: a SIP of ${inr(s1.sip)}/month — or a one-time lumpsum of ${inr(s1.lumpsumToday)} invested today${res[1] ? ` (${inr(res[1].sip)}/month or ${inr(res[1].lumpsumToday)} today at ${fmtPct(res[1].ratePct)})` : ""}.`, "brand"),
     ];
+    out.push(...chart("Year", s1.rows.map((r) => r.year), [
+      { label: `Invested @ ${fmtPct(s1.ratePct)}`, role: "invested", values: cumulative(s1.rows.map((r) => r.annual)) },
+      ...res.map((sc) => ({ label: `SIP value @ ${fmtPct(sc.ratePct)}`, values: s1.rows.map((_, i) => sc.rows[i]?.value ?? NaN) })),
+      ...(hasStep ? [{ label: `Step-up SIP @ ${fmtPct(s1.ratePct)}`, values: s1.rows.map((_, i) => s1.stepUp?.rows[i]?.value ?? NaN) }] : []),
+    ]));
     if (delay1) {
       out.push(insight(`Waiting just one year lifts the SIP needed at ${fmtPct(s1.ratePct)} from ${inr(s1.sip)} to ${inr(delay1.sip)} a month — and the total put in from ${inr(s1.total)} to ${inr(delay1.total)}.`, "warning"));
     }
@@ -662,7 +678,7 @@ const delay: CalcBody = {
 /* ───────────────────────── Retirement Need Based ───────────────────────── */
 
 /** RetirementNeedCalculator.tsx — Retirement Need Based Calculator
- *  (retirementNeed). The drawdown chart is not drawn. */
+ *  (retirementNeed). The drawdown chart is the growth chart. */
 const retirement: CalcBody = {
   inputs: [
     { key: "currentAge", label: "Current age (yrs)", type: "years", default: 32 },
@@ -741,6 +757,10 @@ const retirement: CalcBody = {
     ];
     if (s1.rows.length > 0) {
       out.push(
+        ...chart("Age", s1.rows.map((r) => r.age), sc.map((s, i) => ({
+          label: sc.length > 1 ? `Corpus left · S${i + 1}` : "Corpus left",
+          values: s1.rows.map((_, ri) => s.rows[ri]?.balanceEoy ?? NaN),
+        }))),
         section(`3. Monthly income and corpus left, age ${retirementAge + 1} to ${annuityEndAge}`),
         table(
           ["Age", ...sc.flatMap((_, i) => [`Avg monthly income · S${i + 1}`, `Corpus at year end · S${i + 1}`])],
@@ -760,7 +780,7 @@ const retirement: CalcBody = {
 /* ───────────────────────── Limited-Period SIP for a Target ───────────────────────── */
 
 /** LimitedSipNeedCalculator.tsx — Limited-Period SIP for a Target
- *  (limitedSipNeed). The year-wise chart is not drawn. */
+ *  (limitedSipNeed). The year-wise chart is the growth chart. */
 const limitedneed: CalcBody = {
   inputs: [
     { key: "target", label: "Target amount (₹)", type: "money", default: 2500000 },
@@ -785,6 +805,12 @@ const limitedneed: CalcBody = {
         ? insight(`A SIP of ${inr(s1.monthlySip)}/month for ${s} years — ${inr(s1.totalInvestment)} in all — then left invested for ${total - s} more years reaches ${inr(target)} at ${fmtPct(s1.ratePct)} — as would a one-time lumpsum of ${inr(s1.lumpsumToday)} invested today and left for all ${total} years.`, "brand")
         : insight("Enter a SIP period of at least one year.", "warning"),
     ];
+    if (s1) {
+      out.push(...chart("Year", s1.rows.map((r) => r.year), [
+        { label: `Invested @ ${fmtPct(s1.ratePct)}`, role: "invested", values: cumulative(s1.rows.map((r) => r.annual)) },
+        ...res.map((sc) => ({ label: `Value @ ${fmtPct(sc.ratePct)}`, values: s1.rows.map((_, i) => sc.rows[i]?.value ?? NaN) })),
+      ]));
+    }
     if (v.view === "detailed") {
       res.forEach((sc, i) => {
         if (sc.rows.length === 0) return;
@@ -805,7 +831,7 @@ const limitedneed: CalcBody = {
 /* ───────────────────────── Step-Up SIP for a Target ───────────────────────── */
 
 /** StepUpSipForTargetCalculator.tsx — Step-Up SIP for a Target
- *  (stepUpSipForTarget). The year-wise chart is not drawn. */
+ *  (stepUpSipForTarget). The year-wise chart is the growth chart. */
 const stepuptarget: CalcBody = {
   inputs: [
     { key: "target", label: "Target amount (₹)", type: "money", default: 5000000 },
@@ -827,6 +853,12 @@ const stepuptarget: CalcBody = {
         ? insight(`Start at ${inr(s1.startSip)}/month and raise it ${fmtPct(stepUpPct)} every year to reach ${inr(target)} at ${fmtPct(s1.ratePct)}${res[1] ? ` — or start at ${inr(res[1].startSip)}/month at ${fmtPct(res[1].ratePct)}` : ""}. Or invest a one-time lumpsum of ${inr(s1.lumpsumToday)} today at ${fmtPct(s1.ratePct)}${res[1] ? ` (${inr(res[1].lumpsumToday)} at ${fmtPct(res[1].ratePct)})` : ""} and leave it to grow.`, "brand")
         : insight("Enter a SIP period of at least one year.", "warning"),
     ];
+    if (s1) {
+      out.push(...chart("Year", s1.rows.map((r) => r.year), [
+        { label: `Invested @ ${fmtPct(s1.ratePct)}`, role: "invested", values: cumulative(s1.rows.map((r) => r.annual)) },
+        ...res.map((sc) => ({ label: `Value @ ${fmtPct(sc.ratePct)}`, values: s1.rows.map((_, i) => sc.rows[i]?.value ?? NaN) })),
+      ]));
+    }
     if (v.view === "detailed" && s1 && s1.rows.length > 0) {
       res.forEach((sc, i) => {
         out.push(
@@ -842,7 +874,7 @@ const stepuptarget: CalcBody = {
 /* ───────────────────────── SIP or Lumpsum for a Target ───────────────────────── */
 
 /** SipLumpsumForTargetCalculator.tsx — SIP or Lumpsum for a Target
- *  (sipLumpsumForTarget). The year-wise chart is not drawn. */
+ *  (sipLumpsumForTarget). The year-wise chart is the growth chart. */
 const siplstarget: CalcBody = {
   inputs: [
     { key: "target", label: "Target amount (₹)", type: "money", default: 10000000 },
@@ -877,6 +909,12 @@ const siplstarget: CalcBody = {
     } else {
       out.push(insight("Enter an investment period of at least one year.", "warning"));
     }
+    out.push(...chart("Year", res.rows.map((r) => r.year), [
+      { label: "Invested", role: "invested", values: res.rows.map((r) => r.cumulative) },
+      { label: "Total value", values: res.rows.map((r) => r.total) },
+      { label: "SIP", values: res.rows.map((r) => r.sipValue) },
+      { label: "Lumpsum", values: res.rows.map((r) => r.lumpsumValue) },
+    ]));
     if (v.view === "detailed" && n > 0) {
       out.push(
         section("1. Year-wise investment and value"),
@@ -894,7 +932,7 @@ const siplstarget: CalcBody = {
 /* ───────────────────────── Lumpsum for a Target ───────────────────────── */
 
 /** LumpsumForTargetCalculator.tsx — Lumpsum for a Target (lumpsumForTarget).
- *  The year-wise chart is not drawn. */
+ *  The year-wise chart is the growth chart. */
 const lstarget: CalcBody = {
   inputs: [
     { key: "target", label: "Target amount (₹)", type: "money", default: 30000000 },
@@ -914,6 +952,12 @@ const lstarget: CalcBody = {
     ];
     if (s1 && target > 0) {
       out.push(insight(`Investing ${inr(s1.lumpsum)} today at ${fmtPct(s1.ratePct)} grows to ${inr(target)} in ${n} years${res[1] ? `; at ${fmtPct(res[1].ratePct)} only ${inr(res[1].lumpsum)} is needed` : ""}.`, "brand"));
+    }
+    if (s1) {
+      out.push(...chart("Year", s1.rows.map((r) => r.year), res.flatMap((sc) => [
+        { label: `Invested @ ${fmtPct(sc.ratePct)}`, role: "invested" as const, values: cumulative(s1.rows.map((_, i) => sc.rows[i]?.investment ?? NaN)) },
+        { label: `Value @ ${fmtPct(sc.ratePct)}`, values: s1.rows.map((_, i) => sc.rows[i]?.value ?? NaN) },
+      ])));
     }
     if (v.view === "detailed" && n > 0) {
       out.push(
@@ -939,7 +983,7 @@ const lstarget: CalcBody = {
 
 /** SipStpTargetCalculator.tsx — SIP / STP Required for Target Future Value
  *  (computeSipStpForTarget); the year-wise table is StpParts.tsx SipStpYearTable
- *  (its chart is not drawn). The web's transfer-rule line under the inputs
+ *  (its chart is the growth chart). The web's transfer-rule line under the inputs
  *  leads the results. */
 const sipstpgoal: CalcBody = {
   inputs: [
@@ -980,6 +1024,12 @@ const sipstpgoal: CalcBody = {
         ? `With ${inr(stpLumpsum)} in the STP, a SIP of ${inr(solved)} a month reaches ${inr(target)} in ${years} years.`
         : `With a SIP of ${inr(monthlySip)} a month, placing ${inr(solved)} in the STP reaches ${inr(target)} in ${years} years.`, "brand"));
     }
+    out.push(...chart("Year", p.rows.map((x) => x.year), [
+      { label: "Invested", role: "invested", values: p.rows.map((x) => x.cumulativeInvestment) },
+      { label: "Total value", values: p.rows.map((x) => x.total) },
+      { label: "SIP fund", values: p.rows.map((x) => x.sipValue) },
+      { label: "STP fund", values: p.rows.map((x) => x.stpValue) },
+    ]));
     if (v.detailed && p.rows.length > 0) {
       out.push(
         section("1. Year-wise investment and value"),
@@ -1006,7 +1056,7 @@ function describeMonthlyMode(mode: MonthlyStpMode, amount: number, pct: number):
 
 /** StpTargetCalculator.tsx — STP Required for Target Future Value
  *  (stpRequiredForTarget); the transfer picker and year-wise table are
- *  StpParts.tsx MonthlyModeFields / StpYearTable (its chart is not drawn). The
+ *  StpParts.tsx MonthlyModeFields / StpYearTable (its chart is the growth chart). The
  *  picker is two switches — "Monthly transfer", then "Fixed by" — each keeping
  *  its own choice. */
 const stpgoal: CalcBody = {
@@ -1044,6 +1094,11 @@ const stpgoal: CalcBody = {
         stat("Annualised return", `${projection.annualisedReturnPct.toFixed(2)}%`, "success"),
         insight(`Place ${inr(initialRequired)} in a ${debtPct}% debt fund and move ${describeMonthlyMode(mode, amount, pct).toLowerCase()}${mode === "fixedPct" ? ` (${inr(projection.transferAmount)})` : ""} into a ${equityPct}% equity fund to reach ${inr(target)} in ${years} years.${stops}`, "brand"),
       );
+      out.push(...chart("Year", projection.schedule.map((r) => r.year), [
+        { label: "Invested", role: "invested", values: projection.schedule.map(() => initialRequired) },
+        { label: "Total value", values: projection.schedule.map((r) => r.totalEnd) },
+        { label: "Equity fund", values: projection.schedule.map((r) => r.equityEnd) },
+      ]));
       if (v.detailed && projection.schedule.length > 0) {
         out.push(
           section("1. Year-wise value of the plan"),
@@ -1071,8 +1126,8 @@ const stpgoal: CalcBody = {
 /* ───────────────────────── PPF Maturity ───────────────────────── */
 
 /** PpfCalculator.tsx — PPF Maturity (ppfCalc). Year-by-year deposits are one
- *  input per contributing year, as the web's grid; the balance chart is not
- *  drawn. */
+ *  input per contributing year, as the web's grid; the balance chart is the
+ *  growth chart. */
 const PPF_MAX_EXTENSIONS = 4;
 const PPF_MAX_YEARS = PPF_TERM_YEARS + PPF_EXTENSION_YEARS * PPF_MAX_EXTENSIONS;
 const ppfExtCount = (v: Values) => Math.min(PPF_MAX_EXTENSIONS, Math.max(0, Math.round(Number(v.extCount) || 0)));
@@ -1130,6 +1185,10 @@ const ppf: CalcBody = {
     }
     if (res.rows.length > 0) {
       out.push(
+        ...chart("Year", res.rows.map((r) => r.year), [
+          { label: "Deposited", role: "invested", values: cumulative(res.rows.map((r) => r.deposit)) },
+          { label: "Balance", values: res.rows.map((r) => r.closing) },
+        ]),
         section("1. Balance year by year"),
         table(
           ["Year", "Phase", "Opening balance", "Deposit", "Interest", "Closing balance"],
@@ -1153,7 +1212,7 @@ const ppf: CalcBody = {
 /* ───────────────────────── EPF Corpus ───────────────────────── */
 
 /** EpfCalculator.tsx — EPF Corpus at Retirement (epfCalc). The balance chart
- *  is not drawn. */
+ *  is the growth chart. */
 const epf: CalcBody = {
   inputs: [
     { key: "age", label: "Current age", type: "years", default: 30 },
@@ -1195,6 +1254,10 @@ const epf: CalcBody = {
     }
     out.push(
       insight(`The employer's 12% is split: 8.33% goes to the Employees' Pension Scheme (EPS), worked out on pay up to ${inr(EPS_WAGE_CEILING)} — at most ${inr(1250)} a month — and only the rest reaches EPF. The pension (${inr(res.totalEps)} over these years) pays a monthly pension, not part of this corpus.${employerMode === "full_wage" ? ` With an employer paying 12% on the full salary, everything above the ${inr(1250)} EPS share goes to EPF.` : ""}`, "warning"),
+      ...chart("Age", res.rows.map((r) => r.age), [
+        { label: "Paid in", role: "invested", values: cumulative(res.rows.map((r) => r.employee + r.employer)).map((x) => x + (res.rows[0]?.opening ?? 0)) },
+        { label: "EPF balance", values: res.rows.map((r) => r.closing) },
+      ]),
       section("1. EPF balance year by year"),
       table(
         ["Year", "Age", "Monthly basic + DA", "Opening balance", "Your share", "Employer's share", "Interest", "Closing balance"],

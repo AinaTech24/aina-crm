@@ -21,7 +21,7 @@ import {
   ALLOC_CLASSES, computeAssetAllocationReview, EXISTING_DEFAULTS, SUGGESTED_DEFAULTS, type AllocRow, type PortfolioResult,
 } from "../web/asset-allocation-review";
 import { portfolioProjection, type PortfolioProjectionMode } from "../web/portfolio-projection";
-import { TONE, stat, section, table, insight, note, opts } from "./shared";
+import { TONE, stat, section, table, insight, note, opts, chart } from "./shared";
 
 /** The web's clampNum: a non-negative finite number, 0 on garbage. */
 const nn = (x: unknown): number => {
@@ -409,6 +409,8 @@ export function aumOpportunity({
 /** AumOpportunityCalculator.tsx — AUM Opportunity (inline maths above). The
  *  opportunity bar chart is not drawn. */
 const aumopportunity: CalcBody = {
+  // The firm's own sales working (conversion confidence, priority, book impact) — never presented to a client.
+  present: false,
   inputs: [
     { key: "urgency", label: "Urgency", type: "segmented", default: "medium", options: opts([["medium", "Medium"], ["high", "High"], ["low", "Low"]]) },
     { key: "capturePct", label: "Conversion confidence (%)", type: "percent", default: 35 },
@@ -585,7 +587,7 @@ const rebalance: CalcBody = {
 /* ───────────────────────── Expense-Ratio Drag ───────────────────────── */
 
 /** ExpenseDragCalculator.tsx — Expense-Ratio Drag (computeExpenseDrag). The
- *  wealth-gap chart is not drawn; its table is. */
+ *  wealth-gap chart is the growth chart, above its table. */
 const expensedrag: CalcBody = {
   inputs: [
     { key: "lumpsum", label: "Lumpsum (₹)", type: "money", default: 0 },
@@ -607,6 +609,10 @@ const expensedrag: CalcBody = {
       stat(`Option B (${fmtPct(expenseRatioBPct)} ER → ${fmtPct(r.netReturnB)})`, inr(r.fvB), "success"),
       stat("Cost of the higher ER", inr(r.drag), "danger"),
       stat("As % of corpus", `${r.dragPctOfCorpus.toFixed(1)}%`),
+      ...chart("Year", r.series.map((p) => p.year), [
+        { label: `A (${fmtPct(expenseRatioAPct)} ER)`, values: r.series.map((p) => p.a) },
+        { label: `B (${fmtPct(expenseRatioBPct)} ER)`, values: r.series.map((p) => p.b) },
+      ]),
       section("1. Wealth gap over time"),
       table(
         ["Year", `A (${fmtPct(expenseRatioAPct)} ER)`, `B (${fmtPct(expenseRatioBPct)} ER)`, "Gap"],
@@ -1120,7 +1126,7 @@ const realstatement: CalcBody = {
 /* ───────────────────────── Portfolio Projection ───────────────────────── */
 
 /** PortfolioProjectionReport.tsx — Portfolio Projection (portfolioProjection).
- *  The growth chart is not drawn; its year table is. The web's line under the
+ *  The growth chart sits above its year table. The web's line under the
  *  inputs (what the increased plan invests) is the first note. */
 const portproj: CalcBody = {
   inputs: [
@@ -1176,6 +1182,12 @@ const portproj: CalcBody = {
     );
     if (cur.rows.length > 0) {
       out.push(
+        ...chart("Year", cur.rows.map((r) => r.year), [
+          { label: inc ? "Invested (current)" : "Invested", role: "invested", values: cur.rows.map((r) => r.cumulativeInvestment) },
+          ...(inc ? [{ label: "Invested (increased)", role: "invested" as const, values: cur.rows.map((_, i) => inc.rows[i]?.cumulativeInvestment ?? NaN) }] : []),
+          { label: inc ? "Value (current)" : "Value", values: cur.rows.map((r) => r.fundValue) },
+          ...(inc ? [{ label: "Value (increased)", values: cur.rows.map((_, i) => inc.rows[i]?.fundValue ?? NaN) }] : []),
+        ]),
         section("2. Year by year — investment and expected value"),
         table(
           [

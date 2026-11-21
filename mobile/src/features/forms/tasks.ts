@@ -13,6 +13,7 @@
  */
 
 import type { FormSpec } from "./types";
+import { istToIso, splitDue } from "../../components/form/due";
 
 const IST_MS = 330 * 60_000;
 const DAY_MS = 86_400_000;
@@ -71,7 +72,8 @@ export const taskForm: FormSpec = {
           lookupFilter: (e) => (e.status ?? "active") === "active",
         },
         { key: "entryDate", label: "Entry date", type: "date" },
-        { key: "dueDate", label: "Due date", type: "date" },
+        // Quick chips (Today 5 pm / Tomorrow 10 am) carry their India time; a day from the calendar keeps the task's.
+        { key: "dueDate", label: "Due date", type: "due" },
         { key: "slaDueDate", label: "SLA due (blank = none)", type: "date" },
       ],
     },
@@ -79,6 +81,7 @@ export const taskForm: FormSpec = {
 
   buildBody: (f) => {
     const dueChanged = !!f.dueDate && f.dueDate !== istDay(f._dueAt);
+    const due = splitDue(f.dueDate);
     const slaChanged = (f.slaDueDate || "") !== istDay(f._slaDueAt);
     return {
       title: String(f.title).trim(),
@@ -86,7 +89,7 @@ export const taskForm: FormSpec = {
       priority: f.priority,
       assigneeId: f.assigneeId || undefined,
       entryDate: f.entryDate || undefined,
-      ...(dueChanged ? { dueAt: onIstDay(f.dueDate, f._dueAt) } : {}),
+      ...(dueChanged ? { dueAt: due.time ? istToIso(f.dueDate) : onIstDay(due.day, f._dueAt) } : {}),
       // A cleared SLA date clears the SLA (null), as on the web; an untouched one is left be.
       ...(slaChanged ? { slaDueAt: f.slaDueDate ? onIstDay(f.slaDueDate, f._slaDueAt) : null } : {}),
     };

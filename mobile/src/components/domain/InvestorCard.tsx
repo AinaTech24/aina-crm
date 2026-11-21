@@ -1,85 +1,57 @@
 /**
- * InvestorCard — one client in the Clients list, mirroring the web table columns:
- * avatar + health dot, name, PAN · city, segment / category / tier / status / KYC
- * badges, and AUM + monthly SIP + health score. Tap opens the 360° detail;
- * long-press raises row actions (edit / delete).
+ * InvestorCard — one client in the Clients list, in two lines so six or seven
+ * fit a phone screen:
+ *   ● Name ............................. AUM
+ *     ••••••234F · RM Priya Shah    KYC Hold
+ * The dot is the health band (grey ring: not scored). AUM with nothing on
+ * record is "—", never ₹0. The KYC flag appears only when KYC needs action.
+ * Tap opens the 360° detail; long-press raises row actions. Call and WhatsApp
+ * are a swipe away (features/lists/SwipeableClientRow).
  */
 
-import { ownPan } from "../../features/investors/client-types";
 import React from "react";
-import { useRouter } from "expo-router";
-import { Feather } from "@expo/vector-icons";
-import { startCall } from "../../features/activities/callAndLog";
-import { View, Pressable, StyleSheet } from "react-native";
+import { View, StyleSheet } from "react-native";
 import { Card } from "../ui/Card";
 import { Text } from "../ui/Text";
-import { StatusPill } from "../ui/StatusPill";
-import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
-import { inr, initials, titleCase } from "../../lib/format";
-import { investorStatusBadge, kycBadge } from "../../lib/status";
+import { palette, spacing, fontWeight } from "../../theme/tokens";
+import { toneColors } from "../../theme";
+import { kycBadge } from "../../lib/status";
+import { aumLabel, clientSubLine, kycNeedsAttention } from "../../features/lists/clientRow";
 import type { Investor } from "../../features/investors/api";
 
-const HEALTH_DOT: Record<string, string> = { green: palette.success, amber: palette.warning, red: palette.danger };
-const SEGMENT_TONE: Record<string, string> = { HNI: palette.violet, Affluent: palette.success, Retail: palette.info, NRI: palette.warning, Corporate: palette.brand };
+export const HEALTH_DOT: Record<string, string> = { green: palette.success, amber: palette.warning, red: palette.danger };
 
-function MiniBadge({ label, color }: { label: string; color: string }) {
-  return (
-    <View style={[styles.mini, { backgroundColor: color + "1A" }]}>
-      <Text style={{ fontSize: 12, color, fontWeight: fontWeight.semibold }}>{label}</Text>
-    </View>
-  );
-}
-
-export function InvestorCard({ investor, onPress, onLongPress }: { investor: Investor; onPress: () => void; onLongPress?: () => void }) {
-  const router = useRouter();
-  const status = investorStatusBadge(investor.status);
-  const kyc = kycBadge(investor.kycStatus);
-  const health = investor.healthBand;
-  const sip = investor.activeSipAmount != null ? Number(investor.activeSipAmount) : 0;
+export function InvestorCard({ investor, onPress, onLongPress, rmName }: {
+  investor: Investor;
+  onPress: () => void;
+  onLongPress?: () => void;
+  /** The client's RM, when the list knows the name. */
+  rmName?: string | null;
+}) {
+  const dot = investor.healthBand ? HEALTH_DOT[investor.healthBand] : undefined;
+  const aum = aumLabel(investor.aum);
+  const kyc = kycNeedsAttention(investor.kycStatus) ? kycBadge(investor.kycStatus) : null;
 
   return (
-    <Card onPress={onPress} onLongPress={onLongPress} style={styles.card}>
-      <View style={styles.row}>
-        <View style={styles.avatar}>
-          <Text style={{ color: palette.brandDark, fontWeight: "700" }}>{initials(investor.name)}</Text>
-          {health ? <View style={[styles.dot, { backgroundColor: HEALTH_DOT[health] ?? palette.faint }]} /> : null}
-        </View>
-
-        <View style={{ flex: 1, gap: 3 }}>
-          <Text variant="subtitle" numberOfLines={1}>{investor.name}</Text>
-          <Text variant="caption" tone="muted" numberOfLines={1}>
-            {ownPan(investor.pan) ? `••••••${ownPan(investor.pan).slice(-4)}` : investor.pan?.includes("•") ? investor.pan : "PAN missing"}
-            {investor.city ? ` · ${investor.city}` : ""}
-          </Text>
-          <View style={styles.badges}>
-            <StatusPill label={status.label} tone={status.tone} size="sm" />
-            <StatusPill label={kyc.label} tone={kyc.tone} size="sm" dot={false} />
-          </View>
-        </View>
-
-        <View style={{ alignItems: "flex-end", gap: 2 }}>
-          <Text variant="caption" tone="faint">AUM</Text>
-          <Text variant="subtitle">{inr(investor.aum)}</Text>
-          {sip > 0 ? <Text variant="caption" tone="muted">{inr(sip)}/mo</Text> : null}
-          {investor.healthScore != null ? (
-            <Text variant="caption" tone="faint">Health {investor.healthScore}</Text>
-          ) : null}
-        </View>
+    <Card onPress={onPress} onLongPress={onLongPress} padded={false} style={styles.card}>
+      <View style={styles.line}>
+        <View style={[styles.dot, dot ? { backgroundColor: dot, borderColor: dot } : null]} />
+        <Text variant="subtitle" numberOfLines={1} style={{ flex: 1 }}>{investor.name}</Text>
+        <Text variant="subtitle" style={aum === "—" ? { color: palette.muted } : undefined} numberOfLines={1}>{aum}</Text>
       </View>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg, marginTop: spacing.sm }}>
-        {investor.phone ? <Pressable accessibilityRole="button" accessibilityLabel={`Call ${investor.name}`} style={{ minHeight: 48, justifyContent: "center" }} onPress={() => startCall({ subjectType: "investor", subjectId: investor.id, name: investor.name || "Contact", phone: investor.phone! })}><Text tone="brand">Call</Text></Pressable> : null}
-        <Pressable accessibilityRole="button" style={{ minHeight: 48, justifyContent: "center", flex: 1 }} onPress={() => router.push({ pathname: "/m/tasks/new", params: { relatedInvestorId: investor.id, title: "Follow up with " + investor.name } } as any)}><Text tone="brand">Follow up</Text></Pressable>
-        {onLongPress ? <Pressable accessibilityRole="button" accessibilityLabel="More client actions" onPress={onLongPress} style={{ minWidth: 48, minHeight: 48, alignItems: "center", justifyContent: "center" }}><Feather name="more-horizontal" size={22} color={palette.ink} /></Pressable> : null}
+      <View style={[styles.line, styles.sub]}>
+        <Text variant="caption" tone="muted" numberOfLines={1} style={{ flex: 1 }}>{clientSubLine(investor.pan, rmName)}</Text>
+        {kyc ? <Text variant="caption" style={{ color: toneColors(kyc.tone).fg, fontWeight: fontWeight.semibold }} numberOfLines={1}>{kyc.label}</Text> : null}
       </View>
     </Card>
   );
 }
 
+const DOT = 10;
+
 const styles = StyleSheet.create({
-  card: { marginBottom: spacing.md },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  avatar: { width: 46, height: 46, borderRadius: radius.pill, backgroundColor: palette.brandLight, alignItems: "center", justifyContent: "center" },
-  dot: { position: "absolute", right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: palette.surface },
-  badges: { flexDirection: "row", gap: spacing.xs, flexWrap: "wrap", marginTop: 2, alignItems: "center" },
-  mini: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.pill },
+  card: { marginBottom: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.md - 2 },
+  line: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  sub: { marginTop: 2, paddingLeft: DOT + spacing.sm },
+  dot: { width: DOT, height: DOT, borderRadius: DOT / 2, borderWidth: 1.5, borderColor: palette.line },
 });

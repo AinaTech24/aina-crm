@@ -97,7 +97,7 @@ export function QuickCommsSheet({
               <VarInput key={v.key} v={v} value={vars[v.key]} onChange={(val) => setVars((s) => ({ ...s, [v.key]: val }))} />
             ))}
             <View style={{ height: spacing.md }} />
-            <Button label={`Send ${titleCase(selected.channel)}`} full loading={dispatch.isPending} disabled={missingRequired} onPress={send} icon={<Feather name="send" size={15} color="#fff" />} />
+            <Button label={`Send ${titleCase(selected.channel)}`} full loading={dispatch.isPending} disabled={missingRequired} onPress={send} icon={<Feather name="send" size={15} color={palette.white} />} />
             {dispatch.isError || notSent ? <Text variant="caption" style={{ color: palette.danger, marginTop: spacing.sm }}>{notSent ?? (dispatch.error as any)?.message ?? "Send failed."}</Text> : null}
           </View>
         )}

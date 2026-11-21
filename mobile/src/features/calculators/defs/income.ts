@@ -31,7 +31,7 @@ import { opmHouseStrategy } from "../web/goal-planning-calc";
 import { swpFromLumpsum, lumpsumForSwp, sipForSwp, type SwpTax, type SwpYearRow } from "../web/swp-target";
 import { computeProsperityMultiplier } from "../web/prosperity-multiplier";
 import { computeSwpRebalance, type RebalanceFrequency } from "../web/swp-rebalance";
-import { stat, section, table, insight, note, opts, TONE } from "./shared";
+import { stat, section, table, insight, note, opts, TONE, chart, cumulative } from "./shared";
 
 /** The web's clampNum: a non-negative finite number, 0 on garbage. */
 const nn = (x: unknown): number => {
@@ -148,6 +148,19 @@ const bridge: CalcBody = {
         : stat("Phases", `${result.sipYears + result.holdYears}y build · ${result.distYears}y draw`),
     );
 
+    {
+      // The whole life of the plan on one axis: built up, then drawn down.
+      const acc = result.accSchedule;
+      const dist = result.schedule;
+      const invested = cumulative(acc.map((r) => r.invested));
+      const putIn = invested.length > 0 ? invested[invested.length - 1] : 0;
+      const drawn = cumulative(dist.map((r) => r.withdrawnThisYear));
+      out.push(...chart("Age", [...acc.map((r) => r.age), ...dist.map((r) => r.age)], [
+        { label: "Invested", role: "invested", values: [...invested, ...dist.map(() => putIn)] },
+        { label: "Corpus", values: [...acc.map((r) => r.value), ...dist.map((r) => r.endCorpus)] },
+        { label: "Withdrawn to date", values: [...acc.map(() => 0), ...drawn] },
+      ]));
+    }
     if (result.accSchedule.length > 0) {
       out.push(
         section("1. Accumulation — annual investment and year-end value"),
@@ -252,6 +265,11 @@ const swpperiodic: CalcBody = {
     }
     if (result.schedule.length > 0) {
       out.push(
+        ...chart(currentAge > 0 ? "Age" : "Year", result.schedule.map((row) => row.age ?? row.year), [
+          { label: "Invested", role: "invested", values: cumulative(result.schedule.map((row) => row.annualInvestment)) },
+          { label: "Fund value", values: result.schedule.map((row) => row.fundValueEndOfYear) },
+          { label: "Withdrawn to date", values: cumulative(result.schedule.map((row) => row.withdrawalAmount)) },
+        ]),
         section(`Projected periodic withdrawal & fund value (${result.schedule.length} years)`),
         table(
           [currentAge > 0 ? "Age" : "Year", "Annual investment", "Withdrawal", "Fund value (year end)"],
@@ -342,6 +360,10 @@ const swpend: CalcBody = {
     }
     if (result.yearRows.length > 0) {
       out.push(
+        ...chart("Year", result.yearRows.map((r) => r.planYear), [
+          { label: "Balance", values: result.yearRows.map((r) => r.endBalance) },
+          { label: "Withdrawn to date", values: cumulative(result.yearRows.map((r) => r.withdrawnThisYear)) },
+        ]),
         section(`${result.accRows.length > 0 ? 2 : 1}. Distribution — monthly SWP and year-end balance`),
         table(
           ["Year", "Monthly SWP", "Withdrawn that year", "Balance at year-end"],
@@ -480,6 +502,10 @@ const swpcomp: CalcBody = {
     ));
     if (result.yearRows.length > 0) {
       out.push(
+        ...chart(useAge ? "Age" : "Year", result.yearRows.map((r) => (useAge ? swpStartAge + r.year : r.year)), [
+          { label: "Fund value", values: result.yearRows.map((r) => Math.max(0, r.endBalance)) },
+          { label: "Withdrawn to date", values: cumulative(result.yearRows.map((r) => r.withdrawnThisYear)) },
+        ]),
         section(`${allocRows.length > 0 ? 2 : 1}. Year-by-year distribution`),
         table(
           [useAge ? "Age" : "Year", `Withdrawal / ${per}`, "Withdrawn that year", "Fund value at year-end"],
@@ -510,6 +536,10 @@ function describeMonthlyMode(mode: MonthlyStpMode, amount: number, pct: number):
 function stpYearTable(result: StpComprehensiveResult, title = "Year-wise value of the plan", n = 1): ResultBlock[] {
   if (result.schedule.length === 0) return [];
   return [
+    ...chart("Year", result.schedule.map((r) => r.year), [
+      { label: "Total value", values: result.schedule.map((r) => r.totalEnd) },
+      { label: "Equity fund", values: result.schedule.map((r) => r.equityEnd) },
+    ]),
     section(`${n}. ${title}`),
     table(
       ["Year", "Debt at start", "Moved to equity", "Equity at start", "Equity at end", "Total at end", "Annualised"],
@@ -620,6 +650,11 @@ const opm: CalcBody = {
       res.corpusSurvived
         ? stat(`Corpus left after ${tenureYears} yrs`, inr(res.corpusLeft), TONE.emerald)
         : stat("Corpus runs out", `Year ${res.depletedYear}`, TONE.rose),
+      ...chart("Year", res.yearly.map((y) => y.year), [
+        { label: "MF corpus", values: res.yearly.map((y) => y.mfCorpus) },
+        { label: "Loan outstanding", values: res.yearly.map((y) => y.loanBalance) },
+        { label: "EMIs paid by SWP", values: res.yearly.map((y) => y.cumWithdrawal) },
+      ]),
       section("2. Year-by-year"),
       table(
         ["Year", "Loan outstanding", "MF corpus", "Cumulative interest", "EMIs paid by SWP"],
@@ -667,6 +702,10 @@ type ScenarioRows = { ratePct: number; rows: SwpYearRow[] };
 function swpYearTable(scenarios: ScenarioRows[], firstLabel: "age" | "year"): ResultBlock[] {
   const base = scenarios[0];
   if (!base || base.rows.length === 0) return [];
+  const growth = chart(firstLabel === "age" ? "Age" : "Year", base.rows.map((row) => (firstLabel === "age" && row.age != null ? row.age : row.year)), [
+    ...scenarios.map((s) => ({ label: scenarios.length > 1 ? `Value @ ${fmtPct(s.ratePct)}` : "Investment value", values: base.rows.map((_, i) => s.rows[i]?.yearEndBalance ?? NaN) })),
+    { label: "Withdrawn to date", values: cumulative(base.rows.map((r) => r.annualWithdrawal)) },
+  ]);
   const head = [firstLabel === "age" ? "Age" : "Year"];
   for (const s of scenarios) {
     const tag = scenarios.length > 1 ? ` @ ${fmtPct(s.ratePct)}` : "";
@@ -680,7 +719,7 @@ function swpYearTable(scenarios: ScenarioRows[], firstLabel: "age" | "year"): Re
     }
     return cells;
   });
-  return [table(head, rows, true)];
+  return [...growth, table(head, rows, true)];
 }
 
 /** swp-target-parts.tsx SwpTaxTable (nothing when no year has a withdrawal). */
@@ -921,7 +960,7 @@ const stp: CalcBody = {
 /* ───────────────────────── prosperity ───────────────────────── */
 
 /** ProsperityMultiplier.tsx — Prosperity Multiplier (computeProsperityMultiplier).
- *  Sections 1–2 are the web's input panels; section 4 is its chart only, whose
+ *  Sections 1–2 are the web's input panels; section 4, its chart, is the growth chart; its
  *  caption is kept as a note. */
 const prosperity: CalcBody = {
   inputs: [
@@ -960,6 +999,15 @@ const prosperity: CalcBody = {
         ? insight(`The corpus is exhausted in year ${investYears + res.depletedYear} (${res.depletedYear} years into withdrawals). Reduce the monthly withdrawal, lengthen the SIP, or add a step-up to make the income last.`, TONE.rose)
         : insight(`${inr(monthlySip)}/month for ${investYears} years (${inr(res.totalInvested)} invested) builds ${inr(res.totalCorpus)}. Then drawing ${inr(monthlyWithdrawal)}/month (rising ${inflationPct}%/yr) pays out ${inr(res.totalWithdrawn)} over ${withdrawalYears} years — and the corpus ${grows ? "still grows to" : "ends at"} ${inr(res.endingCorpus)}${grows ? " while paying you the whole time." : "."}`, grows ? TONE.emerald : TONE.amber),
       note(`Years 1–${investYears} are the SIP phase; from year ${investYears + 1} the corpus pays the monthly income.`),
+      ...(() => {
+        const invested = cumulative(res.accum.map((r) => r.investment));
+        const putIn = invested.length > 0 ? invested[invested.length - 1] : 0;
+        return chart("Year", [...res.accum.map((r) => r.year), ...res.draw.map((r) => investYears + r.year)], [
+          { label: "Invested", role: "invested", values: [...invested, ...res.draw.map(() => putIn)] },
+          { label: "Corpus", values: [...res.accum.map((r) => r.closingBal), ...res.draw.map((r) => Math.max(0, r.closingBal))] },
+          { label: "Income drawn to date", values: [...res.accum.map(() => 0), ...cumulative(res.draw.map((r) => r.withdrawal))] },
+        ]);
+      })(),
       section("5. Accumulation ledger (year by year)"),
       table(
         ["Year", "Opening", "Investment", "Interest", "Closing"],
@@ -1032,6 +1080,10 @@ const swprebal: CalcBody = {
       result.debtShortfallYear != null
         ? insight(`The debt fund cannot cover the withdrawals in year ${result.debtShortfallYear} before the next rebalance — lower the withdrawal, raise the debt share or rebalance more often.`, TONE.rose)
         : insight(`Taking ${inr(result.perPeriodSwp)} ${per} (${inr(result.annualWithdrawal)} a year) from the debt fund for ${years} years pays ${inr(result.totalWithdrawal)} and still leaves ${inr(result.closingValue)}, because the balanced fund's gains refill the debt fund every ${rebalanceYears} years.`, TONE.cyan),
+      ...chart(useAge ? "Age" : "Year", result.rows.map((r) => (useAge && r.age != null ? r.age : r.year)), [
+        { label: "Total value", values: result.rows.map((r) => r.fundValue) },
+        { label: "Withdrawn to date", values: cumulative(result.rows.map((r) => r.annualWithdrawal)) },
+      ]),
       section("1. Year-wise fund values"),
       table(
         [useAge ? "Age" : "Year", "Debt — start", "Debt — end", "Balanced — start", "Balanced — end", "Withdrawn", "Total value", "Switched to debt"],

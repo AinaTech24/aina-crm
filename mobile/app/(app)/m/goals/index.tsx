@@ -139,7 +139,7 @@ export default function GoalsList() {
 
       <BottomSheet visible={!!rowAction} onClose={() => setRowAction(null)} title={rowAction?.name ?? "Goal"}>
         <Button label="Open goal" variant="secondary" full icon={<Feather name="external-link" size={15} color={palette.ink} />} onPress={() => { const id = rowAction?.id; setRowAction(null); if (id) open(id); }} style={{ marginBottom: spacing.sm }} />
-        <Button label="Archive goal" variant="danger" full loading={del.isPending} icon={<Feather name="archive" size={15} color="#fff" />} onPress={() => rowAction && doDelete(rowAction)} />
+        <Button label="Archive goal" variant="danger" full loading={del.isPending} icon={<Feather name="archive" size={15} color={palette.white} />} onPress={() => rowAction && doDelete(rowAction)} />
       </BottomSheet>
     </View>
   );

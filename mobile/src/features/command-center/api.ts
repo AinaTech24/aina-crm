@@ -7,6 +7,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { queuedPatch } from "../../lib/offlineQueue";
+import { palette } from "../../theme/tokens";
 
 export type Severity = "now" | "today" | "soon";
 export type Tone = "rose" | "amber" | "sky" | "violet" | "emerald";
@@ -82,13 +83,13 @@ export function wishText(actionType: string, name: string): string {
 }
 
 const TONE_HEX: Record<Tone, string> = {
-  rose: "#DC2626",
-  amber: "#D97706",
-  sky: "#0EA5E9",
-  violet: "#7C3AED",
-  emerald: "#16A34A",
+  rose: palette.danger,
+  amber: palette.warning,
+  sky: palette.info,
+  violet: palette.violet,
+  emerald: palette.success,
 };
-export const toneColor = (t: Tone) => TONE_HEX[t] ?? "#64748B";
+export const toneColor = (t: Tone) => TONE_HEX[t] ?? palette.muted;
 
 /** lucide icon name (from the API) → Feather icon name. */
 const ICON_MAP: Record<string, string> = {

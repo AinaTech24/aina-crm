@@ -16,16 +16,21 @@
  * replaces the one the previous request put in — never one a template brought
  * — and only a redemption's Online / Offline route (flagged firms) changes it
  * again, so picking a Mode never wipes sub-tasks already assigned.
+ *
+ * Short by default: the task itself is always open; "When & who", "More
+ * options" and "Sub-tasks" fold to one line each until tapped. The last task
+ * type and priority used start the next task (forms/task-prefs.ts) — never
+ * over what the screen was opened with or a template sets. Opened from a
+ * client / lead (?relatedInvestorId= / ?relatedLeadId=, + ?name=) the record
+ * is already picked, by name.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Pressable, ScrollView, StyleSheet, Switch, KeyboardAvoidingView } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import { ScreenHeader } from "../../components/ui/ScreenHeader";
-import { Card } from "../../components/ui/Card";
 import { Text } from "../../components/ui/Text";
 import { Button } from "../../components/ui/Button";
 import { TextField } from "../../components/ui/TextField";
@@ -34,6 +39,11 @@ import { Segmented } from "../../components/ui/Segmented";
 import { SearchBar } from "../../components/ui/SearchBar";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { DateField } from "../../components/form/DateField";
+import { DueDateField } from "../../components/form/DueDateField";
+import { CollapsibleSection } from "../../components/form/CollapsibleSection";
+import { StickyActionBar } from "../../components/form/StickyActionBar";
+import { istToIso, splitDue, timeLabel } from "../../components/form/due";
+import { loadTaskPrefs, restoreTaskPrefs, saveTaskPrefs, type TaskPrefs } from "../forms/task-prefs";
 import { api } from "../../api/client";
 import { useMe } from "../../api/me";
 import { toast } from "../../lib/toast";
@@ -72,13 +82,21 @@ const CATEGORIES: Array<{ key: TaskCategory; label: string }> = [
 let seq = 0;
 const emptyRow = (): Row => ({ key: ++seq, schemeName: "", fromSchemeName: "", amount: "", units: "", allUnits: false, folio: "", sipDay: "", frequency: "monthly" });
 const localDay = (days = 0) => { const d = new Date(); d.setDate(d.getDate() + days); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+/** "24 Nov" for a "YYYY-MM-DD" day (a calendar day — no zone shift). */
+const dayLabel = (day: string) => {
+  const t = Date.parse(`${day}T00:00:00Z`);
+  return isNaN(t) ? day : new Date(t).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
+};
+/** A due value as sent: a chip's / picked India time, else the web's `new Date(day)` (UTC midnight). */
+const dueIso = (v: string) => (!v ? undefined : splitDue(v).time ? istToIso(v) : new Date(splitDue(v).day).toISOString());
 const num = (v: string) => { if (!v.trim()) return null; const n = Number(v.replace(/,/g, "")); return Number.isFinite(n) ? n : null; };
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 export function NewTaskScreen({ params }: { params: Record<string, string | undefined> }) {
   const router = useRouter();
   const qc = useQueryClient();
-  const { data: me } = useMe();
+  const meQ = useMe();
+  const me = meQ.data;
   const team = useTeam();
   const [relatedMeetingId, setRelatedMeetingId] = useState("");
   // The web's "Related meeting": a recent meeting this task follows from.
@@ -87,11 +105,11 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
   const redemptionRoute = me?.license?.featureFlags?.redemptionOnlineOffline === true;
   /** The firm's `insuranceTasks` flag: the Insurance category. */
   const insuranceTasks = me?.license?.featureFlags?.[INSURANCE_TASKS_FLAG] === true;
-  const insets = useSafeAreaInsets();
 
   const [templateId, setTemplateId] = useState("");
-  const [client, setClient] = useState<{ id: string; name: string } | null>(null);
-  const [lead, setLead] = useState<{ id: string; name: string } | null>(null);
+  // Opened from a client's / lead's page with its name (?name=): picked at once, no lookup.
+  const [client, setClient] = useState<{ id: string; name: string } | null>(() => (params.relatedInvestorId && params.name ? { id: params.relatedInvestorId, name: params.name } : null));
+  const [lead, setLead] = useState<{ id: string; name: string } | null>(() => (params.relatedLeadId && params.name && !params.relatedInvestorId ? { id: params.relatedLeadId, name: params.name } : null));
   const [pick, setPick] = useState<null | "client" | "lead">(null);
   // A title passed in (a client card's "Follow up with …") counts as typed, so a request never replaces it.
   const [title, setTitle] = useState(params.title ?? "");
@@ -110,6 +128,12 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [priority, setPriority] = useState("normal");
   const [moreOpen, setMoreOpen] = useState(!!params.description);
+  const [whenOpen, setWhenOpen] = useState(false);
+  const [subOpen, setSubOpen] = useState(false);
+  // Remembered type / priority yield to anything the person (or a template) chose first.
+  const typeTouched = useRef(false), prioTouched = useRef(false);
+  const [prefs, setPrefs] = useState<TaskPrefs | null | undefined>(undefined);
+  const restored = useRef(false);
   const [description, setDescription] = useState(params.description ?? "");
   const [reminder, setReminder] = useState("none");
   const [requiresApproval, setRequiresApproval] = useState(false);
@@ -123,10 +147,11 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
   // Two taps land before `busy` re-renders the button: one task, not two.
   const saving = useRef(false);
 
-  // ?relatedInvestorId= / ?relatedLeadId= (from a client or lead page).
+  // ?relatedInvestorId= / ?relatedLeadId= (from a client or lead page) — named by a lookup when no ?name= came.
   useEffect(() => {
-    if (params.relatedInvestorId) api.get<any>(`/api/investors/${params.relatedInvestorId}`).then(({ investor: i }) => i?.id && setClient({ id: i.id, name: i.name })).catch(() => {});
-    if (params.relatedLeadId) api.get<any>(`/api/leads/${params.relatedLeadId}`).then((l) => l?.id && setLead({ id: l.id, name: l.name })).catch(() => {});
+    if (params.relatedInvestorId && !client) api.get<any>(`/api/investors/${params.relatedInvestorId}`).then(({ investor: i }) => i?.id && setClient({ id: i.id, name: i.name })).catch(() => {});
+    if (params.relatedLeadId && !lead) api.get<any>(`/api/leads/${params.relatedLeadId}`).then((l) => l?.id && setLead({ id: l.id, name: l.name })).catch(() => {});
+    loadTaskPrefs().then(setPrefs, () => setPrefs(null));
   }, []);
 
   const req: RequestType | undefined = category !== "general" && requestKey ? REQUEST_TYPE_BY_KEY[requestKey] : undefined;
@@ -169,7 +194,26 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
     if (routeOn && (m === "online" || m === "offline") && (checklist.length === 0 || autoList)) seedChecklist(REDEMPTION_ROUTE_CHECKLISTS[m]);
   };
 
+  // The last type and priority used (this phone, this account) — once, after
+  // the firm's flags are known, and only where nothing was chosen yet.
+  useEffect(() => {
+    if (restored.current || prefs === undefined || (!me && !meQ.isFetched)) return;
+    restored.current = true;
+    const r = restoreTaskPrefs(prefs, {
+      prefilled: !!(params.title || params.description),
+      insuranceAllowed: insuranceTasks,
+      requestCategory: (k) => REQUEST_TYPE_BY_KEY[k]?.category ?? null,
+    });
+    if (templateId) return;
+    if (r.priority && !prioTouched.current) setPriority(r.priority);
+    if (!r.category || typeTouched.current) return;
+    if (r.category !== "general" && r.requestKey) { setCategory(r.category); changeRequest(r.requestKey); }
+    else if (r.kind === "custom" && r.customType) { setKind("custom"); setCustomType(r.customType); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefs, me, meQ.isFetched]);
+
   const applyTemplate = (id: string) => {
+    typeTouched.current = true; prioTouched.current = true;
     const prev = templates.data?.find((x) => x.id === templateId);
     setTemplateId(id);
     const t = templates.data?.find((x) => x.id === id);
@@ -214,17 +258,18 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
       }
     }
 
+    const dueAt = dueIso(dueDate);
     const payload: Record<string, any> = {
       title: title.trim(),
       description: description.trim() || undefined,
       type: req ? req.key : kind === "custom" ? customType.trim() : "follow_up",
       priority,
       entryDate: entryDate || undefined,
-      dueAt: dueDate ? new Date(dueDate).toISOString() : undefined,
+      dueAt,
       assigneeId: assigneeId || undefined,
       requiresApproval: requiresApproval || undefined,
     };
-    if (reminder !== "none" && dueDate) payload.remindAt = new Date(new Date(dueDate).getTime() - (REMIND_MIN[reminder] ?? 0) * 60000).toISOString();
+    if (reminder !== "none" && dueAt) payload.remindAt = new Date(Date.parse(dueAt) - (REMIND_MIN[reminder] ?? 0) * 60000).toISOString();
     const items = checklist
       .map((c) => ({
         id: c.id.slice(0, 64), text: c.text.trim(), done: false,
@@ -271,6 +316,7 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
       if (j.businessEntryId) toast.success("Task created — booked in Business entries as a draft, confirmed when the task is completed.");
       else if (j.businessNotBooked === "not_allowed") toast.info("Task created, but your role cannot book Business entries — ask Operations to add it.");
       else toast.success("Task created");
+      void saveTaskPrefs({ type: payload.type, priority });
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["task-kpis"] });
       router.back();
@@ -283,6 +329,23 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
   };
 
   const people = (team.data?.rows ?? []).filter((u) => (u.status ?? "active") === "active").map((u) => ({ value: u.id, label: u.id === me?.user?.id ? `${u.name} (me)` : u.name ?? "—" }));
+
+  // The folded blocks' one-liners.
+  const due = splitDue(dueDate);
+  const whenSummary = [
+    due.day ? `Due ${dayLabel(due.day)}${due.time ? ` ${timeLabel(due.time)}` : ""}` : "No due date",
+    assigneeId ? people.find((p) => p.value === assigneeId)?.label ?? "Assigned" : "Me",
+    PRIORITIES.find((p) => p.key === priority)?.label ?? priority,
+  ].join(" · ");
+  const moreSummary = [
+    description.trim() ? "Description" : null,
+    reminder !== "none" ? REMINDERS.find((r) => r.value === reminder)?.label : null,
+    requiresApproval ? "Needs approval" : null,
+    recurrence ? `Repeats ${recurrence}` : null,
+    lead ? `Lead: ${lead.name}` : null,
+    relatedMeetingId ? "Meeting linked" : null,
+  ].filter(Boolean).join(" · ") || "Optional";
+  const subSummary = checklist.length ? `${checklist.length} sub-task${checklist.length === 1 ? "" : "s"}` : "None";
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
@@ -300,7 +363,7 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
           </ScrollView>
         ) : null}
 
-        <Card flat>
+        <CollapsibleSection open collapsible={false}>
           <Pick label={category === "general" ? "For client (optional)" : "For client"} value={client?.name} onPress={() => setPick("client")} onClear={client ? () => setClient(null) : undefined} />
           <TextField label="What needs doing" required value={title} onChangeText={(v) => { setTitle(v); setTitleTouched(true); }} />
 
@@ -308,14 +371,14 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
           <CategoryPicker
             options={CATEGORIES.filter((c) => c.key !== "insurance" || insuranceTasks || category === "insurance")}
             value={category}
-            onChange={changeCategory}
+            onChange={(c) => { typeTouched.current = true; changeCategory(c); }}
           />
           <View style={{ height: spacing.md }} />
 
           {category !== "general" ? (
             <>
               <SelectField label={`${CATEGORY_LABEL[category]} request`} required value={requestKey || null} placeholder="Pick the request" options={requestTypesFor(category).map((r) => ({ value: r.key, label: r.label }))}
-                onChange={changeRequest} />
+                onChange={(k) => { typeTouched.current = true; changeRequest(k); }} />
               {requestKey === "kyc_renewal" ? <Segmented options={KYC_MODES.map((m) => ({ key: m.key, label: m.label }))} value={kycMode} onChange={setKycMode} /> : null}
               {hasF("mode") ? (
                 <SelectField label={routeOn ? "Online or offline" : fieldLabel("mode", req)} required={routeOn} value={mode || null} placeholder="Select"
@@ -330,61 +393,47 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
             </>
           ) : (
             <>
-              <Segmented options={[{ key: "follow_up", label: "Follow-up" }, { key: "custom", label: "Custom" }]} value={kind} onChange={(v) => setKind(v as any)} />
-              {kind === "custom" ? <View style={{ marginTop: spacing.md }}><TextField label="Kind of task" value={customType} onChangeText={setCustomType} placeholder="e.g. Portfolio rebalance" /></View> : null}
+              <Segmented options={[{ key: "follow_up", label: "Follow-up" }, { key: "custom", label: "Custom" }]} value={kind} onChange={(v) => { typeTouched.current = true; setKind(v as any); }} />
+              {kind === "custom" ? <View style={{ marginTop: spacing.md }}><TextField label="Kind of task" value={customType} onChangeText={(v) => { typeTouched.current = true; setCustomType(v); }} placeholder="e.g. Portfolio rebalance" /></View> : null}
             </>
           )}
-        </Card>
+        </CollapsibleSection>
 
-        <Card flat style={{ marginTop: spacing.md }}>
+        <CollapsibleSection title="When & who" open={whenOpen} onToggle={() => setWhenOpen((v) => !v)} summary={whenSummary}>
           <DateField label="Entry date" value={entryDate} onChange={setEntryDate} />
-          <DateField label="Due" value={dueDate} onChange={setDueDate} />
-          <View style={styles.chips}>
-            {[{ l: "Today", d: 0 }, { l: "Tomorrow", d: 1 }, { l: "3 days", d: 3 }, { l: "1 week", d: 7 }].map((c) => (
-              <Pressable key={c.l} onPress={() => setDueDate(localDay(c.d))} style={[styles.chip, dueDate === localDay(c.d) && styles.chipOn]}>
-                <Text variant="caption" style={{ color: dueDate === localDay(c.d) ? palette.white : palette.ink }}>{c.l}</Text>
-              </Pressable>
-            ))}
-          </View>
+          <DueDateField label="Due" value={dueDate} onChange={setDueDate} extraChips={[{ label: "3 days", days: 3 }, { label: "1 week", days: 7 }]} />
           <SelectField label="Assign to" value={assigneeId} placeholder="Me" options={people} onChange={setAssigneeId} />
           <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>Priority</Text>
-          <Segmented options={PRIORITIES} value={priority} onChange={setPriority} />
-        </Card>
+          <Segmented options={PRIORITIES} value={priority} onChange={(v) => { prioTouched.current = true; setPriority(v); }} />
+        </CollapsibleSection>
 
-        <Pressable onPress={() => setMoreOpen((v) => !v)} style={styles.more} accessibilityRole="button">
-          <Feather name={moreOpen ? "chevron-up" : "chevron-down"} size={16} color={palette.brand} />
-          <Text style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>More options</Text>
-        </Pressable>
-        {moreOpen ? (
-          <Card flat>
-            <TextField label="Description" value={description} onChangeText={setDescription} multiline />
-            <SelectField label="Reminder" value={reminder} options={REMINDERS} onChange={setReminder} />
-            <View style={styles.switchRow}>
-              <Text variant="body" style={{ flex: 1 }}>Needs my approval</Text>
-              <Switch value={requiresApproval} onValueChange={setRequiresApproval} trackColor={{ true: palette.brand, false: palette.line }} />
-            </View>
-            <SelectField label="Repeat" value={recurrence || null} placeholder="Doesn't repeat"
-              options={[{ value: "", label: "Doesn't repeat" }, { value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }, { value: "yearly", label: "Yearly" }]} onChange={setRecurrence} />
-            {recurrence ? <DateField label="Until (optional)" value={recurrenceUntil} onChange={setRecurrenceUntil} /> : null}
-            <Pick label="Also link to a lead" value={lead?.name} onPress={() => setPick("lead")} onClear={lead ? () => setLead(null) : undefined} />
-            <SelectField
-              label="Related meeting"
-              value={relatedMeetingId || null}
-              placeholder="Pick a recent meeting (optional)"
-              options={[
-                ...(relatedMeetingId ? [{ value: "", label: "No meeting" }] : []),
-                ...(recentMeetings.data?.meetings ?? []).slice(0, 50).map((m) => ({
-                  value: m.id,
-                  label: `${m.meeting_date ? new Date(m.meeting_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"} — ${m.investor_name ?? m.subject_name ?? "—"}${m.category ? ` · ${String(m.category).replace(/_/g, " ")}` : ""}`,
-                })),
-              ]}
-              onChange={setRelatedMeetingId}
-            />
-          </Card>
-        ) : null}
+        <CollapsibleSection title="More options" open={moreOpen} onToggle={() => setMoreOpen((v) => !v)} summary={moreSummary}>
+          <TextField label="Description" value={description} onChangeText={setDescription} multiline />
+          <SelectField label="Reminder" value={reminder} options={REMINDERS} onChange={setReminder} />
+          <View style={styles.switchRow}>
+            <Text variant="body" style={{ flex: 1 }}>Needs my approval</Text>
+            <Switch value={requiresApproval} onValueChange={setRequiresApproval} trackColor={{ true: palette.brand, false: palette.line }} />
+          </View>
+          <SelectField label="Repeat" value={recurrence || null} placeholder="Doesn't repeat"
+            options={[{ value: "", label: "Doesn't repeat" }, { value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }, { value: "yearly", label: "Yearly" }]} onChange={setRecurrence} />
+          {recurrence ? <DateField label="Until (optional)" value={recurrenceUntil} onChange={setRecurrenceUntil} /> : null}
+          <Pick label="Also link to a lead" value={lead?.name} onPress={() => setPick("lead")} onClear={lead ? () => setLead(null) : undefined} />
+          <SelectField
+            label="Related meeting"
+            value={relatedMeetingId || null}
+            placeholder="Pick a recent meeting (optional)"
+            options={[
+              ...(relatedMeetingId ? [{ value: "", label: "No meeting" }] : []),
+              ...(recentMeetings.data?.meetings ?? []).slice(0, 50).map((m) => ({
+                value: m.id,
+                label: `${m.meeting_date ? new Date(m.meeting_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"} — ${m.investor_name ?? m.subject_name ?? "—"}${m.category ? ` · ${String(m.category).replace(/_/g, " ")}` : ""}`,
+              })),
+            ]}
+            onChange={setRelatedMeetingId}
+          />
+        </CollapsibleSection>
 
-        <Card flat style={{ marginTop: spacing.md }}>
-          <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>Sub-tasks</Text>
+        <CollapsibleSection title="Sub-tasks" open={subOpen} onToggle={() => setSubOpen((v) => !v)} summary={subSummary}>
           {checklist.map((c) => (
             <View key={c.id} style={styles.subtask}>
               <View style={styles.item}>
@@ -409,9 +458,9 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
             <View style={{ flex: 1 }}><TextField label="" value={newItem} onChangeText={setNewItem} placeholder="Add a sub-task…" /></View>
             <Button label="Add" size="sm" variant="secondary" onPress={() => { if (newItem.trim()) { setChecklist((l) => [...l, { id: newId(), text: newItem.trim().slice(0, 500) }]); setNewItem(""); } }} />
           </View>
-        </Card>
+        </CollapsibleSection>
       </ScrollView>
-      <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}><Button label="Create task" full loading={busy} onPress={save} /></View>
+      <StickyActionBar><Button label="Create task" full loading={busy} onPress={save} /></StickyActionBar>
       </KeyboardAvoidingView>
       {pick ? <RecordPicker kind={pick} onClose={() => setPick(null)} onPick={(r) => { pick === "client" ? setClient(r) : setLead(r); setPick(null); }} /> : null}
     </View>
@@ -528,16 +577,13 @@ function SchemePicker({ onClose, onPick }: { onClose: () => void; onPick: (s: Sc
 
 const styles = StyleSheet.create({
   subtask: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.lineSoft, marginBottom: spacing.sm },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.lg, marginTop: -spacing.sm },
   chip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.surface },
   chipOn: { backgroundColor: palette.brand, borderColor: palette.brand },
-  more: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.md, minHeight: 44 },
   switchRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md, minHeight: 40 },
   pickBox: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, paddingHorizontal: spacing.md, minHeight: 46, backgroundColor: palette.surface },
   item: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.lineSoft },
   rowBox: { borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md, backgroundColor: palette.surface },
-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, backgroundColor: palette.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
   catWrap: { flexDirection: "row", flexWrap: "wrap", gap: 3, backgroundColor: palette.surfaceSunken, borderRadius: radius.md, padding: 3 },
   catItem: { flexGrow: 1, flexBasis: 0, alignItems: "center", paddingVertical: spacing.sm, borderRadius: radius.sm },
-  catOn: { backgroundColor: palette.surface, shadowColor: palette.ink, shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  catOn: { backgroundColor: palette.surface, shadowColor: palette.shadow, shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
 });

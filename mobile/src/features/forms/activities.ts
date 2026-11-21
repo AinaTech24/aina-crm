@@ -6,6 +6,8 @@
  */
 
 import type { FormSpec } from "./types";
+import { istToIso, splitDue } from "../../components/form/due";
+import { clientNameById, leadNameById, presetName } from "./pickers";
 
 function todayIso(): string {
   const d = new Date();
@@ -17,8 +19,8 @@ const noonIst = (day: string) => new Date(`${day}T12:00:00+05:30`).toISOString()
 /** "Occurred on" today is NOW — noon stamped a 9 a.m. call three hours in the
  *  future. Taken when the form is saved, so a log queued offline keeps it. */
 const occurredAt = (day?: string) => (!day || day >= todayIso() ? new Date().toISOString() : noonIst(day));
-/** The follow-up day at 10:00 IST (the CRM's follow-up time). */
-const followUpAt = (day?: string) => (day ? new Date(`${day}T10:00:00+05:30`).toISOString() : undefined);
+/** The follow-up day at 10:00 IST (the CRM's follow-up time), or a quick chip's India time. */
+const followUpAt = (v?: string) => istToIso(v, "10:00");
 
 export const activityForm: FormSpec = {
   title: "Log activity",
@@ -30,6 +32,9 @@ export const activityForm: FormSpec = {
     subjectType: params.leadId ? "lead" : "investor",
     investorId: params.investorId ?? "",
     leadId: params.leadId ?? "",
+    // Opened from the client's / lead's page: show the name, not "Selected".
+    _investorName: presetName(params, "investorId"),
+    _leadName: presetName(params, "leadId"),
     kind: "call",
     direction: "outbound",
     status: "",
@@ -47,7 +52,7 @@ export const activityForm: FormSpec = {
     // The API takes 0 – 86,400 seconds; a typo like 600 hours was a bare 400.
     const min = String(v.durationMin ?? "").trim();
     if (v.kind === "call" && min && !(Number(min) >= 0 && Number(min) <= 1440)) e.durationMin = "Enter minutes between 0 and 1,440";
-    if (v.nextFollowupDay && v.nextFollowupDay < todayIso()) e.nextFollowupDay = "Pick today or a later day";
+    if (v.nextFollowupDay && splitDue(v.nextFollowupDay).day < todayIso()) e.nextFollowupDay = "Pick today or a later day";
     return Object.keys(e).length ? e : null;
   },
 
@@ -63,6 +68,7 @@ export const activityForm: FormSpec = {
           key: "investorId", label: "Client", type: "typeahead",
           searchEndpoint: "/api/search", searchEnvelope: "investors",
           searchLabel: (i) => i.name, searchSublabel: (i) => [i.pan_display, i.segment_tag].filter(Boolean).join(" · "),
+          searchDisplayKey: "_investorName", searchInitialLabel: clientNameById,
           placeholder: "Search a client by name or PAN…",
           visibleIf: (v) => v.subjectType === "investor",
         },
@@ -70,6 +76,7 @@ export const activityForm: FormSpec = {
           key: "leadId", label: "Lead", type: "typeahead",
           searchEndpoint: "/api/search", searchEnvelope: "leads",
           searchLabel: (l) => l.name, searchSublabel: (l) => [l.phone, l.stage ? String(l.stage).replace(/_/g, " ") : ""].filter(Boolean).join(" · "),
+          searchDisplayKey: "_leadName", searchInitialLabel: leadNameById,
           placeholder: "Search a lead by name or phone…",
           visibleIf: (v) => v.subjectType === "lead",
         },
@@ -103,7 +110,7 @@ export const activityForm: FormSpec = {
         { key: "subject", label: "Summary", placeholder: "e.g. SIP top-up discussion" },
         { key: "notes", label: "Notes / outcome", type: "textarea" },
         { key: "occurredDay", label: "Occurred on", type: "date", maxToday: true },
-        { key: "nextFollowupDay", label: "Next follow-up (optional)", type: "date" },
+        { key: "nextFollowupDay", label: "Next follow-up (optional)", type: "due", defaultTime: "10:00" },
       ],
     },
   ],

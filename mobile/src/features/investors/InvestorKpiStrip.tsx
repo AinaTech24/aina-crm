@@ -5,6 +5,10 @@
  * A count tile is tappable: it filters the list to the clients it counts
  * (active clients + the server's quick filter of the same definition), and
  * Total clients clears it.
+ *
+ * `variant="chips"` folds the same eight figures, with the same taps, into one
+ * thin row of count chips (the Clients list), so the first client sits near
+ * the top of the screen. `extra` goes in that row after Total clients.
  */
 
 import React from "react";
@@ -15,6 +19,7 @@ import { inr } from "../../lib/format";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
 import { useInvestorKpis } from "./api";
 import { asIcon } from "../../lib/icons";
+import { CountChip, CountChipRow } from "../lists/CountChips";
 
 export type KpiQuick = "" | "tier_a" | "reviews_due" | "kyc_expiring" | "no_nominee" | "dormant";
 
@@ -36,10 +41,32 @@ function Tile({ icon, tone, label, value, sub, onPress, selected }: { icon: stri
   ) : body;
 }
 
-export function InvestorKpiStrip({ active = "", onSelect }: { active?: KpiQuick; onSelect?: (q: KpiQuick) => void } = {}) {
+/** A figure the server did not send is unknown ("—"), not zero. */
+const num = (v: unknown): number | null => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+const money = (v: unknown): string | null => (num(v) == null ? null : inr(v));
+
+export function InvestorKpiStrip({ active = "", onSelect, variant = "tiles", extra }: { active?: KpiQuick; onSelect?: (q: KpiQuick) => void; variant?: "tiles" | "chips"; extra?: React.ReactNode } = {}) {
   const { data: k } = useInvestorKpis();
   if (!k) return null;
   const tap = (q: KpiQuick) => (onSelect ? () => onSelect(active === q ? "" : q) : undefined);
+  if (variant === "chips") {
+    const chip = (q: Exclude<KpiQuick, "">, label: string, value: unknown) => (
+      <CountChip label={label} value={num(value)} selected={active === q} onPress={tap(q)} accessibilityLabel={`${label}: ${num(value) ?? "unknown"}${active === q ? ". Filter on; tap to clear" : ""}`} />
+    );
+    return (
+      <CountChipRow>
+        <CountChip label="Clients" value={num(k.totalActive)} onPress={onSelect ? () => onSelect("") : undefined} accessibilityLabel={`Total clients: ${num(k.totalActive) ?? "unknown"}${active ? ". Tap to clear the filter" : ""}`} />
+        {extra}
+        <CountChip label="AUM" value={money(k.totalAum)} />
+        <CountChip label="Monthly SIP" value={money(k.sipBook)} />
+        {chip("tier_a", "A-tier", k.tierA)}
+        {chip("reviews_due", "Reviews due", k.reviewsDue)}
+        {chip("kyc_expiring", "KYC expiring 30d", k.kycExpiring)}
+        {chip("no_nominee", "Nominee missing", k.nomineeMissing)}
+        {chip("dormant", "Dormant", k.dormant)}
+      </CountChipRow>
+    );
+  }
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
       <Tile icon="users" tone={palette.brand} label="Total clients" value={String(k.totalActive)} sub={`${k.totalAll} all-time`} onPress={onSelect ? () => onSelect("") : undefined} />

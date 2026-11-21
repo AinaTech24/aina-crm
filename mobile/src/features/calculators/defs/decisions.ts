@@ -11,7 +11,7 @@ import { computeCrashStress } from "../web/crash-stress";
 import { computeFire } from "../web/fire";
 import { prepayVsInvest, btid as btidCalc, npsVsMf } from "../web/advisory";
 import { housingEmiSip } from "../web/housing-emi-sip";
-import { stat, section, table, insight, note } from "./shared";
+import { stat, section, table, insight, note, chart } from "./shared";
 
 /** The web's clampNum: a non-negative finite number, 0 on garbage. */
 const nn = (x: unknown): number => {
@@ -58,7 +58,13 @@ const crash: CalcBody = {
       const gap = r.gapToNoCrash > 0.5 ? ` (${inr(r.gapToNoCrash)} below the no-crash path)` : "";
       out.push(insight(`A ${fmtPct(Math.min(100, crashPct))} crash in year ${crashYear} wipes about ${inr(r.crashDropAmount)} off the corpus on paper. ${recovery}staying invested still reaches ${inr(r.finalStay)}${gap}. Panic-selling and parking in an FD instead would leave just ${inr(r.finalPanic)} — a ${inr(r.costOfPanic)} mistake.`, "success"));
     }
+    const yearly = r.series.filter((p) => p.month % 12 === 0);
     out.push(
+      ...chart("Year", yearly.map((p) => p.month / 12), [
+        { label: "Stayed invested", values: yearly.map((p) => p.stay) },
+        { label: "No crash", values: yearly.map((p) => p.noCrash) },
+        { label: "Panic-sold", values: yearly.map((p) => p.panic) },
+      ]),
       section("1. Corpus path (year-by-year)"),
       table(
         ["Year", "Stayed invested", "No crash", "Panic-sold"],

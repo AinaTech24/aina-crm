@@ -19,6 +19,8 @@
  */
 
 import type { FormSpec } from "./types";
+import { istToIso } from "../../components/form/due";
+import { clientNameById, leadNameById, presetName } from "./pickers";
 
 // 15-minute time slots across the day, labelled 12-hour (mirrors TIME_SLOTS).
 const TIME_SLOTS: Array<{ value: string; label: string }> = (() => {
@@ -64,6 +66,9 @@ export const reviewMeetingForm: FormSpec = {
       subjectKind: params.leadId ? "lead" : "client",
       investorId: params.investorId ?? "",
       leadId: params.leadId ?? "",
+      // Opened from the client's / lead's page: show the name, not "Selected".
+      _investorName: presetName(params, "investorId"),
+      _leadName: presetName(params, "leadId"),
       familyId: "", // encodes "<familyId>:<primaryInvestorId>"
       subject: "",
       category: ["new", "review", "follow_up"].includes(params.category ?? "") ? params.category! : "review",
@@ -117,6 +122,8 @@ export const reviewMeetingForm: FormSpec = {
           searchEnvelope: "investors",
           searchLabel: (i) => i.name,
           searchSublabel: (i) => [i.pan_display, i.segment_tag].filter(Boolean).join(" · "),
+          searchDisplayKey: "_investorName",
+          searchInitialLabel: clientNameById,
           placeholder: "Search a client by name or PAN…",
           visibleIf: (v) => v.subjectKind === "client",
         },
@@ -128,6 +135,8 @@ export const reviewMeetingForm: FormSpec = {
           searchEnvelope: "leads",
           searchLabel: (l) => l.name,
           searchSublabel: (l) => [l.phone, l.stage ? String(l.stage).replace(/_/g, " ") : ""].filter(Boolean).join(" · "),
+          searchDisplayKey: "_leadName",
+          searchInitialLabel: leadNameById,
           placeholder: "Search a lead by name or phone…",
           visibleIf: (v) => v.subjectKind === "lead",
         },
@@ -172,7 +181,8 @@ export const reviewMeetingForm: FormSpec = {
             { value: "phone", label: "Phone" },
           ],
         },
-        { key: "meetingDay", label: "Date", type: "date" },
+        // Quick chips (Today 5 pm / Tomorrow 10 am) set the day AND the time slot.
+        { key: "meetingDay", label: "Date", type: "date", timeKey: "meetingTime" },
         { key: "meetingTime", label: "Time", type: "select", options: TIME_SLOTS },
         { key: "durationMinutes", label: "Duration (minutes)", type: "number" },
         {
@@ -217,7 +227,8 @@ export const reviewMeetingForm: FormSpec = {
       subject: form.subject || undefined,
       category: form.category,
       meetingType: TYPE_FOR_CATEGORY[form.category] ?? "portfolio_review",
-      meetingDate: new Date(`${form.meetingDay}T${form.meetingTime || "11:00"}:00`).toISOString(),
+      // The slot is India time, whatever zone the phone is set to.
+      meetingDate: istToIso(`${form.meetingDay}T${form.meetingTime || "11:00"}`),
       durationMinutes: parseInt(form.durationMinutes, 10) || 30,
       meetingMode: form.meetingMode,
       locationOrLink: form.locationOrLink || undefined,

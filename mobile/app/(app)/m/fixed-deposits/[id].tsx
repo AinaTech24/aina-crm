@@ -118,13 +118,13 @@ export default function FixedDepositDetail() {
         </Card>
 
         <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-          {fd.status === "applied" ? <Button label="Receipt issued" icon={<Feather name="check-circle" size={15} color="#fff" />} loading={update.isPending} onPress={() => setStatus("active", "Receipt issued?", "Receipt issued", "Receipt issued — FD is active")} full /> : null}
-          {fd.status === "active" ? <Button label="Mark matured" icon={<Feather name="check-circle" size={15} color="#fff" />} loading={update.isPending} onPress={() => setStatus("matured", "Mark matured?", "Mark matured", "Marked matured")} full /> : null}
+          {fd.status === "applied" ? <Button label="Receipt issued" icon={<Feather name="check-circle" size={15} color={palette.white} />} loading={update.isPending} onPress={() => setStatus("active", "Receipt issued?", "Receipt issued", "Receipt issued — FD is active")} full /> : null}
+          {fd.status === "active" ? <Button label="Mark matured" icon={<Feather name="check-circle" size={15} color={palette.white} />} loading={update.isPending} onPress={() => setStatus("matured", "Mark matured?", "Mark matured", "Marked matured")} full /> : null}
           {fd.status === "active" || fd.status === "matured" ? <Button label="Renew" variant="secondary" icon={<Feather name="refresh-cw" size={15} color={palette.ink} />} onPress={renew} full /> : null}
           {fd.status === "active" ? <Button label="Close early" variant="secondary" loading={update.isPending} onPress={() => setStatus("closed_early", "Close this FD early?", "Close early", "Marked closed early", "Use this when the client broke the deposit before maturity. The maturity reminder is cancelled.")} full /> : null}
           {fd.status === "applied" ? <Button label="Cancel application" variant="secondary" loading={update.isPending} onPress={() => setStatus("cancelled", "Cancel this application?", "Cancel application", "Application cancelled", "The deposit was never placed.")} full /> : null}
           <Button label="Edit" variant="secondary" icon={<Feather name="edit-2" size={15} color={palette.ink} />} onPress={() => router.push(`/m/fixed-deposits/new?editId=${fd.id}` as any)} full />
-          <Button label="Delete" variant="danger" loading={del.isPending} icon={<Feather name="trash-2" size={15} color="#fff" />} onPress={remove} full />
+          <Button label="Delete" variant="danger" loading={del.isPending} icon={<Feather name="trash-2" size={15} color={palette.white} />} onPress={remove} full />
         </View>
       </ScrollView>
     </View>

@@ -19,7 +19,7 @@ import { computeSipStpFv } from "../web/stp-comprehensive";
 import {
   compounding, effectiveAnnualRate, COMPOUND_PERIODS, type AdditionFrequency, type CompoundFrequency,
 } from "../web/compounding";
-import { scenarioInputs, ratesOf, reportInput, stat, section, table, insight, note, opts } from "./shared";
+import { scenarioInputs, ratesOf, reportInput, stat, section, table, insight, note, opts, chart, cumulative } from "./shared";
 
 /** The web's clampNum: a non-negative finite number, 0 on garbage. */
 const nn = (x: unknown): number => {
@@ -53,6 +53,11 @@ const sipfv: CalcBody = {
     if (res.stepUp && res.years > 0 && v.monthly > 0) {
       out.push(insight(`Raising the SIP ${stepLabel} turns ${inr(res.normal.fv[0])} into ${inr(res.stepUp.fv[0])} at ${fmtPct(rates[0])} — for ${inr(res.stepUp.invested - res.normal.invested)} more invested over ${res.years} years.`, "brand"));
     }
+    out.push(...chart("Year", res.normal.rows.map((r) => r.year), [
+      { label: "Invested", role: "invested", values: cumulative(res.normal.rows.map((r) => r.annual)) },
+      ...rates.map((r, i) => ({ label: `SIP @ ${fmtPct(r)}`, values: res.normal.rows.map((x) => x.values[i]) })),
+      ...(res.stepUp ? [{ label: `Step-up SIP @ ${fmtPct(rates[0])}`, values: res.stepUp.rows.map((x) => x.values[0]) }] : []),
+    ]));
     if (v.view === "detailed" && res.normal.rows.length > 0) {
       const projTable = (p: SipProjection) => table(
         ["Year", "Monthly SIP", "Invested in year", ...rates.map((r) => `Year-end value @ ${fmtPct(r)}`)],
@@ -210,7 +215,15 @@ const reckoner: CalcBody = {
     const corpusRows = result.rows.map((r) => [`${r.years} yrs`, ...strategyCols.map((c) => (r[c.key] ? show(r[c.key]!.corpus) : "—"))]);
     const investedRows = result.rows.map((r) => [`${r.years} yrs`, ...strategyCols.map((c) => (r[c.key] ? show(r[c.key]!.invested) : "—"))]);
 
-    const out: ResultBlock[] = [section("1. Projected corpus by strategy"), table(head, corpusRows)];
+    const byYears = [...result.rows].sort((a, b) => a.years - b.years);
+    const out: ResultBlock[] = [
+      ...chart("Year", byYears.map((r) => r.years), [
+        { label: "Invested — regular", role: "invested", values: byYears.map((r) => r.regular?.invested ?? NaN) },
+        ...strategyCols.map((c) => ({ label: c.label, values: byYears.map((r) => r[c.key]?.corpus ?? NaN) })),
+      ]),
+      section("1. Projected corpus by strategy"),
+      table(head, corpusRows),
+    ];
     if (v.precision === "thousand") out.push(note("Every figure is rounded to the nearest ₹1,000."));
     if (result.hasStepPct || result.hasStepAmt) {
       out.push(insight("Increasing your SIP every year — even modestly — compounds into far greater wealth than a flat SIP over long horizons.", "success"));
@@ -252,6 +265,12 @@ const growing: CalcBody = {
       stat("Invested — regular", inr(rLast?.invested ?? 0)),
       stat("Invested — growing", inr(gLast?.invested ?? 0)),
       stat("Growing — profit % of cost", pct(gLast?.profitPctOfCorpus ?? 0), "success"),
+      ...chart("Year", regular.map((r) => r.year), [
+        { label: "Invested — regular", role: "invested", values: regular.map((r) => r.invested) },
+        { label: "Invested — growing", role: "invested", values: grow.map((r) => r.invested) },
+        { label: "Regular SIP", values: regular.map((r) => r.fv) },
+        { label: "Growing SIP", values: grow.map((r) => r.fv) },
+      ]),
       table(
         ["Year", "Regular SIP · Corpus", "Regular SIP · Invested", "Regular SIP · Profit %", "Growing SIP · Corpus", "Growing SIP · Invested", "Growing SIP · Profit %"],
         regular.map((rr, idx) => {
@@ -335,6 +354,10 @@ const salary: CalcBody = {
 
     if (result.schedule.length > 0) {
       out.push(
+        ...chart("Age", result.schedule.map((row) => row.age), [
+          { label: "Invested", role: "invested", values: cumulative(result.schedule.map((row) => row.investedThisYear)) },
+          { label: "SIP corpus", values: result.schedule.map((row) => row.endCorpus) },
+        ]),
         section(`Year-by-year growth (${result.schedule.length} years)`),
         table(
           ["Age", "Monthly SIP", "Invested that year", "Corpus at year end"],
@@ -390,6 +413,11 @@ const fvannual: CalcBody = {
     }
     if (s1.schedule.length > 0) {
       out.push(
+        ...chart("Year", s1.schedule.map((row) => row.year), [
+          { label: "Invested", role: "invested", values: cumulative(s1.schedule.map((row) => (row.year <= paymentYears ? row.investment : 0))) },
+          { label: `Value @ ${s1.ratePct.toFixed(2)}%`, values: s1.schedule.map((row) => row.yearEndValue) },
+          ...(s2 ? [{ label: `Value @ ${s2.ratePct.toFixed(2)}%`, values: s1.schedule.map((_, i) => s2.schedule[i]?.yearEndValue ?? NaN) }] : []),
+        ]),
         section(`Projected annual investment value (${s1.schedule.length} years)`),
         table(
           ["Year", "Annual investment", `Year-end @ ${s1.ratePct.toFixed(2)}%`, ...(s2 ? [`Year-end @ ${s2.ratePct.toFixed(2)}%`] : [])],
@@ -445,6 +473,11 @@ const annualreq: CalcBody = {
       out.push(insight(`To reach ${inr(targetAmount)} in ${investmentYears} years${deferred ? ` (investing for the first ${paymentYears})` : ""} at ${fmtPct(s1.ratePct)}, invest about ${inr(s1.requiredAnnual)}/year.${second}`, "brand"));
     }
     out.push(
+      ...chart("Year", s1.schedule.map((r) => r.year), [
+        { label: `Invested @ ${fmtPct(s1.ratePct)}`, role: "invested", values: cumulative(s1.schedule.map((r) => (r.year <= paymentYears ? r.investment : 0))) },
+        { label: `Value @ ${fmtPct(s1.ratePct)}`, values: s1.schedule.map((r) => r.yearEndValue) },
+        ...(s2 ? [{ label: `Value @ ${fmtPct(s2.ratePct)}`, values: s1.schedule.map((_, i) => s2.schedule[i]?.yearEndValue ?? NaN) }] : []),
+      ]),
       section(s2 ? "1. Projected annual investment value" : `1. Projected annual investment value @ ${fmtPct(s1.ratePct)}`),
       table(
         [
@@ -493,6 +526,12 @@ const sip: CalcBody = {
     if (res.years > 0 && res.total > 0) {
       out.push(insight(`Over ${res.years} years the SIP builds ${inr(res.sipFv)} and the lumpsum grows to ${inr(res.lumpsumFv)} — ${inr(res.total)} in all from ${inr(res.invested)} put in.`, "brand"));
     }
+    out.push(...chart("Year", res.rows.map((r) => r.year), [
+      { label: "Invested", role: "invested", values: res.rows.map((r) => r.cumulative) },
+      { label: "Total value", values: res.rows.map((r) => r.total) },
+      { label: "SIP", values: res.rows.map((r) => r.sipValue) },
+      { label: "Lumpsum", values: res.rows.map((r) => r.lumpsumValue) },
+    ]));
     if (v.view === "detailed" && res.rows.length > 0) {
       out.push(
         section("1. Year-wise investment and value"),
@@ -551,6 +590,10 @@ const lumpsumfv: CalcBody = {
       const second = rates.length > 1 ? ` At ${fmtPct(rates[1])} it would be ${inr(res.fv[1])}.` : "";
       out.push(insight(`Left untouched, ${inr(amount)} becomes ${inr(res.fv[0])} in ${res.years} years at ${fmtPct(rates[0])} — about ${(res.fv[0] / amount).toFixed(1)}× the money put in.${second}`, "brand"));
     }
+    out.push(...chart("Year", res.rows.map((r) => r.year), [
+      { label: "Invested", role: "invested", values: cumulative(res.rows.map((r) => r.investment)) },
+      ...rates.map((r, i) => ({ label: `Value @ ${fmtPct(r)}`, values: res.rows.map((x) => x.values[i]) })),
+    ]));
     if (v.view === "detailed" && res.rows.length > 0) {
       out.push(
         section("1. Value at the end of each year"),
@@ -590,6 +633,10 @@ const stepupfv: CalcBody = {
       const second = rates.length > 1 ? ` or ${inr(res.fv[1])} at ${fmtPct(rates[1])}` : "";
       out.push(insight(`Starting at ${inr(monthly)} and rising ${fmtPct(stepUpPct)} each year to ${inr(lastMonthly)}, the SIP puts in ${inr(res.invested)} and could grow to ${inr(res.fv[0])} at ${fmtPct(rates[0])}${second}.`, "brand"));
     }
+    out.push(...chart("Year", res.rows.map((r) => r.year), [
+      { label: "Invested", role: "invested", values: cumulative(res.rows.map((r) => r.annual)) },
+      ...rates.map((r, i) => ({ label: `Value @ ${fmtPct(r)}`, values: res.rows.map((x) => x.values[i]) })),
+    ]));
     if (v.view === "detailed" && n > 0) {
       out.push(
         section("1. Year-wise instalments and value"),
@@ -627,6 +674,10 @@ const limitedfv: CalcBody = {
       const second = rates.length > 1 ? ` or ${inr(res.fv[1])} at ${fmtPct(rates[1])}` : "";
       out.push(insight(`Instalments stop after ${res.sipYears} years (${inr(res.invested)} in all), yet the money keeps compounding for ${res.deferYears} more — reaching ${inr(res.fv[0])} at ${fmtPct(rates[0])}${second}.`, "brand"));
     }
+    out.push(...chart("Year", res.rows.map((r) => r.year), [
+      { label: "Invested", role: "invested", values: cumulative(res.rows.map((r) => r.annual)) },
+      ...rates.map((r, i) => ({ label: `Value @ ${fmtPct(r)}`, values: res.rows.map((x) => x.values[i]) })),
+    ]));
     if (v.view === "detailed" && res.rows.length > 0) {
       out.push(
         section("1. Year-wise value"),
@@ -673,6 +724,12 @@ const sipstp: CalcBody = {
     if (years > 0) {
       out.push(insight(`Investing ${inr(r.totalInvested)} in all — ${inr(monthlySip)} a month plus ${inr(stpLumpsum)} up front — could grow to ${inr(r.total)} in ${years} years.`, "brand"));
     }
+    out.push(...chart("Year", r.rows.map((x) => x.year), [
+      { label: "Invested", role: "invested", values: r.rows.map((x) => x.cumulativeInvestment) },
+      { label: "Total value", values: r.rows.map((x) => x.total) },
+      { label: "SIP fund", values: r.rows.map((x) => x.sipValue) },
+      { label: "STP fund", values: r.rows.map((x) => x.stpValue) },
+    ]));
     if (v.detailed && r.rows.length > 0) {
       out.push(
         section("1. Year-wise investment and value"),
@@ -735,6 +792,10 @@ const compoundingDef: CalcBody = {
     }
     if (res.rows.length > 0) {
       out.push(
+        ...chart("Year", res.rows.map((r) => r.year), [
+          { label: "Invested", role: "invested", values: res.rows.map((r) => r.invested) },
+          { label: "Total value", values: res.rows.map((r) => r.total) },
+        ]),
         section("1. Growth year by year"),
         table(
           ["Year", "Amount invested", "Interest this year", "Interest to date", "Total value"],

@@ -2,6 +2,10 @@
  * App preferences — per-device behaviour for THIS user, not firm config. Stored
  * locally, so switching phones doesn't carry them over (deliberate: they
  * describe how you work on this handset).
+ *
+ * Appearance (System / Light / Dark) is applied by restarting the app's
+ * screens in place (theme/reload.ts): their colours are fixed when they load.
+ * "System" takes the phone's setting at each start.
  */
 
 import React, { useEffect, useState } from "react";
@@ -19,11 +23,31 @@ import { usePrefs } from "../../state/prefs";
 import * as Notifications from "expo-notifications";
 import { enableSimCalls, syncSimCalls, useCallSyncStatus, callPermissionGranted, simCallsAvailable } from "../activities/simCallSync";
 import { toast } from "../../lib/toast";
-import { spacing, palette, radius, fontWeight } from "../../theme/tokens";
+import { spacing, palette, radius, fontWeight, appearancePref, colorScheme } from "../../theme/tokens";
+import { writeAppearancePref, setNativeScheme, type AppearancePref } from "../../theme/boot";
+import { reloadApp } from "../../theme/reload";
 import { toneColors } from "../../theme";
 import { errorMessage } from "../../lib/errors";
 
+const APPEARANCE: { key: AppearancePref; label: string }[] = [
+  { key: "system", label: "System" },
+  { key: "light", label: "Light" },
+  { key: "dark", label: "Dark" },
+];
+
 export function PreferencesSettings() {
+  const [appearance, setAppearance] = useState<AppearancePref>(appearancePref);
+  const chooseAppearance = async (next: AppearancePref) => {
+    if (next === appearance) return;
+    setAppearance(next);
+    writeAppearancePref(next);
+    // A fixed choice that matches what is on screen needs no restart; "System"
+    // always restarts, because only a fresh start reads the phone's setting.
+    if (next !== "system" && next === colorScheme) { setNativeScheme(next); return; }
+    setNativeScheme(next === "system" ? "unspecified" : next);
+    const ok = await reloadApp("appearance", { keepUnlocked: true });
+    if (!ok) toast.info("Close and reopen Aina CRM to apply.");
+  };
   const autoLogCalls = usePrefs((s) => s.autoLogCalls);
   const appLock = usePrefs((s) => s.appLock);
   const language = usePrefs((s) => s.language);
@@ -77,6 +101,11 @@ export function PreferencesSettings() {
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       <ScreenHeader title={t("prefs.title")} subtitle={t("prefs.subtitle")} />
       <Screen scroll padded contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
+        <Text variant="caption" tone="faint" style={styles.label}>APPEARANCE</Text>
+        <View style={{ marginBottom: spacing.xl }}>
+          <Segmented options={APPEARANCE} value={appearance} onChange={chooseAppearance} />
+        </View>
+
         <Text variant="caption" tone="faint" style={styles.label}>{t("prefs.language")}</Text>
         <Card flat style={{ marginBottom: spacing.xl }}>
           <Text>English</Text>

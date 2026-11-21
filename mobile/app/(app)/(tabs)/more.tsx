@@ -58,7 +58,7 @@ export default function More() {
                   <View style={styles.icon}><Feather name={it.icon} size={17} color={palette.brandDark} /></View>
                   <Text variant="body" style={{ flex: 1, color: palette.ink }}>{it.label}</Text>
                   {badge ? (
-                    <View style={styles.badge}><Text variant="caption" style={{ color: palette.white, fontWeight: fontWeight.bold }}>{badge}</Text></View>
+                    <View style={styles.badge}><Text variant="caption" dense style={{ color: palette.white, fontWeight: fontWeight.bold }}>{badge}</Text></View>
                   ) : null}
                   <Feather name="chevron-right" size={16} color={palette.faint} />
                 </Pressable>

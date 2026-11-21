@@ -26,7 +26,7 @@ export function StatusPill({ label, tone = "neutral", dot = true, size = "md" }:
       ]}
     >
       {dot && <View style={[styles.dot, { backgroundColor: fg }]} />}
-      <Text style={{ color: fg, fontSize: size === "sm" ? fontSize.xs : fontSize.sm, fontWeight: fontWeight.semibold }}>
+      <Text dense style={{ color: fg, fontSize: size === "sm" ? fontSize.xs : fontSize.sm, fontWeight: fontWeight.semibold }}>
         {label}
       </Text>
     </View>

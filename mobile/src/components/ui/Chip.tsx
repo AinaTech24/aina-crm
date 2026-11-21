@@ -25,9 +25,12 @@ export function Chip({ label, selected, onPress, count }: ChipProps) {
         Haptics.selectionAsync().catch(() => {});
         onPress?.();
       }}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!selected }}
       style={[styles.chip, selected ? [styles.selected, { backgroundColor: brand, borderColor: brand }] : styles.unselected]}
     >
       <Text
+        dense
         style={{
           color: selected ? palette.white : palette.ink70,
           fontSize: fontSize.sm,

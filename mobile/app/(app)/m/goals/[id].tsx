@@ -204,7 +204,7 @@ export default function GoalDetail() {
           />
           <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.md }}>
             <View style={{ flex: 1 }}><Button label="Share" variant="secondary" onPress={doShare} icon={<Feather name="message-circle" size={15} color={palette.ink} />} full /></View>
-            <View style={{ flex: 1 }}><Button label="Archive" variant="danger" loading={del.isPending} onPress={doDelete} icon={<Feather name="archive" size={15} color="#fff" />} full /></View>
+            <View style={{ flex: 1 }}><Button label="Archive" variant="danger" loading={del.isPending} onPress={doDelete} icon={<Feather name="archive" size={15} color={palette.white} />} full /></View>
           </View>
         </Animated.View>
       </ScrollView>

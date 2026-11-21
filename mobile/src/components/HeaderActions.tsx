@@ -40,7 +40,8 @@ export function HeaderActions() {
         <Feather name="bell" size={20} color={palette.ink} />
         {unread > 0 ? (
           <View style={styles.badge}>
-            <Text style={styles.badgeTxt}>{unread > 9 ? "9+" : unread}</Text>
+            {/* A fixed 16px bubble: its digits must not grow with the font setting. */}
+            <Text style={styles.badgeTxt} allowFontScaling={false}>{unread > 9 ? "9+" : unread}</Text>
           </View>
         ) : null}
       </Pressable>

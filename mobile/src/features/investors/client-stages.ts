@@ -49,3 +49,8 @@ const KEYS = new Set(STAGES.map((s) => s.key));
 export function boardStage(stageKey?: string | null): string {
   return stageKey && KEYS.has(stageKey) ? stageKey : "add_in_review_sheet";
 }
+
+/** True for a stage on this board — the only stages a board Undo returns a client to. */
+export function isClientPhaseStage(stageKey?: string | null): stageKey is string {
+  return !!stageKey && KEYS.has(stageKey);
+}

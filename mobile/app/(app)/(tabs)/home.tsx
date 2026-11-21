@@ -1,10 +1,14 @@
 /**
- * Home — the field salesperson's daily cockpit. Greeting → quick actions → book
+ * Home — the field salesperson's daily cockpit. Greeting → book
  * at a glance → WEEK STRIP (tap any of the next 14 days to see its schedule) →
  * THE DAY'S PLAN (meetings, follow-ups, tasks — each actionable inline: call /
  * WhatsApp / complete / open) → THIS WEEK touchpoints (client birthdays &
  * investment anniversaries with a one-tap WhatsApp wish) → recently viewed.
  * Data: /api/me + /api/dashboard/home + /api/dashboard/my-day?date=.
+ *
+ * Creating something is ONE "+" (bottom right) that opens a sheet — Log call,
+ * New task, New lead, Schedule meeting, Service request — each listed only for
+ * the capability its server route checks.
  */
 
 import React from "react";
@@ -19,6 +23,8 @@ import { Card } from "../../../src/components/ui/Card";
 import { Text } from "../../../src/components/ui/Text";
 import { StatusPill } from "../../../src/components/ui/StatusPill";
 import { Skeleton } from "../../../src/components/ui/Skeleton";
+import { FAB } from "../../../src/components/ui/FAB";
+import { BottomSheet } from "../../../src/components/ui/BottomSheet";
 import { useMe, hasAnyCap } from "../../../src/api/me";
 import { queuedPatch, useOfflineQueue } from "../../../src/lib/offlineQueue";
 import { useDashboardHome, useMyDay, useMyPerformance, isoDay, type Kpi, type DayMeeting, type DayFollowup, type DayTask, type Touchpoint, type AgendaDay, type MyPerformance, type PerfKpi } from "../../../src/features/dashboard/api";
@@ -122,8 +128,8 @@ export default function Home() {
     return k.format === "inr" ? inr(k.value) : Number(k.value).toLocaleString("en-IN");
   };
   const caps = me.data?.capabilities;
-  const canLead = hasAnyCap(caps, ["lead.edit.all", "lead.edit.assigned"]);
-  const canMeet = hasAnyCap(caps, ["review_meeting.manage.all", "review_meeting.manage.assigned"]);
+  const creates = createActions(caps);
+  const [createOpen, setCreateOpen] = React.useState(false);
   // Counts the day's plan doesn't already list (on today it lists overdue and
   // today's tasks, follow-ups and meetings one by one — the chip repeated them).
   const planShown = isToday && !day.isError && !!day.data;
@@ -136,7 +142,9 @@ export default function Home() {
   const planEmpty = md && md.meetings.length === 0 && md.followups.length === 0 && todaysTasks.length === 0 && overdueTasks.length === 0;
 
   return (
-    <Screen scroll padded onRefresh={refetch} refreshing={me.isRefetching || dash.isRefetching || day.isRefetching} contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
+    <View style={{ flex: 1 }}>
+    {/* Bottom padding clears the "+" so it never covers the last row. */}
+    <Screen scroll padded onRefresh={refetch} refreshing={me.isRefetching || dash.isRefetching || day.isRefetching} contentStyle={{ paddingTop: spacing.lg, paddingBottom: creates.length ? 96 : spacing["3xl"] }}>
       {/* Greeting */}
       <Animated.View entering={FadeInUp.duration(300)}>
         {me.isLoading ? (
@@ -181,15 +189,6 @@ export default function Home() {
       )}
 
       </> : null}
-      {/* Quick actions */}
-      <View style={styles.quickRow}>
-        <QuickAction icon="phone" label="Log call" onPress={() => router.push("/m/activities/new" as any)} />
-        <QuickAction icon="check-square" label="New task" onPress={() => router.push("/m/tasks/new" as any)} />
-        {/* Only the creates the server will accept from this user. */}
-        {canLead ? <QuickAction icon="trending-up" label="New lead" onPress={() => router.push("/m/leads/new" as any)} /> : null}
-        {canMeet ? <QuickAction icon="video" label="Meeting" onPress={() => router.push("/m/review-meetings/new" as any)} /> : null}
-      </View>
-
       {/* Attention chips (overdue / reviews due — counts that aren't in today's plan) */}
       {attention.length > 0 ? (
         <View style={styles.chipsRow}>
@@ -335,7 +334,38 @@ export default function Home() {
         </>
       ) : null}
     </Screen>
+    {creates.length ? <FAB label="Create" onPress={() => setCreateOpen(true)} /> : null}
+    <BottomSheet visible={createOpen} onClose={() => setCreateOpen(false)} title="Create">
+      {creates.map((a, i) => (
+        <Pressable
+          key={a.key}
+          accessibilityRole="button"
+          style={[styles.createRow, i < creates.length - 1 && styles.divider]}
+          onPress={() => { setCreateOpen(false); router.push(a.route as any); }}
+        >
+          <View style={styles.quickIcon}><Feather name={a.icon} size={18} color={palette.brand} /></View>
+          <Text variant="body" style={{ flex: 1, color: palette.ink, fontWeight: fontWeight.medium }}>{a.label}</Text>
+          <Feather name="chevron-right" size={16} color={palette.faint} />
+        </Pressable>
+      ))}
+    </BottomSheet>
+    </View>
   );
+}
+
+// ── Quick create ──
+type CreateAction = { key: string; label: string; icon: React.ComponentProps<typeof Feather>["name"]; route: string };
+/** Only the creates the server will accept from this user — each gate is the
+ *  capability its POST route checks (logging a call needs a client or lead in view). */
+function createActions(caps: string[] | undefined): CreateAction[] {
+  if (!caps) return [];
+  const out: CreateAction[] = [];
+  if (hasAnyCap(caps, ["investor.view.all", "investor.view.assigned", "lead.view.all", "lead.view.assigned"])) out.push({ key: "call", label: "Log call", icon: "phone", route: "/m/activities/new" });
+  if (hasAnyCap(caps, ["task.edit.all", "task.edit.assigned"])) out.push({ key: "task", label: "New task", icon: "check-square", route: "/m/tasks/new" });
+  if (hasAnyCap(caps, ["lead.edit.all", "lead.edit.assigned"])) out.push({ key: "lead", label: "New lead", icon: "trending-up", route: "/m/leads/new" });
+  if (hasAnyCap(caps, ["review_meeting.manage.all", "review_meeting.manage.assigned"])) out.push({ key: "meeting", label: "Schedule meeting", icon: "video", route: "/m/review-meetings/new" });
+  if (hasAnyCap(caps, ["service_request.manage"])) out.push({ key: "sr", label: "Service request", icon: "life-buoy", route: "/m/service-requests/new" });
+  return out;
 }
 
 // ── Needs you now ──
@@ -348,7 +378,7 @@ function UrgentGroup({ g, router }: { g: CommandGroup; router: ReturnType<typeof
       <View style={styles.urgentHead}>
         <Feather name={asIcon(featherIcon(g.icon))} size={14} color={color} />
         <Text variant="label" style={{ flex: 1, color: palette.ink }}>{g.label}</Text>
-        <View style={[styles.countPill, { backgroundColor: color }]}><Text variant="caption" style={{ color: palette.white, fontWeight: fontWeight.bold }}>{g.count}</Text></View>
+        <View style={[styles.countPill, { backgroundColor: color }]}><Text variant="caption" dense style={{ color: palette.white, fontWeight: fontWeight.bold }}>{g.count}</Text></View>
       </View>
       {shown.map((it) => <UrgentRow key={it.itemKey} it={it} router={router} />)}
       {g.count > shown.length && g.href ? (
@@ -366,7 +396,7 @@ function UrgentRow({ it, router }: { it: CommandItem; router: ReturnType<typeof 
     <Pressable style={styles.planRow} onPress={open} accessibilityRole="button">
       <View style={{ flex: 1 }}>
         <Text variant="body" numberOfLines={1}>{it.title}</Text>
-        <Text variant="caption" tone="muted" numberOfLines={1}>
+        <Text variant="secondary" numberOfLines={1}>
           {it.detail ?? it.client?.name ?? ""}{it.ageDays != null && it.ageDays > 0 ? ` · ${it.ageDays}d old` : ""}
         </Text>
       </View>
@@ -461,7 +491,7 @@ function DayChip({ a, selected, today, onPress }: { a: AgendaDay; selected: bool
       accessibilityLabel={`${WEEKDAYS[d.getDay()]} ${d.getDate()}, ${total} item${total === 1 ? "" : "s"}`}
       style={[styles.dayChip, selected && styles.dayChipOn, !selected && today && styles.dayChipToday]}
     >
-      <Text variant="caption" style={{ color: selected ? "rgba(255,255,255,0.75)" : palette.faint }}>{WEEKDAYS[d.getDay()]}</Text>
+      <Text variant="caption" style={{ color: selected ? palette.onBrandMuted : palette.faint }}>{WEEKDAYS[d.getDay()]}</Text>
       <Text style={[styles.dayNum, { color: selected ? palette.white : palette.ink }]}>{d.getDate()}</Text>
       <View style={styles.dotRow}>
         {kinds.length > 0
@@ -482,7 +512,7 @@ function MeetingRow({ m, onOpen }: { m: DayMeeting; onOpen: () => void }) {
       <View style={[styles.roundIcon, { backgroundColor: palette.brandLight }]}><Feather name="video" size={16} color={palette.brand} /></View>
       <View style={{ flex: 1 }}>
         <Text variant="body" numberOfLines={1}>{m.subject || titleCase(m.meeting_type) || "Meeting"}</Text>
-        <Text variant="caption" tone="muted" numberOfLines={1}>{t ? `${t} · ` : ""}{m.client_name ?? "—"}{m.meeting_mode ? ` · ${titleCase(m.meeting_mode)}` : ""}</Text>
+        <Text variant="secondary" numberOfLines={1}>{t ? `${t} · ` : ""}{m.client_name ?? "—"}{m.meeting_mode ? ` · ${titleCase(m.meeting_mode)}` : ""}</Text>
       </View>
       <RowActions phone={subjectId ? m.phone : null} onCall={() => startCall({ subjectType, subjectId, name: m.client_name ?? "Client", phone: m.phone ?? "" })} subject={{ type: subjectType, id: subjectId, name: m.client_name, purpose: "Meeting" }} />
     </Pressable>
@@ -495,7 +525,7 @@ function FollowupRow({ f, onOpen }: { f: DayFollowup; onOpen: () => void }) {
       <View style={[styles.roundIcon, { backgroundColor: f.overdue ? toneColors("danger").bg : palette.warningBg }]}><Feather name="corner-up-right" size={16} color={f.overdue ? toneColors("danger").fg : palette.warning} /></View>
       <View style={{ flex: 1 }}>
         <Text variant="body" numberOfLines={1}>{f.name ?? "Lead"}</Text>
-        <Text variant="caption" numberOfLines={1} style={f.overdue ? { color: toneColors("danger").fg } : undefined} tone={f.overdue ? undefined : "muted"}>
+        <Text variant="secondary" numberOfLines={1} style={f.overdue ? { color: toneColors("danger").fg } : undefined}>
           {f.overdue ? "Overdue" : "Follow-up due"}{f.stage ? ` · ${titleCase(f.stage)}` : ""}
         </Text>
       </View>
@@ -511,7 +541,7 @@ function TaskRow({ t, busy, onDone, onOpen }: { t: DayTask; busy: boolean; onDon
       <Pressable onPress={onDone} disabled={busy || !!queued} style={{ minWidth: 48, minHeight: 48, justifyContent: "center", alignItems: "center" }} accessibilityRole="button" accessibilityLabel={`Mark "${t.title ?? "task"}" done`}><Feather name="circle" size={22} color={palette.faint} /></Pressable>
       <Pressable style={{ flex: 1, minHeight: 44, justifyContent: "center" }} onPress={onOpen} accessibilityRole="button">
         <Text variant="body" numberOfLines={1}>{t.title ?? "Task"}</Text>
-        <Text variant="caption" numberOfLines={1} style={t.overdue ? { color: toneColors("danger").fg } : undefined} tone={t.overdue ? undefined : "muted"}>
+        <Text variant="secondary" numberOfLines={1} style={t.overdue ? { color: toneColors("danger").fg } : undefined}>
           {queued ? (queued.status === "failed" ? "Completion needs review in Sync" : "Completion saved on phone · Sync pending") : t.overdue ? "Overdue" : timeLabel(t.due_at) || "Due"}
         </Text>
       </Pressable>
@@ -529,10 +559,10 @@ function TouchpointRow({ t, last, onOpen }: { t: Touchpoint; last: boolean; onOp
     : `Dear ${firstName(t.name)}, congratulations on ${t.years ?? ""} ${t.years === 1 ? "year" : "years"} of your investment journey with us! 🎊 Thank you for your continued trust.`;
   return (
     <View style={[styles.row, !last && styles.divider]}>
-      <View style={[styles.roundIcon, { backgroundColor: isBday ? "#FCE7F3" : palette.successBg }]}><Feather name={isBday ? "gift" : "award"} size={16} color={isBday ? "#DB2777" : palette.success} /></View>
+      <View style={[styles.roundIcon, { backgroundColor: isBday ? palette.pinkBg : palette.successBg }]}><Feather name={isBday ? "gift" : "award"} size={16} color={isBday ? palette.pink : palette.success} /></View>
       <Pressable style={{ flex: 1, minHeight: 44, justifyContent: "center" }} onPress={onOpen} accessibilityRole="button">
         <Text variant="body" numberOfLines={1}>{t.name ?? "Client"}</Text>
-        <Text variant="caption" tone="muted">{label} · {when}</Text>
+        <Text variant="secondary">{label} · {when}</Text>
       </Pressable>
       <Pressable onPress={() => openWa(t.whatsapp_phone || t.phone, msg, { type: "investor", id: t.id, name: t.name, purpose: isBday ? "Birthday wish" : "Anniversary wish" })} style={styles.wishBtn} accessibilityRole="button" accessibilityLabel={`WhatsApp ${t.name ?? "client"} a wish`}>
         <Feather name="message-circle" size={14} color={palette.white} />
@@ -556,9 +586,6 @@ function RowActions({ phone, onCall, subject }: { phone?: string | null; onCall:
 function Stat({ label, value }: { label: string; value: string }) {
   return <View style={{ flex: 1, alignItems: "center" }}><Text style={{ fontSize: 16, fontWeight: fontWeight.bold }} numberOfLines={1}>{value}</Text><Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text></View>;
 }
-function QuickAction({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.quickAction} accessibilityRole="button" accessibilityLabel={label}><View style={styles.quickIcon}><Feather name={asIcon(icon)} size={18} color={palette.brand} /></View><Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text></Pressable>;
-}
 function SectionLabel({ icon, text }: { icon: string; text: string }) {
   return <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.xl, marginBottom: spacing.sm }}><Feather name={asIcon(icon)} size={13} color={palette.muted} /><Text variant="caption" tone="faint" style={{ letterSpacing: 0.6 }}>{text}</Text></View>;
 }
@@ -574,8 +601,7 @@ function PlanGroup({ title, children }: { title: string; children: React.ReactNo
 const styles = StyleSheet.create({
   clockBanner: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.sm, backgroundColor: palette.successBg, borderRadius: radius.md, padding: spacing.md },
   clockIcon: { width: 38, height: 38, borderRadius: radius.pill, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center" },
-  quickRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg },
-  quickAction: { flex: 1, alignItems: "center", gap: 6, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, paddingVertical: spacing.md },
+  createRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 56, paddingVertical: spacing.sm },
   quickIcon: { width: 38, height: 38, borderRadius: radius.pill, backgroundColor: palette.brandLight, alignItems: "center", justifyContent: "center" },
   hero: { fontSize: 34, fontWeight: fontWeight.bold, letterSpacing: -0.5, marginTop: 4 },
   statRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },

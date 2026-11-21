@@ -27,7 +27,7 @@ type Section = { icon: FeatherName; title: string; desc: string; route: string }
 const SECTIONS: Section[] = [
   { icon: "refresh-cw", title: "Sync", desc: "Changes saved on this phone.", route: "/sync" },
   // My profile + Organisation profile live in the header's profile menu.
-  { icon: "smartphone", title: "App preferences", desc: "Call logging, app lock and this device.", route: "/m/settings-preferences" },
+  { icon: "smartphone", title: "App preferences", desc: "Dark mode, call logging, app lock and this device.", route: "/m/settings-preferences" },
   { icon: "droplet", title: "Appearance & theme", desc: "Colours, font, density and your white-label address.", route: "/m/settings-appearance" },
   { icon: "shield", title: "Risk profile questionnaire", desc: "Questions, scoring and risk-category bands.", route: "/m/settings-risk-profile" },
   { icon: "bell", title: "Notification templates", desc: "The lead-journey messages and what each is for.", route: "/m/settings-notification-templates" },

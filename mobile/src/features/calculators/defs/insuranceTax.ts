@@ -17,7 +17,7 @@ import { computeTaxHarvesting } from "../web/tax-harvesting";
 import { computeCapitalGains, CII, fyLabel, type AcquisitionBasis, type AssetType, type Improvement } from "../web/capital-gains";
 import { capitalGainsBondVsOthers, type CgBondColumn } from "../web/capital-gains-bond";
 import { ciiTable, indexCost, latestCiiYear } from "../web/cii";
-import { stat, section, table, insight, note, opts } from "./shared";
+import { stat, section, table, insight, note, opts, chart, cumulative } from "./shared";
 
 /** The web's clampNum: a non-negative finite number, 0 on garbage. */
 const nn = (x: unknown): number => {
@@ -126,6 +126,13 @@ const insurance: CalcBody = {
           "brand",
         ),
       );
+    }
+    if (showMfCompare) {
+      out.push(...chart("Year", result.policySchedule.map((r) => r.year), [
+        { label: "Premiums paid", role: "invested", values: cumulative(result.policySchedule.map((r) => r.premium)) },
+        { label: `Same premium in an MF @ ${fmtPct(expectedReturnPct)}`, values: result.policySchedule.map((_, i) => result.mfSameSchedule[i]?.yearEndValue ?? NaN) },
+        { label: "Policy payouts to date", values: cumulative(result.policySchedule.map((r) => r.payout)) },
+      ]));
     }
     out.push(
       section(`${showMfCompare ? 2 : 1}. Year-wise cash flows`),

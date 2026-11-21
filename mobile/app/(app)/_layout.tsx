@@ -47,7 +47,6 @@ function routeFromPush(url: string): string | null {
 export default function AppLayout() {
   const router = useRouter();
   const status = useSession((s) => s.status);
-  const token = useSession((s) => s.token);
   const owner = useSession((s) => s.owner);
   const autoLogCalls = usePrefs((s) => s.autoLogCalls);
   React.useEffect(() => status === "authed" && autoLogCalls ? watchSimCalls() : undefined, [status, owner, autoLogCalls]);
@@ -71,10 +70,13 @@ export default function AppLayout() {
     if (status === "authed") hydrate();
   }, [status, hydrate]);
   // Register for push notifications (best-effort; no-ops until a dev build exists).
+  // Once per signed-in account per launch — not again when the cold start's
+  // background renewal swaps the token (the device is the same device).
   React.useEffect(() => {
     configurePushHandler();
-    if (status === "authed" && token) registerForPush(token);
-  }, [status, token]);
+    const current = useSession.getState().token;
+    if (status === "authed" && current) registerForPush(current);
+  }, [status, owner]);
   // Restore any writes made while offline and replay them the moment we're back.
   React.useEffect(() => {
     if (status !== "authed") return;

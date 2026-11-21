@@ -6,12 +6,16 @@
  * Supports two shapes:
  *   - single-page (spec.sections) — everything on one scroll
  *   - wizard (spec.steps) — a stepper with Back/Next; submit on the last step
+ *
+ * A long form folds its sections (./sections.ts): the first one and any where
+ * something is missing open, the rest show "3 of 5 filled". A failed check —
+ * the form's own or the server's field errors — opens the section, scrolls to
+ * the first field with an error and focuses it.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, ScrollView, KeyboardAvoidingView, StyleSheet } from "react-native";
+import { View, ScrollView, KeyboardAvoidingView, StyleSheet, type TextInput } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { ScreenHeader } from "../ui/ScreenHeader";
@@ -20,17 +24,19 @@ import { Text } from "../ui/Text";
 import { BottomSheet } from "../ui/BottomSheet";
 import { LoadingState, ErrorState } from "../states";
 import { FieldRenderer } from "./FieldRenderer";
+import { CollapsibleSection } from "./CollapsibleSection";
+import { StickyActionBar } from "./StickyActionBar";
+import { firstErrorKey, isLongForm, openAtFirstSight, sectionSummary, serverFieldErrors, shownSections } from "./sections";
 import { api, ApiError } from "../../api/client";
 import { useFormDraft } from "../../lib/useFormDraft";
 import { useConnectivity } from "../../state/connectivity";
 import { queuedPost } from "../../lib/offlineQueue";
-import { palette, spacing, fontSize, fontWeight } from "../../theme/tokens";
+import { palette, spacing } from "../../theme/tokens";
 import { fmtDateTime } from "../../lib/format";
 import type { FormSpec, FormValues, SectionSpec } from "../../features/forms/types";
 
 export function FormScreen({ spec }: { spec: FormSpec }) {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const qc = useQueryClient();
   const rawParams = useLocalSearchParams();
   const params = useMemo(() => {
@@ -79,6 +85,18 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
   const submitting = useRef(false);
   // A 409 the spec knows how to answer (spec.on409) — its body, until dismissed.
   const [conflict409, setConflict409] = useState<any | null>(null);
+
+  // Folding sections (long forms) and taking the person to the first error.
+  const scrollRef = useRef<ScrollView>(null);
+  const contentRef = useRef<React.ComponentRef<typeof View>>(null);
+  const fieldRefs = useRef<Record<string, React.ComponentRef<typeof View> | null>>({});
+  const inputRefs = useRef<Record<string, TextInput | null>>({});
+  const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
+  /** Each section's open-at-first-sight, decided once (never re-folded under the person's fingers). */
+  const decided = useRef<Record<string, boolean>>({});
+  /** A step that has once been long stays folded (a field appearing never flips the layout back). */
+  const longStep = useRef<Record<number, boolean>>({});
+  const [focusReq, setFocusReq] = useState<{ key: string; n: number } | null>(null);
 
   // Once the edit record loads, hydrate the form from it (once).
   useEffect(() => {
@@ -134,6 +152,38 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
   const visibleKeysIn = (sections: SectionSpec[]): string[] =>
     sections.flatMap((s) => s.fields.filter((f) => !f.visibleIf || f.visibleIf(form)).map((f) => f.key));
 
+  /** A step's sections on screen, with stable ids ("step.index"). */
+  const sectionsOf = (stepIndex: number) =>
+    shownSections(steps[stepIndex]?.sections ?? [], form, showField).map((x) => ({ ...x, id: `${stepIndex}.${x.index}` }));
+
+  /** Open every section holding an error, then scroll to (and focus) the first one in field order. */
+  const reveal = (errs: Record<string, string>, stepIndex = step) => {
+    const list = sectionsOf(stepIndex);
+    const bad = list.filter(({ fields }) => fields.some((f) => errs[f.key])).map((x) => x.id);
+    if (bad.length) setOpenMap((m) => ({ ...m, ...Object.fromEntries(bad.map((id) => [id, true])) }));
+    const key = firstErrorKey(list.flatMap(({ fields }) => fields.map((f) => f.key)), errs);
+    if (key) setFocusReq({ key, n: Date.now() });
+  };
+
+  // After the section has opened (and laid out), bring the field into view.
+  useEffect(() => {
+    if (!focusReq) return;
+    const t = setTimeout(() => {
+      const node = fieldRefs.current[focusReq.key];
+      const content = contentRef.current;
+      if (!node || !content || typeof node.measureLayout !== "function") return;
+      node.measureLayout(
+        content,
+        (_x, y) => {
+          scrollRef.current?.scrollTo({ y: Math.max(0, y - spacing.xl), animated: true });
+          inputRefs.current[focusReq.key]?.focus?.();
+        },
+        () => {}
+      );
+    }, 120);
+    return () => clearTimeout(t);
+  }, [focusReq]);
+
   const goNext = () => {
     setBanner(null);
     const errs = spec.validate?.(form) ?? null;
@@ -145,6 +195,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
       if (msgs.length) {
         setErrors(stepErrs);
         setBanner(msgs[0] || "Please fix the highlighted fields.");
+        reveal(stepErrs);
         return;
       }
     }
@@ -167,13 +218,15 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
       if (errs && Object.keys(errs).length) {
         setErrors(errs);
         // Jump the user to the first step that has an error.
+        let at = step;
         if (isWizard) {
           const badStep = steps.findIndex((st) =>
             visibleKeysIn(st.sections).some((k) => errs[k])
           );
-          if (badStep >= 0 && badStep !== step) setStep(badStep);
+          if (badStep >= 0 && badStep !== step) { setStep(badStep); at = badStep; }
         }
         setBanner(Object.values(errs)[0] || "Please fix the highlighted fields.");
+        reveal(errs, at);
         return;
       }
     }
@@ -220,6 +273,17 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
         return;
       }
+      // A refusal that names fields (zod issues / fieldErrors): mark them and go to the first.
+      if (e instanceof ApiError && (e.status === 400 || e.status === 422) && e.body) {
+        const keys = steps.flatMap((_st, i) => sectionsOf(i).flatMap(({ fields }) => fields.map((f) => f.key)));
+        const fieldErrs = serverFieldErrors(e.body, keys);
+        if (Object.keys(fieldErrs).length) {
+          setErrors(fieldErrs);
+          const at = isWizard ? Math.max(0, steps.findIndex((_st, i) => sectionsOf(i).some(({ fields }) => fields.some((f) => fieldErrs[f.key])))) : step;
+          if (at !== step) setStep(at);
+          reveal(fieldErrs, at);
+        }
+      }
       const msg = e instanceof ApiError ? e.message : "Could not save. Please try again.";
       setBanner(msg);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
@@ -231,6 +295,22 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
 
   const current = steps[step];
   const isLast = step === steps.length - 1;
+
+  // Fold a long step: 3+ titled sections and 12+ fields (sections.ts). The quick
+  // lead form stays flat — it is short by design until "More details".
+  // Decided only on the form as it will show (a restored draft, a loaded record).
+  const ready = draft.ready && (!isEdit || hydrated);
+  const shown = sectionsOf(step);
+  const longNow = isLongForm(shown, spec.collapse);
+  if (ready && longNow && !quickLead) longStep.current[step] = true;
+  const collapsible = !quickLead && spec.collapse !== "never" && (!!longStep.current[step] || longNow);
+  if (ready && collapsible && shown.some((x) => !(x.id in decided.current))) {
+    const first = openAtFirstSight(shown, form, { ...(spec.validate?.(form) ?? {}), ...errors });
+    shown.forEach(({ id }, i) => {
+      if (!(id in decided.current)) decided.current[id] = first[i];
+    });
+  }
+  const isOpen = (id: string) => !collapsible || (openMap[id] ?? decided.current[id] ?? true);
   const headerTitle = isEdit ? spec.editTitle ?? "Edit" : spec.title;
   const submitText = isEdit ? "Save changes" : spec.submitLabel;
 
@@ -270,31 +350,38 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          <View ref={contentRef} collapsable={false}>
           {draft.status ? <Text variant="caption" tone="muted" style={{ marginBottom: spacing.md }}>{draft.status}</Text> : null}
           {!online && (isEdit || !["/api/leads", "/api/activities"].includes(spec.endpoint)) ? <Text tone="warning" style={{ marginBottom: spacing.md }}>This form needs a connection to submit.</Text> : null}
-          {current.sections
-            .filter((section) => (!section.visibleIf || section.visibleIf(form)) && section.fields.some(showField))
-            .map((section, si) => (
-            <View key={si} style={styles.section}>
-              {section.title ? <Text style={styles.sectionTitle}>{section.title.toUpperCase()}</Text> : null}
-              {section.fields
-                .filter(showField)
-                .map((f) => (
+          {shown.map(({ section, id, fields }, si) => (
+            <CollapsibleSection
+              key={id}
+              title={section.title}
+              collapsible={collapsible}
+              open={isOpen(id)}
+              onToggle={() => setOpenMap((m) => ({ ...m, [id]: !isOpen(id) }))}
+              summary={sectionSummary(section, fields, form)}
+              footer={si === 0 && spec.notice ? <spec.notice form={form} isEdit={isEdit} /> : null}
+            >
+              {fields.map((f) => (
+                <View key={f.key} collapsable={false} ref={(r) => { fieldRefs.current[f.key] = r; }}>
                   <FieldRenderer
-                    key={f.key}
                     field={f}
                     value={form[f.key]}
                     error={errors[f.key]}
                     onChange={(v) => setField(f.key, v)}
+                    setField={setField}
+                    inputRef={(r) => { inputRefs.current[f.key] = r; }}
                     form={form}
                   />
-                ))}
-              {si === 0 && spec.notice ? <spec.notice form={form} isEdit={isEdit} /> : null}
-            </View>
+                </View>
+              ))}
+            </CollapsibleSection>
           ))}
 
           {draftEnabled ? <Button label={moreDetails ? "Hide optional details" : "More details (optional)"} variant="secondary" onPress={() => setMoreDetails(!moreDetails)} /> : null}
@@ -309,9 +396,10 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
                 {String(conflict409?.error ?? "This record already exists.")}
               </Text>
             : null}
+          </View>
         </ScrollView>
 
-        <View style={[styles.bar, { paddingBottom: insets.bottom + spacing.md }]}>
+        <StickyActionBar>
           {isWizard && step > 0 ? (
             <View style={{ flexDirection: "row", gap: spacing.md }}>
               <View style={{ flex: 1 }}>
@@ -330,7 +418,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
           ) : (
             <Button label={submitText} onPress={() => submit()} loading={busy} full />
           )}
-        </View>
+        </StickyActionBar>
       </KeyboardAvoidingView>
 
       {/* RM double-booking clash → confirm "Schedule anyway". */}
@@ -375,28 +463,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   progressFill: { height: 4, borderRadius: 2, backgroundColor: palette.brand },
-  section: {
-    backgroundColor: palette.surface,
-    borderWidth: 1,
-    borderColor: palette.line,
-    borderRadius: 16,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    fontSize: fontSize.xs,
-    fontWeight: fontWeight.bold,
-    letterSpacing: 0.6,
-    color: palette.muted,
-    marginBottom: spacing.md,
-  },
-  bar: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    backgroundColor: palette.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: palette.line,
-  },
   conflictRow: {
     paddingVertical: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,

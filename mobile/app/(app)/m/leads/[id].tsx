@@ -24,6 +24,7 @@ import { SelectField } from "../../../../src/components/ui/SelectField";
 import { Segmented } from "../../../../src/components/ui/Segmented";
 import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
 import { LoadingState, ErrorState } from "../../../../src/components/states";
+import { useMe, hasAnyCap } from "../../../../src/api/me";
 import { SavedCopyBanner } from "../../../../src/components/SavedCopyBanner";
 import { useConnectivity } from "../../../../src/state/connectivity";
 import { Section, FieldRow, Empty } from "../../../../src/features/investors/detail/primitives";
@@ -43,6 +44,7 @@ import { inr, initials, fmtDate, titleCase, timeAgo } from "../../../../src/lib/
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
 import { useBrand } from "../../../../src/theme/brand";
 import { asIcon } from "../../../../src/lib/icons";
+import { istToIso } from "../../../../src/components/form/due";
 
 type Tab = "overview" | "details" | "activity";
 const TABS = [{ key: "overview", label: "Overview" }, { key: "details", label: "Details" }, { key: "activity", label: "Activity" }];
@@ -141,7 +143,7 @@ export default function LeadDetail() {
             <ContactBtn icon="mail" label="Email" disabled={!email} onPress={() => email && Linking.openURL(`mailto:${email}`)} />
           </View>
           {!converted && (
-            <Button label="Convert to client" onPress={() => setConvertOpen(true)} full icon={<Feather name="user-check" size={15} color="#fff" />} style={{ marginTop: spacing.sm }} />
+            <Button label="Convert to client" onPress={() => setConvertOpen(true)} full icon={<Feather name="user-check" size={15} color={palette.white} />} style={{ marginTop: spacing.sm }} />
           )}
           {converted && l.convertedInvestorId && (
             <Button label="Open client" variant="secondary" onPress={() => router.replace(`/m/investors/${l.convertedInvestorId}` as any)} full icon={<Feather name="arrow-right" size={15} color={palette.ink} />} style={{ marginTop: spacing.sm }} />
@@ -161,11 +163,12 @@ export default function LeadDetail() {
       {/* Actions */}
       <BottomSheet visible={actions} onClose={() => setActions(false)} title={l.name}>
         <Button label="Log activity" variant="secondary" full icon={<Feather name="edit-3" size={15} color={palette.ink} />} onPress={() => { setActions(false); setActivityOpen("note"); }} style={{ marginBottom: spacing.sm }} />
+        {hasAnyCap(useMe().data?.capabilities, ["task.edit.all", "task.edit.assigned"]) ? <Button label="New task" variant="secondary" full icon={<Feather name="check-square" size={15} color={palette.ink} />} onPress={() => { setActions(false); router.push(`/m/tasks/new?relatedLeadId=${id}&name=${encodeURIComponent(l.name ?? "")}` as any); }} style={{ marginBottom: spacing.sm }} /> : null}
         <Button label="Quick comms" variant="secondary" full icon={<Feather name="send" size={15} color={palette.ink} />} onPress={() => { setActions(false); setCommsOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Send a form" variant="secondary" full icon={<Feather name="file-text" size={15} color={palette.ink} />} onPress={() => { setActions(false); setFormOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Assign to team" variant="secondary" full icon={<Feather name="users" size={15} color={palette.ink} />} onPress={() => { setActions(false); setOpsOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Edit lead" variant="secondary" full icon={<Feather name="edit-2" size={15} color={palette.ink} />} onPress={() => { setActions(false); router.push(`/m/leads/new?editId=${id}` as any); }} style={{ marginBottom: spacing.sm }} />
-        <Button label="Delete lead" variant="danger" full loading={del.isPending} icon={<Feather name="trash-2" size={15} color="#fff" />} onPress={doDelete} />
+        <Button label="Delete lead" variant="danger" full loading={del.isPending} icon={<Feather name="trash-2" size={15} color={palette.white} />} onPress={doDelete} />
       </BottomSheet>
 
       <QuickCommsSheet id={id!} visible={commsOpen} onClose={() => setCommsOpen(false)} subject="lead" />
@@ -202,7 +205,7 @@ function Overview({ d, id, converted, onLog }: { d: any; id: string; converted: 
             return (
               <View key={s.key} style={styles.step}>
                 <View style={[styles.node, { backgroundColor: done ? palette.success : active ? palette.brand : palette.surfaceSunken, borderColor: done ? palette.success : active ? palette.brand : palette.line }]}>
-                  {done ? <Feather name="check" size={11} color="#fff" /> : <Text style={{ fontSize: 10, color: active ? "#fff" : palette.muted, fontWeight: fontWeight.bold }}>{i + 1}</Text>}
+                  {done ? <Feather name="check" size={11} color={palette.white} /> : <Text style={{ fontSize: 10, color: active ? "#fff" : palette.muted, fontWeight: fontWeight.bold }}>{i + 1}</Text>}
                 </View>
                 <Text variant="caption" tone={active ? "brand" : "faint"} numberOfLines={2} style={styles.stepLabel}>{s.label}</Text>
               </View>
@@ -292,7 +295,7 @@ function LogActivitySheet({ visible, initialType, onClose, onSubmit, pending }: 
   // (logging it is what moves the lead on).
   useEffect(() => { if (visible) setType(initialType); }, [visible, initialType]);
   const [next, setNext] = useState("");
-  const submit = async () => { if (!note.trim()) { toast.error("Write what happened first"); return; } if (next && !Number.isFinite(new Date(next).getTime())) { toast.error("Choose a valid follow-up time"); return; } try { await onSubmit({ note: note.trim(), activityType: type, nextFollowUpAt: next ? new Date(next).toISOString() : undefined }); setNote(""); setNext(""); setType("note"); } catch { /* Mutation displays the error; preserve the draft. */ } };
+  const submit = async () => { if (!note.trim()) { toast.error("Write what happened first"); return; } if (next && !istToIso(next)) { toast.error("Choose a valid follow-up time"); return; } try { await onSubmit({ note: note.trim(), activityType: type, nextFollowUpAt: next ? istToIso(next) : undefined }); setNote(""); setNext(""); setType("note"); } catch { /* Mutation displays the error; preserve the draft. */ } };
   return (
     <BottomSheet visible={visible} onClose={onClose} title={type === "call" ? "Log the call" : type === "meeting" ? "Log the meeting" : "Log activity"}>
       <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>Type</Text>
@@ -323,7 +326,7 @@ function ConvertSheet({ visible, onClose, onSubmit, pending, defaultPan, error }
       {error ? <Text variant="caption" style={{ color: palette.danger, marginTop: spacing.sm }}>{error}</Text> : null}
       <View style={{ height: spacing.md }} />
       <Button label="Convert to client" full loading={pending} disabled={panBad}
-        onPress={() => onSubmit({ pan: pan.trim() || undefined, segmentTag: segment, investorCategory: category })} icon={<Feather name="user-check" size={15} color="#fff" />} />
+        onPress={() => onSubmit({ pan: pan.trim() || undefined, segmentTag: segment, investorCategory: category })} icon={<Feather name="user-check" size={15} color={palette.white} />} />
     </BottomSheet>
   );
 }

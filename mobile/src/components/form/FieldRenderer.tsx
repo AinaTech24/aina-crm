@@ -4,7 +4,7 @@
  */
 
 import React from "react";
-import { View, Switch, Pressable, StyleSheet } from "react-native";
+import { View, Switch, Pressable, StyleSheet, type TextInput } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { palette, radius, spacing } from "../../theme/tokens";
 import { Text } from "../ui/Text";
@@ -13,6 +13,8 @@ import { SelectField } from "../ui/SelectField";
 import { Chip } from "../ui/Chip";
 import { Button } from "../ui/Button";
 import { DateField } from "./DateField";
+import { DueDateField } from "./DueDateField";
+import { joinDue, splitDue } from "./due";
 import { LookupField } from "./LookupField";
 import { TypeaheadField } from "./TypeaheadField";
 import { AudienceField } from "./AudienceField";
@@ -38,16 +40,25 @@ export function FieldRenderer({
   error,
   onChange,
   form,
+  setField,
+  inputRef,
 }: {
   field: FieldSpec;
   value: any;
   error?: string;
   onChange: (v: any) => void;
   form?: Record<string, any>;
+  /** Set ANOTHER form field (a meeting chip's time, a picked client's name). */
+  setField?: (key: string, value: any) => void;
+  /** The text input, so the form can focus the first field with an error. */
+  inputRef?: (r: TextInput | null) => void;
 }) {
   const type = field.type ?? "text";
 
   const apply = (v: string) => onChange(field.transform ? field.transform(v) : v);
+  // TextField takes `inputRef` (forwarded to its TextInput) once the ui layer
+  // has it; until then the prop is simply not read, so nothing breaks.
+  const focusable = (inputRef ? { inputRef } : {}) as {};
 
   switch (type) {
     case "select":
@@ -64,7 +75,44 @@ export function FieldRenderer({
         />
       );
 
+    case "due":
+      return (
+        <DueDateField
+          label={field.label}
+          value={value ?? ""}
+          onChange={onChange}
+          required={field.required}
+          error={error}
+          help={field.help}
+          placeholder={field.placeholder}
+          min={field.min}
+          defaultTime={field.defaultTime}
+          extraChips={field.extraChips}
+        />
+      );
+
     case "date":
+      // A meeting's day whose time is its own field: the chips set both.
+      if (field.timeKey) {
+        const timeKey = field.timeKey;
+        return (
+          <DueDateField
+            label={field.label}
+            value={joinDue(value ?? "", form?.[timeKey] ?? "")}
+            onChange={(v) => {
+              const { day, time } = splitDue(v);
+              onChange(day);
+              if (time && setField) setField(timeKey, time);
+            }}
+            showTime={false}
+            required={field.required}
+            error={error}
+            help={field.help}
+            placeholder={field.placeholder}
+            min={field.min}
+          />
+        );
+      }
       return (
         <DateField
           label={field.label}
@@ -83,7 +131,17 @@ export function FieldRenderer({
       return <LookupField field={field} value={value ?? ""} onChange={onChange} form={form} error={error} />;
 
     case "typeahead":
-      return <TypeaheadField field={field} value={value ?? ""} onChange={onChange} error={error} displayLabel={field.searchDisplayKey ? (form?.[field.searchDisplayKey] || undefined) : undefined} />;
+      return (
+        <TypeaheadField
+          field={field}
+          value={value ?? ""}
+          onChange={onChange}
+          error={error}
+          displayLabel={field.searchDisplayKey ? (form?.[field.searchDisplayKey] || undefined) : undefined}
+          // Keep the picked record's name in the form (summaries, a later re-render).
+          onSelect={field.searchDisplayKey && setField ? (row) => setField(field.searchDisplayKey!, (field.searchLabel ?? ((r: any) => r.name ?? ""))(row)) : undefined}
+        />
+      );
 
     case "audience":
       return <AudienceField field={field} value={value ?? ""} onChange={onChange} />;
@@ -166,6 +224,7 @@ export function FieldRenderer({
     case "textarea":
       return (
         <TextField
+          {...focusable}
           label={field.label}
           value={value ?? ""}
           onChangeText={apply}
@@ -180,6 +239,7 @@ export function FieldRenderer({
       // text / email / tel / number
       return (
         <TextField
+          {...focusable}
           label={field.label}
           value={value ?? ""}
           onChangeText={apply}

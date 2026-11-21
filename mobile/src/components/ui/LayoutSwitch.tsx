@@ -22,7 +22,7 @@ export function LayoutSwitch({ value, onChange }: { value: Layout; onChange: (v:
         return (
           <Pressable key={k} onPress={() => onChange(k)} style={[styles.btn, on && { backgroundColor: brand }]} accessibilityRole="button" accessibilityState={{ selected: on }} accessibilityLabel={k === "list" ? "List" : "Kanban"}>
             <Feather name={k === "list" ? "list" : "columns"} size={15} color={on ? palette.white : palette.ink} />
-            <Text variant="caption" style={{ color: on ? palette.white : palette.ink, fontWeight: fontWeight.semibold }}>{k === "list" ? "List" : "Kanban"}</Text>
+            <Text variant="caption" dense style={{ color: on ? palette.white : palette.ink, fontWeight: fontWeight.semibold }}>{k === "list" ? "List" : "Kanban"}</Text>
           </Pressable>
         );
       })}

@@ -6,7 +6,7 @@
 import React from "react";
 import { View, TextInput, Pressable, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { palette, radius, spacing, fontSize } from "../../theme/tokens";
+import { palette, radius, spacing, fontSize, fontScale } from "../../theme/tokens";
 
 export function SearchBar({
   value,
@@ -30,6 +30,7 @@ export function SearchBar({
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={palette.faint}
+        maxFontSizeMultiplier={fontScale.text}
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="search"

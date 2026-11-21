@@ -1,10 +1,13 @@
 /**
- * Clients (Investors) list — web-parity: 8-KPI strip, debounced search, a full
- * filter+sort sheet (segment / category / tier / KYC / status / RM / date range +
- * 10 sort options), a virtualized infinite list of InvestorCards with row
- * actions (edit / delete), pull-to-refresh, and a create FAB. A List / Kanban
- * switch opens the web's Clients board by onboarding stage (long-press a card
- * to move it; clients with no source lead can't move).
+ * Clients (Investors) list — web-parity: the 8 KPI figures as one row of count
+ * chips (tap to filter), debounced search, a full filter+sort sheet (segment /
+ * category / tier / KYC / status / RM / date range + 10 sort options), a
+ * virtualized infinite list of two-line client rows — swipe right to call,
+ * left for WhatsApp / follow up, long-press for row actions (edit / delete) —
+ * pull-to-refresh, and a create FAB. In the list the header slides away as you
+ * scroll down and back as you scroll up. A List / Kanban switch opens the
+ * web's Clients board by onboarding stage (long-press a card to move it, with
+ * Undo; clients with no source lead can't move).
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
@@ -22,15 +25,18 @@ import { SkeletonList } from "../../../../src/components/ui/Skeleton";
 import { EmptyState, SearchEmptyState, ErrorState, NetworkErrorState } from "../../../../src/components/states";
 import { SavedCopyBanner } from "../../../../src/components/SavedCopyBanner";
 import { useConnectivity } from "../../../../src/state/connectivity";
-import { InvestorCard } from "../../../../src/components/domain/InvestorCard";
+import { SwipeableClientRow } from "../../../../src/features/lists/SwipeableClientRow";
+import { CountChip } from "../../../../src/features/lists/CountChips";
+import { CollapsingHeader, useCollapsingHeader } from "../../../../src/features/lists/CollapsingHeader";
+import { UndoToastHost } from "../../../../src/features/lists/UndoToastHost";
 import { InvestorKpiStrip, type KpiQuick } from "../../../../src/features/investors/InvestorKpiStrip";
 import { startCall } from "../../../../src/features/activities/callAndLog";
 import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
 import { InvestorFilters, EMPTY_FILTERS, countActive, type UiFilters } from "../../../../src/features/investors/InvestorFilters";
 import { useInvestors, flattenInvestors, useDeleteInvestor, useInvestorBoard, useMoveClientStage, useExitedCount, type Investor } from "../../../../src/features/investors/api";
 import { ownPan } from "../../../../src/features/investors/client-types";
-import { CLIENT_PHASE_STAGES, boardStage } from "../../../../src/features/investors/client-stages";
-import { KanbanBoard } from "../../../../src/components/domain/KanbanBoard";
+import { CLIENT_PHASE_STAGES, boardStage, isClientPhaseStage } from "../../../../src/features/investors/client-stages";
+import { KanbanBoard, type KanbanMoveOutcome } from "../../../../src/components/domain/KanbanBoard";
 import { LayoutSwitch } from "../../../../src/components/ui/LayoutSwitch";
 import { toast } from "../../../../src/lib/toast";
 import { inr } from "../../../../src/lib/format";
@@ -66,6 +72,9 @@ export default function InvestorsList() {
 
   const rmTeam = useTeam();
   const rmOptions = rmTeam.data?.rows ?? [];
+  // The row's second line names the RM; the list row carries only the id.
+  const rmNames = useMemo(() => new Map(rmOptions.map((m) => [m.id, m.name ?? null])), [rmOptions]);
+  const ch = useCollapsingHeader();
 
   const apiFilters = useMemo(
     () => ({
@@ -94,15 +103,30 @@ export default function InvestorsList() {
   const { rows, total } = flattenInvestors(query.data);
   const board = useInvestorBoard(apiFilters, isKanban);
   const boardRows = board.data?.rows ?? [];
-  const moveClient = async (inv: Investor, toStageKey: string) => {
-    if (!inv.leadId || moveStage.isPending) return;
+  const stageLabel = (key: string) => CLIENT_PHASE_STAGES.find((s) => s.key === key)?.label ?? key;
+  const moveClient = async (inv: Investor, toStageKey: string): Promise<KanbanMoveOutcome | undefined> => {
+    if (!inv.leadId || moveStage.isPending) return undefined;
+    const leadId = inv.leadId;
+    // Undo returns the client only to a stage on this board — never back into
+    // the lead journey (e.g. won_lead), whose automations would run again.
+    const from = inv.stageKey;
+    let outcome: KanbanMoveOutcome | undefined;
     try {
-      await moveStage.mutateAsync({ leadId: inv.leadId, toStageKey });
-      toast.success(`Moved to ${CLIENT_PHASE_STAGES.find((s) => s.key === toStageKey)?.label ?? toStageKey}`);
+      await moveStage.mutateAsync({ leadId, toStageKey });
+      outcome = {
+        message: `Moved to ${stageLabel(toStageKey)}`,
+        undo: isClientPhaseStage(from) && from !== toStageKey
+          ? async () => {
+              try { await moveStage.mutateAsync({ leadId, toStageKey: from }); } catch { /* the app-wide mutation handler toasts why */ }
+              await board.refetch();
+            }
+          : undefined,
+      };
     } catch {
       /* the app-wide mutation handler toasts why */
     }
     await board.refetch();
+    return outcome;
   };
   const activeCount = countActive(filters);
 
@@ -118,16 +142,24 @@ export default function InvestorsList() {
     );
   };
 
+  // Exited / closed clients: a chip beside Total clients replaces the old
+  // "N exited clients are hidden — show" line. Only where it can matter: a
+  // picked status, a search or a KPI filter already decides who is listed.
+  const exitedToggle = exitedCount > 0 && !filters.status.length && !debounced.trim() && !quick ? (
+    <CountChip
+      label="Exited"
+      value={exitedCount}
+      icon={hidingExited ? "eye-off" : undefined}
+      selected={!hidingExited}
+      onPress={() => setShowExited((v) => !v)}
+      accessibilityLabel={hidingExited ? `${exitedCount} exited clients hidden. Show them` : "Exited clients shown. Hide them"}
+    />
+  ) : null;
+
   const header = (
     <View style={styles.controls}>
       {(query.isError || offline) && rows.length ? <SavedCopyBanner savedAt={query.dataUpdatedAt} /> : null}
-      <InvestorKpiStrip active={quick} onSelect={setQuick} />
-      {quick ? (
-        <Pressable onPress={() => setQuick("")} style={styles.quickChip} accessibilityRole="button" accessibilityLabel={`Clear filter: ${QUICK_LABEL[quick]}`}>
-          <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>{QUICK_LABEL[quick]}</Text>
-          <Feather name="x" size={14} color={palette.brand} />
-        </Pressable>
-      ) : null}
+      <InvestorKpiStrip variant="chips" active={quick} onSelect={setQuick} extra={exitedToggle} />
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search name, PAN, phone…" />
       <View style={styles.toolbar}>
         <Pressable style={styles.filterBtn} onPress={() => setSheetOpen(true)}>
@@ -143,15 +175,6 @@ export default function InvestorsList() {
         ) : null}
         <LayoutSwitch value={layout} onChange={setLayout} />
       </View>
-      {exitedCount > 0 ? (
-        <Pressable onPress={() => setShowExited((v) => !v)} hitSlop={6} accessibilityRole="button">
-          <Text variant="caption" tone="muted">
-            {hidingExited
-              ? `${exitedCount.toLocaleString("en-IN")} exited ${exitedCount === 1 ? "client is" : "clients are"} hidden — show`
-              : "Showing exited clients — hide them"}
-          </Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 
@@ -195,32 +218,39 @@ export default function InvestorsList() {
       const net = query.error instanceof ApiError && query.error.kind !== "http";
       return net ? <NetworkErrorState onRetry={() => query.refetch()} /> : <ErrorState message={(query.error as any)?.message} onRetry={() => query.refetch()} />;
     }
+    // The header floats over the list and slides away on scroll down.
     return (
-      <FlashList
-        data={rows}
-        keyExtractor={(it) => it.id}
-        renderItem={({ item }) => (
-          <InvestorCard
-            investor={item}
-            onPress={() => router.push(`/m/investors/${item.id}`)}
-            onLongPress={() => setRowAction(item)}
-          />
-        )}
-        ListHeaderComponent={header}
-        contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 96 }}
-        onEndReached={onEndReached}
-        onEndReachedThreshold={0.4}
-        refreshing={query.isRefetching}
-        onRefresh={() => query.refetch()}
-        ListEmptyComponent={
-          debounced || activeCount ? (
-            <SearchEmptyState query={debounced || "these filters"} />
-          ) : (
-            <EmptyState icon="users" title="No clients yet" message="Add your first client to get started." actionLabel="Add client" onAction={() => router.push("/m/investors/new" as any)} />
-          )
-        }
-        ListFooterComponent={query.isFetchingNextPage ? <SkeletonList count={2} /> : null}
-      />
+      <View style={{ flex: 1, overflow: "hidden" }}>
+        <FlashList
+          data={rows}
+          keyExtractor={(it) => it.id}
+          renderItem={({ item, index }) => (
+            <SwipeableClientRow
+              investor={item}
+              rmName={item.rmId ? rmNames.get(item.rmId) : null}
+              onPress={() => router.push(`/m/investors/${item.id}`)}
+              onLongPress={() => setRowAction(item)}
+              hintCandidate={index === 0}
+            />
+          )}
+          {...ch.listProps}
+          ListHeaderComponent={ch.spacer}
+          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 96 }}
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.4}
+          refreshing={query.isRefetching}
+          onRefresh={() => query.refetch()}
+          ListEmptyComponent={
+            debounced || activeCount || quick ? (
+              <SearchEmptyState query={debounced || "these filters"} />
+            ) : (
+              <EmptyState icon="users" title="No clients yet" message="Add your first client to get started." actionLabel="Add client" onAction={() => router.push("/m/investors/new" as any)} />
+            )
+          }
+          ListFooterComponent={query.isFetchingNextPage ? <SkeletonList count={2} /> : null}
+        />
+        <CollapsingHeader controller={ch} style={{ paddingHorizontal: spacing.lg }}>{header}</CollapsingHeader>
+      </View>
     );
   };
 
@@ -229,6 +259,7 @@ export default function InvestorsList() {
       <ScreenHeader title="Clients" subtitle={query.isLoading ? undefined : `${total} client${total === 1 ? "" : "s"}`} />
       <View style={{ flex: 1 }}>{renderBody()}</View>
       <FAB label="Add client" onPress={() => router.push("/m/investors/new" as any)} />
+      <UndoToastHost />
 
       <InvestorFilters
         visible={sheetOpen}
@@ -247,7 +278,7 @@ export default function InvestorsList() {
             <Button
               label="Call"
               full
-              icon={<Feather name="phone" size={15} color="#fff" />}
+              icon={<Feather name="phone" size={15} color={palette.white} />}
               onPress={() => {
                 const inv = rowAction; setRowAction(null);
                 if (inv?.phone) startCall({ subjectType: "investor", subjectId: inv.id, name: inv.name || "Client", phone: inv.phone });
@@ -270,6 +301,17 @@ export default function InvestorsList() {
           <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>No mobile number on file.</Text>
         )}
         <Button
+          label="Follow up"
+          variant="secondary"
+          full
+          icon={<Feather name="corner-up-right" size={15} color={palette.ink} />}
+          onPress={() => {
+            const inv = rowAction; setRowAction(null);
+            if (inv) router.push({ pathname: "/m/tasks/new", params: { relatedInvestorId: inv.id, title: "Follow up with " + inv.name } } as any);
+          }}
+          style={{ marginBottom: spacing.sm }}
+        />
+        <Button
           label="Edit client"
           variant="secondary"
           full
@@ -282,7 +324,7 @@ export default function InvestorsList() {
           variant="danger"
           full
           loading={del.isPending}
-          icon={<Feather name="trash-2" size={15} color="#fff" />}
+          icon={<Feather name="trash-2" size={15} color={palette.white} />}
           onPress={() => rowAction && doDelete(rowAction)}
         />
       </BottomSheet>
@@ -290,16 +332,7 @@ export default function InvestorsList() {
   );
 }
 
-const QUICK_LABEL: Record<Exclude<KpiQuick, "">, string> = {
-  tier_a: "A-tier clients",
-  reviews_due: "Reviews due",
-  kyc_expiring: "KYC expiring 30d",
-  no_nominee: "Nominee missing",
-  dormant: "Dormant",
-};
-
 const styles = StyleSheet.create({
-  quickChip: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 6, paddingHorizontal: spacing.md, minHeight: 32, borderRadius: 999, borderWidth: 1, borderColor: palette.brand, backgroundColor: palette.surface },
   controls: { paddingTop: spacing.sm, paddingBottom: spacing.sm, gap: spacing.sm },
   toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   filterBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },

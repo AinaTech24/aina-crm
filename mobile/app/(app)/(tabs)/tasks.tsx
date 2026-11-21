@@ -1,15 +1,17 @@
 /**
- * Tasks tab — web parity. KPI strip (Open / Due today / Overdue / SLA at risk),
+ * Tasks tab — web parity. Count chips (Open / Due today / Overdue / SLA at risk),
  * scope tabs (All / To me / By me / To approve — the web's "Awaiting my
  * approval" view, ?approval=mine), a List / Kanban switch (separate from the
  * scope, as on the web: ?layout=kanban), search + a full filter & sort sheet.
  * The list loads 50 at a time (the API's page) and fetches more on scroll; the
  * board loads up to 300. The Kanban is the web's status board: long-press a
- * card to move it.
+ * card to move it. In the list, the header slides away as you scroll down and
+ * back as you scroll up; completing, snoozing or moving a task offers Undo
+ * instead of asking first.
  */
 
 import React, { useState, useEffect, useMemo } from "react";
-import { View, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -20,10 +22,10 @@ import { Text } from "../../../src/components/ui/Text";
 import { SkeletonList } from "../../../src/components/ui/Skeleton";
 import { EmptyState, SearchEmptyState, ErrorState } from "../../../src/components/states";
 import { TaskCard } from "../../../src/components/domain/TaskCard";
-import { SwipeableTaskRow } from "../../../src/features/tasks/SwipeableTaskRow";
+import { SwipeableTaskRow, refreshTaskQueries, undoTaskChange } from "../../../src/features/tasks/SwipeableTaskRow";
 import { TaskFilters, EMPTY_TASK_FILTERS, countTaskFilters, type UiTaskFilters } from "../../../src/features/tasks/TaskFilters";
 import { useTasks, useTaskKpis, tasksOf, TASK_STATUSES, type Task } from "../../../src/features/tasks/api";
-import { KanbanBoard } from "../../../src/components/domain/KanbanBoard";
+import { KanbanBoard, type KanbanMoveOutcome } from "../../../src/components/domain/KanbanBoard";
 import { LayoutSwitch } from "../../../src/components/ui/LayoutSwitch";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../src/api/client";
@@ -31,7 +33,10 @@ import { toast } from "../../../src/lib/toast";
 import { fmtDate, titleCase } from "../../../src/lib/format";
 import { useTeam } from "../../../src/features/team/api";
 import { palette, radius, spacing, fontWeight } from "../../../src/theme/tokens";
-import { asIcon } from "../../../src/lib/icons";
+import { CountChip, CountChipRow } from "../../../src/features/lists/CountChips";
+import { CollapsingHeader, useCollapsingHeader } from "../../../src/features/lists/CollapsingHeader";
+import { UndoToastHost } from "../../../src/features/lists/UndoToastHost";
+import { statusMessage, statusUndo } from "../../../src/features/lists/taskUndo";
 
 type TaskView = "" | "to_me" | "by_me" | "approve";
 /** The board shows at most this many (the web's Kanban cap). */
@@ -83,15 +88,25 @@ export default function TasksTab() {
   }, [isKanban, hasNextPage, isFetchingNextPage, tasks.length]);
   const loadMore = () => { if (hasNextPage && !isFetchingNextPage) fetchNextPage().catch(() => {}); };
   const activeCount = countTaskFilters(filters);
-  const moveTask = async (t: Task, status: string) => {
+  const ch = useCollapsingHeader();
+  // The first open task carries the one-time swipe hint.
+  const hintId = useMemo(() => tasks.find((t) => ["open", "in_progress", "blocked"].includes(t.status ?? "open"))?.id, [tasks]);
+  const moveTask = async (t: Task, status: string): Promise<KanbanMoveOutcome | undefined> => {
     try {
       const r: any = await api.patch(`/api/tasks/${t.id}`, { status });
-      toast.success(status === "completed" && r?.status !== "completed" && r?.approvalStatus === "pending" ? "Sent for approval" : `Moved to ${TASK_STATUSES.find((s) => s.key === status)?.label ?? status}`);
+      // No confirmation first: the toast offers Undo (status back, and a
+      // recurring task's next occurrence to Trash).
+      const plan = statusUndo(t.status, status, r);
+      return {
+        message: statusMessage(status, r, TASK_STATUSES.find((s) => s.key === status)?.label ?? status),
+        undo: plan ? () => undoTaskChange(qc, t.id, plan) : undefined,
+      };
     } catch (e: any) {
       toast.error(e?.message ?? "Couldn't move the task");
+      return undefined;
     } finally {
       // Awaited, so the board keeps the card where it was dropped until the fresh list lands.
-      await Promise.all([qc.invalidateQueries({ queryKey: ["tasks"] }), qc.invalidateQueries({ queryKey: ["task-kpis"] })]);
+      await refreshTaskQueries(qc);
     }
   };
 
@@ -99,13 +114,15 @@ export default function TasksTab() {
 
   const header = (
     <View style={styles.controls}>
-      {kpis && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.kpiStrip}>
-          <Kpi icon="inbox" tone={palette.brand} label="Open" value={kpis.open} active={due === ""} onPress={() => setDue("")} />
-          <Kpi icon="sun" tone={palette.warning} label="Due today" value={kpis.today} active={due === "today"} onPress={() => toggleDue("today")} />
-          <Kpi icon="alert-circle" tone={palette.danger} label="Overdue" value={kpis.overdue} active={due === "overdue"} onPress={() => toggleDue("overdue")} />
-          <Kpi icon="clock" tone={palette.violet} label="SLA at risk" value={kpis.slaRisk} active={due === "sla_risk"} onPress={() => toggleDue("sla_risk")} />
-        </ScrollView>
+      {/* The board's column chips carry the counts there, and "due" does not
+          filter the board — so these show in the list only. */}
+      {kpis && !isKanban && (
+        <CountChipRow>
+          <CountChip label="Open" value={num(kpis.open)} selected={due === ""} clearable={false} onPress={() => setDue("")} />
+          <CountChip label="Due today" value={num(kpis.today)} selected={due === "today"} onPress={() => toggleDue("today")} />
+          <CountChip label="Overdue" value={num(kpis.overdue)} tone="danger" selected={due === "overdue"} onPress={() => toggleDue("overdue")} />
+          <CountChip label="SLA at risk" value={num(kpis.slaRisk)} selected={due === "sla_risk"} onPress={() => toggleDue("sla_risk")} />
+        </CountChipRow>
       )}
       <Segmented<TaskView> options={[{ key: "", label: "All" }, { key: "to_me", label: "To me" }, { key: "by_me", label: "By me" }, { key: "approve", label: "To approve" }]} value={view} onChange={setView} />
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search tasks…" />
@@ -149,46 +166,45 @@ export default function TasksTab() {
           />
         </View>
       ) : (
-        <FlashList
-          data={tasks}
-          keyExtractor={(t) => t.id}
-          // Swipe right to complete, left to snooze or open the client / lead.
-          renderItem={({ item }) => <SwipeableTaskRow task={item} />}
-          ListHeaderComponent={header}
-          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 96 }}
-          refreshing={isRefetching && !isFetchingNextPage}
-          onRefresh={() => refetch()}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={isFetchingNextPage ? <ActivityIndicator style={{ paddingVertical: spacing.lg }} color={palette.brand} /> : null}
-          ListEmptyComponent={debounced || activeCount || due ? <SearchEmptyState query={debounced || "these filters"} />
-            : view === "approve" ? <EmptyState icon="check-circle" title="Nothing to approve" />
-            : <EmptyState icon="check-square" title="No tasks" message="You're all caught up." />}
-        />
+        // The header floats over the list and slides away on scroll down.
+        <View style={{ flex: 1, overflow: "hidden" }}>
+          <FlashList
+            data={tasks}
+            keyExtractor={(t) => t.id}
+            // Swipe right to complete, left to snooze or open the client / lead.
+            renderItem={({ item }) => <SwipeableTaskRow task={item} hintCandidate={item.id === hintId} />}
+            {...ch.listProps}
+            ListHeaderComponent={ch.spacer}
+            contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 96 }}
+            refreshing={isRefetching && !isFetchingNextPage}
+            onRefresh={() => refetch()}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={isFetchingNextPage ? <ActivityIndicator style={{ paddingVertical: spacing.lg }} color={palette.brand} /> : null}
+            ListEmptyComponent={debounced || activeCount || due ? <SearchEmptyState query={debounced || "these filters"} />
+              : view === "approve" ? <EmptyState icon="check-circle" title="Nothing to approve" />
+              : <EmptyState icon="check-square" title="No tasks" message="You're all caught up." />}
+          />
+          <CollapsingHeader controller={ch} style={{ paddingHorizontal: spacing.lg }}>{header}</CollapsingHeader>
+        </View>
       )}
       <FAB label="New task" onPress={() => router.push("/m/tasks/new" as any)} />
+      <UndoToastHost />
       <TaskFilters visible={sheetOpen} onClose={() => setSheetOpen(false)} value={filters} onApply={setFilters} rmOptions={rmOptions} />
     </View>
   );
 }
 
-function Kpi({ icon, tone, label, value, active, onPress }: { icon: string; tone: string; label: string; value: number; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={[styles.kpi, active && { borderColor: tone, backgroundColor: tone + "12" }]}>
-      <View style={styles.kpiHead}><Feather name={asIcon(icon)} size={13} color={tone} /><Text variant="caption" tone="muted">{label}</Text></View>
-      <Text style={{ fontSize: 20, fontWeight: fontWeight.bold, color: active ? tone : palette.ink }}>{value}</Text>
-    </Pressable>
-  );
+/** A count the server did not send is unknown ("—"), not zero. */
+function num(v: unknown): number | null {
+  return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
 }
 function toneColor(t: string): string {
   return t === "success" ? palette.success : t === "warning" ? palette.warning : t === "danger" ? palette.danger : t === "violet" ? palette.violet : t === "info" ? palette.info : palette.muted;
 }
 
 const styles = StyleSheet.create({
-  controls: { paddingTop: spacing.md, paddingBottom: spacing.sm, gap: spacing.md },
-  kpiStrip: { gap: spacing.sm, paddingBottom: spacing.xs },
-  kpi: { width: 108, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, padding: spacing.md, gap: 2 },
-  kpiHead: { flexDirection: "row", alignItems: "center", gap: 4 },
+  controls: { paddingTop: spacing.sm, paddingBottom: spacing.sm, gap: spacing.sm },
   toolbarRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   filterBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
 });

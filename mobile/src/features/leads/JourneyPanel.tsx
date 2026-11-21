@@ -24,6 +24,7 @@ import { toast } from "../../lib/toast";
 import { fmtDate, titleCase } from "../../lib/format";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
 import { leadSourceLabel } from "./api";
+import { istToIso } from "../../components/form/due";
 import {
   LEAD_JOURNEY, LEAD_PHASE, NEXT_TOUCH_STAGES, LOST_REASONS, LEAD_PRODUCTS, journeyStage,
   useLeadBlueprint, useLeadProposal, useRefreshLead, canAdvance, advanceLead, markLeadWon, proposalAware, ctaToMobile,
@@ -264,7 +265,9 @@ function TransitionSheet({ leadId, transition, onClose, onDone }: { leadId: stri
     for (const f of transition.missing) {
       if (!vals[f.key]?.trim()) { toast.error(`Please fill in ${f.label}`); return; }
     }
-    const when = callBackAt ? new Date(callBackAt) : null;
+    // The picked time is India time on any phone (not the phone's own zone).
+    const iso = callBackAt ? istToIso(callBackAt) : undefined;
+    const when = iso ? new Date(iso) : null;
     if (needsNextTouch && (!when || !Number.isFinite(when.getTime()))) { toast.error("Pick when to follow up — you'll be reminded then."); return; }
     if (closing && !reason) { toast.error("Pick why this lead is being closed."); return; }
     setSaving(true);

@@ -21,7 +21,7 @@ import { storageGet, storageSet } from "../src/lib/storage";
 import { API_BASE_URL } from "../src/config";
 import { Text } from "../src/components/ui/Text";
 import { Button } from "../src/components/ui/Button";
-import { palette, radius, spacing, fontSize } from "../src/theme/tokens";
+import { palette, radius, spacing, fontSize, fontScale } from "../src/theme/tokens";
 
 const LAST_EMAIL_KEY = "last_login_email";
 
@@ -120,6 +120,7 @@ export default function Login() {
               style={styles.input}
               placeholder={t("login.email")}
               placeholderTextColor={palette.faint}
+              maxFontSizeMultiplier={fontScale.text}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
@@ -139,6 +140,7 @@ export default function Login() {
                 style={[styles.input, styles.pwInput]}
                 placeholder={t("login.password")}
                 placeholderTextColor={palette.faint}
+                maxFontSizeMultiplier={fontScale.text}
                 secureTextEntry={!showPw}
                 textContentType="password"
                 autoComplete="current-password"
@@ -169,6 +171,7 @@ export default function Login() {
               style={styles.input}
               placeholder={backup ? "Backup code" : t("login.code")}
               placeholderTextColor={palette.faint}
+              maxFontSizeMultiplier={fontScale.text}
               keyboardType={backup ? "default" : "number-pad"}
               textContentType={backup ? "none" : "oneTimeCode"}
               autoComplete={backup ? "off" : "one-time-code"}
@@ -230,7 +233,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.surface,
     borderRadius: radius.xl,
     padding: spacing["2xl"],
-    shadowColor: palette.ink,
+    shadowColor: palette.shadow,
     shadowOpacity: 0.06,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },

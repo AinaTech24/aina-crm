@@ -93,6 +93,6 @@ export function RecordChanges({
 }
 
 const styles = StyleSheet.create({
-  box: { borderWidth: 1, borderColor: "#fcd34d", backgroundColor: palette.warningBg, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
-  row: { flexDirection: "row", gap: spacing.sm, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#fde68a" },
+  box: { borderWidth: 1, borderColor: palette.warning, backgroundColor: palette.warningBg, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
+  row: { flexDirection: "row", gap: spacing.sm, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
 });

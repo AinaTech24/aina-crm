@@ -259,7 +259,7 @@ export default function MeetingDetail() {
               {status !== "completed" ? (
                 <View style={{ flex: 1 }}><Button label="Mark completed" variant="secondary" loading={busy} onPress={() => save("completed")} icon={<Feather name="check-circle" size={15} color={palette.success} />} full /></View>
               ) : null}
-              <View style={{ flex: 1 }}><Button label="Save" loading={busy} onPress={() => save()} icon={<Feather name="save" size={15} color="#fff" />} full /></View>
+              <View style={{ flex: 1 }}><Button label="Save" loading={busy} onPress={() => save()} icon={<Feather name="save" size={15} color={palette.white} />} full /></View>
             </View>
           </Card>
 
@@ -363,7 +363,7 @@ export default function MeetingDetail() {
 
           {/* Cancel */}
           {mayCancel && m.status !== "cancelled" && m.status !== "completed" ? (
-            <Button label="Cancel meeting" variant="danger" loading={cancel.isPending} onPress={doCancel} icon={<Feather name="x-circle" size={15} color="#fff" />} style={{ marginTop: spacing.lg }} />
+            <Button label="Cancel meeting" variant="danger" loading={cancel.isPending} onPress={doCancel} icon={<Feather name="x-circle" size={15} color={palette.white} />} style={{ marginTop: spacing.lg }} />
           ) : null}
           {/* The server deletes only a meeting with nothing recorded: not completed, no action items. */}
           {mayCancel && m.status !== "completed" && !(Array.isArray(m.action_items) && m.action_items.length) ? (
@@ -388,7 +388,7 @@ function Prep({ label, value, tone }: { label: string; value: string; tone?: str
 }
 
 function Banner({ tone, text }: { tone: "success" | "danger"; text: string }) {
-  const bg = tone === "success" ? palette.successBg ?? "#ECFDF5" : palette.dangerBg;
+  const bg = tone === "success" ? palette.successBg : palette.dangerBg;
   const fg = tone === "success" ? palette.success : palette.danger;
   return (
     <View style={{ backgroundColor: bg, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.lg }}>

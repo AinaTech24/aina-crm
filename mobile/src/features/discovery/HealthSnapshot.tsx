@@ -16,9 +16,9 @@ import type { DiscoveryComputed } from "./calc";
 import { PRODUCTS, PRODUCT_LABELS, type Verdict } from "./risk";
 
 const VERDICT: Record<Verdict, { mark: string; color: string }> = {
-  yes: { mark: "✅", color: "#059669" },
-  maybe: { mark: "⚠", color: "#f59e0b" },
-  no: { mark: "❌", color: "#f43f5e" },
+  yes: { mark: "✅", color: palette.success },
+  maybe: { mark: "⚠", color: palette.warning },
+  no: { mark: "❌", color: palette.danger },
   na: { mark: "—", color: palette.muted },
 };
 
@@ -32,8 +32,8 @@ export const snapInr = (nv: number) => {
 
 /** Ring colour for a health score (grey until there is one). */
 export function scoreColor(score: number | null | undefined): string {
-  if (score == null) return "#94a3b8";
-  return score >= 80 ? "#059669" : score >= 60 ? "#0891b2" : score >= 40 ? "#f59e0b" : "#f43f5e";
+  if (score == null) return palette.faint;
+  return score >= 80 ? palette.success : score >= 60 ? palette.info : score >= 40 ? palette.warning : palette.danger;
 }
 
 export function HealthSnapshot({ c }: { c: DiscoveryComputed }) {
@@ -79,7 +79,7 @@ export function HealthSnapshot({ c }: { c: DiscoveryComputed }) {
                 <Text variant="caption" style={{ color: p.known ? palette.ink : palette.muted, fontWeight: fontWeight.semibold }}>{p.known ? `${p.score}/${p.max}` : "—"}</Text>
               </View>
               <View style={styles.track}>
-                {p.known ? <View style={[styles.fill, { width: `${frac * 100}%`, backgroundColor: frac >= 0.75 ? "#10b981" : frac >= 0.4 ? "#f59e0b" : "#f43f5e" }]} /> : null}
+                {p.known ? <View style={[styles.fill, { width: `${frac * 100}%`, backgroundColor: frac >= 0.75 ? palette.success : frac >= 0.4 ? palette.warning : palette.danger }]} /> : null}
               </View>
               {open === p.label ? <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>{p.hint}</Text> : null}
             </Pressable>
@@ -97,7 +97,7 @@ export function HealthSnapshot({ c }: { c: DiscoveryComputed }) {
 
       {/* Affordability verdict */}
       {c.totalSipNeeded > 0 || c.monthlySipCapacity !== 0 ? (
-        <View style={[styles.verdict, spare ? { borderColor: "#a7f3d0", backgroundColor: palette.successBg } : { borderColor: "#fde68a", backgroundColor: palette.warningBg }]}>
+        <View style={[styles.verdict, spare ? { borderColor: palette.success, backgroundColor: palette.successBg } : { borderColor: palette.warning, backgroundColor: palette.warningBg }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <Feather name={spare ? "trending-up" : "trending-down"} size={14} color={spare ? palette.success : palette.warning} />
             <Text variant="label" style={{ color: palette.ink, fontWeight: fontWeight.semibold }}>
@@ -175,7 +175,7 @@ export function HealthSnapshot({ c }: { c: DiscoveryComputed }) {
 }
 
 function Metric({ icon, label, value, sub, good }: { icon: React.ComponentProps<typeof Feather>["name"]; label: string; value: string; sub?: string; good?: boolean }) {
-  const color = good === true ? "#047857" : good === false ? "#be123c" : palette.ink;
+  const color = good === true ? palette.success : good === false ? palette.danger : palette.ink;
   return (
     <View style={styles.metric}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>

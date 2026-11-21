@@ -1,13 +1,13 @@
 /**
- * Theme entry. For now a single light theme exposed as a constant + a `useTheme`
- * hook so components don't import tokens directly (makes per-tenant theming and
- * a future dark mode a one-file change).
+ * Theme entry: the tokens plus a `useTheme` hook. The colour set (light / dark)
+ * and the firm's accent are resolved once at start-up — see tokens.ts.
  */
 
-import { palette, spacing, radius, fontSize, fontWeight, shadow } from "./tokens";
+import { palette, spacing, radius, fontSize, fontWeight, shadow, colorScheme } from "./tokens";
 
 export const theme = {
   color: palette,
+  scheme: colorScheme,
   spacing,
   radius,
   fontSize,

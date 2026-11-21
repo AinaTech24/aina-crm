@@ -13,6 +13,7 @@ export type FieldType =
   | "tel"
   | "number"
   | "date"
+  | "due" // a due / follow-up date with quick chips; value "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (IST)
   | "select"
   | "multiselect"
   | "textarea"
@@ -48,6 +49,13 @@ export interface FieldSpec {
   /** date: earliest / latest selectable day, "YYYY-MM-DD" (max wins over maxToday). */
   min?: string;
   max?: string;
+  /** date: a meeting / due date whose TIME is this other field ("HH:MM") — the
+   *  quick chips (Today 5 pm, Tomorrow 10 am) set both. */
+  timeKey?: string;
+  /** due: the India time a bare day is sent at (shown as the time picker's start). */
+  defaultTime?: string;
+  /** due: day-only chips after the two quick times (e.g. "3 days"). */
+  extraChips?: Array<{ label: string; days: number; time?: string }>;
   /** select: show a search box over the options (long lists, e.g. countries). */
   searchable?: boolean;
   keyboard?: "default" | "email-address" | "phone-pad" | "numeric" | "decimal-pad";
@@ -75,8 +83,9 @@ export interface FieldSpec {
   searchValue?: (row: any) => string; // default row.id
   searchSublabel?: (row: any) => string;
   searchExtraParams?: Record<string, string>;
-  /** Form key holding the picked record's NAME (e.g. "investorName"), shown
-   *  instead of "Selected" when the id was preset from route params. */
+  /** Form key holding the picked record's NAME (e.g. "_investorName"), shown
+   *  instead of "Selected" when the id was preset from route params. A pick
+   *  writes the name there too — so it must be a key the body never sends. */
   searchDisplayKey?: string;
   /** Resolve the name for a preset id (e.g. GET /api/investors/:id). Used only
    *  when no label is known yet; return null to fall back to "Selected". */
@@ -93,6 +102,12 @@ export interface SectionSpec {
   fields: FieldSpec[];
   /** Hide the whole section unless this returns true (e.g. edit-only sections). */
   visibleIf?: (v: FormValues) => boolean;
+  /** On a long (folded) form: true always opens it at first; false keeps it
+   *  folded unless something in it is missing. Default: open only when first or
+   *  something is missing (../../components/form/sections.ts). */
+  defaultOpen?: boolean;
+  /** The one line a folded section shows (default "3 of 5 filled"). */
+  summary?: (v: FormValues) => string | null;
 }
 
 export interface StepSpec {
@@ -144,6 +159,9 @@ export interface FormSpec {
    * for the plain message.
    */
   on409?: (body: any, ctx: AfterCreateCtx & { form: FormValues; dismiss: () => void }) => ReactNode | null;
+  /** Fold the sections of a long form: "auto" (3+ titled sections and 12+
+   *  fields), "always" (2+ titled sections) or "never". Default "auto". */
+  collapse?: "auto" | "always" | "never";
   /** TanStack query keys to invalidate on success (for list freshness). */
   invalidate?: string[];
   /** A live notice under the first section (e.g. the lead duplicate scan). It

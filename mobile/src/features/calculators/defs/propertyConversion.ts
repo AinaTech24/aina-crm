@@ -17,7 +17,7 @@ import {
   monthsToTarget, habitToCorpus, fdVsEquity, rentVsBuy, lifestyleShock, moneyLast, croreRace,
 } from "../web/conversion";
 import { fvSip, fvLumpsum } from "../web/goal-planning-calc";
-import { stat, section, table, insight, note, opts } from "./shared";
+import { stat, section, table, insight, note, opts, chart, cumulative } from "./shared";
 
 /** The web's clampNum: a non-negative finite number, 0 on garbage. */
 const nn = (x: unknown): number => {
@@ -446,6 +446,10 @@ const loanemi: CalcBody = {
         );
       }
       out.push(
+        ...chart("Year", s.yearly.map((y) => y.year), [
+          { label: "Loan outstanding", values: s.yearly.map((y) => y.closing) },
+          { label: "Interest paid to date", values: cumulative(s.yearly.map((y) => y.interest)) },
+        ]),
         section("2. Amortisation schedule"),
         v.schedule === "monthly"
           ? table(
@@ -674,6 +678,10 @@ const moneylast: CalcBody = {
     ];
     if (res.schedule.length > 0) {
       out.push(
+        ...chart("Age", res.schedule.map((s) => s.age), [
+          { label: "Balance left", values: res.schedule.map((s) => s.balance) },
+          { label: "Withdrawn to date", values: cumulative(res.schedule.map((s) => s.withdrawn)) },
+        ]),
         section("Year-by-year — withdrawals & balance left"),
         table(
           ["Age", "Opening balance", "Withdrawn (year)", "Growth", "Balance after withdrawal"],

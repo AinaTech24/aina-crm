@@ -5,7 +5,7 @@
 
 import React from "react";
 import { View, TextInput, StyleSheet, type KeyboardTypeOptions } from "react-native";
-import { palette, radius, spacing, fontSize } from "../../theme/tokens";
+import { palette, radius, spacing, fontSize, fontScale } from "../../theme/tokens";
 import { Text } from "./Text";
 
 export function TextField({
@@ -21,6 +21,7 @@ export function TextField({
   secureTextEntry,
   disabled,
   maxLength,
+  inputRef,
 }: {
   label: string;
   value: string;
@@ -35,6 +36,8 @@ export function TextField({
   disabled?: boolean;
   /** Hard cap on typed characters (match the server's zod .max()). */
   maxLength?: number;
+  /** The underlying TextInput — the form engine focuses the first field with an error. */
+  inputRef?: React.Ref<TextInput> | ((r: TextInput | null) => void);
 }) {
   return (
     <View style={{ marginBottom: spacing.lg }}>
@@ -43,6 +46,7 @@ export function TextField({
         {required ? <Text style={{ color: palette.danger }}> *</Text> : null}
       </Text>
       <TextInput
+        ref={inputRef as any}
         style={[styles.input, multiline && styles.multiline, error && { borderColor: palette.danger }, disabled && { opacity: 0.6 }]}
         editable={!disabled}
         accessibilityLabel={label}
@@ -50,6 +54,7 @@ export function TextField({
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={palette.faint}
+        maxFontSizeMultiplier={fontScale.text}
         multiline={multiline}
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}

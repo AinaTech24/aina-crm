@@ -51,8 +51,29 @@ export interface InputSpec {
 
 export type Tone = "brand" | "success" | "warning" | "danger" | "neutral" | "violet";
 
+/**
+ * A value-over-time chart under a result (GrowthChart). A compute builds it
+ * from the SAME rows its tables print — never a second calculation — through
+ * `chart()` in defs/shared.ts, which drops a chart it cannot draw honestly.
+ */
+export interface ChartLine {
+  label: string;
+  /** One value per x. */
+  values: number[];
+  /** "invested": money put in (dashed, neutral). "value": what it is worth (coloured;
+   *  the first value line is filled). Defaults to "value". */
+  role?: "invested" | "value";
+}
+export interface ChartSpec {
+  /** What the x values count: "Year", "Age", "Vacation". */
+  xLabel: string;
+  x: number[];
+  lines: ChartLine[];
+}
+
 export type ResultBlock =
   | { type: "stat"; label: string; value: string; tone?: Tone; hint?: string }
+  | { type: "chart"; chart: ChartSpec }
   | { type: "section"; text: string }
   | { type: "table"; head: string[]; rows: string[][]; highlightLast?: boolean }
   | { type: "insight"; text: string; tone?: Tone }
@@ -79,8 +100,11 @@ export interface CalculatorDef {
   compute: (v: Record<string, any>, ctx: CalcContext) => ResultBlock[];
   /** Fund Research: the scheme codes whose NAV history compute needs. */
   navSchemes?: (v: Record<string, any>) => string[];
+  /** false: the result is the firm's own working (AUM Opportunity), never shown
+   *  to a client, so it has no Present button. */
+  present?: boolean;
 }
 
 /** What a defs/* file supplies for one catalog key; the name, group, icon and
  *  description come from catalog.ts (the web's CATALOG). */
-export type CalcBody = Pick<CalculatorDef, "inputs" | "compute" | "navSchemes">;
+export type CalcBody = Pick<CalculatorDef, "inputs" | "compute" | "navSchemes" | "present">;

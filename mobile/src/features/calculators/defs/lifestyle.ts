@@ -19,7 +19,7 @@ import {
 import { youthBucketStrategy } from "../web/bucket-strategy";
 import { journeyToFreedom } from "../web/journey-to-freedom";
 import { familyWealthPlan, type AssetClassInput } from "../web/family-wealth";
-import { TONE, stat, section, table, insight, note, opts } from "./shared";
+import { TONE, stat, section, table, insight, note, opts, chart } from "./shared";
 
 /** The web's clampNum: a non-negative finite number, 0 on garbage. */
 const nn = (x: unknown): number => {
@@ -226,7 +226,7 @@ const youthbucket: CalcBody = {
 };
 
 /** JourneyToFreedom.tsx — The Journey to Freedom (journeyToFreedom). The
- *  corpus-vs-freedom-line chart is not drawn; its table is. */
+ *  corpus chart is the growth chart (no freedom line); its table follows. */
 const journey: CalcBody = {
   inputs: [
     { key: "salary", label: "Monthly income (₹)", type: "money", default: 50000 },
@@ -261,7 +261,12 @@ const journey: CalcBody = {
       stat("Freedom corpus needed", reached && freedomFinite ? inrShort(res.freedomCorpus) : "—", "success"),
       stat("Corpus at freedom", res.corpusAtFreedom != null ? inrShort(res.corpusAtFreedom) : "—", "success"),
     );
-    if (res.investmentMonthly > 0) out.push(table(["Year", "Corpus", "Years of freedom"], tableRows, reached));
+    if (res.investmentMonthly > 0) {
+      out.push(
+        ...chart("Year", res.rows.map((r) => r.year), [{ label: "Corpus", values: res.rows.map((r) => r.corpus) }]),
+        table(["Year", "Corpus", "Years of freedom"], tableRows, reached),
+      );
+    }
     out.push(insight(`Freedom isn’t about a magic number — it’s the point where your money out-earns your lifestyle. At a real return of ${res.realRatePct.toFixed(1)}% (return ${returnPct}% minus inflation ${inflation}%), your client gets there by investing the ${inr(res.investmentMonthly)}/month gap consistently. Raising the savings rate is the single biggest lever.`, "success"));
     return out;
   },
@@ -754,6 +759,7 @@ const doubling: CalcBody = {
     return [
       stat("Money doubles every", Number.isFinite(res.yearsToDouble) ? `${res.yearsToDouble.toFixed(1)} yrs` : "—", "success"),
       stat("Rule of 72 estimate", Number.isFinite(res.rule72) ? `${res.rule72.toFixed(1)} yrs` : "—", "brand"),
+      ...chart("Year", [0, ...res.rows.map((r) => r.years)], [{ label: "Corpus", values: [amount, ...res.rows.map((r) => r.value)] }]),
       table(
         ["Milestone", "Corpus", "Years", "Reached by"],
         res.rows.map((r) => [

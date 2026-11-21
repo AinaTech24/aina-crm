@@ -20,6 +20,7 @@ import { Button } from "../../../../src/components/ui/Button";
 import { Segmented } from "../../../../src/components/ui/Segmented";
 import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
 import { LoadingState, ErrorState } from "../../../../src/components/states";
+import { useMe, hasCap, hasAnyCap } from "../../../../src/api/me";
 import { SavedCopyBanner } from "../../../../src/components/SavedCopyBanner";
 import { useConnectivity } from "../../../../src/state/connectivity";
 import { OverviewTab } from "../../../../src/features/investors/detail/OverviewTab";
@@ -60,6 +61,7 @@ export default function InvestorDetail() {
   const { id, opportunity, product } = useLocalSearchParams<{ id: string; opportunity?: string; product?: string }>();
   const router = useRouter();
   const { brand } = useBrand();
+  const caps = useMe().data?.capabilities;
   const { data: d, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useInvestorFull(id);
   // No signal: show the copy saved on this phone (persisted cache, 24 h) instead of an error.
   const offline = useConnectivity((s) => !s.online);
@@ -192,7 +194,7 @@ export default function InvestorDetail() {
               ) : (
                 <Text style={{ color: palette.brandDark, fontWeight: "700", fontSize: 18 }}>{initials(i.name)}</Text>
               )}
-              <View style={styles.camBadge}><Feather name={avatar.isPending ? "loader" : "camera"} size={10} color="#fff" /></View>
+              <View style={styles.camBadge}><Feather name={avatar.isPending ? "loader" : "camera"} size={10} color={palette.white} /></View>
               {i.healthBand ? <View style={[styles.dot, { backgroundColor: HEALTH_DOT[i.healthBand] ?? palette.faint }]} /> : null}
             </Pressable>
             <View style={{ flex: 1 }}>
@@ -253,6 +255,11 @@ export default function InvestorDetail() {
       {/* Actions sheet */}
       <BottomSheet visible={actions} onClose={() => setActions(false)} title={i.name}>
         <Button label="Edit client" variant="secondary" full icon={<Feather name="edit-2" size={15} color={palette.ink} />} onPress={() => { setActions(false); router.push(editHref() as any); }} style={{ marginBottom: spacing.sm }} />
+        {/* Start work for this client: each form opens with the client already picked. */}
+        {hasAnyCap(caps, ["task.edit.all", "task.edit.assigned"]) ? <Button label="New task" variant="secondary" full icon={<Feather name="check-square" size={15} color={palette.ink} />} onPress={() => { setActions(false); router.push(`/m/tasks/new?relatedInvestorId=${i.id}&name=${encodeURIComponent(i.name ?? "")}` as any); }} style={{ marginBottom: spacing.sm }} /> : null}
+        {hasAnyCap(caps, ["review_meeting.manage.all", "review_meeting.manage.assigned"]) ? <Button label="Schedule meeting" variant="secondary" full icon={<Feather name="calendar" size={15} color={palette.ink} />} onPress={() => { setActions(false); router.push(`/m/review-meetings/new?investorId=${i.id}&name=${encodeURIComponent(i.name ?? "")}` as any); }} style={{ marginBottom: spacing.sm }} /> : null}
+        {hasCap(caps, "service_request.manage") ? <Button label="Service request" variant="secondary" full icon={<Feather name="life-buoy" size={15} color={palette.ink} />} onPress={() => { setActions(false); router.push(`/m/service-requests/new?investorId=${i.id}&name=${encodeURIComponent(i.name ?? "")}` as any); }} style={{ marginBottom: spacing.sm }} /> : null}
+        <Button label="Log activity" variant="secondary" full icon={<Feather name="edit-3" size={15} color={palette.ink} />} onPress={() => { setActions(false); router.push(`/m/activities/new?investorId=${i.id}&name=${encodeURIComponent(i.name ?? "")}` as any); }} style={{ marginBottom: spacing.sm }} />
         <Button label="AI client brief" variant="secondary" full icon={<Feather name="zap" size={15} color={palette.ink} />} onPress={() => { setActions(false); setAiOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Quick comms" variant="secondary" full icon={<Feather name="send" size={15} color={palette.ink} />} onPress={() => { setActions(false); setCommsOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Send a form" variant="secondary" full icon={<Feather name="file-text" size={15} color={palette.ink} />} onPress={() => { setActions(false); setFormOpen(true); }} style={{ marginBottom: spacing.sm }} />
@@ -262,7 +269,7 @@ export default function InvestorDetail() {
         <Button label="WhatsApp statement" variant="secondary" full loading={statement.isPending} icon={<Feather name="message-circle" size={15} color={palette.ink} />} onPress={() => sendStatement("whatsapp")} style={{ marginBottom: spacing.sm }} />
         {!exited ? <Button label={inactive ? "Mark active" : "Mark inactive"} variant="secondary" full loading={exit.isPending} icon={<Feather name={inactive ? "user-check" : "user-x"} size={15} color={palette.ink} />} onPress={doInactive} style={{ marginBottom: spacing.sm }} /> : null}
         <Button label={exited ? "Reactivate client" : "Mark as exited"} variant="secondary" full loading={exit.isPending} icon={<Feather name={exited ? "rotate-ccw" : "log-out"} size={15} color={palette.ink} />} onPress={doExit} style={{ marginBottom: spacing.sm }} />
-        <Button label="Delete client" variant="danger" full loading={del.isPending} icon={<Feather name="trash-2" size={15} color="#fff" />} onPress={doDelete} />
+        <Button label="Delete client" variant="danger" full loading={del.isPending} icon={<Feather name="trash-2" size={15} color={palette.white} />} onPress={doDelete} />
       </BottomSheet>
 
       <AiBriefSheet id={id!} visible={aiOpen} onClose={() => setAiOpen(false)} phone={phone} />

@@ -23,12 +23,14 @@
 import type { FormSpec } from "./types";
 import { LeadDuplicateNotice } from "../leads/LeadDuplicateNotice";
 import { LEAD_SOURCE_OPTIONS } from "../leads/api";
+import { dueFromIso, istToIso } from "../../components/form/due";
 
 /** The API's email check (zod .email()) — catch it here instead of a bare "invalid body". */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-/** A follow-up DAY becomes 10:00 IST that day (the CRM's follow-up time).
+/** A follow-up DAY becomes 10:00 IST that day (the CRM's follow-up time); a
+ *  quick chip's time ("Today 5 pm") is India time too.
  *  `new Date("2026-11-21")` is UTC midnight — the task fell due at 05:30. */
-const followUpAtIst = (day: string) => new Date(`${String(day).slice(0, 10)}T10:00:00+05:30`).toISOString();
+const followUpAtIst = (v: string) => istToIso(v, "10:00")!;
 
 export const leadForm: FormSpec = {
   title: "New lead",
@@ -199,7 +201,8 @@ export const leadForm: FormSpec = {
         {
           key: "followUpDate",
           label: "Follow-up date",
-          type: "date",
+          type: "due",
+          defaultTime: "10:00",
           help: "Sets the next follow-up + creates an RM task.",
         },
       ],
@@ -209,7 +212,7 @@ export const leadForm: FormSpec = {
       visibleIf: (v) => v._edit === "1",
       fields: [
         { key: "intendedAmount", label: "Intended amount (₹)", type: "number" },
-        { key: "nextFollowUpAt", label: "Next follow-up", type: "date" },
+        { key: "nextFollowUpAt", label: "Next follow-up", type: "due", defaultTime: "10:00" },
         { key: "followUpNotes", label: "Follow-up notes", type: "textarea" },
         { key: "lostReason", label: "Lost reason", placeholder: "Only if not qualified" },
       ],
@@ -312,12 +315,9 @@ export const leadForm: FormSpec = {
   editTitle: "Edit lead",
   // GET /api/leads/[id] returns the lead object directly (no envelope).
   editInitial: (rec) => {
-    // The IST calendar day of a stored instant.
-    const dstr = (v: any) => {
-      if (!v) return "";
-      const t = new Date(v).getTime();
-      return Number.isFinite(t) ? new Date(t + 5.5 * 3600e3).toISOString().slice(0, 10) : String(v).slice(0, 10);
-    };
+    // The IST day of a stored instant — and its IST time unless it is the
+    // usual 10:00, so an unchanged follow-up is sent back exactly as it was.
+    const dstr = (v: any) => dueFromIso(v, "10:00");
     const has = (v: unknown) => v != null && String(v).trim() !== "";
     return {
       _edit: "1",

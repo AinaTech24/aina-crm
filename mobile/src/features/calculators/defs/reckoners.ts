@@ -9,7 +9,7 @@ import { inr, fmtPct, groupIndian } from "../fmt";
 import { computeReadyReckoner, displayCell, MAX_PERIODS, MAX_RATES, type ReckonerMode } from "../web/ready-reckoner";
 import { stpReckonerGrid, type MonthlyStpMode, type StpScenario } from "../web/stp-comprehensive";
 import { computeIncomeBridge, type CalcType, type InvestMode, type PlanningType } from "../web/income-bridge";
-import { stat, section, table, insight, note, opts } from "./shared";
+import { stat, section, table, insight, note, opts, chart, cumulative } from "./shared";
 
 /** The web's clampNum: a non-negative finite number, 0 on garbage. */
 const nn = (x: unknown): number => {
@@ -368,6 +368,18 @@ const sipswp: CalcBody = {
     }
     out.push(insight(text, "brand"));
 
+    {
+      // Built up, then drawn down — one axis for the whole plan.
+      const acc = result.accSchedule;
+      const dist = result.schedule;
+      const invested = cumulative(acc.map((r) => r.invested));
+      const putIn = invested.length > 0 ? invested[invested.length - 1] : 0;
+      out.push(...chart("Age", [...acc.map((r) => r.age), ...dist.map((r) => r.age)], [
+        { label: "Invested", role: "invested", values: [...invested, ...dist.map(() => putIn)] },
+        { label: "Corpus", values: [...acc.map((r) => r.value), ...dist.map((r) => r.endCorpus)] },
+        { label: "Withdrawn to date", values: [...acc.map(() => 0), ...cumulative(dist.map((r) => r.withdrawnThisYear))] },
+      ]));
+    }
     if (result.accSchedule.length > 0) {
       out.push(
         section("1. Building the corpus — year by year"),

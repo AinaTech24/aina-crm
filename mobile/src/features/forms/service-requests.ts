@@ -8,6 +8,7 @@
  */
 
 import type { FormSpec } from "./types";
+import { clientNameById, presetName } from "./pickers";
 
 const TYPES = [
   { value: "nominee_update", label: "Nominee update" },
@@ -58,6 +59,8 @@ export const serviceRequestForm: FormSpec = {
   submitLabel: "Create request",
   initial: (params) => ({
     investorId: params.investorId ?? "",
+    // Opened from the client's page: show the name, not "Selected".
+    _investorName: presetName(params, "investorId"),
     type: params.type === "complaint" ? "complaint" : "kyc_update",
     subject: "",
     description: "",
@@ -80,6 +83,8 @@ export const serviceRequestForm: FormSpec = {
           searchEnvelope: "investors",
           searchLabel: (i) => i.name,
           searchSublabel: (i) => [i.pan_display, i.segment_tag].filter(Boolean).join(" · "),
+          searchDisplayKey: "_investorName",
+          searchInitialLabel: clientNameById,
           placeholder: "Search a client — or leave blank for a general request",
         },
         { key: "type", label: "Type", type: "select", required: true, options: TYPES },

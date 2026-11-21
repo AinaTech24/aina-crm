@@ -28,7 +28,7 @@ export function BlueprintBar({ id }: { id: string }) {
             {stages.map((s: BlueprintStage) => (
               <View key={s.key} style={styles.step}>
                 <View style={[styles.node, { backgroundColor: s.status === "done" ? palette.success : s.status === "current" ? palette.brand : palette.surfaceSunken, borderColor: TONE[s.status] ?? palette.line }]}>
-                  {s.status === "done" ? <Feather name="check" size={12} color="#fff" /> : <Text style={{ fontSize: 10, color: s.status === "current" ? "#fff" : palette.muted, fontWeight: fontWeight.bold }}>{s.order}</Text>}
+                  {s.status === "done" ? <Feather name="check" size={12} color={palette.white} /> : <Text style={{ fontSize: 10, color: s.status === "current" ? "#fff" : palette.muted, fontWeight: fontWeight.bold }}>{s.order}</Text>}
                 </View>
                 <Text variant="caption" tone={s.status === "current" ? "brand" : "faint"} numberOfLines={2} style={styles.stepLabel}>{s.name}</Text>
               </View>

@@ -8,7 +8,9 @@ import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { palette } from "../../theme/tokens";
-import { useBrand } from "../../theme/brand";
+import { useBrand, brandDiffersFromBoot } from "../../theme/brand";
+import { reloadApp } from "../../theme/reload";
+import { consumeFreshSignIn } from "../../state/session";
 
 export interface LeaveBalance { type: string; label: string; entitlement: number | null; used: number; remaining: number | null }
 export interface Activity { action: string; entityType: string | null; at: string }
@@ -73,15 +75,22 @@ export function useTenant() {
   return useQuery({ queryKey: ["tenant"], queryFn: () => api.get<any>("/api/tenant"), staleTime: 60_000 });
 }
 
-/** Seed + live-update the app brand colour from the tenant's appearance theme.
+/** Seed + live-update the app's accent from the firm's brand colour.
  *  Mount once near the app root; re-applies whenever the tenant query refreshes
- *  (e.g. after saving Appearance → the theme reflects instantly, app-wide). */
+ *  (e.g. after saving Appearance → buttons, chips and tabs follow at once, and
+ *  every other screen on the next start — theme/brand.ts).
+ *
+ *  The first sign-in on a phone (or into a different firm) is the one case
+ *  where the screens' styles were built with another colour: the bundle is
+ *  restarted once, straight after sign-in, so the firm's colour is the only
+ *  accent from the first minute. */
 export function useApplyTenantBrand() {
   const { data } = useTenant();
   useEffect(() => {
     if (!data) return;
     const t = data.tenant ?? data;
-    useBrand.getState().setBrand(t?.primaryColor || null, t?.secondaryColor || null);
+    useBrand.getState().setBrand(t?.primaryColor || null);
+    if (consumeFreshSignIn() && brandDiffersFromBoot()) reloadApp("brand", { keepUnlocked: true }).catch(() => {});
   }, [data]);
 }
 export function useSaveTheme() {
