@@ -3,7 +3,7 @@
     "name": "Aina CRM",
     "slug": "growth-os-mobile",
     "scheme": "growthos",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
