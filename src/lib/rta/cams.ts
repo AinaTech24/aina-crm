@@ -25,7 +25,9 @@ import { num, amcNameFromDescription, canonicalizeAmcNames, maskAccount, pct, dm
  */
 const SIGNATURE = ["foliochk", "rupee_bal", "clos_bal"];
 const PAN_COLS = ["pan_no", "pan_pekrn"];
-const SCHEME_COLS = ["sch_name", "product", "product_code"];
+// "product_co": a CAMS master saved as dBASE keeps only 10 characters of a column name
+// (PRODUCT_CODE → PRODUCT_CO; Ahpal and Shah, 19 Nov 2026), refused as "header did not match".
+const SCHEME_COLS = ["sch_name", "product", "product_code", "product_co"];
 
 export function isCamsFile(header: string[]): boolean {
   const have = new Set(header.map((h) => h.trim().toLowerCase()));
@@ -137,7 +139,13 @@ export function parseCamsFile(rows: string[][]): {
   const header = rows[0].map((h) => h.trim());
   const H: Record<string, number> = {};
   header.forEach((h, i) => (H[h.toLowerCase()] = i));
-  const col = (name: string) => (name.toLowerCase() in H ? H[name.toLowerCase()] : -1);
+  /** A column by name, or by its first 10 characters (a dBASE export truncates longer names). */
+  const col = (name: string) => {
+    const n = name.toLowerCase();
+    if (n in H) return H[n];
+    const short = n.slice(0, 10);
+    return n.length > 10 && short in H ? H[short] : -1;
+  };
   /** The first of several spellings the file carries (the two CAMS layouts differ). */
   const colAny = (...names: string[]) => {
     for (const n of names) {

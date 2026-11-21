@@ -155,12 +155,19 @@ function splitDelimited(line: string, delim: string): string[] {
   return out;
 }
 
-/** Detect a delimited file's delimiter from its first populated line. */
-function sniffDelim(text: string): "|" | "\t" | "," {
+/**
+ * Detect a delimited file's delimiter from its first populated line.
+ * KFintech's transaction report can arrive TILDE-separated ("Product Code~Fund~Folio Number~…",
+ * Ahpal 2026-11): read as comma text it was one column, and every row failed as "layout not
+ * recognised". A tilde wins only when the header holds more of them than of any other delimiter.
+ */
+export function sniffDelim(text: string): "|" | "\t" | "," | "~" {
   const line = text.split(/\r?\n/).find((l) => l.trim() !== "") ?? "";
   const pipes = (line.match(/\|/g) ?? []).length;
   const tabs = (line.match(/\t/g) ?? []).length;
   const commas = (line.match(/,/g) ?? []).length;
+  const tildes = (line.match(/~/g) ?? []).length;
+  if (tildes > pipes && tildes > tabs && tildes > commas) return "~";
   if (pipes >= commas && pipes >= tabs && pipes > 0) return "|";
   if (tabs >= commas && tabs > 0) return "\t";
   return ",";

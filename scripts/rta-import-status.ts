@@ -59,7 +59,12 @@ async function main() {
     const problems = (
       await tx.execute(sql`
         SELECT COALESCE(NULLIF(t.display_name, ''), t.legal_name) AS firm, r.source, r.kind, r.status,
-               left(regexp_replace(COALESCE(NULLIF(r.remarks, ''), r.errors->0->>'reason', '(no message)'), '\\s+', ' ', 'g'), 160) AS msg,
+               -- A failed / partial file's own error explains it; its remarks are often only
+               -- "Auto-imported from forwarded email". A refused file's remarks ARE the reason.
+               left(regexp_replace(CASE WHEN r.status = 'rejected'
+                 THEN COALESCE(NULLIF(r.remarks, ''), r.errors->0->>'reason', '(no message)')
+                 ELSE COALESCE(NULLIF(r.errors->0->>'reason', ''), NULLIF(r.remarks, ''), '(no message)') END,
+                 '\\s+', ' ', 'g'), 160) AS msg,
                COUNT(*)::int AS files, max(r.created_at) AS last_at
           FROM rta_file_imports r
           JOIN tenants t ON t.id = r.tenant_id

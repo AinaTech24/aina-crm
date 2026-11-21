@@ -1492,6 +1492,12 @@ Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
   that order; a bare slash date stays day-first). It was refused as "header did not match any known report" because
   the signature demanded `pan_no` + `sch_name`. With no scheme name the AMC name is sent blank, and the folio upsert
   never lets a name equal to the AMC code overwrite the folio's real fund-house name.
+- **Tilde-separated KFintech reports and dBASE-cut CAMS column names** (2026-11-21, the cross-firm import status report,
+  `tests/rta-tilde-and-dbf-names.test.ts`): a KFintech transaction report can be `~`-separated ("Product Code~Fund~Folio
+  Number~…"); `sniffDelim` (decode.ts) and `detectDelimiter` (feed parser) now read it — it was one column and every row
+  "layout not recognised". A CAMS master saved as dBASE keeps 10 characters of a column name (PRODUCT_CODE → PRODUCT_CO);
+  `parseCamsFile`'s `col()` falls back to the first 10 characters. `scripts/rta-import-status.ts` (every firm, last N days,
+  read only) now shows a failed file's own error, not its "Auto-imported from forwarded email" remark.
 - **A refused CAMS ZIP names its request** (2026-11-20, `camsRequestFromNames` in `lib/rta/unzip.ts`): file names inside
   a ZIP are readable without the password, and CAMS names each file after its mailback request (`…_232184868R9C.csv` =
   Query Ref 232184868, R9). `describeZip` appends "CAMS request 232184868 (R9)" and the refusal says to find that Query Ref

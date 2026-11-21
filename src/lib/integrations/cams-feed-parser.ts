@@ -163,10 +163,12 @@ export function directionFor(
 }
 
 /** Detect the delimiter of a decoded feed line (decoder emits pipe). */
-export function detectDelimiter(line: string): "|" | "\t" | "," {
+export function detectDelimiter(line: string): "|" | "\t" | "," | "~" {
   const pipes = (line.match(/\|/g) ?? []).length;
   const tabs = (line.match(/\t/g) ?? []).length;
   const commas = (line.match(/,/g) ?? []).length;
+  const tildes = (line.match(/~/g) ?? []).length; // KFintech's tilde-separated report
+  if (tildes > pipes && tildes > tabs && tildes > commas) return "~";
   if (pipes >= commas && pipes >= tabs && pipes > 0) return "|";
   if (tabs >= commas && tabs > 0) return "\t";
   return ",";
