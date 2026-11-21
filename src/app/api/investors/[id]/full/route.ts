@@ -52,7 +52,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           tx.select().from(sips).where(eq(sips.investorId, id)),
           tx.select().from(goals).where(eq(goals.investorId, id)),
           tx.select().from(communications).where(eq(communications.investorId, id)).orderBy(desc(communications.createdAt)).limit(20),
-          tx.select().from(tasks).where(and(eq(tasks.subjectId, id), eq(tasks.subjectType, "investor"), isNull(tasks.deletedAt))).limit(20),
+          // A task reaches a client through TWO links (CLAUDE.md, taskIsAbout):
+          // related_investor_id (task form, meetings, SIP defence) or subject
+          // investor (rejections, onboarding). Reading one hid the other's tasks.
+          tx.select().from(tasks).where(and(
+            sql`(${tasks.relatedInvestorId} = ${id}::uuid OR (${tasks.subjectType} = 'investor' AND ${tasks.subjectId} = ${id}::uuid))`,
+            isNull(tasks.deletedAt),
+          )).orderBy(desc(tasks.createdAt)).limit(20),
           tx.select().from(serviceRequests).where(eq(serviceRequests.investorId, id)).limit(20),
           tx.select().from(consents).where(eq(consents.investorId, id)),
           inv.rmId
