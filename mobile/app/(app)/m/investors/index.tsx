@@ -21,7 +21,9 @@ import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
 import { SkeletonList } from "../../../../src/components/ui/Skeleton";
 import { EmptyState, SearchEmptyState, ErrorState, NetworkErrorState } from "../../../../src/components/states";
 import { InvestorCard } from "../../../../src/components/domain/InvestorCard";
-import { InvestorKpiStrip } from "../../../../src/features/investors/InvestorKpiStrip";
+import { InvestorKpiStrip, type KpiQuick } from "../../../../src/features/investors/InvestorKpiStrip";
+import { startCall } from "../../../../src/features/activities/callAndLog";
+import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
 import { InvestorFilters, EMPTY_FILTERS, countActive, type UiFilters } from "../../../../src/features/investors/InvestorFilters";
 import { useInvestors, flattenInvestors, useDeleteInvestor, useInvestorBoard, useMoveClientStage, useExitedCount, type Investor } from "../../../../src/features/investors/api";
 import { ownPan } from "../../../../src/features/investors/client-types";
@@ -55,6 +57,8 @@ export default function InvestorsList() {
   const [layout, setLayout] = useState<"list" | "kanban">("list");
   // Exited / closed clients are hidden by default, as on the web list.
   const [showExited, setShowExited] = useState(false);
+  // A KPI tile's filter — the tile counts ACTIVE clients, so the list does too.
+  const [quick, setQuick] = useState<KpiQuick>("");
   const isKanban = layout === "kanban";
   const moveStage = useMoveClientStage();
 
@@ -68,16 +72,17 @@ export default function InvestorsList() {
       category: filters.category.join(","),
       tier: filters.tier.join(","),
       kyc: filters.kyc.join(","),
-      status: filters.status.join(","),
+      status: filters.status.join(",") || (quick ? "active" : ""),
       rm: filters.rm.join(","),
       created_from: filters.created_from,
       created_to: filters.created_to,
       sort: filters.sort,
       dir: filters.dir,
       // Hidden unless a status is picked, a name is searched, or "show" is tapped.
-      live: !filters.status.length && !debounced.trim() && !showExited ? "1" : undefined,
+      live: !filters.status.length && !quick && !debounced.trim() && !showExited ? "1" : undefined,
+      quick: quick || undefined,
     }),
-    [debounced, filters, showExited]
+    [debounced, filters, showExited, quick]
   );
   const hidingExited = !!apiFilters.live;
   const exitedCount = useExitedCount(!filters.status.length && !debounced.trim()).data ?? 0;
@@ -112,7 +117,13 @@ export default function InvestorsList() {
 
   const header = (
     <View style={styles.controls}>
-      <InvestorKpiStrip />
+      <InvestorKpiStrip active={quick} onSelect={setQuick} />
+      {quick ? (
+        <Pressable onPress={() => setQuick("")} style={styles.quickChip} accessibilityRole="button" accessibilityLabel={`Clear filter: ${QUICK_LABEL[quick]}`}>
+          <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>{QUICK_LABEL[quick]}</Text>
+          <Feather name="x" size={14} color={palette.brand} />
+        </Pressable>
+      ) : null}
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search name, PAN, phone…" />
       <View style={styles.toolbar}>
         <Pressable style={styles.filterBtn} onPress={() => setSheetOpen(true)}>
@@ -222,6 +233,36 @@ export default function InvestorsList() {
       />
 
       <BottomSheet visible={!!rowAction} onClose={() => setRowAction(null)} title={rowAction?.name ?? "Client"}>
+        {/* Reach the client without opening the record: Call arms the after-call
+            prompt (outcome, notes, next follow-up); WhatsApp is logged on the
+            client's timeline. */}
+        {rowAction?.phone ? (
+          <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm }}>
+            <Button
+              label="Call"
+              full
+              icon={<Feather name="phone" size={15} color="#fff" />}
+              onPress={() => {
+                const inv = rowAction; setRowAction(null);
+                if (inv?.phone) startCall({ subjectType: "investor", subjectId: inv.id, name: inv.name || "Client", phone: inv.phone });
+              }}
+              style={{ flex: 1 }}
+            />
+            <Button
+              label="WhatsApp"
+              variant="secondary"
+              full
+              icon={<Feather name="message-circle" size={15} color={palette.ink} />}
+              onPress={() => {
+                const inv = rowAction; setRowAction(null);
+                if (inv && !openWhatsApp({ phone: inv.phone, subjectType: "investor", subjectId: inv.id, name: inv.name })) toast.error("This mobile number can't be used for WhatsApp.");
+              }}
+              style={{ flex: 1 }}
+            />
+          </View>
+        ) : (
+          <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>No mobile number on file.</Text>
+        )}
         <Button
           label="Edit client"
           variant="secondary"
@@ -243,7 +284,16 @@ export default function InvestorsList() {
   );
 }
 
+const QUICK_LABEL: Record<Exclude<KpiQuick, "">, string> = {
+  tier_a: "A-tier clients",
+  reviews_due: "Reviews due",
+  kyc_expiring: "KYC expiring 30d",
+  no_nominee: "Nominee missing",
+  dormant: "Dormant",
+};
+
 const styles = StyleSheet.create({
+  quickChip: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 6, paddingHorizontal: spacing.md, minHeight: 32, borderRadius: 999, borderWidth: 1, borderColor: palette.brand, backgroundColor: palette.surface },
   controls: { paddingTop: spacing.sm, paddingBottom: spacing.sm, gap: spacing.sm },
   toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   filterBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },

@@ -60,6 +60,9 @@ export interface InvestorFilters {
    *  /dashboard/investors: hidden unless a status is picked, a name is
    *  searched, or "show" is tapped). */
   live?: string;
+  /** A Clients KPI tile's filter (tier_a / reviews_due / kyc_expiring /
+   *  no_nominee / dormant) — the server's quick-filter of the same name. */
+  quick?: string;
 }
 
 export function useInvestors(filters: InvestorFilters) {
@@ -80,6 +83,7 @@ export function useInvestors(filters: InvestorFilters) {
         sort: filters.sort || undefined,
         dir: filters.dir || undefined,
         live: filters.live || undefined,
+        ...(filters.quick ? { [filters.quick]: "1" } : {}),
         page: pageParam,
         limit: PAGE_SIZE,
       }),
@@ -114,6 +118,7 @@ export function useInvestorBoard(filters: InvestorFilters, enabled: boolean) {
         sort: filters.sort || undefined,
         dir: filters.dir || undefined,
         live: filters.live || undefined,
+        ...(filters.quick ? { [filters.quick]: "1" } : {}),
         limit: 200,
       }),
   });
