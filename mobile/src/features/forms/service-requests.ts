@@ -163,5 +163,5 @@ export const serviceRequestForm: FormSpec = {
     assignedToUserId: v.assignedToUserId || undefined,
   }),
   redirect: (json) => (json?.id ? `/m/service-requests/${json.id}` : null),
-  invalidate: ["service-requests"],
+  invalidate: ["service-requests", "command-center"],
 };

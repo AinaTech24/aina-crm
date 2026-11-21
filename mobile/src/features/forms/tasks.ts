@@ -4,11 +4,35 @@
  * due date and SLA due. The PATCH has no type or recurrence, and it never
  * takes the old remarks (comments have their own endpoint), so neither is
  * offered here. Creating a task is NewTaskScreen (request types, scheme rows).
+ *
+ * Dates are India days. A due stored as 18:30Z is the NEXT day in India, so the
+ * picker shows the IST day (slicing the ISO string showed the day before and a
+ * save moved the task back a day). An unchanged day is not sent — the task
+ * keeps its time (a follow-up due 10:00 IST stays at 10:00) — and a moved day
+ * keeps the task's time of day.
  */
 
 import type { FormSpec } from "./types";
 
-const day = (v: unknown) => (v ? String(v).slice(0, 10) : "");
+const IST_MS = 330 * 60_000;
+const DAY_MS = 86_400_000;
+
+/** The India calendar day of a stored timestamp ("" when none). */
+export function istDay(v: unknown): string {
+  if (!v) return "";
+  const t = new Date(String(v)).getTime();
+  if (isNaN(t)) return /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? String(v).slice(0, 10) : "";
+  return new Date(t + IST_MS).toISOString().slice(0, 10);
+}
+
+/** `day` at the original timestamp's India time of day; with none, UTC midnight (the web's `new Date(day)`). */
+export function onIstDay(day: string, original?: unknown): string {
+  const base = Date.parse(`${day}T00:00:00Z`);
+  const orig = original ? new Date(String(original)).getTime() : NaN;
+  if (isNaN(orig)) return new Date(base).toISOString();
+  const intoIstDay = (((orig + IST_MS) % DAY_MS) + DAY_MS) % DAY_MS;
+  return new Date(base - IST_MS + intoIstDay).toISOString();
+}
 
 export const taskForm: FormSpec = {
   title: "New task",
@@ -24,12 +48,16 @@ export const taskForm: FormSpec = {
     description: r.description ?? "",
     priority: r.priority ?? "normal",
     assigneeId: r.assigneeId ?? "",
-    entryDate: day(r.entryDate),
-    dueDate: day(r.dueAt),
-    slaDueDate: day(r.slaDueAt),
+    entryDate: r.entryDate ? String(r.entryDate).slice(0, 10) : "",
+    dueDate: istDay(r.dueAt),
+    slaDueDate: istDay(r.slaDueAt),
+    // What the task carries now — an unchanged day is left alone.
+    _dueAt: r.dueAt ?? null,
+    _slaDueAt: r.slaDueAt ?? null,
   }),
 
-  validate: (v) => (v.title?.trim() ? null : { title: "Say what needs doing." }),
+  // The PATCH takes a title of 2+ characters.
+  validate: (v) => (String(v.title ?? "").trim().length >= 2 ? null : { title: "Say what needs doing." }),
 
   sections: [
     {
@@ -40,6 +68,7 @@ export const taskForm: FormSpec = {
         {
           key: "assigneeId", label: "Assigned to", type: "lookup", lookupEndpoint: "/api/employees", lookupEnvelope: "rows",
           lookupLabel: (e) => e.name + (Array.isArray(e.roles) && e.roles.length ? ` · ${e.roles[0]}` : ""),
+          lookupFilter: (e) => (e.status ?? "active") === "active",
         },
         { key: "entryDate", label: "Entry date", type: "date" },
         { key: "dueDate", label: "Due date", type: "date" },
@@ -48,16 +77,20 @@ export const taskForm: FormSpec = {
     },
   ],
 
-  buildBody: (f) => ({
-    title: f.title.trim(),
-    description: f.description || undefined,
-    priority: f.priority,
-    assigneeId: f.assigneeId || undefined,
-    entryDate: f.entryDate || undefined,
-    dueAt: f.dueDate ? new Date(f.dueDate).toISOString() : undefined,
-    // A cleared SLA date clears the SLA (null), as on the web.
-    slaDueAt: f.slaDueDate ? new Date(f.slaDueDate).toISOString() : null,
-  }),
+  buildBody: (f) => {
+    const dueChanged = !!f.dueDate && f.dueDate !== istDay(f._dueAt);
+    const slaChanged = (f.slaDueDate || "") !== istDay(f._slaDueAt);
+    return {
+      title: String(f.title).trim(),
+      description: f.description || undefined,
+      priority: f.priority,
+      assigneeId: f.assigneeId || undefined,
+      entryDate: f.entryDate || undefined,
+      ...(dueChanged ? { dueAt: onIstDay(f.dueDate, f._dueAt) } : {}),
+      // A cleared SLA date clears the SLA (null), as on the web; an untouched one is left be.
+      ...(slaChanged ? { slaDueAt: f.slaDueDate ? onIstDay(f.slaDueDate, f._slaDueAt) : null } : {}),
+    };
+  },
 
   redirect: () => null,
 };

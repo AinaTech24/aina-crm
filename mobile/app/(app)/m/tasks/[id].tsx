@@ -8,11 +8,17 @@
  * related records (link / unlink through /related), and comments
  * (/comments — the old remarks column is read-only "Earlier notes"; writing
  * it would replace the whole work log). Entry date and closed date as on web.
+ *
+ * Approve / Reject are offered to whoever the server lets sign off: the task's
+ * creator or a task.edit.all user (PATCH approvalAction). Sub-task changes are
+ * written to the cached task first, so two quick taps never send a stale list
+ * that undoes the first. Tap a sub-task to give it an owner, a date or a remark.
  */
 
 import React, { useState } from "react";
 import { View, ScrollView, StyleSheet, Pressable, KeyboardAvoidingView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -22,6 +28,7 @@ import { Text } from "../../../../src/components/ui/Text";
 import { Button } from "../../../../src/components/ui/Button";
 import { TextField } from "../../../../src/components/ui/TextField";
 import { SelectField } from "../../../../src/components/ui/SelectField";
+import { DateField } from "../../../../src/components/form/DateField";
 import { SearchBar } from "../../../../src/components/ui/SearchBar";
 import { StatusPill } from "../../../../src/components/ui/StatusPill";
 import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
@@ -37,6 +44,7 @@ import {
   type ChecklistItem, type Task, type TaskLink,
 } from "../../../../src/features/tasks/api";
 import { titleCase, fmtDate, timeAgo, inr } from "../../../../src/lib/format";
+import { REQUEST_TYPE_BY_KEY, CATEGORY_LABEL, FREQUENCIES, categoryOfType } from "../../../../src/features/tasks/request-types";
 import { taskStatusBadge } from "../../../../src/lib/status";
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
 import { asIcon } from "../../../../src/lib/icons";
@@ -44,6 +52,14 @@ import { asIcon } from "../../../../src/lib/icons";
 // The web's four sub-task states; completing one stamps doneAt.
 const CHECK_CYCLE: Record<string, ChecklistItem["status"]> = { not_started: "in_progress", in_progress: "completed", completed: "not_started", assigned_to_other: "completed" };
 const CHECK_ICON: Record<string, string> = { not_started: "circle", in_progress: "loader", completed: "check-circle", assigned_to_other: "user" };
+const CHECK_LABEL: Record<string, string> = { not_started: "Not started", in_progress: "In progress", completed: "Completed", assigned_to_other: "Assigned to other" };
+const FREQ_LABEL: Record<string, string> = Object.fromEntries(FREQUENCIES);
+/** A stored task type in words — a request's own label ("Policy renewal"), else the type itself. */
+const typeLabel = (t?: string | null) => (t ? REQUEST_TYPE_BY_KEY[t]?.label ?? (t === "non_financial" ? "Non-financial" : titleCase(t)) : "");
+/** The PATCH's checklist schema: no empty text, remark a string or absent (never null). */
+const cleanChecklist = (items: ChecklistItem[]) => items
+  .filter((c) => c && typeof c.text === "string" && c.text.trim())
+  .map(({ remark, ...c }) => ({ ...c, id: String(c.id).slice(0, 64), text: c.text.slice(0, 500), done: !!(c.done || c.status === "completed"), ...(typeof remark === "string" ? { remark: remark.slice(0, 2000) } : {}) }));
 const LINK_ICON: Record<TaskLink["kind"], string> = { client: "user", lead: "trending-up", meeting: "calendar", request: "life-buoy" };
 const LINK_FIELD: Record<TaskLink["kind"], string> = { client: "relatedInvestorId", lead: "relatedLeadId", meeting: "relatedMeetingId", request: "relatedServiceRequestId" };
 const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -64,6 +80,8 @@ export default function TaskDetail() {
   const addComment = useAddTaskComment(id!);
   const related = useTaskRelated(id);
   const info = useInfoRequest(id!);
+  const qc = useQueryClient();
+  const [editItem, setEditItem] = useState<ChecklistItem | null>(null);
   const [statusSheet, setStatusSheet] = useState(false);
   const [prioSheet, setPrioSheet] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
@@ -79,6 +97,11 @@ export default function TaskDetail() {
 
   const myId = me?.user?.id;
   const canViewAll = hasCap(me?.capabilities, "task.view.all");
+  const canEditAll = hasCap(me?.capabilities, "task.edit.all");
+  /** The server's approver: the task's creator, or anyone with task.edit.all. */
+  const isApprover = (!!myId && myId === task.createdById) || canEditAll;
+  /** DELETE is the owner's (assignee / creator) or a task.edit.all user's. */
+  const canDelete = canEditAll || (!!myId && (myId === task.assigneeId || myId === task.createdById));
   const status = taskStatusBadge(task.status);
   const done = task.status === "completed";
   const closed = done || task.status === "cancelled";
@@ -92,8 +115,12 @@ export default function TaskDetail() {
   const canAnswer = irOpen && (myId === ir!.askedToId || myId === task.createdById || canViewAll);
   const canAsk = !irOpen && !closed && myId === task.assigneeId;
   const pendingApproval = task.approvalStatus === "pending";
-  const canApprove = pendingApproval && myId !== task.assigneeId;
+  const canApprove = pendingApproval && isApprover;
+  /** Completing goes for sign-off unless the approver completes it themselves. */
+  const needsSignOff = !!task.requiresApproval && task.approvalStatus !== "approved" && !isApprover;
   const request = task.meta?.request;
+  const category = categoryOfType(task.type);
+  const reqType = task.type ? REQUEST_TYPE_BY_KEY[task.type] : undefined;
 
   const patch = (p: any, onDone?: (r: any) => void) => { Haptics.selectionAsync().catch(() => {}); update.mutate(p, { onSuccess: onDone }); };
   /** Completing a task that needs approval sends it for approval instead. */
@@ -104,25 +131,35 @@ export default function TaskDetail() {
   const setPriority = (p: string) => { setPrioSheet(false); patch({ priority: p }); };
   const snooze = (days: number) => {
     const base = task.dueAt ? new Date(task.dueAt) : new Date();
+    if (isNaN(base.getTime())) return;
     base.setDate(base.getDate() + days);
-    patch({ dueAt: base.toISOString() });
+    patch({ dueAt: base.toISOString() }, () => toast.success(`Due ${fmtDate(base.toISOString())}`));
   };
-  const saveChecklist = (items: ChecklistItem[]) => update.mutate({ checklist: items } as any);
-  const cycleItem = (item: ChecklistItem) => saveChecklist(checklist.map((c) => {
+  /** The list as it is NOW (the cache, not this render) — so quick taps build on each other. */
+  const currentChecklist = (): ChecklistItem[] => qc.getQueryData<Task>(["task", id])?.meta?.checklist ?? checklist;
+  const saveChecklist = (items: ChecklistItem[]) => {
+    const prev = qc.getQueryData<Task>(["task", id]);
+    const clean = cleanChecklist(items) as ChecklistItem[];
+    qc.setQueryData<Task>(["task", id], (t) => (t ? { ...t, meta: { ...(t.meta ?? {}), checklist: clean } } : t));
+    update.mutate({ checklist: clean } as any, { onError: () => { if (prev) qc.setQueryData(["task", id], prev); } });
+  };
+  const cycleItem = (item: ChecklistItem) => saveChecklist(currentChecklist().map((c) => {
     if (c.id !== item.id) return c;
-    const next = CHECK_CYCLE[c.status ?? "not_started"];
+    const next = CHECK_CYCLE[c.status ?? (c.done ? "completed" : "not_started")];
     return { ...c, status: next, done: next === "completed", doneAt: next === "completed" ? new Date().toISOString() : null };
   }));
-  const removeItem = (item: ChecklistItem) => saveChecklist(checklist.filter((c) => c.id !== item.id));
-  const addItem = () => { if (!newItem.trim()) return; saveChecklist([...checklist, { id: newId(), text: newItem.trim(), status: "not_started", done: false }]); setNewItem(""); };
+  const removeItem = (item: ChecklistItem) => saveChecklist(currentChecklist().filter((c) => c.id !== item.id));
+  const addItem = () => { const t = newItem.trim(); if (!t) return; saveChecklist([...currentChecklist(), { id: newId(), text: t.slice(0, 500), status: "not_started", done: false }]); setNewItem(""); };
+  const saveItem = (next: ChecklistItem) => { setEditItem(null); saveChecklist(currentChecklist().map((c) => (c.id === next.id ? next : c))); };
   const postComment = () => { const b = comment.trim(); if (!b) return; addComment.mutate(b.slice(0, 5000), { onSuccess: () => setComment("") }); };
   const sendAnswer = () => { const a = answer.trim(); if (!a) return; info.mutate({ action: "answer", answer: a }, { onSuccess: () => { setAnswer(""); toast.success("Answered — the task is back with its owner"); } }); };
   const onDelete = () => confirmDelete({ title: "Delete task?", message: "It moves to Trash — you can restore it later." }, () => del.mutate(id!, { onSuccess: () => router.back() }));
   const allDone = checklist.length > 0 && checklist.every((c) => c.status === "completed" || c.done);
+  const people = (team.data?.rows ?? []).filter((u) => (u.status ?? "active") === "active").map((u) => ({ value: u.id, label: u.id === myId ? `${u.name ?? "—"} (me)` : u.name ?? "—" }));
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Task" subtitle={titleCase(task.type) || undefined} />
+      <ScreenHeader title="Task" subtitle={typeLabel(task.type) || undefined} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Animated.View entering={FadeIn.duration(240)}>
@@ -132,8 +169,9 @@ export default function TaskDetail() {
               <Pressable accessibilityRole="button" accessibilityLabel={`Status: ${status.label}. Change status`} onPress={() => setStatusSheet(true)}><StatusPill label={status.label} tone={status.tone} /></Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel="Change priority" onPress={() => setPrioSheet(true)}>{task.priority ? <StatusPill label={titleCase(task.priority)} tone={TASK_PRIORITY_TONE[task.priority] ?? "neutral"} dot={false} /> : <StatusPill label="Set priority" tone="neutral" dot={false} />}</Pressable>
               {sla ? <StatusPill label={sla.label} tone={sla.tone} dot={false} /> : null}
-              {pendingApproval ? <StatusPill label="Awaiting approval" tone="warning" dot={false} /> : task.approvalStatus === "rejected" ? <StatusPill label="Approval rejected" tone="danger" dot={false} /> : null}
+              {pendingApproval ? <StatusPill label="Awaiting approval" tone="warning" dot={false} /> : task.approvalStatus === "rejected" ? <StatusPill label="Reopened for changes" tone="danger" dot={false} /> : task.approvalStatus === "approved" ? <StatusPill label="Approved" tone="success" dot={false} /> : null}
             </View>
+            {task.approvalStatus === "rejected" && task.approvalNote ? <Text variant="caption" style={{ marginTop: spacing.sm, color: palette.danger }}>“{task.approvalNote}”</Text> : null}
           </Card>
 
           {/* Need information */}
@@ -161,7 +199,7 @@ export default function TaskDetail() {
           ) : null}
 
           {!closed && !pendingApproval ? (
-            <Button label={allDone ? "All points done — mark complete" : task.requiresApproval ? "Submit for approval" : "Mark complete"} icon={<Feather name="check" size={16} color={palette.white} />} onPress={complete} loading={update.isPending} full style={{ marginTop: spacing.lg }} />
+            <Button label={needsSignOff ? "Submit for approval" : allDone ? "All points done — mark complete" : "Mark complete"} icon={<Feather name="check" size={16} color={palette.white} />} onPress={complete} loading={update.isPending} full style={{ marginTop: spacing.lg }} />
           ) : null}
 
           {!closed ? (
@@ -176,11 +214,11 @@ export default function TaskDetail() {
 
           <View style={[styles.row2, { marginTop: spacing.md }]}>
             <View style={{ flex: 1 }}><Button label="Edit" variant="secondary" full icon={<Feather name="edit-2" size={16} color={palette.ink} />} onPress={() => router.push(`/m/tasks/new?editId=${id}` as any)} /></View>
-            <View style={{ flex: 1 }}><Button label="Delete" variant="danger" full loading={del.isPending} icon={<Feather name="trash-2" size={16} color={palette.white} />} onPress={onDelete} /></View>
+            {canDelete ? <View style={{ flex: 1 }}><Button label="Delete" variant="danger" full loading={del.isPending} icon={<Feather name="trash-2" size={16} color={palette.white} />} onPress={onDelete} /></View> : null}
           </View>
 
           <Card flat style={{ padding: 0, marginTop: spacing.lg }}>
-            <Field label="Type" value={titleCase(task.type)} />
+            <Field label="Type" value={typeLabel(task.type)} />
             <Field label="Assigned to" value={task.assignee ?? nameOf(task.assigneeId)} />
             <Field label="Entry date" value={fmtDate(task.entryDate)} />
             <Field label="Due" value={fmtDate(task.dueAt)} />
@@ -188,16 +226,26 @@ export default function TaskDetail() {
             {done ? <Field label="Closed date" value={fmtDate(task.completedAt)} last /> : null}
           </Card>
 
-          {request && (request.rows?.length || request.kycMode || task.meta?.boValue) ? (
+          {category !== "general" ? (
             <Card style={{ marginTop: spacing.lg }}>
-              <Text variant="caption" tone="faint">REQUEST</Text>
-              {request.kycMode ? <Text variant="body" style={{ marginTop: 4 }}>{request.kycMode === "online" ? "Online KYC" : "Physical KYC"}</Text> : null}
-              {(request.rows ?? []).map((r, i) => (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
+                <StatusPill label={CATEGORY_LABEL[category]} tone="neutral" size="sm" dot={false} />
+                <Text variant="body" style={{ fontWeight: fontWeight.semibold, flex: 1 }}>{reqType?.label ?? "Request type not chosen"}</Text>
+              </View>
+              {request?.kycMode ? <Text variant="body" style={{ marginTop: 4 }}>{request.kycMode === "online" ? "Online KYC" : "Physical KYC"}</Text> : null}
+              {(request?.rows ?? []).map((r: any, i: number) => (
                 <Text key={i} variant="caption" style={{ marginTop: 4 }}>
-                  • {[r.fromSchemeName ? `${r.fromSchemeName} →` : null, r.schemeName, r.amount ? inr(r.amount) : null, r.allUnits ? "all units" : r.units ? `${r.units} units` : null, r.sipDay ? `SIP day ${r.sipDay}` : null, r.folio ? `folio ${r.folio}` : null].filter(Boolean).join(" ")}
+                  • {[r.fromSchemeName ? `${r.fromSchemeName} →` : null, r.schemeName, r.amount != null ? inr(r.amount) : null, r.allUnits ? "all units" : r.units != null ? `${r.units} units` : null,
+                    r.sipDay ? `day ${r.sipDay}` : null, r.frequency ? FREQ_LABEL[r.frequency] ?? r.frequency : null, r.folio ? `folio ${r.folio}` : null].filter(Boolean).join(" ")}
                 </Text>
               ))}
-              {task.meta?.boValue ? <Text variant="caption" tone="muted" style={{ marginTop: 4 }}>Value {inr(task.meta.boValue)}{task.meta.boChannel ? ` · ${titleCase(task.meta.boChannel)}` : ""}</Text> : null}
+              {/* An insurance request keeps the policy number in the folio slot and the premium / claim in the value. */}
+              {request?.folio && !(request.rows ?? []).length ? <Text variant="caption" style={{ marginTop: 4 }}>{reqType?.labels?.folio ?? "Folio"}: {request.folio}</Text> : null}
+              {task.meta?.boValue != null && Number.isFinite(Number(task.meta.boValue)) ? (
+                <Text variant="caption" tone="muted" style={{ marginTop: 4 }}>
+                  {(request?.rows?.length ?? 0) > 1 ? "Total" : (reqType?.labels?.amount ?? "Amount").replace(/\s*\(₹\)$/, "")} {inr(task.meta.boValue)}{task.meta.boChannel ? ` · ${titleCase(task.meta.boChannel)}` : ""}
+                </Text>
+              ) : task.meta?.boChannel ? <Text variant="caption" tone="muted" style={{ marginTop: 4 }}>Mode {titleCase(task.meta.boChannel)}</Text> : null}
               {task.meta?.businessEntryId ? <Text variant="caption" tone="muted">Booked as a Business entry</Text> : null}
             </Card>
           ) : null}
@@ -233,10 +281,12 @@ export default function TaskDetail() {
             {checklist.length === 0 ? <Text variant="caption" tone="muted">No sub-tasks yet.</Text> : checklist.map((item) => (
               <View key={item.id} style={styles.clRow}>
                 <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: item.status === "completed" }} accessibilityLabel={item.text} onPress={() => cycleItem(item)} hitSlop={8}><Feather name={asIcon(CHECK_ICON[item.status ?? "not_started"] ?? "circle")} size={18} color={item.status === "completed" ? palette.success : palette.faint} /></Pressable>
-                <View style={{ flex: 1 }}>
+                <Pressable style={{ flex: 1 }} onPress={() => setEditItem(item)} accessibilityRole="button" accessibilityHint="Owner, date and remark">
                   <Text variant="body" style={item.status === "completed" ? { textDecorationLine: "line-through", color: palette.faint } : undefined}>{item.text}</Text>
-                  {item.actionDate || item.remark ? <Text variant="caption" tone="muted">{[item.actionDate ? fmtDate(item.actionDate) : null, item.remark].filter(Boolean).join(" · ")}</Text> : null}
-                </View>
+                  {item.actionDate || item.remark || item.assigneeId ? (
+                    <Text variant="caption" tone="muted">{[item.assigneeId ? `→ ${nameOf(item.assigneeId) ?? item.assigneeName ?? "a teammate"}` : null, item.actionDate ? fmtDate(item.actionDate) : null, item.remark].filter(Boolean).join(" · ")}</Text>
+                  ) : null}
+                </Pressable>
                 <Pressable accessibilityRole="button" accessibilityLabel="Remove sub-task" onPress={() => removeItem(item)} hitSlop={8}><Feather name="x" size={15} color={palette.faint} /></Pressable>
               </View>
             ))}
@@ -319,7 +369,51 @@ export default function TaskDetail() {
       <RejectApprovalSheet visible={rejectOpen} onClose={() => setRejectOpen(false)} busy={update.isPending}
         onReject={(note) => patch({ approvalAction: "reject", ...(note ? { approvalNote: note } : {}) }, () => { setRejectOpen(false); toast.success("Sent back"); })} />
       <LinkSheet visible={linkOpen} onClose={() => setLinkOpen(false)} onLink={(field, value) => { setLinkOpen(false); patch({ [field]: value }); }} />
+      {editItem ? <SubtaskSheet item={editItem} people={people} onClose={() => setEditItem(null)} onSave={saveItem} /> : null}
     </View>
+  );
+}
+
+/** One sub-task: its state, a teammate it is delegated to (they are notified and may open the task), a date and a remark. */
+function SubtaskSheet({ item, people, onClose, onSave }: { item: ChecklistItem; people: { value: string; label: string }[]; onClose: () => void; onSave: (c: ChecklistItem) => void }) {
+  const [status, setStatus] = useState<string>(item.status ?? (item.done ? "completed" : "not_started"));
+  const [assigneeId, setAssigneeId] = useState<string>(item.assigneeId ?? "");
+  const [actionDate, setActionDate] = useState<string>(item.actionDate ? String(item.actionDate).slice(0, 10) : "");
+  const [remark, setRemark] = useState<string>(item.remark ?? "");
+  const pickAssignee = (v: string) => {
+    setAssigneeId(v);
+    // The web's rule: delegating marks it "Assigned to other" (unless done); clearing undoes that.
+    if (v && status !== "completed") setStatus("assigned_to_other");
+    else if (!v && status === "assigned_to_other") setStatus("not_started");
+  };
+  const save = () => {
+    const done = status === "completed";
+    onSave({
+      ...item,
+      status: status as ChecklistItem["status"],
+      done,
+      doneAt: done ? item.doneAt ?? new Date().toISOString() : null,
+      actionDate: actionDate || null,
+      remark: remark.trim().slice(0, 2000),
+      assigneeId: assigneeId || null,
+    });
+  };
+  return (
+    <BottomSheet visible onClose={onClose} title={item.text}>
+      <ScrollView style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled">
+        <View style={[styles.badgeRow, { marginTop: 0, marginBottom: spacing.md }]}>
+          {Object.keys(CHECK_LABEL).map((k) => (
+            <Pressable key={k} onPress={() => setStatus(k)} accessibilityRole="radio" accessibilityState={{ checked: status === k }}>
+              <StatusPill label={CHECK_LABEL[k]} tone={status === k ? (k === "completed" ? "success" : k === "in_progress" ? "info" : k === "assigned_to_other" ? "violet" : "neutral") : "neutral"} dot={status === k} />
+            </Pressable>
+          ))}
+        </View>
+        <SelectField label="Assign to" value={assigneeId || null} placeholder="Task's assignee" options={[...(assigneeId ? [{ value: "", label: "Task's assignee" }] : []), ...people]} onChange={pickAssignee} />
+        <DateField label="Date" value={actionDate} onChange={setActionDate} />
+        <TextField label="Remark" value={remark} onChangeText={setRemark} multiline />
+      </ScrollView>
+      <Button label="Save" full onPress={save} />
+    </BottomSheet>
   );
 }
 

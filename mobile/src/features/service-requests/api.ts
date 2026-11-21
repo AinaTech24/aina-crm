@@ -5,7 +5,12 @@
  *
  * GET  /api/service-requests        → { serviceRequests: rows } (full rows)
  * GET  /api/service-requests/[id]   → row
- * PATCH /api/service-requests/[id]  → status / priority / resolutionNotes
+ * PATCH /api/service-requests/[id]  → the web ticket workspace's fields: status,
+ *   priority, assignee, internal remarks, resolution notes, a timeline note,
+ *   "first response", CSAT and — for a complaint — the SEBI register fields.
+ *   The server appends the activity timeline and stamps respondedAt /
+ *   resolvedAt; a complaint is resolved or closed only with resolution notes.
+ * Writes need service_request.manage (the list and the ticket are readable without).
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -26,12 +31,38 @@ export interface ServiceRequest {
   priority: string | null;
   assignedToUserId: string | null;
   slaResolutionAt: string | null;
+  slaResponseAt?: string | null;
   respondedAt: string | null;
   resolvedAt: string | null;
   resolutionNotes: string | null;
   remarks: string | null;
   createdAt: string | null;
+  sebiCategory?: string | null;
+  sebiSubCategory?: string | null;
+  complaintSource?: string | null;
+  scoresRefNo?: string | null;
+  csatRating?: number | null;
+  csatComment?: string | null;
+  timeline?: SrTimelineEntry[] | null;
   [k: string]: any;
+}
+
+export interface SrTimelineEntry { at: string; by: string; event: string; note?: string }
+
+export interface SrPatch {
+  status?: SrStatus;
+  priority?: string;
+  assignedToUserId?: string;
+  remarks?: string;
+  resolutionNotes?: string;
+  timelineNote?: string;
+  markResponded?: boolean;
+  csatRating?: number;
+  csatComment?: string;
+  sebiCategory?: string;
+  sebiSubCategory?: string;
+  complaintSource?: string;
+  scoresRefNo?: string;
 }
 
 export function useServiceRequests() {
@@ -53,8 +84,7 @@ export function useServiceRequest(id: string) {
 export function useUpdateServiceRequest(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: { status?: SrStatus; priority?: string; resolutionNotes?: string }) =>
-      api.patch<ServiceRequest>(`/api/service-requests/${id}`, patch),
+    mutationFn: (patch: SrPatch) => api.patch<ServiceRequest>(`/api/service-requests/${id}`, patch),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["service-request", id] });
       qc.invalidateQueries({ queryKey: ["service-requests"] });
@@ -86,3 +116,44 @@ export function isSlaBreached(r: ServiceRequest): boolean {
 }
 
 export const PRIORITY_TONE: Record<string, Tone> = { urgent: "danger", high: "warning", normal: "info", low: "neutral" };
+
+/** The web detail page's TYPE_LABEL (legacy types read as their current names). */
+export const SR_TYPE_LABEL: Record<string, string> = {
+  nominee_update: "Nominee Update", bank_update: "Bank Update", mobile_update: "Mobile Update",
+  email_update: "Email Update", kyc_update: "KYC Update", minor_to_major: "Minor to Major",
+  capital_gain_report: "Capital Gain Report", statement_request: "Statement Request",
+  redemption_request: "Redemption Request", switch_request: "Switch Request",
+  transmission_case: "Transmission Case", folio_correction: "Folio Correction", other: "Other",
+  complaint: "Complaint", redemption_help: "Redemption Request", switch_help: "Switch Request",
+  transaction_query: "Other",
+};
+export const srTypeLabel = (t?: string | null) => (t ? SR_TYPE_LABEL[t] ?? t.replace(/_/g, " ") : "");
+
+/** Mirrors SEBI_COMPLAINT_CATEGORIES / COMPLAINT_SOURCES (web ServiceRequestDetailEditor). */
+export const SEBI_CATEGORIES = [
+  { value: "service", label: "Service / TAT" }, { value: "mis_selling", label: "Mis-selling" }, { value: "transaction", label: "Transaction / order" },
+  { value: "fee", label: "Fee / commission" }, { value: "kyc", label: "KYC / documents" }, { value: "communication", label: "Communication / statements" }, { value: "other", label: "Other" },
+];
+export const COMPLAINT_SOURCES = [
+  { value: "direct", label: "Direct (client)" }, { value: "scores", label: "SCORES (SEBI)" }, { value: "amfi", label: "AMFI" }, { value: "amc", label: "AMC" },
+  { value: "email", label: "Email" }, { value: "phone", label: "Phone" }, { value: "walk_in", label: "Walk-in" }, { value: "website", label: "Website form" }, { value: "other", label: "Other" },
+];
+export const SR_EVENT_LABEL: Record<string, string> = {
+  created: "Created", status: "Status changed", first_response: "First response", note: "Note",
+  resolution: "Resolution", assigned: "Reassigned", csat: "CSAT", escalated: "Escalated",
+};
+
+/** One SLA clock (web SlaCard): met / missed once done, else due / overdue / due within a day. */
+export function slaClock(due?: string | null, done?: string | null): { label: string; tone: Tone } | null {
+  if (!due) return null;
+  const d = new Date(due).getTime();
+  if (!isFinite(d)) return null;
+  if (done) {
+    const t = new Date(done).getTime();
+    return isFinite(t) && t <= d ? { label: "Met", tone: "success" } : { label: "Missed", tone: "danger" };
+  }
+  const ms = d - Date.now();
+  if (ms < 0) return { label: "Overdue", tone: "danger" };
+  if (ms < 24 * 3_600_000) return { label: "Due soon", tone: "warning" };
+  return { label: "On track", tone: "neutral" };
+}

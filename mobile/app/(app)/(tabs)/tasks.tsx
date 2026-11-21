@@ -1,12 +1,15 @@
 /**
  * Tasks tab — web parity. KPI strip (Open / Due today / Overdue / SLA at risk),
- * scope tabs (All / To me / By me), a List / Kanban switch (separate from the
+ * scope tabs (All / To me / By me / To approve — the web's "Awaiting my
+ * approval" view, ?approval=mine), a List / Kanban switch (separate from the
  * scope, as on the web: ?layout=kanban), search + a full filter & sort sheet.
- * The Kanban is the web's status board: long-press a card to move it.
+ * The list loads 50 at a time (the API's page) and fetches more on scroll; the
+ * board loads up to 300. The Kanban is the web's status board: long-press a
+ * card to move it.
  */
 
 import React, { useState, useEffect, useMemo } from "react";
-import { View, ScrollView, Pressable, StyleSheet } from "react-native";
+import { View, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -18,7 +21,7 @@ import { SkeletonList } from "../../../src/components/ui/Skeleton";
 import { EmptyState, SearchEmptyState, ErrorState } from "../../../src/components/states";
 import { TaskCard } from "../../../src/components/domain/TaskCard";
 import { TaskFilters, EMPTY_TASK_FILTERS, countTaskFilters, type UiTaskFilters } from "../../../src/features/tasks/TaskFilters";
-import { useTasks, useTaskKpis, TASK_STATUSES, type Task } from "../../../src/features/tasks/api";
+import { useTasks, useTaskKpis, tasksOf, TASK_STATUSES, type Task } from "../../../src/features/tasks/api";
 import { KanbanBoard } from "../../../src/components/domain/KanbanBoard";
 import { LayoutSwitch } from "../../../src/components/ui/LayoutSwitch";
 import { useQueryClient } from "@tanstack/react-query";
@@ -29,7 +32,9 @@ import { useTeam } from "../../../src/features/team/api";
 import { palette, radius, spacing, fontWeight } from "../../../src/theme/tokens";
 import { asIcon } from "../../../src/lib/icons";
 
-type TaskView = "" | "to_me" | "by_me";
+type TaskView = "" | "to_me" | "by_me" | "approve";
+/** The board shows at most this many (the web's Kanban cap). */
+const BOARD_CAP = 300;
 const ALL_STATUSES = TASK_STATUSES.map((s) => s.key).join(",");
 type Due = "" | "today" | "overdue" | "sla_risk";
 
@@ -41,13 +46,15 @@ function useDebounced<T>(value: T, delay = 350): T {
 
 export default function TasksTab() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ due?: string }>();
-  useEffect(() => { if (["today", "overdue", "sla_risk"].includes(params.due ?? "")) setDue(params.due as Due); }, [params.due]);
+  const params = useLocalSearchParams<{ due?: string; approval?: string }>();
   const [search, setSearch] = useState("");
   const [view, setView] = useState<TaskView>("");
   const [layout, setLayout] = useState<"list" | "kanban">("list");
   const qc = useQueryClient();
   const [due, setDue] = useState<Due>("");
+  useEffect(() => { if (["today", "overdue", "sla_risk"].includes(params.due ?? "")) setDue(params.due as Due); }, [params.due]);
+  // A sign-off request links to "Awaiting my approval".
+  useEffect(() => { if (params.approval === "mine" || params.approval === "pending") setView("approve"); }, [params.approval]);
   const [filters, setFilters] = useState<UiTaskFilters>({ ...EMPTY_TASK_FILTERS });
   const [sheetOpen, setSheetOpen] = useState(false);
   const debounced = useDebounced(search);
@@ -55,16 +62,25 @@ export default function TasksTab() {
   const isKanban = layout === "kanban";
 
   const apiFilters = useMemo(() => ({
-    q: debounced, view, due: isKanban ? "" as Due : due,
+    q: debounced,
+    view: view === "approve" ? "" as const : view,
+    approval: view === "approve" ? "mine" as const : "" as const,
+    due: isKanban ? "" as Due : due,
     // The board shows every status, like the web's.
     status: filters.status.length ? filters.status.join(",") : isKanban ? ALL_STATUSES : "", priority: filters.priority.join(","), type: filters.type.join(","),
     department: filters.department.join(","), assignee: filters.assignee.join(","),
     created_from: filters.created_from, created_to: filters.created_to, sort: filters.sort,
   }), [debounced, view, due, filters, isKanban]);
 
-  const { data, isLoading, isError, error, refetch, isRefetching } = useTasks(apiFilters);
+  const { data, isLoading, isError, error, refetch, isRefetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useTasks(apiFilters);
   const { data: kpis } = useTaskKpis(apiFilters);
-  const tasks = data?.tasks ?? [];
+  const tasks = useMemo(() => tasksOf(data), [data]);
+  const total = data?.pages?.[0]?.total ?? tasks.length;
+  // The board is every status at once: keep loading pages up to the cap.
+  useEffect(() => {
+    if (isKanban && hasNextPage && !isFetchingNextPage && tasks.length < BOARD_CAP) fetchNextPage().catch(() => {});
+  }, [isKanban, hasNextPage, isFetchingNextPage, tasks.length]);
+  const loadMore = () => { if (hasNextPage && !isFetchingNextPage) fetchNextPage().catch(() => {}); };
   const activeCount = countTaskFilters(filters);
   const moveTask = async (t: Task, status: string) => {
     try {
@@ -90,7 +106,7 @@ export default function TasksTab() {
           <Kpi icon="clock" tone={palette.violet} label="SLA at risk" value={kpis.slaRisk} active={due === "sla_risk"} onPress={() => toggleDue("sla_risk")} />
         </ScrollView>
       )}
-      <Segmented<TaskView> options={[{ key: "", label: "All" }, { key: "to_me", label: "To me" }, { key: "by_me", label: "By me" }]} value={view} onChange={setView} />
+      <Segmented<TaskView> options={[{ key: "", label: "All" }, { key: "to_me", label: "To me" }, { key: "by_me", label: "By me" }, { key: "approve", label: "To approve" }]} value={view} onChange={setView} />
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search tasks…" />
       <View style={styles.toolbarRow}>
         <Pressable style={styles.filterBtn} onPress={() => setSheetOpen(true)}>
@@ -106,10 +122,13 @@ export default function TasksTab() {
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       {isLoading ? (<><View style={{ paddingHorizontal: spacing.lg }}>{header}</View><SkeletonList count={6} /></>)
-      : isError ? <ErrorState message={(error as any)?.message} onRetry={() => refetch()} />
+      : isError && !tasks.length ? (<><View style={{ paddingHorizontal: spacing.lg }}>{header}</View><ErrorState message={(error as any)?.message} onRetry={() => refetch()} /></>)
       : isKanban ? (
         <View style={{ flex: 1 }}>
-          <View style={{ paddingHorizontal: spacing.lg }}>{header}</View>
+          <View style={{ paddingHorizontal: spacing.lg }}>
+            {header}
+            {total > tasks.length && !hasNextPage ? <Text variant="caption" tone="muted" style={{ marginBottom: spacing.sm }}>Showing {tasks.length} of {total} — narrow the filters to see the rest.</Text> : null}
+          </View>
           <KanbanBoard<Task>
             columns={TASK_STATUSES.map((s) => ({ key: s.key, label: s.label, color: toneColor(s.tone) }))}
             items={tasks}
@@ -135,9 +154,14 @@ export default function TasksTab() {
           renderItem={({ item }) => <TaskCard task={item} onPress={() => router.push(`/m/tasks/${item.id}`)} />}
           ListHeaderComponent={header}
           contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 96 }}
-          refreshing={isRefetching}
+          refreshing={isRefetching && !isFetchingNextPage}
           onRefresh={() => refetch()}
-          ListEmptyComponent={debounced || activeCount || due ? <SearchEmptyState query={debounced || "these filters"} /> : <EmptyState icon="check-square" title="No tasks" message="You're all caught up." />}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={isFetchingNextPage ? <ActivityIndicator style={{ paddingVertical: spacing.lg }} color={palette.brand} /> : null}
+          ListEmptyComponent={debounced || activeCount || due ? <SearchEmptyState query={debounced || "these filters"} />
+            : view === "approve" ? <EmptyState icon="check-circle" title="Nothing to approve" />
+            : <EmptyState icon="check-square" title="No tasks" message="You're all caught up." />}
         />
       )}
       <FAB label="New task" onPress={() => router.push("/m/tasks/new" as any)} />

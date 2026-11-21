@@ -3,7 +3,8 @@
  * jump, a kind-filter legend (task / follow-up / review / SIP / campaign /
  * compliance, with counts, tap to toggle), a Month grid (day cells with colored
  * dots) with day-select → that day's agenda, and an Agenda view (day-grouped
- * list). Each row deep-links to its record. Data: GET /api/calendar?month=YYYY-MM.
+ * list). Each row opens its own record (a task or meeting by its id — the feed's
+ * web links point at lists). Data: GET /api/calendar?month=YYYY-MM.
  */
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -16,7 +17,7 @@ import { Text } from "../../components/ui/Text";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states";
 import { palette, radius, spacing, fontSize, fontWeight } from "../../theme/tokens";
 import { toMobileRoute } from "../command-center/api";
-import { useCalendar, shiftMonth, currentMonth, kindIcon, kindColor, kindLabel, CALENDAR_KINDS, type CalendarItem } from "./api";
+import { useCalendar, shiftMonth, currentMonth, kindIcon, kindColor, kindLabel, calendarItemRoute, CALENDAR_KINDS, type CalendarItem } from "./api";
 import { asIcon } from "../../lib/icons";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -77,7 +78,9 @@ export function CalendarScreen() {
   const today = todayStr();
   const toggle = (k: string) => setActive((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
-  const goItem = (it: CalendarItem) => { const r = toMobileRoute(it.href); if (r) router.push(r as any); };
+  const goItem = (it: CalendarItem) => { const r = calendarItemRoute(it, toMobileRoute); if (r) router.push(r as any); };
+  // "Today" lands on today even when this month is already showing.
+  const goToday = () => { setMonth(currentMonth()); setSelected(todayStr()); };
 
   const legend = (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.legend}>
@@ -95,14 +98,15 @@ export function CalendarScreen() {
 
   const ItemRow = ({ it }: { it: CalendarItem }) => {
     const time = timeLabel(it.at);
+    const opens = !!calendarItemRoute(it, toMobileRoute);
     return (
-      <Pressable style={styles.item} onPress={() => goItem(it)}>
+      <Pressable style={styles.item} onPress={() => goItem(it)} disabled={!opens} accessibilityRole={opens ? "button" : undefined}>
         <View style={[styles.dot, { backgroundColor: kindColor(it.kind) }]}><Feather name={asIcon(kindIcon(it.kind))} size={13} color={palette.white} /></View>
         <View style={{ flex: 1 }}>
           <Text variant="body" numberOfLines={2}>{it.title}</Text>
           <Text variant="caption" tone="muted">{time ? `${time} · ` : ""}{kindLabel(it.kind)}</Text>
         </View>
-        <Feather name="chevron-right" size={16} color={palette.faint} />
+        {opens ? <Feather name="chevron-right" size={16} color={palette.faint} /> : null}
       </Pressable>
     );
   };
@@ -114,7 +118,7 @@ export function CalendarScreen() {
         <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => setMonth((mm) => shiftMonth(mm, -1))} hitSlop={8} style={styles.navBtn}><Feather name="chevron-left" size={20} color={palette.ink} /></Pressable>
         <Text variant="subtitle">{data?.monthLabel ?? month}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => setMonth((mm) => shiftMonth(mm, 1))} hitSlop={8} style={styles.navBtn}><Feather name="chevron-right" size={20} color={palette.ink} /></Pressable>
-        <Pressable onPress={() => setMonth(currentMonth())} hitSlop={8} style={styles.todayBtn}><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Today</Text></Pressable>
+        <Pressable onPress={goToday} hitSlop={8} style={styles.todayBtn} accessibilityRole="button"><Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Today</Text></Pressable>
       </View>
 
       {isLoading ? (

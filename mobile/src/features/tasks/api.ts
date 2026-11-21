@@ -10,7 +10,7 @@
  * approval sends it for approval instead).
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { queuedPatch } from "../../lib/offlineQueue";
 import type { Tone } from "../../theme";
@@ -60,6 +60,9 @@ export interface ChecklistItem {
   doneAt?: string | null;
   actionDate?: string | null;
   remark?: string | null;
+  /** Delegated to a teammate (they are notified and may open the task). */
+  assigneeId?: string | null;
+  assigneeName?: string | null;
 }
 
 export interface TaskFilters {
@@ -71,15 +74,28 @@ export interface TaskFilters {
   assignee?: string;
   due?: "" | "today" | "overdue" | "sla_risk";
   view?: "" | "to_me" | "by_me" | "kanban";
+  /** "mine" = awaiting MY sign-off (the web's "Awaiting my approval" view). */
+  approval?: "" | "pending" | "mine";
   sort?: "created" | "created_asc" | "due" | "due_desc" | "priority";
   created_from?: string;
   created_to?: string;
 }
 
+/** The API pages its list (50 a page, `total` alongside). */
+export const TASK_PAGE_SIZE = 50;
+
+/**
+ * The task list, a page at a time — the API returns 50 rows a page, so a book
+ * with more open tasks than that needs "load more" (it used to stop at 50
+ * silently). Flatten with `tasksOf(data)`.
+ */
 export function useTasks(filters: TaskFilters) {
-  return useQuery({
-    queryKey: ["tasks", filters],
-    queryFn: () =>
+  return useInfiniteQuery({
+    // "list" keeps the persisted cache of the old single-page shape from being
+    // read as pages.
+    queryKey: ["tasks", "list", filters],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
       api.get<{ tasks: Task[]; total: number }>("/api/tasks", {
         q: filters.q || undefined,
         // The CRM's list is every unfinished task — a task waiting on "Need
@@ -91,11 +107,25 @@ export function useTasks(filters: TaskFilters) {
         assignee: filters.assignee || undefined,
         due: filters.due || undefined,
         view: filters.view || undefined,
+        approval: filters.approval || undefined,
         sort: filters.sort || undefined,
         created_from: filters.created_from || undefined,
         created_to: filters.created_to || undefined,
+        page: pageParam,
       }),
+    getNextPageParam: (last, pages, lastPage) => {
+      const loaded = pages.reduce((n, p) => n + (p?.tasks?.length ?? 0), 0);
+      return (last?.tasks?.length ?? 0) >= TASK_PAGE_SIZE && loaded < (last?.total ?? 0) ? lastPage + 1 : undefined;
+    },
   });
+}
+
+/** Every task loaded so far, in order (a task that moved between pages shows once). */
+export function tasksOf(data: { pages?: Array<{ tasks?: Task[] } | undefined> } | undefined): Task[] {
+  const seen = new Set<string>();
+  const out: Task[] = [];
+  for (const p of data?.pages ?? []) for (const t of p?.tasks ?? []) if (t?.id && !seen.has(t.id)) { seen.add(t.id); out.push(t); }
+  return out;
 }
 
 export interface TaskKpis { open: number; today: number; overdue: number; slaRisk: number }
@@ -151,7 +181,11 @@ export function useInfoRequest(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { action: "ask"; question: string; askToId?: string } | { action: "answer"; answer: string }) => api.post(`/api/tasks/${id}/info-request`, body),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["task", id] }); qc.invalidateQueries({ queryKey: ["tasks"] }); },
+    // Asking blocks the task and answering restores it; both post a comment.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["task", id] }); qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["task-kpis"] }); qc.invalidateQueries({ queryKey: ["task-comments", id] });
+    },
   });
 }
 

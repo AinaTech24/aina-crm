@@ -1,20 +1,27 @@
 /**
  * New task — the live CRM's New task form (web /dashboard/tasks/new), in its
  * order: template → For client → What needs doing → Type of task (General /
- * Financial / Non-financial → the request) → entry date, due, assign to →
- * priority → More options.
+ * Financial / Non-financial, and Insurance for a firm with the insuranceTasks
+ * flag → the request) → entry date, due, assign to → priority → More options.
  *
- * A financial or non-financial request is one of request-types.ts (copied
- * from the CRM): it asks for the client, its own fields (mode, amount, folio,
- * Online / Physical KYC) and, for most financial requests, one or more scheme
- * ROWS whose schemes are picked from the firm's Scheme Master (PMS / AIF are
- * typed). The task starts with the request's checklist (ending in "RTA data
- * check"); the server books the draft Business entry and says so.
+ * A request is one of request-types.ts (copied from the CRM): it asks for the
+ * client, its own fields (mode, amount, folio — an insurance request names them
+ * "Policy number", "Premium (₹)" — Online / Physical KYC) and, for most
+ * financial requests, one or more scheme ROWS whose schemes are picked from the
+ * firm's Scheme Master (PMS / AIF are typed). The task starts with the
+ * request's checklist (an MF request's ends in "RTA data check"); the server
+ * books the draft Business entry and says so.
+ *
+ * The checklist follows the web's rule: a request fills an empty list or
+ * replaces the one the previous request put in — never one a template brought
+ * — and only a redemption's Online / Offline route (flagged firms) changes it
+ * again, so picking a Mode never wipes sub-tasks already assigned.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Pressable, ScrollView, StyleSheet, Switch, KeyboardAvoidingView } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import { ScreenHeader } from "../../components/ui/ScreenHeader";
@@ -35,7 +42,8 @@ import { useTeam } from "../team/api";
 import { useMeetings } from "../meetings/api";
 import { useSchemeSearch, type SchemeHit } from "../proposals/api";
 import {
-  REQUEST_TYPE_BY_KEY, REDEMPTION_ROUTE_CHECKLISTS, FREQUENCIES, requestTypesFor, rowFieldLabel, categoryOfType,
+  REQUEST_TYPE_BY_KEY, REDEMPTION_ROUTE_CHECKLISTS, FREQUENCIES, CATEGORY_LABEL, INSURANCE_TASKS_FLAG,
+  requestTypesFor, rowFieldLabel, fieldLabel, categoryOfType,
   type TaskCategory, type RequestType,
 } from "./request-types";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
@@ -53,6 +61,13 @@ const REMINDERS = [
 const REMIND_MIN: Record<string, number> = { at_due: 0, "1h": 60, "3h": 180, "1d": 1440, "2d": 2880, "1w": 10080 };
 const PRIORITIES = [{ key: "low", label: "Low" }, { key: "normal", label: "Normal" }, { key: "high", label: "High" }, { key: "urgent", label: "Urgent" }];
 const SIP_DAYS = Array.from({ length: 28 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }));
+/** The web RequestPicker's CATEGORIES; Insurance only for a firm with the flag. */
+const CATEGORIES: Array<{ key: TaskCategory; label: string }> = [
+  { key: "general", label: "General" },
+  { key: "financial", label: "Financial" },
+  { key: "non_financial", label: "Non-financial" },
+  { key: "insurance", label: "Insurance" },
+];
 
 let seq = 0;
 const emptyRow = (): Row => ({ key: ++seq, schemeName: "", fromSchemeName: "", amount: "", units: "", allUnits: false, folio: "", sipDay: "", frequency: "monthly" });
@@ -70,13 +85,17 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
   const recentMeetings = useMeetings({ sort: "meeting_desc" });
   const templates = useQuery({ queryKey: ["task-templates"], queryFn: () => api.get<{ templates: Template[] }>("/api/task-templates").then((r) => r.templates ?? []), staleTime: 5 * 60_000 });
   const redemptionRoute = me?.license?.featureFlags?.redemptionOnlineOffline === true;
+  /** The firm's `insuranceTasks` flag: the Insurance category. */
+  const insuranceTasks = me?.license?.featureFlags?.[INSURANCE_TASKS_FLAG] === true;
+  const insets = useSafeAreaInsets();
 
   const [templateId, setTemplateId] = useState("");
   const [client, setClient] = useState<{ id: string; name: string } | null>(null);
   const [lead, setLead] = useState<{ id: string; name: string } | null>(null);
   const [pick, setPick] = useState<null | "client" | "lead">(null);
-  const [title, setTitle] = useState("");
-  const [titleTouched, setTitleTouched] = useState(false);
+  // A title passed in (a client card's "Follow up with …") counts as typed, so a request never replaces it.
+  const [title, setTitle] = useState(params.title ?? "");
+  const [titleTouched, setTitleTouched] = useState(!!params.title);
   const [category, setCategory] = useState<TaskCategory>("general");
   const [requestKey, setRequestKey] = useState("");
   const [kind, setKind] = useState<"follow_up" | "custom">("follow_up");
@@ -90,23 +109,24 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
   const [dueDate, setDueDate] = useState(localDay(3));
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [priority, setPriority] = useState("normal");
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [description, setDescription] = useState("");
+  const [moreOpen, setMoreOpen] = useState(!!params.description);
+  const [description, setDescription] = useState(params.description ?? "");
   const [reminder, setReminder] = useState("none");
   const [requiresApproval, setRequiresApproval] = useState(false);
   const [recurrence, setRecurrence] = useState("");
   const [recurrenceUntil, setRecurrenceUntil] = useState("");
   const [checklist, setChecklist] = useState<CheckItem[]>([]);
-  const [templateChecklist, setTemplateChecklist] = useState(false);
+  /** The list a request put in — a request change may replace it; a template's or an empty one is filled. */
+  const [autoList, setAutoList] = useState(false);
   const [newItem, setNewItem] = useState("");
   const [busy, setBusy] = useState(false);
+  // Two taps land before `busy` re-renders the button: one task, not two.
+  const saving = useRef(false);
 
   // ?relatedInvestorId= / ?relatedLeadId= (from a client or lead page).
   useEffect(() => {
     if (params.relatedInvestorId) api.get<any>(`/api/investors/${params.relatedInvestorId}`).then(({ investor: i }) => i?.id && setClient({ id: i.id, name: i.name })).catch(() => {});
     if (params.relatedLeadId) api.get<any>(`/api/leads/${params.relatedLeadId}`).then((l) => l?.id && setLead({ id: l.id, name: l.name })).catch(() => {});
-    if (params.title) { setTitle(params.title); setTitleTouched(true); }
-    if (params.description) setDescription(params.description);
   }, []);
 
   const req: RequestType | undefined = category !== "general" && requestKey ? REQUEST_TYPE_BY_KEY[requestKey] : undefined;
@@ -120,37 +140,65 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
     const label = req.key === "kyc_renewal" && kycMode ? KYC_MODES.find((m) => m.key === kycMode)?.label ?? req.label : req.label;
     return client ? `${label} — ${client.name}` : label;
   }, [req, kycMode, client]);
-  useEffect(() => { if (!titleTouched && autoTitle) setTitle(autoTitle); }, [autoTitle, titleTouched]);
+  // An untouched title follows the request — and empties when it goes (General).
+  useEffect(() => { if (!titleTouched) setTitle(autoTitle); }, [autoTitle, titleTouched]);
 
-  // The request's checklist (a template's own sub-tasks win).
-  useEffect(() => {
-    if (templateChecklist) return;
-    if (!req) { setChecklist([]); return; }
-    const list = routeOn && (mode === "online" || mode === "offline") ? REDEMPTION_ROUTE_CHECKLISTS[mode] : req.checklist;
-    setChecklist(list.map((text) => ({ id: newId(), text })));
-  }, [req?.key, routeOn, mode, templateChecklist]);
+  const seedChecklist = (texts: string[]) => { setChecklist(texts.map((text) => ({ id: newId(), text }))); setAutoList(true); };
+
+  const changeCategory = (c: TaskCategory) => {
+    if (c === category) return;
+    setCategory(c); setRequestKey(""); setMode(""); setKycMode(""); setRows([emptyRow()]);
+    if (autoList) { setChecklist([]); setAutoList(false); }
+  };
+
+  /** A request's checklist fills an empty list or replaces the previous request's — never a template's. */
+  const changeRequest = (key: string) => {
+    setRequestKey(key); setRows([emptyRow()]); setKycMode("");
+    const routed = redemptionRoute && key === "redemption";
+    if (routed) setMode("");
+    if (checklist.length === 0 || autoList) {
+      const r = REQUEST_TYPE_BY_KEY[key];
+      if (r?.checklist.length && !routed) seedChecklist(r.checklist);
+      else { setChecklist([]); setAutoList(false); }
+    }
+  };
+
+  /** Mode; for a flagged firm's redemption it is the route, and its sub-tasks replace the auto list. */
+  const changeMode = (m: string) => {
+    setMode(m);
+    if (routeOn && (m === "online" || m === "offline") && (checklist.length === 0 || autoList)) seedChecklist(REDEMPTION_ROUTE_CHECKLISTS[m]);
+  };
 
   const applyTemplate = (id: string) => {
+    const prev = templates.data?.find((x) => x.id === templateId);
     setTemplateId(id);
     const t = templates.data?.find((x) => x.id === id);
-    if (!t) { setTemplateChecklist(false); return; }
+    if (!t) {
+      // "No template": its sub-tasks go, and so does its title if nobody changed it.
+      setChecklist([]); setAutoList(false);
+      if (prev && title === prev.name) { setTitle(""); setTitleTouched(false); }
+      return;
+    }
     const cat = categoryOfType(t.taskType);
     if (t.taskType && cat !== "general") { setCategory(cat); setRequestKey(REQUEST_TYPE_BY_KEY[t.taskType] ? t.taskType : ""); }
     else if (t.taskType && t.taskType !== "follow_up") { setCategory("general"); setKind("custom"); setCustomType(t.taskType); }
-    if (!titleTouched || !title.trim()) { setTitle(t.name); setTitleTouched(true); }
+    if (!titleTouched || !title.trim() || (prev && title === prev.name)) { setTitle(t.name); setTitleTouched(true); }
     if (t.description && !description.trim()) { setDescription(t.description); setMoreOpen(true); }
     if (t.priority && PRIORITIES.some((p) => p.key === t.priority)) setPriority(t.priority);
     if (t.dueOffsetDays != null) setDueDate(localDay(t.dueOffsetDays));
-    if (t.subtasks?.length) { setTemplateChecklist(true); setChecklist(t.subtasks.map((s) => ({ id: s.id || newId(), text: s.text }))); }
+    // The template's own sub-tasks win (web applyTemplate).
+    setChecklist((t.subtasks ?? []).map((st) => ({ id: st.id || newId(), text: st.text })));
+    setAutoList(false);
   };
 
   const setRow = (key: number, p: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
 
   const save = async () => {
-    if (!title.trim()) return toast.error("Say what needs doing.");
+    if (saving.current) return;
+    if (title.trim().length < 2) return toast.error("Say what needs doing.");
     if (category === "general" && kind === "custom" && !customType.trim()) return toast.error("Name the kind of task.");
     if (category !== "general") {
-      if (!req) return toast.error(`Pick the ${category === "financial" ? "financial" : "non-financial"} request.`);
+      if (!req) return toast.error(`Pick the ${CATEGORY_LABEL[category].toLowerCase()} request.`);
       if (!client) return toast.error("Pick the client this request is for.");
     }
     if (routeOn && !mode) return toast.error("Choose Online or Offline for the redemption.");
@@ -216,6 +264,7 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
     if (lead) payload.relatedLeadId = lead.id;
     if (relatedMeetingId) payload.relatedMeetingId = relatedMeetingId;
 
+    saving.current = true;
     setBusy(true);
     try {
       const j = await api.post<{ id: string; businessEntryId?: string | null; businessNotBooked?: string }>("/api/tasks", payload);
@@ -228,6 +277,7 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
     } catch (e: any) {
       toast.error(e?.body?.error ?? e?.message ?? "Couldn't create the task");
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };
@@ -237,8 +287,9 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       <ScreenHeader title="New task" />
+      {/* The Create bar sits inside the keyboard-avoiding view, so it rides above the keyboard. */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 140 }} keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xl }} keyboardShouldPersistTaps="handled">
         {(templates.data ?? []).length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingBottom: spacing.md }}>
             {templates.data!.map((t) => (
@@ -254,21 +305,24 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
           <TextField label="What needs doing" required value={title} onChangeText={(v) => { setTitle(v); setTitleTouched(true); }} />
 
           <Text variant="label" tone="muted" style={{ marginBottom: spacing.xs }}>Type of task</Text>
-          <Segmented options={[{ key: "general", label: "General" }, { key: "financial", label: "Financial" }, { key: "non_financial", label: "Non-financial" }]} value={category}
-            onChange={(v) => { setCategory(v as TaskCategory); setRequestKey(""); setMode(""); setKycMode(""); setRows([emptyRow()]); setTemplateChecklist(false); }} />
+          <CategoryPicker
+            options={CATEGORIES.filter((c) => c.key !== "insurance" || insuranceTasks || category === "insurance")}
+            value={category}
+            onChange={changeCategory}
+          />
           <View style={{ height: spacing.md }} />
 
           {category !== "general" ? (
             <>
-              <SelectField label="Request" required value={requestKey || null} placeholder="Pick the request" options={requestTypesFor(category).map((r) => ({ value: r.key, label: r.label }))}
-                onChange={(v) => { setRequestKey(v); setRows([emptyRow()]); setMode(""); setKycMode(""); }} />
+              <SelectField label={`${CATEGORY_LABEL[category]} request`} required value={requestKey || null} placeholder="Pick the request" options={requestTypesFor(category).map((r) => ({ value: r.key, label: r.label }))}
+                onChange={changeRequest} />
               {requestKey === "kyc_renewal" ? <Segmented options={KYC_MODES.map((m) => ({ key: m.key, label: m.label }))} value={kycMode} onChange={setKycMode} /> : null}
               {hasF("mode") ? (
-                <SelectField label={routeOn ? "Online or offline" : "Mode"} required={routeOn} value={mode || null} placeholder="Select"
-                  options={[{ value: "online", label: "Online" }, { value: "offline", label: "Offline" }]} onChange={setMode} />
+                <SelectField label={routeOn ? "Online or offline" : fieldLabel("mode", req)} required={routeOn} value={mode || null} placeholder="Select"
+                  options={[{ value: "online", label: "Online" }, { value: "offline", label: "Offline" }]} onChange={changeMode} />
               ) : null}
-              {hasF("amount") ? <TextField label="Amount (₹)" value={amount} onChangeText={setAmount} keyboardType="numeric" /> : null}
-              {hasF("folio") ? <TextField label="Folio number" value={folio} onChangeText={setFolio} /> : null}
+              {hasF("amount") ? <TextField label={fieldLabel("amount", req)} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" /> : null}
+              {hasF("folio") ? <TextField label={fieldLabel("folio", req)} placeholder={fieldLabel("folio", req)} value={folio} onChangeText={(v) => setFolio(v.slice(0, 60))} autoCapitalize="characters" /> : null}
               {req?.rowFields.length ? rows.map((r, i) => (
                 <SchemeRow key={r.key} index={i} row={r} req={req} onChange={(p) => setRow(r.key, p)} onRemove={rows.length > 1 ? () => setRows((rs) => rs.filter((x) => x.key !== r.key)) : undefined} />
               )) : null}
@@ -353,13 +407,30 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
           ))}
           <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "flex-end" }}>
             <View style={{ flex: 1 }}><TextField label="" value={newItem} onChangeText={setNewItem} placeholder="Add a sub-task…" /></View>
-            <Button label="Add" size="sm" variant="secondary" onPress={() => { if (newItem.trim()) { setChecklist((l) => [...l, { id: newId(), text: newItem.trim() }]); setNewItem(""); } }} />
+            <Button label="Add" size="sm" variant="secondary" onPress={() => { if (newItem.trim()) { setChecklist((l) => [...l, { id: newId(), text: newItem.trim().slice(0, 500) }]); setNewItem(""); } }} />
           </View>
         </Card>
       </ScrollView>
+      <View style={[styles.footer, { paddingBottom: spacing.lg + insets.bottom }]}><Button label="Create task" full loading={busy} onPress={save} /></View>
       </KeyboardAvoidingView>
-      <View style={styles.footer}><Button label="Create task" full loading={busy} onPress={save} /></View>
       {pick ? <RecordPicker kind={pick} onClose={() => setPick(null)} onPick={(r) => { pick === "client" ? setClient(r) : setLead(r); setPick(null); }} /> : null}
+    </View>
+  );
+}
+
+/** Type of task — the web's segmented control, wrapping to two rows when Insurance makes four. */
+function CategoryPicker({ options, value, onChange }: { options: Array<{ key: TaskCategory; label: string }>; value: TaskCategory; onChange: (c: TaskCategory) => void }) {
+  return (
+    <View style={styles.catWrap} accessibilityRole="radiogroup" accessibilityLabel="Type of task">
+      {options.map((o) => {
+        const on = o.key === value;
+        return (
+          <Pressable key={o.key} onPress={() => onChange(o.key)} accessibilityRole="radio" accessibilityState={{ checked: on }}
+            style={[styles.catItem, { minWidth: options.length > 3 ? "47%" : "30%" }, on && styles.catOn]}>
+            <Text variant="label" style={{ color: on ? palette.ink : palette.muted }} numberOfLines={1}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -411,7 +482,7 @@ function SchemeRow({ index, row, req, onChange, onRemove }: { index: number; row
       {has("fromScheme") ? <Pick label={rowFieldLabel("fromScheme", req)} value={row.fromSchemeName} onPress={() => setPicking("fromScheme")} /> : null}
       {catalog
         ? <Pick label={rowFieldLabel("scheme", req)} value={row.schemeName} onPress={() => setPicking("scheme")} />
-        : <TextField label={rowFieldLabel("scheme", req)} value={row.schemeName} onChangeText={(v) => onChange({ schemeName: v })} />}
+        : <TextField label={rowFieldLabel("scheme", req)} value={row.schemeName} onChangeText={(v) => onChange({ schemeName: v.slice(0, 250) })} />}
       {has("amount") ? <TextField label={rowFieldLabel("amount", req)} value={row.amount} onChangeText={(v) => onChange({ amount: v })} keyboardType="numeric" /> : null}
       {has("units") ? (
         <>
@@ -424,7 +495,7 @@ function SchemeRow({ index, row, req, onChange, onRemove }: { index: number; row
       ) : null}
       {has("sipDay") ? <SelectField label={rowFieldLabel("sipDay", req)} value={row.sipDay || null} placeholder="Day" options={SIP_DAYS} onChange={(v) => onChange({ sipDay: v })} /> : null}
       {has("frequency") ? <SelectField label="Frequency" value={row.frequency} options={FREQUENCIES.map(([value, label]) => ({ value, label }))} onChange={(v) => onChange({ frequency: v })} /> : null}
-      {has("folio") ? <TextField label="Folio" value={row.folio} onChangeText={(v) => onChange({ folio: v })} /> : null}
+      {has("folio") ? <TextField label="Folio" value={row.folio} onChangeText={(v) => onChange({ folio: v.slice(0, 60) })} autoCapitalize="characters" /> : null}
       {picking ? (
         <SchemePicker onClose={() => setPicking(null)} onPick={(s) => {
           onChange(picking === "fromScheme"
@@ -465,5 +536,8 @@ const styles = StyleSheet.create({
   pickBox: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, paddingHorizontal: spacing.md, minHeight: 46, backgroundColor: palette.surface },
   item: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.lineSoft },
   rowBox: { borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md, backgroundColor: palette.surface },
-  footer: { position: "absolute", left: 0, right: 0, bottom: 0, padding: spacing.lg, backgroundColor: palette.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
+  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, backgroundColor: palette.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
+  catWrap: { flexDirection: "row", flexWrap: "wrap", gap: 3, backgroundColor: palette.surfaceSunken, borderRadius: radius.md, padding: 3 },
+  catItem: { flexGrow: 1, flexBasis: 0, alignItems: "center", paddingVertical: spacing.sm, borderRadius: radius.sm },
+  catOn: { backgroundColor: palette.surface, shadowColor: palette.ink, shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
 });

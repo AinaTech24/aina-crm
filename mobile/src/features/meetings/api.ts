@@ -102,6 +102,9 @@ export function useMeeting(id?: string) {
 function invalidateMeeting(qc: ReturnType<typeof useQueryClient>, id: string) {
   qc.invalidateQueries({ queryKey: ["meeting", id] });
   qc.invalidateQueries({ queryKey: ["meetings"] });
+  // Action items are tasks and a move shifts the calendar.
+  qc.invalidateQueries({ queryKey: ["calendar"] });
+  qc.invalidateQueries({ queryKey: ["tasks"] });
 }
 
 /** PATCH a meeting — status / notes / discussion / action items / attendees /
@@ -114,14 +117,37 @@ export function useUpdateMeeting(id: string) {
   });
 }
 
-/** Cancel a meeting (status → cancelled). */
+/** Cancel a meeting (status → cancelled; its T-1 reminder task goes with it). */
 export function useCancelMeeting(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.del(`/api/review-meetings/${id}`),
-    onSuccess: () => invalidateMeeting(qc, id),
+    onSuccess: () => { invalidateMeeting(qc, id); invalidateAround(qc); },
   });
 }
+
+/**
+ * Cancel whichever meeting is passed — for a list, where the row is chosen in a
+ * sheet that closes first. (useCancelMeeting(rowId) read the id at render, so
+ * by the time the confirm fired the sheet had closed, the id was "" and the
+ * DELETE went to /api/review-meetings/.)
+ */
+export function useCancelMeetingById() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del(`/api/review-meetings/${id}`),
+    onSuccess: (_r, id) => { invalidateMeeting(qc, id); invalidateAround(qc); },
+  });
+}
+
+/** Its reminder task counts on the task KPIs, and Home shows the day's meetings. */
+function invalidateAround(qc: ReturnType<typeof useQueryClient>) {
+  for (const key of ["task-kpis", "command-center"]) qc.invalidateQueries({ queryKey: [key] });
+}
+
+/** May this viewer cancel the meeting? DELETE is the owner's (its RM) or a manage.all user's — an attendee may edit, not cancel. */
+export const canCancelMeeting = (m: Pick<Meeting, "rm_id"> | null | undefined, myId: string | null | undefined, manageAll: boolean) =>
+  manageAll || (!!m && !!myId && m.rm_id === myId);
 
 // ── Enums (mirror src/db/schema/review_meetings.ts) ──
 export const MEETING_STATUSES = ["scheduled", "confirmed", "in_progress", "completed", "rescheduled", "cancelled", "no_show"];

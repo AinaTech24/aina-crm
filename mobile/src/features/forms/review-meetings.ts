@@ -9,8 +9,11 @@
  *    leadId is sent (the API enforces the XOR). A FAMILY meeting attaches to the
  *    family's PRIMARY investor + the familyId and is forced to category "review"
  *    — the web resolves the primary investor from its in-memory family list, so
- *    the family lookup here encodes "<familyId>:<primaryInvestorId>" as its value
- *    and buildBody splits it back apart.
+ *    the family search here encodes "<familyId>:<primaryInvestorId>" as its value
+ *    and buildBody splits it back apart. GET /api/families returns raw rows
+ *    (snake_case: family_name, head_name, primary_investor_id) 50 at a time, so
+ *    it is searched, not listed — the camelCase lookup it replaced labelled every
+ *    family "Family" and sent no investorId, so the POST failed its XOR check.
  *  - meetingType is derived from category via TYPE_FOR_CATEGORY.
  *  - The web pushes to the review-meetings LIST after create → no detail redirect.
  */
@@ -52,7 +55,8 @@ export const reviewMeetingForm: FormSpec = {
   title: "Schedule review meeting",
   endpoint: "/api/review-meetings",
   submitLabel: "Schedule meeting",
-  invalidate: ["review-meetings"],
+  // The meetings list is ["meetings", …]; the meeting also lands on the calendar and in a reminder task.
+  invalidate: ["meetings", "calendar", "tasks", "task-kpis", "command-center"],
 
   initial: (params) => {
     const def = defaultDateTimeParts();
@@ -86,6 +90,7 @@ export const reviewMeetingForm: FormSpec = {
     if (v.subjectKind === "client" && !v.investorId) e.investorId = "Pick a client";
     else if (v.subjectKind === "lead" && !v.leadId) e.leadId = "Pick a lead";
     else if (v.subjectKind === "family" && !v.familyId) e.familyId = "Pick a family";
+    else if (v.subjectKind === "family" && !String(v.familyId).split(":")[1]) e.familyId = "This family has no head client yet — set one in Families first.";
     return Object.keys(e).length ? e : null;
   },
 
@@ -129,14 +134,19 @@ export const reviewMeetingForm: FormSpec = {
         {
           key: "familyId",
           label: "Family",
-          type: "lookup",
-          lookupEndpoint: "/api/families",
-          lookupEnvelope: "families",
-          lookupValue: (f) => `${f.id}:${f.primaryInvestorId ?? ""}`,
-          lookupLabel: (f) => `${f.familyName ?? f.headName ?? "Family"}`,
+          type: "typeahead",
+          searchEndpoint: "/api/families",
+          searchEnvelope: "families",
+          searchParam: "q",
+          searchExtraParams: { limit: "20" },
+          searchValue: (f) => `${f.id}:${f.primary_investor_id ?? f.primaryInvestorId ?? ""}`,
+          searchLabel: (f) => f.family_name ?? f.familyName ?? f.head_name ?? f.headName ?? "Family",
+          searchSublabel: (f) => [
+            f.head_name ?? f.headName ? `Head: ${f.head_name ?? f.headName}` : null,
+            f.member_count != null ? `${f.member_count} member${Number(f.member_count) === 1 ? "" : "s"}` : null,
+            (f.primary_investor_id ?? f.primaryInvestorId) ? null : "no head client",
+          ].filter(Boolean).join(" · "),
           placeholder: "Search a family group…",
-          clearable: true,
-          help: "only families with a primary client can be met",
           visibleIf: (v) => v.subjectKind === "family",
         },
         {

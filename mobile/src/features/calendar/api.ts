@@ -15,6 +15,7 @@ export interface CalendarItem {
   title: string;
   href: string;
   subjectType?: "investor" | "lead";
+  subjectId?: string;
   avatarUrl?: string | null;
 }
 
@@ -90,4 +91,21 @@ const KIND_COLOR: Record<string, string> = {
   campaign: "#DB2777",
   compliance: "#E11D48",
 };
-export const kindColor = (k: string) => KIND_COLOR[k] ?? "#64748B";
+/** The legend's colour first, so a kind's dot, chip and row all match (meeting was cyan in the legend, violet on the day). */
+export const kindColor = (k: string) => CALENDAR_KINDS.find((x) => x.value === k)?.color ?? KIND_COLOR[k] ?? "#64748B";
+
+/**
+ * Where an item opens in the app. The feed's links are the web's: a task links
+ * to the whole task list and a client meeting to the client, so the row's own
+ * id (`task-<uuid>`, `meeting-<uuid>`) opens the record itself. Compliance
+ * expiries pointed at the Compliance Center, which the firm removed: a client's
+ * KYC opens the client, an ARN / NISM expiry opens nothing.
+ */
+export function calendarItemRoute(it: Pick<CalendarItem, "id" | "kind" | "href" | "subjectType" | "subjectId">, toMobileRoute: (href: string) => string | null): string | null {
+  const own = (prefix: string) => (it.id.startsWith(prefix) ? it.id.slice(prefix.length) : "");
+  if (it.kind === "task" && own("task-")) return `/m/tasks/${own("task-")}`;
+  if (it.kind === "meeting" && own("meeting-")) return `/m/review-meetings/${own("meeting-")}`;
+  if (it.kind === "compliance") return own("compliance-kyc-") ? `/m/investors/${own("compliance-kyc-")}` : null;
+  if (it.kind === "sip" && it.subjectType === "investor" && it.subjectId) return `/m/investors/${it.subjectId}`;
+  return toMobileRoute(it.href);
+}

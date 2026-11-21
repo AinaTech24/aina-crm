@@ -24,7 +24,8 @@ import { FAB } from "../../../../src/components/ui/FAB";
 import { SkeletonList } from "../../../../src/components/ui/Skeleton";
 import { EmptyState, SearchEmptyState, ErrorState } from "../../../../src/components/states";
 import { MeetingFilters, EMPTY_MEETING_FILTERS, countMeetingFilters, type UiMeetingFilters } from "../../../../src/features/meetings/MeetingFilters";
-import { useMeetings, useCancelMeeting, MEETING_STATUSES, OUTCOME_TONE, type Meeting } from "../../../../src/features/meetings/api";
+import { useMeetings, useCancelMeetingById, canCancelMeeting, MEETING_STATUSES, OUTCOME_TONE, type Meeting } from "../../../../src/features/meetings/api";
+import { useMe, hasCap } from "../../../../src/api/me";
 import { useTeam } from "../../../../src/features/team/api";
 import { meetingStatusBadge } from "../../../../src/lib/status";
 import { titleCase } from "../../../../src/lib/format";
@@ -113,8 +114,10 @@ export default function MeetingsList({ embedded = false }: { embedded?: boolean 
   const isKanban = layout === "kanban";
   const qc = useQueryClient();
   const debounced = useDebounced(search);
-  const cancel = useCancelMeeting(rowAction?.id ?? "");
+  const cancel = useCancelMeetingById();
   const rmOptions = useTeam().data?.rows ?? [];
+  const { data: me } = useMe();
+  const manageAll = hasCap(me?.capabilities, "review_meeting.manage.all");
 
   // The status chip row is a quick override on top of the sheet's status set.
   // The board shows every status, so the chips step aside there.
@@ -150,7 +153,9 @@ export default function MeetingsList({ embedded = false }: { embedded?: boolean 
   };
   const doCancel = (m: Meeting) => {
     setRowAction(null);
-    confirmDelete({ title: "Cancel this meeting?", message: "It's marked cancelled and the reminder is cleared.", confirmLabel: "Cancel meeting" }, () => cancel.mutate());
+    // The id travels with the call: the sheet (and rowAction) is gone by the time this confirms.
+    confirmDelete({ title: "Cancel this meeting?", message: "It's marked cancelled and the reminder is cleared.", confirmLabel: "Cancel meeting" },
+      () => cancel.mutate(m.id, { onSuccess: () => toast.success("Meeting cancelled") }));
   };
 
   const header = (
@@ -237,7 +242,9 @@ export default function MeetingsList({ embedded = false }: { embedded?: boolean 
 
       <BottomSheet visible={!!rowAction} onClose={() => setRowAction(null)} title={rowAction?.subject ?? "Meeting"}>
         <Button label="Open & edit meeting" variant="secondary" full icon={<Feather name="edit-2" size={15} color={palette.ink} />} onPress={() => { const id = rowAction?.id; setRowAction(null); if (id) open(id); }} style={{ marginBottom: spacing.sm }} />
-        <Button label="Cancel meeting" variant="danger" full loading={cancel.isPending} icon={<Feather name="x-circle" size={15} color="#fff" />} onPress={() => rowAction && doCancel(rowAction)} />
+        {rowAction && rowAction.status !== "cancelled" && rowAction.status !== "completed" && canCancelMeeting(rowAction, me?.user?.id, manageAll) ? (
+          <Button label="Cancel meeting" variant="danger" full loading={cancel.isPending} icon={<Feather name="x-circle" size={15} color="#fff" />} onPress={() => rowAction && doCancel(rowAction)} />
+        ) : null}
       </BottomSheet>
     </View>
   );

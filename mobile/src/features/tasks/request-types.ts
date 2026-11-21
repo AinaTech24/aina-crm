@@ -29,7 +29,11 @@
  * Operations never keys the same transaction twice (lib/business/create-entry).
  */
 
-export type TaskCategory = "general" | "financial" | "non_financial";
+/** `insurance` is offered only to a firm with the `insuranceTasks` flag (Investment Options, 2026-11-20). */
+export type TaskCategory = "general" | "financial" | "non_financial" | "insurance";
+
+/** The per-firm flag that adds the Insurance category to the New task form (config/feature-flags.ts). */
+export const INSURANCE_TASKS_FLAG = "insuranceTasks";
 
 /** Fields asked once for the whole request. */
 export type RequestField = "amount" | "mode" | "folio";
@@ -53,7 +57,12 @@ export type RequestType = {
   business?: { txnType: BusinessTxn; productType: "mutual_fund" | "pms" | "aif" };
   /** The checklist a new task of this kind starts with. */
   checklist: string[];
+  /** Field labels for this request, where the generic one would mislead (an insurance policy has no folio). */
+  labels?: Partial<Record<RequestField, string>>;
 };
+
+/** Insurance requests ask for the policy number in the folio slot and the premium (or claim) in the amount slot. */
+const POLICY = { folio: "Policy number" };
 
 const REQUEST_TYPE_LIST: RequestType[] = [
   // ── Financial ──
@@ -173,6 +182,73 @@ const REQUEST_TYPE_LIST: RequestType[] = [
     key: "service_other", label: "Other service request", category: "non_financial", fields: ["folio"], rowFields: [],
     checklist: [],
   },
+
+  // ── Insurance (firms with the insuranceTasks flag) ──
+  // The work Investment Options' team logged in Zoho's IO Task (Task Type: GI
+  // Insurance – New Business / Renewal / Financial / Non-Financial, GI Claim,
+  // Life Insurance; Type: Quote Preparation, New Policy Entry, Policy Renewal,
+  // Premium Collection Follow-up, Claim Intimation, HPR Claim, Pre & Post Claim
+  // Reminder …). General and life insurance share the list; the title says which.
+  {
+    key: "ins_quote", label: "Quote preparation", category: "insurance", fields: ["amount"], rowFields: [],
+    labels: { amount: "Expected premium (₹)" },
+    checklist: ["Client requirement and details collected", "Quotes taken from insurers", "Comparison shared with the client", "Client decision recorded"],
+  },
+  {
+    key: "ins_new_policy", label: "New policy (proposal)", category: "insurance", fields: ["amount", "mode"], rowFields: [],
+    labels: { amount: "Premium (₹)" },
+    checklist: ["Proposal form and KYC documents collected", "Medical / inspection done (if required)", "Premium paid to the insurer", "Policy issued", "Policy copy sent to the client", "Policy entered in the CRM"],
+  },
+  {
+    key: "ins_renewal", label: "Policy renewal", category: "insurance", fields: ["folio", "amount", "mode"], rowFields: [],
+    labels: { ...POLICY, amount: "Renewal premium (₹)" },
+    checklist: ["Renewal notice / quote received", "Shared with the client", "Changes confirmed (members, sum insured, IDV)", "Premium paid", "Renewed policy received", "Renewed policy sent to the client"],
+  },
+  {
+    key: "ins_premium_collection", label: "Premium collection follow-up", category: "insurance", fields: ["folio", "amount", "mode"], rowFields: [],
+    labels: { ...POLICY, amount: "Premium due (₹)" },
+    checklist: ["Due-date reminder sent to the client", "Premium cheque / payment collected", "Paid / deposited with the insurer", "Receipt sent to the client"],
+  },
+  {
+    key: "ins_payment", label: "Insurance policy payment", category: "insurance", fields: ["folio", "amount", "mode"], rowFields: [],
+    labels: { ...POLICY, amount: "Amount (₹)" },
+    checklist: ["Payment link / cheque details shared", "Payment received", "Payment confirmed by the insurer"],
+  },
+  {
+    key: "ins_endorsement", label: "Endorsement / policy change", category: "insurance", fields: ["folio"], rowFields: [],
+    labels: POLICY,
+    checklist: ["Change request and documents from the client", "Submitted to the insurer", "Endorsement received", "Endorsement copy sent to the client"],
+  },
+  {
+    key: "ins_policy_entry", label: "New policy entry", category: "insurance", fields: ["folio", "amount"], rowFields: [],
+    labels: { ...POLICY, amount: "Premium (₹)" },
+    checklist: ["Policy copy received", "Policy entered in the CRM", "Policy copy shared with the client"],
+  },
+  {
+    key: "ins_claim_intimation", label: "Claim intimation", category: "insurance", fields: ["folio", "amount"], rowFields: [],
+    labels: { ...POLICY, amount: "Claim amount (₹)" },
+    checklist: ["Claim intimated to the insurer / TPA", "Claim number received", "Document list shared with the client"],
+  },
+  {
+    key: "ins_claim_followup", label: "Claim documents & follow-up (HPR / reimbursement)", category: "insurance", fields: ["folio", "amount"], rowFields: [],
+    labels: { ...POLICY, amount: "Claim amount (₹)" },
+    checklist: ["Claim documents collected", "Claim file submitted", "Queries answered", "Settlement received", "Settlement shared with the client"],
+  },
+  {
+    key: "ins_pre_post_claim", label: "Pre & post hospitalisation claim reminder", category: "insurance", fields: ["folio"], rowFields: [],
+    labels: POLICY,
+    checklist: ["Reminder sent to the client", "Bills and documents collected", "Claim submitted", "Settlement received"],
+  },
+  {
+    key: "ins_life_service", label: "Life insurance service (maturity / loan / surrender / death claim)", category: "insurance", fields: ["folio", "amount"], rowFields: [],
+    labels: { ...POLICY, amount: "Amount (₹)" },
+    checklist: ["Request form and documents collected", "Submitted to the insurer", "Insurer acknowledgement received", "Payment / service completed"],
+  },
+  {
+    key: "ins_other", label: "Other insurance request", category: "insurance", fields: ["folio"], rowFields: [],
+    labels: POLICY,
+    checklist: [],
+  },
 ];
 
 /**
@@ -185,7 +261,8 @@ export const RTA_DATA_CHECK = "RTA data check";
 
 export const REQUEST_TYPES: RequestType[] = REQUEST_TYPE_LIST.map((r) => ({
   ...r,
-  checklist: r.checklist.includes(RTA_DATA_CHECK) ? r.checklist : [...r.checklist, RTA_DATA_CHECK],
+  // An insurance request has no registrar record to check.
+  checklist: r.category === "insurance" || r.checklist.includes(RTA_DATA_CHECK) ? r.checklist : [...r.checklist, RTA_DATA_CHECK],
 }));
 
 /**
@@ -229,6 +306,16 @@ export const FIELD_LABEL: Record<RequestField, string> = {
   amount: "Amount (₹)",
   mode: "Mode",
   folio: "Folio number",
+};
+
+/** A request field's label — the request's own where it has one (insurance: "Policy number", "Premium (₹)"). */
+export const fieldLabel = (f: RequestField, req: RequestType | undefined) => req?.labels?.[f] ?? FIELD_LABEL[f];
+
+/** "Financial request", "Non-financial request", "Insurance request". */
+export const CATEGORY_LABEL: Record<Exclude<TaskCategory, "general">, string> = {
+  financial: "Financial",
+  non_financial: "Non-financial",
+  insurance: "Insurance",
 };
 
 export function rowFieldLabel(f: RowField, req: RequestType): string {

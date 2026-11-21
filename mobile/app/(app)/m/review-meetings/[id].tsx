@@ -9,12 +9,16 @@
  * or added as a guest; an action item has an owner and a due date and IS a
  * task (the server creates it on the first save and returns its id, kept here
  * so the next save edits it). The meeting has no notes box and no Outcome card.
+ * A new action item starts with the meeting's RM as its owner (web addItem).
+ * Cancel and "entered by mistake" are the owner's (the meeting's RM) or a
+ * manage.all user's — an attendee may edit the meeting but not call it off.
  */
 
 import { renderReviewAgendaTemplate } from "../../../../src/features/meetings/agenda";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, ScrollView, Pressable, StyleSheet, KeyboardAvoidingView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInUp } from "react-native-reanimated";
@@ -29,12 +33,13 @@ import { DateField } from "../../../../src/components/form/DateField";
 import { LoadingState, ErrorState } from "../../../../src/components/states";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import {
-  useMeeting, useUpdateMeeting, useCancelMeeting, useMeetingTeam,
+  useMeeting, useUpdateMeeting, useCancelMeeting, useMeetingTeam, canCancelMeeting,
   MEETING_STATUSES, MEETING_MODES, ATTENDEE_ROLES, ATTENDEE_KIND_LABEL,
   type MeetingActionItem, type MeetingAttendee,
 } from "../../../../src/features/meetings/api";
 import { AttendeePicker } from "../../../../src/features/meetings/AttendeePicker";
 import { api, ApiError } from "../../../../src/api/client";
+import { useMe, hasCap } from "../../../../src/api/me";
 import { meetingStatusBadge } from "../../../../src/lib/status";
 import { titleCase, inr } from "../../../../src/lib/format";
 import { palette, spacing, radius, fontWeight } from "../../../../src/theme/tokens";
@@ -73,6 +78,10 @@ export default function MeetingDetail() {
   const update = useUpdateMeeting(id);
   const cancel = useCancelMeeting(id);
   const team = useMeetingTeam();
+  const qc = useQueryClient();
+  const { data: me } = useMe();
+  // Two taps on Save before `busy` re-renders: one PATCH (a second would create the action-item tasks twice).
+  const saving = useRef(false);
 
   // ── Editor state (hydrated once the meeting loads) ──
   const [hydratedId, setHydratedId] = useState<string | null>(null);
@@ -122,8 +131,14 @@ export default function MeetingDetail() {
   const subjectKind = m.lead_id ? "Lead" : "Client";
   const dateMoved = !!meetingDay && (meetingDay !== origDay || meetingTime !== origTime);
   const prep = m.prep;
+  const myId = me?.user?.id ?? team.data?.me ?? null;
+  const mayCancel = canCancelMeeting(m, myId, hasCap(me?.capabilities, "review_meeting.manage.all"));
+  /** A null is not a zero: no AUM on record reads "—", not ₹0. */
+  const money = (v: unknown) => (v == null || v === "" ? "—" : inr(v));
 
   async function save(overrideStatus?: string) {
+    if (saving.current) return;
+    saving.current = true;
     setErr(null); setOk(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     const payload: Record<string, any> = {
@@ -160,6 +175,8 @@ export default function MeetingDetail() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Could not save. Please try again.");
+    } finally {
+      saving.current = false;
     }
   }
 
@@ -176,7 +193,11 @@ export default function MeetingDetail() {
   const doPurge = () => confirmDelete(
     { title: "Delete this meeting?", message: "Only for a meeting entered by mistake — it is removed completely.", confirmLabel: "Delete" },
     async () => {
-      try { await api.del(`/api/review-meetings/${id}/purge`); router.back(); }
+      try {
+        await api.del(`/api/review-meetings/${id}/purge`);
+        for (const key of ["meetings", "calendar", "tasks"]) qc.invalidateQueries({ queryKey: [key] });
+        router.back();
+      }
       catch (e) { setErr(e instanceof ApiError ? e.message : "Could not delete the meeting."); }
     },
   );
@@ -213,8 +234,8 @@ export default function MeetingDetail() {
                 <Text variant="caption" tone="faint">— walk in ready</Text>
               </View>
               <View style={styles.prepGrid}>
-                <Prep label="AUM" value={inr(prep.aum ?? 0)} />
-                <Prep label="Monthly SIP" value={inr(prep.active_sip_amount ?? 0)} />
+                <Prep label="AUM" value={money(prep.aum)} />
+                <Prep label="Monthly SIP" value={money(prep.active_sip_amount)} />
                 <Prep label="Last review" value={prep.last_review_at ? new Date(prep.last_review_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "Never"} tone={!prep.last_review_at ? palette.danger : undefined} />
                 <Prep label="Open requests" value={String(prep.open_srs ?? 0)} tone={Number(prep.open_srs) > 0 ? palette.warning : undefined} />
                 <Prep label="SIP bounces 6mo" value={String(prep.bounces_6mo ?? 0)} tone={Number(prep.bounces_6mo) > 0 ? palette.danger : undefined} />
@@ -290,7 +311,7 @@ export default function MeetingDetail() {
           <Card style={{ marginTop: spacing.lg }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
               <Text variant="subtitle">Action items ({items.length})</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Add action item" onPress={() => setItems((s) => [...s, { title: "" }])} hitSlop={8}><Feather name="plus" size={18} color={palette.brand} /></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Add action item" onPress={() => setItems((s) => [...s, { title: "", assigneeId: m.rm_id ?? undefined }])} hitSlop={8}><Feather name="plus" size={18} color={palette.brand} /></Pressable>
             </View>
             {items.length === 0 ? (
               <Text variant="caption" tone="muted">None yet.</Text>
@@ -341,10 +362,11 @@ export default function MeetingDetail() {
           </Card>
 
           {/* Cancel */}
-          {status !== "cancelled" ? (
+          {mayCancel && m.status !== "cancelled" && m.status !== "completed" ? (
             <Button label="Cancel meeting" variant="danger" loading={cancel.isPending} onPress={doCancel} icon={<Feather name="x-circle" size={15} color="#fff" />} style={{ marginTop: spacing.lg }} />
           ) : null}
-          {m.status !== "completed" ? (
+          {/* The server deletes only a meeting with nothing recorded: not completed, no action items. */}
+          {mayCancel && m.status !== "completed" && !(Array.isArray(m.action_items) && m.action_items.length) ? (
             <Button label="Delete — entered by mistake" variant="ghost" onPress={doPurge} style={{ marginTop: spacing.sm }} />
           ) : null}
         </Animated.View>

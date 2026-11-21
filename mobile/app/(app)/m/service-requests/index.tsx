@@ -1,8 +1,10 @@
 /**
  * Service Requests — the client-servicing queue. SLA breaches float to the top
  * with a red rail, because those are the ones a client is already unhappy about.
- * Filter chips: Breached / Open / Resolved / All. The FAB opens the web's New
- * service request form (service_request.manage).
+ * Filter chips: Breached / Open / Resolved / All, and a search over ticket no,
+ * subject, type and description. The FAB opens the web's New service request
+ * form (service_request.manage). A failed load says so — it never reads as
+ * "nothing past its SLA".
  */
 
 import React from "react";
@@ -16,12 +18,14 @@ import { Chip } from "../../../../src/components/ui/Chip";
 import { StatusPill } from "../../../../src/components/ui/StatusPill";
 import { Skeleton } from "../../../../src/components/ui/Skeleton";
 import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
+import { SearchBar } from "../../../../src/components/ui/SearchBar";
+import { ErrorState } from "../../../../src/components/states";
 import { FAB } from "../../../../src/components/ui/FAB";
 import { useMe, hasCap } from "../../../../src/api/me";
 import {
-  useServiceRequests, srStatusMeta, isSrOpen, isSlaBreached, PRIORITY_TONE, type ServiceRequest,
+  useServiceRequests, srStatusMeta, isSrOpen, isSlaBreached, srTypeLabel, PRIORITY_TONE, type ServiceRequest,
 } from "../../../../src/features/service-requests/api";
-import { fmtDate, timeAgo, titleCase } from "../../../../src/lib/format";
+import { timeAgo, titleCase } from "../../../../src/lib/format";
 import { spacing, palette, fontWeight } from "../../../../src/theme/tokens";
 import { toneColors } from "../../../../src/theme";
 
@@ -35,11 +39,17 @@ const TABS: { key: Bucket; label: string }[] = [
 
 export default function ServiceRequestsList() {
   const router = useRouter();
-  const { data, isLoading, isRefetching, refetch } = useServiceRequests();
+  const { data, isLoading, isError, error, isRefetching, refetch } = useServiceRequests();
   const [tab, setTab] = React.useState<Bucket>("breached");
+  const [q, setQ] = React.useState("");
   const canCreate = hasCap(useMe().data?.capabilities, "service_request.manage");
 
-  const all = data ?? [];
+  const term = q.trim().toLowerCase();
+  const all = React.useMemo(() => {
+    const list = Array.isArray(data) ? data : [];
+    if (!term) return list;
+    return list.filter((r) => [r.ticketNo, r.subject, r.description, r.type ? srTypeLabel(r.type) : null].some((v) => typeof v === "string" && v.toLowerCase().includes(term)));
+  }, [data, term]);
   const buckets: Record<Bucket, ServiceRequest[]> = {
     all,
     breached: all.filter(isSlaBreached),
@@ -57,6 +67,7 @@ export default function ServiceRequestsList() {
           {buckets.open.length} open · {buckets.resolved.length} resolved
         </Text>
       </Card>
+      <View style={{ marginBottom: spacing.md }}><SearchBar value={q} onChangeText={setQ} placeholder="Search ticket, subject…" /></View>
       <View style={styles.chips}>
         {TABS.map((t) => (
           <Chip key={t.key} label={`${t.label} (${buckets[t.key].length})`} selected={tab === t.key} onPress={() => setTab(t.key)} />
@@ -67,8 +78,10 @@ export default function ServiceRequestsList() {
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
-      <ScreenHeader title="Service Requests" subtitle={`${all.length} tickets`} />
-      {isLoading ? (
+      <ScreenHeader title="Service Requests" subtitle={data ? `${(data ?? []).length} tickets` : undefined} />
+      {isError && !data ? (
+        <ErrorState message={(error as any)?.message} onRetry={() => refetch()} />
+      ) : isLoading ? (
         <View style={{ padding: spacing.lg }}>{header}<Skeleton width="100%" height={72} style={{ marginTop: spacing.sm }} /><Skeleton width="100%" height={72} style={{ marginTop: spacing.sm }} /></View>
       ) : (
         <FlashList
@@ -81,7 +94,7 @@ export default function ServiceRequestsList() {
           ListEmptyComponent={
             <View style={{ alignItems: "center", paddingTop: spacing["2xl"], gap: spacing.md }}>
               <Feather name={tab === "breached" ? "check-circle" : "life-buoy"} size={22} color={palette.faint} />
-              <Text variant="body" tone="muted">{tab === "breached" ? "Nothing past its SLA — good." : "Nothing here."}</Text>
+              <Text variant="body" tone="muted">{term ? `No tickets match “${q.trim()}”.` : tab === "breached" ? "Nothing past its SLA." : "Nothing here."}</Text>
             </View>
           }
           renderItem={({ item }) => <SrRow r={item} onPress={() => router.push(`/m/service-requests/${item.id}` as any)} />}
@@ -103,7 +116,7 @@ function SrRow({ r, onPress }: { r: ServiceRequest; onPress: () => void }) {
           <StatusPill label={meta.label} tone={meta.tone} size="sm" />
         </View>
         <Text variant="caption" tone="muted" numberOfLines={1} style={{ marginTop: 2 }}>
-          {[r.ticketNo, r.type ? titleCase(r.type.replace(/_/g, " ")) : null].filter(Boolean).join(" · ")}
+          {[r.ticketNo, r.type ? srTypeLabel(r.type) : null].filter(Boolean).join(" · ")}
         </Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.sm }}>
           {breached ? <StatusPill label="SLA passed" tone="danger" size="sm" dot={false} /> : null}
