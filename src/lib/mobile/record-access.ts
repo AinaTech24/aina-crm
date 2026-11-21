@@ -21,10 +21,20 @@ export async function assertMobileRecordPath(s: SessionUser, pathname: string) {
 
 export async function assertMobileAssignee(tx: Tx, s: SessionUser, id: string) {
   if (!s.mobile) return;
+  await assertAssigneeInBranch(tx, s, id);
+}
+
+/**
+ * Who someone without task.edit.all may give a task to — the same rule on the
+ * web and in the mobile app (2026-11-21, the user's call; the web used to allow
+ * only themselves): themselves, or an active teammate in their own branch.
+ * Owner, ops and back office may choose anyone in the firm.
+ */
+export async function assertAssigneeInBranch(tx: Tx, s: SessionUser, id: string) {
   const allowed = mobileFirmAccess(s) ? sql`TRUE` : sql`(id = ${s.userId}::uuid OR ${s.branchId ? sql`branch_id = ${s.branchId}::uuid` : sql`FALSE`})`;
   const found = (await tx.execute(sql`SELECT id FROM users WHERE tenant_id = ${s.tenantId}::uuid
     AND id = ${id}::uuid AND status = 'active' AND ${allowed}`)).rows[0];
-  if (!found) throw Object.assign(new Error("Choose an active assignee within your scope"), { status: 403 });
+  if (!found) throw Object.assign(new Error("You can assign a task to yourself or to an active teammate in your branch"), { status: 403 });
 }
 
 export async function assertMobileSubjects(tx: Tx, s: SessionUser, body: {

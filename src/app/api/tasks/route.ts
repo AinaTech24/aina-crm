@@ -10,7 +10,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
 import { mobileTaskScope } from "@/lib/mobile/access";
-import { assertMobileAssignee, assertMobileSubjects } from "@/lib/mobile/record-access";
+import { assertAssigneeInBranch, assertMobileAssignee, assertMobileSubjects } from "@/lib/mobile/record-access";
 import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { tasks, users, investors, leads } from "@/db/schema";
 import { bookBusinessFromTask } from "@/lib/tasks/book-business";
@@ -254,12 +254,10 @@ export async function POST(req: NextRequest) {
     const body = parse.data;
     const meta = clientMetaFromHeaders(req.headers);
 
-    // Users without task.edit.all may only create tasks assigned to themselves.
+    // Users without task.edit.all may give a task to themselves or to an active
+    // teammate in their branch — on the web as in the mobile app (checked below).
     const canEditAll = can(session.roles, "task.edit.all", session.permissions);
     const assigneeId = body.assigneeId ?? session.userId;
-    if (!canEditAll && !session.mobile && assigneeId !== session.userId) {
-      return NextResponse.json({ error: "you can only assign tasks to yourself" }, { status: 403 });
-    }
 
     const id = uuid();
     // Derive subjectType/subjectId from the first related entity if the caller
@@ -284,6 +282,7 @@ export async function POST(req: NextRequest) {
 
     const result = await withIdempotentMutation(session, req, body, async (tx) => {
       await assertMobileAssignee(tx, session, assigneeId);
+      if (!canEditAll && !session.mobile && assigneeId !== session.userId) await assertAssigneeInBranch(tx, session, assigneeId);
       await assertMobileSubjects(tx, session, body);
       // Assignee must be a user in THIS tenant (the FK allows any tenant's user).
       const [u] = await tx
