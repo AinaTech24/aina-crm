@@ -9,7 +9,8 @@ import { handleApiError } from "@/lib/api/error-handler";
  * A drill-down always returns the detailed rows, whatever the report's layout.
  *
  * Both also read the We Care "Filter by" bar's query (?dateField=&from=&to=,
- * India dates — lib/reports/range.ts) and ?details=1|0 for a summary report.
+ * India dates — lib/reports/range.ts), ?branch=<branch name> (the subject's
+ * branch field, lib/filter/catalog branchField) and ?details=1|0 for a summary.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
@@ -18,7 +19,8 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { savedReports } from "@/db/schema";
-import { FilterASTSchema, type FilterAST } from "@/lib/filter/ast";
+import { FilterASTSchema, and as astAnd, type FilterAST } from "@/lib/filter/ast";
+import { branchField } from "@/lib/filter/catalog";
 import { runDetailed, runMatrix, runSummary, type DrillValue } from "@/lib/reports/run";
 import { reportSubjectScope } from "@/lib/reports/scope";
 import { canSeeSavedReport } from "@/lib/reports/visibility";
@@ -36,12 +38,13 @@ const ViewBody = z.object({
 });
 type View = z.infer<typeof ViewBody>;
 /** The URL-only part of a view: the date-range bar and Show details. */
-type UrlView = { dateField: string | null; from: string | null; to: string | null; details: string | null };
+type UrlView = { dateField: string | null; from: string | null; to: string | null; details: string | null; branch: string | null };
 const urlView = (url: URL): UrlView => ({
   dateField: url.searchParams.get("dateField"),
   from: url.searchParams.get("from"),
   to: url.searchParams.get("to"),
   details: url.searchParams.get("details"),
+  branch: url.searchParams.get("branch")?.trim().slice(0, 120) || null,
 });
 
 async function run(id: string, view: View, uv: UrlView) {
@@ -63,7 +66,11 @@ async function run(id: string, view: View, uv: UrlView) {
     }
     const scope = await reportSubjectScope(tx, session, r.subject);
     // The quick filter AND the date-range bar — both narrow this run only.
-    const extraAst = withDateRange(r.subject, (view.filter ?? null) as FilterAST | null, { field: uv.dateField, from: uv.from, to: uv.to });
+    const dated = withDateRange(r.subject, (view.filter ?? null) as FilterAST | null, { field: uv.dateField, from: uv.from, to: uv.to });
+    // The Branch picker narrows this run to one branch, through the subject's branch field.
+    const bf = uv.branch ? branchField(r.subject) : null;
+    const branchAst = bf ? ({ type: "predicate", field: { kind: "attr", path: bf.key }, op: "eq", value: uv.branch } as FilterAST) : null;
+    const extraAst = branchAst ? (dated ? astAnd(dated, branchAst) : astAnd(branchAst)) : dated;
     const base = {
       subject: r.subject,
       ast: r.ast as FilterAST | null,
