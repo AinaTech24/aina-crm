@@ -63,7 +63,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({
       ok: true,
       sentTo: maskEmail(built.email),
-      emailSent: sent,
+      emailSent: sent.sent,
       ...(process.env.NODE_ENV !== "production" ? { devResetUrl: built.resetUrl } : {}),
     });
   } catch (err) {

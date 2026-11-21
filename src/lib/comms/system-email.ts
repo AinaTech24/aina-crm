@@ -15,8 +15,10 @@
 
 import { emailAdapter } from "./adapters/resend";
 import { loadEmailConfig } from "./email-config";
+import { describeMailError } from "./connection-error";
 
-export type SystemEmailResult = { sent: boolean; reason?: string };
+/** `detail`: what went wrong, in words an admin can act on (describeMailError) — for admin screens only. */
+export type SystemEmailResult = { sent: boolean; reason?: string; detail?: string };
 
 export async function sendSystemEmail(args: {
   tenantId: string;
@@ -43,7 +45,11 @@ export async function sendSystemEmail(args: {
           `transactional auth email (to ${args.to}, subject "${args.subject}") was NOT sent.`
       );
     }
-    return { sent: false, reason: "email_not_configured" };
+    return {
+      sent: false,
+      reason: "email_not_configured",
+      detail: cfg.problem ?? "The platform's outgoing email is not set up (Aina Admin → Email).",
+    };
   }
   try {
     await emailAdapter.send({
@@ -62,7 +68,10 @@ export async function sendSystemEmail(args: {
     return { sent: true };
   } catch (e: any) {
     console.error("[system-email] send failed:", e?.message ?? e);
-    return { sent: false, reason: "send_failed" };
+    // The mail server's own reason, made readable ("Authentication failed …",
+    // "Couldn't reach the server …"). It used to be dropped here, so every admin
+    // screen could only say "could not be sent" with nothing to fix.
+    return { sent: false, reason: "send_failed", detail: describeMailError(e, "smtp") };
   }
 }
 

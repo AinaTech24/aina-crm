@@ -29,6 +29,8 @@ export type ResolvedEmailConfig = {
   from: string;
   configured: boolean;
   source: "db" | "env" | "none";
+  /** Why a saved setup still cannot send — said on admin screens instead of "not configured". */
+  problem?: string;
 };
 
 const DEFAULT_FROM = "Aina CRM <connect@ainatech.in>";
@@ -53,13 +55,20 @@ export async function loadEmailConfig(force = false): Promise<ResolvedEmailConfi
   let cfg: ResolvedEmailConfig;
   if (stored?.host) {
     let pass: string | null = null;
+    let problem: string | undefined;
     if (stored.passEnc) {
       try {
         pass = decrypt(stored.passEnc);
       } catch {
         pass = null; // bad/old ciphertext (e.g. ENCRYPTION_KEY rotated)
+        problem =
+          "A mail password is saved in Aina Admin → Email but this server cannot read it (it was saved under a " +
+          "different encryption key). Enter the password again there and save.";
       }
+    } else {
+      problem = "No mail password is saved in Aina Admin → Email.";
     }
+    if (!stored.user) problem = "No mail username is saved in Aina Admin → Email.";
     cfg = {
       host: stored.host,
       port: stored.port ?? 587,
@@ -69,6 +78,7 @@ export async function loadEmailConfig(force = false): Promise<ResolvedEmailConfi
       from: stored.from || DEFAULT_FROM,
       configured: !!(stored.host && stored.user && pass),
       source: "db",
+      ...(stored.user && pass ? {} : { problem }),
     };
   } else {
     const host = process.env.SMTP_HOST || null;

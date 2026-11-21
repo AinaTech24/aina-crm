@@ -72,7 +72,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({
       ok: true,
       sentTo: maskEmail(built.email),
-      emailSent: sent,
+      emailSent: sent.sent,
+      // Why the email did not go — Aina Admin only (it names the platform's mail problem).
+      ...(sent.sent ? {} : { emailError: sent.detail ?? "The mail server did not accept the email." }),
       // Dev convenience only — never leak the live link in production.
       ...(process.env.NODE_ENV !== "production" ? { devResetUrl: built.resetUrl } : {}),
     });

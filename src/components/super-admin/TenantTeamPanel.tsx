@@ -108,7 +108,14 @@ export function TenantTeamPanel({ tenantId, members }: { tenantId: string; membe
       setMsg((x) => ({
         ...x,
         [m.id]: res.ok
-          ? { ok: j.emailSent !== false, text: j.emailSent === false ? `Link created, but the email could not be sent to ${j.sentTo} — check email settings.` : `Reset link sent to ${j.sentTo}. It works for 1 hour.` }
+          ? {
+              ok: j.emailSent !== false,
+              text:
+                j.emailSent === false
+                  ? `The email to ${j.sentTo} could not be sent: ${j.emailError ?? "the mail server did not accept it."} ` +
+                    `Fix it in Aina Admin → Email (send a test there), or use "Set password" instead.`
+                  : `Reset link sent to ${j.sentTo}. It works for 1 hour.`,
+            }
           : { ok: false, text: j.error ?? "Could not send the reset link." },
       }));
     } finally {

@@ -155,10 +155,14 @@ export function TenantAdminPanel({
         setResetMsg({ ok: false, text: j.error ?? "Could not send reset link" });
         return;
       }
-      setResetMsg({
-        ok: true,
-        text: `Reset link sent to ${j.sentTo}${j.emailSent === false ? " (email delivery not configured — check server logs)" : ""}.`,
-      });
+      setResetMsg(
+        j.emailSent === false
+          ? {
+              ok: false,
+              text: `The email to ${j.sentTo} could not be sent: ${j.emailError ?? "the mail server did not accept it."} Fix it in Aina Admin → Email (send a test there), or set a password from the Team list.`,
+            }
+          : { ok: true, text: `Reset link sent to ${j.sentTo}. It works for 1 hour.` },
+      );
     } finally {
       setResetBusy(false);
     }

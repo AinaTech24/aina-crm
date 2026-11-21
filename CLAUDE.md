@@ -2774,6 +2774,12 @@ These have clear hooks in the schema and architecture; pick them up in roadmap o
   out everywhere (`sessions_invalid_after`, as `/api/auth/reset`), cancels every unused reset link so an older email
   can never put a password back, and is audited `tenant.user_password_set` (masked email, links cancelled — never the
   password). Two-factor still applies. The form has show / generate (14 characters, no look-alikes) and a confirm box.
+- **A reset email that does not go says why** (2026-11-21, Shah Financial: every "Send reset link" read "could not be
+  sent — check email settings"). `sendSystemEmail` now returns `detail` — the mail server's reason through
+  `describeMailError` (authentication, unreachable host, the server's own words) or, when nothing would be tried, the
+  config's `problem` (`loadEmailConfig`: no username, no password, or a saved password this server cannot decrypt because
+  it was saved under another `ENCRYPTION_KEY`). Aina Admin's reset buttons and its Email test show it; a firm admin's
+  Team Members page only says the CRM's own email failed. `sendResetEmail` returns the whole result, not a boolean.
 - **Billing** — Razorpay recurring auto-debit, HMAC-verified webhook, full
   subscription lifecycle, license gate restricting lapsed tenants to billing +
   support. Client-count quota (`packages.maxInvestors`) enforced on investor
