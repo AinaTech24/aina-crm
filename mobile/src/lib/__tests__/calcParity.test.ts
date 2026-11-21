@@ -15,8 +15,8 @@ import {
   monthsToTarget, fdVsEquity, rentVsBuy, btid, emergencyFund, computeEmiSip, computeCrashStress,
   computeFire, computeNps, requiredMonthlySip, isDueNow, computeChildEducation,
 } from "../../features/calculators/calc";
-import { calcByKey } from "../../features/calculators/registry";
-import { inr } from "../format";
+import { calcByKey, CALCULATORS, CALC_GROUPS, NOT_PORTED } from "../../features/calculators/registry";
+import { CATALOG } from "../../features/calculators/catalog";
 
 /** Equal to the web value to the paisa (expected values are rounded to 2 dp). */
 const near = (actual: number, expected: number) => expect(actual).toBeCloseTo(expected, 1);
@@ -237,46 +237,34 @@ describe("Calculators (web src/lib/calculators/* and goal-planning)", () => {
   });
 });
 
-describe("Calculator screens show the CRM's figures (registry defaults)", () => {
-  const run = (key: string, over: Record<string, number> = {}): any[] => {
+describe("Calculator registry mirrors the web catalog", () => {
+  // Each screen's figures are pinned against the web module in
+  // src/features/calculators/__tests__/<group>.test.ts; this checks the whole.
+  it("every web calculator has a screen, under the web's group and name", () => {
+    expect(NOT_PORTED).toEqual([]);
+    const keys = CALCULATORS.map((c) => c.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(CALCULATORS.length).toBe(CATALOG.reduce((n, g) => n + g.items.length, 0));
+    expect(CALC_GROUPS).toEqual(CATALOG.map((g) => g.title));
+  });
+  it.each(CALCULATORS.map((c) => [c.key]))("%s computes on its defaults", (key) => {
     const def = calcByKey(key)!;
     const v: Record<string, any> = Object.fromEntries(def.inputs.map((i) => [i.key, i.default]));
-    return def.compute({ ...v, ...over });
-  };
-  const stat = (blocks: any[], label: string) => blocks.find((b) => b.type === "stat" && b.label.startsWith(label))?.value;
-  const money = (n: number) => inr(Math.round(n));
-
-  it("Retirement", () => {
-    const b = run("retirement");
-    expect(stat(b, "Corpus needed at retirement")).toBe(money(66761071.65));
-    expect(stat(b, "Monthly SIP from now")).toBe(money(35181.2));
-    expect(stat(run("retirement", { currentAge: 60 }), "Monthly SIP from now")).toBe("—");
+    const blocks = def.compute(v, { nav: {} });
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const b of blocks) {
+      if (b.type === "stat") expect(b.value).not.toMatch(/NaN|undefined|Infinity/);
+      if (b.type === "table") for (const r of b.rows) for (const cell of r) expect(cell).not.toMatch(/NaN|undefined/);
+    }
   });
-  it("Term + MF vs ULIP shows the post-tax corpora", () => {
-    const b = run("btid");
-    expect(stat(b, "Term + MF corpus (post-tax)")).toBe(money(6230093.46));
-    expect(stat(b, "ULIP/endowment corpus")).toBe(money(3899272.67));
-    expect(stat(b, "Extra wealth")).toBe(money(2330820.79));
-  });
-  it("Rent vs Buy, EMI → SIP, NPS, Market crash", () => {
-    const rb = run("rent-buy");
-    expect(stat(rb, "Net worth if you BUY")).toBe(money(24206416.95));
-    expect(stat(rb, "Net worth if you RENT")).toBe(money(29166583.36));
-    expect(stat(run("emi-sip"), "SIP to reach the same total")).toBe(money(6792.71));
-    const n = run("nps");
-    expect(stat(n, "Corpus at retirement")).toBe(money(10396463.58));
-    expect(n.find((x: any) => x.type === "insight")?.text).toContain(money(15600));
-    const c = run("crash");
-    expect(stat(c, "If you STAY invested")).toBe(money(8007254.93));
-    expect(stat(c, "Cost of panic")).toBe(money(2708550.08));
-    expect(run("crash", { crashYear: 20 }).find((x: any) => x.type === "insight")?.text).toContain("outside");
-  });
-  it("Goal, Child education and CAGR never show ₹0 for a SIP that cannot exist", () => {
-    const g = run("goal");
-    expect(stat(g, "Monthly SIP needed")).toBe(money(19269.76));
-    expect(stat(run("goal", { years: 0 }), "Monthly SIP needed")).toBe("—");
-    expect(stat(run("child-education"), "Monthly SIP needed")).toBe(money(17553.99));
-    expect(stat(run("child-education", { childAge: 18, goalAge: 18 }), "Monthly SIP needed")).toBe("Due now — lumpsum");
-    expect(stat(run("cagr", { initial: 0 }), "CAGR")).toBe("—");
+  it("the SIP-for-a-goal screens show the one-time lumpsum today beside the SIP (web f7f89a79)", () => {
+    const lumpsumShown = (key: string) => {
+      const def = calcByKey(key)!;
+      const v: Record<string, any> = Object.fromEntries(def.inputs.map((i) => [i.key, i.default]));
+      return def.compute(v, { nav: {} }).some((b) => (b.type === "stat" && /lumpsum/i.test(b.label)) || (b.type === "section" && /lumpsum/i.test(b.text)) || (b.type === "table" && (b.head.some((h) => /lumpsum/i.test(h)) || b.rows.some((r) => /lumpsum/i.test(r[0] ?? "")))));
+    };
+    for (const key of ["delay", "limitedneed", "stepuptarget", "collision", "feasibility", "vacation", "goalplan", "childedu", "retirement", "emisip", "passiveincome", "wedding", "dreamcar", "emergency", "sipforswp", "sipneedreckoner"]) {
+      expect({ key, lumpsumShown: lumpsumShown(key) }).toEqual({ key, lumpsumShown: true });
+    }
   });
 });
