@@ -20,6 +20,8 @@ import { Button } from "../../../../src/components/ui/Button";
 import { Segmented } from "../../../../src/components/ui/Segmented";
 import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
 import { LoadingState, ErrorState } from "../../../../src/components/states";
+import { SavedCopyBanner } from "../../../../src/components/SavedCopyBanner";
+import { useConnectivity } from "../../../../src/state/connectivity";
 import { OverviewTab } from "../../../../src/features/investors/detail/OverviewTab";
 import { PortfolioTab } from "../../../../src/features/investors/detail/PortfolioTab";
 import { ProfileTab } from "../../../../src/features/investors/detail/ProfileTab";
@@ -58,7 +60,9 @@ export default function InvestorDetail() {
   const { id, opportunity, product } = useLocalSearchParams<{ id: string; opportunity?: string; product?: string }>();
   const router = useRouter();
   const { brand } = useBrand();
-  const { data: d, isLoading, isError, refetch, isRefetching } = useInvestorFull(id);
+  const { data: d, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useInvestorFull(id);
+  // No signal: show the copy saved on this phone (persisted cache, 24 h) instead of an error.
+  const offline = useConnectivity((s) => !s.online);
   const verify = useVerifyContact(id!);
   const statement = useSendStatement(id!);
   const del = useDeleteInvestor();
@@ -88,7 +92,8 @@ export default function InvestorDetail() {
   };
 
   if (isLoading) return <View style={styles.screen}><ScreenHeader title="Client" /><LoadingState label="Loading client…" /></View>;
-  if (isError || !d?.investor) return <View style={styles.screen}><ScreenHeader title="Client" /><ErrorState onRetry={refetch} /></View>;
+  if (!d?.investor) return <View style={styles.screen}><ScreenHeader title="Client" /><ErrorState onRetry={refetch} /></View>;
+  const savedCopy = isError || offline;
 
   const i = d.investor;
   const status = investorStatusBadge(i.status);
@@ -171,6 +176,7 @@ export default function InvestorDetail() {
         title={i.name}
         right={<Pressable accessibilityRole="button" accessibilityLabel="More actions" onPress={() => setActions(true)} hitSlop={10}><Feather name="more-vertical" size={20} color={palette.ink} /></Pressable>}
       />
+      {savedCopy ? <SavedCopyBanner savedAt={dataUpdatedAt} style={{ marginHorizontal: spacing.lg, marginTop: spacing.sm }} /> : null}
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={palette.brand} />}

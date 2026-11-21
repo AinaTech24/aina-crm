@@ -24,6 +24,8 @@ import { SelectField } from "../../../../src/components/ui/SelectField";
 import { Segmented } from "../../../../src/components/ui/Segmented";
 import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
 import { LoadingState, ErrorState } from "../../../../src/components/states";
+import { SavedCopyBanner } from "../../../../src/components/SavedCopyBanner";
+import { useConnectivity } from "../../../../src/state/connectivity";
 import { Section, FieldRow, Empty } from "../../../../src/features/investors/detail/primitives";
 import { useLeadFull, useLogActivity, useConvertLead, useDeleteLead, LEAD_STAGES, stageMeta, stageDisplay, canonicalStage, leadSourceLabel } from "../../../../src/features/leads/api";
 import { LEAD_PHASE, journeyStage } from "../../../../src/features/leads/journey";
@@ -55,7 +57,9 @@ export default function LeadDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { brand } = useBrand();
-  const { data: d, isLoading, isError, refetch, isRefetching } = useLeadFull(id);
+  const { data: d, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useLeadFull(id);
+  // No signal: show the copy saved on this phone (persisted cache, 24 h) instead of an error.
+  const offline = useConnectivity((s) => !s.online);
   const logAct = useLogActivity(id!);
   const convert = useConvertLead(id!);
   const del = useDeleteLead();
@@ -73,7 +77,8 @@ export default function LeadDetail() {
   }, [(d as any)?.lead?.id]);
 
   if (isLoading) return <View style={styles.screen}><ScreenHeader title="Lead" /><LoadingState label="Loading lead…" /></View>;
-  if (isError || !d?.lead) return <View style={styles.screen}><ScreenHeader title="Lead" /><ErrorState onRetry={refetch} /></View>;
+  if (!d?.lead) return <View style={styles.screen}><ScreenHeader title="Lead" /><ErrorState onRetry={refetch} /></View>;
+  const savedCopy = isError || offline;
 
   const l = d.lead;
   const converted = !!l.convertedAt;
@@ -93,6 +98,7 @@ export default function LeadDetail() {
   return (
     <View style={styles.screen}>
       <ScreenHeader title={l.name ?? "Lead"} right={<Pressable accessibilityRole="button" accessibilityLabel="More actions" onPress={() => setActions(true)} hitSlop={10}><Feather name="more-vertical" size={20} color={palette.ink} /></Pressable>} />
+      {savedCopy ? <SavedCopyBanner savedAt={dataUpdatedAt} style={{ marginHorizontal: spacing.lg, marginTop: spacing.sm }} /> : null}
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={palette.brand} />}

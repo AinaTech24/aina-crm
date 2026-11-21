@@ -20,6 +20,8 @@ import { Button } from "../../../../src/components/ui/Button";
 import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
 import { SkeletonList } from "../../../../src/components/ui/Skeleton";
 import { EmptyState, SearchEmptyState, ErrorState, NetworkErrorState } from "../../../../src/components/states";
+import { SavedCopyBanner } from "../../../../src/components/SavedCopyBanner";
+import { useConnectivity } from "../../../../src/state/connectivity";
 import { InvestorCard } from "../../../../src/components/domain/InvestorCard";
 import { InvestorKpiStrip, type KpiQuick } from "../../../../src/features/investors/InvestorKpiStrip";
 import { startCall } from "../../../../src/features/activities/callAndLog";
@@ -88,6 +90,7 @@ export default function InvestorsList() {
   const exitedCount = useExitedCount(!filters.status.length && !debounced.trim()).data ?? 0;
 
   const query = useInvestors(apiFilters);
+  const offline = useConnectivity((s) => !s.online);
   const { rows, total } = flattenInvestors(query.data);
   const board = useInvestorBoard(apiFilters, isKanban);
   const boardRows = board.data?.rows ?? [];
@@ -117,6 +120,7 @@ export default function InvestorsList() {
 
   const header = (
     <View style={styles.controls}>
+      {(query.isError || offline) && rows.length ? <SavedCopyBanner savedAt={query.dataUpdatedAt} /> : null}
       <InvestorKpiStrip active={quick} onSelect={setQuick} />
       {quick ? (
         <Pressable onPress={() => setQuick("")} style={styles.quickChip} accessibilityRole="button" accessibilityLabel={`Clear filter: ${QUICK_LABEL[quick]}`}>
@@ -185,7 +189,9 @@ export default function InvestorsList() {
     if (query.isLoading) {
       return (<><View style={{ paddingHorizontal: spacing.lg }}>{header}</View><SkeletonList count={6} /></>);
     }
-    if (query.isError) {
+    // Rows already on the phone stay on screen when a refresh fails (no signal);
+    // the banner in the header says so.
+    if (query.isError && !rows.length) {
       const net = query.error instanceof ApiError && query.error.kind !== "http";
       return net ? <NetworkErrorState onRetry={() => query.refetch()} /> : <ErrorState message={(query.error as any)?.message} onRetry={() => query.refetch()} />;
     }
