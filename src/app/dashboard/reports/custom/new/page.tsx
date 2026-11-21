@@ -253,7 +253,7 @@ function Builder() {
           <Field label="Name *"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. HNI clients with no review in 90 days" className="input-base" /></Field>
           <Field label="Module">
             <SelectField value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className="w-full">
-              {[...SUBJECTS, ...(meetingsOn || form.subject === "review_meeting" || form.subject === "business_line" || form.subject === "equity_brokerage" || form.subject === "equity_dmat" || form.subject === "new_client" || form.subject === "sip_rejection" ? ([["review_meeting", "Meetings"], ["business_line", "Business Entries (scheme lines)"], ["equity_brokerage", "Equity Brokerage (monthly)"], ["equity_dmat", "DMAT Accounts"], ["new_client", "New Clients (onboarding)"], ["sip_rejection", "SIP Rejections"]] as [string, string][]) : [])].map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              {[...SUBJECTS, ...(meetingsOn || form.subject === "review_meeting" || form.subject === "business_line" || form.subject === "equity_brokerage" || form.subject === "equity_dmat" || form.subject === "new_client" || form.subject === "sip_rejection" || form.subject === "client_gap" ? ([["review_meeting", "Meetings"], ["business_line", "Business Entries (scheme lines)"], ["equity_brokerage", "Equity Brokerage (monthly)"], ["equity_dmat", "DMAT Accounts"], ["new_client", "New Clients (onboarding)"], ["sip_rejection", "SIP Rejections"], ["client_gap", "Client Data Gaps"]] as [string, string][]) : [])].map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </SelectField>
           </Field>
         </div>

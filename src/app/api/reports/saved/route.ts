@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
     }
     const body = parse.data;
     // Meetings / Business Entry line reports: only a firm with the Zoho import flag (We Care, 2026-11-19).
-    if ((body.subject === "review_meeting" || body.subject === "business_line" || body.subject === "equity_brokerage" || body.subject === "equity_dmat" || body.subject === "new_client" || body.subject === "sip_rejection") && !(await zohoImportEnabled(session.tenantId, session.roles))) {
+    if ((body.subject === "review_meeting" || body.subject === "business_line" || body.subject === "equity_brokerage" || body.subject === "equity_dmat" || body.subject === "new_client" || body.subject === "sip_rejection" || body.subject === "client_gap") && !(await zohoImportEnabled(session.tenantId, session.roles))) {
       return NextResponse.json({ error: "This report module is not available for this firm." }, { status: 403 });
     }
 

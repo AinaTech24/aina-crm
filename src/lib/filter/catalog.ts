@@ -14,6 +14,7 @@
  */
 
 import type { FilterOperator } from "./ast";
+import { CLIENT_TYPE_KEYS, clientTypeDef } from "@/lib/investors/client-types";
 
 export type FieldType =
   | "string"
@@ -72,7 +73,8 @@ export interface SubjectCatalog {
     | "equity_brokerage"
     | "equity_dmat"
     | "new_client"
-    | "sip_rejection";
+    | "sip_rejection"
+    | "client_gap";
   /** Primary table + alias used in compiled SQL. */
   table: string;
   alias: string;
@@ -471,6 +473,15 @@ export const taskCatalog: SubjectCatalog = {
       ops: COMMON_NUMBER_OPS,
     },
     { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.id = tk.assignee_id)", ops: COMMON_STRING_OPS, branch: true },
+    // Zoho Task Tracker's own request fields, kept in tasks.meta by the import (We Care Back Office report, 2026-11-21).
+    { key: "request_for", label: "Request for", type: "string", sql: "NULLIF(btrim(tk.meta->>'zohoRequest'), '')", ops: COMMON_STRING_OPS },
+    { key: "request_type", label: "Request type", type: "string", sql: "NULLIF(btrim(tk.meta->>'zohoType'), '')", ops: COMMON_STRING_OPS },
+    { key: "request_count", label: "Number of (request)", type: "number", sql: "(CASE WHEN tk.meta->>'count' ~ '^[0-9]+([.][0-9]+)?$' THEN (tk.meta->>'count')::numeric END)", ops: COMMON_NUMBER_OPS },
+    { key: "created_on", label: "Created on", type: "date", sql: "(tk.created_at AT TIME ZONE 'Asia/Kolkata')::date", ops: COMMON_DATE_OPS },
+    { key: "completed_on", label: "Completed on", type: "date", sql: "(tk.completed_at AT TIME ZONE 'Asia/Kolkata')::date", ops: COMMON_DATE_OPS },
+    { key: "client_name", label: "Client", type: "string", sql: "(SELECT i.name FROM investors i WHERE i.id = COALESCE(tk.related_investor_id, CASE WHEN tk.subject_type = 'investor' THEN tk.subject_id END))", ops: COMMON_STRING_OPS },
+    { key: "client_branch", label: "Client's branch", type: "string", sql: "(SELECT b.name FROM investors i JOIN branches b ON b.id = i.branch_id WHERE i.id = COALESCE(tk.related_investor_id, CASE WHEN tk.subject_type = 'investor' THEN tk.subject_id END))", ops: COMMON_STRING_OPS },
+    { key: "raised_by_branch", label: "Raised by — branch", type: "string", sql: "(SELECT b.name FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.id = tk.created_by_id)", ops: COMMON_STRING_OPS },
   ],
   relations: {},
 };
@@ -822,6 +833,44 @@ export const sipRejectionCatalog: SubjectCatalog = {
   relations: {},
 };
 
+/*
+ * Client data gaps (We Care, 2026-11-21 — the firm's "Data Update" sheet): one row
+ * per client, with a 1/0 counter per missing field, summed by RM. Each counter
+ * follows the client type exactly as lib/investors/type-rules.ts does (a company
+ * has no date of birth; profession, company and Aadhaar are an adult
+ * individual's) — built from the same client-type list, never a copied enum.
+ */
+const sqlList = (keys: readonly string[]) => keys.map((k) => `'${k}'`).join(", ");
+const GAP_PERSON = sqlList(CLIENT_TYPE_KEYS.filter((k) => clientTypeDef(k).kind === "person"));
+const GAP_DOB = sqlList(CLIENT_TYPE_KEYS.filter((k) => ["person", "minor"].includes(clientTypeDef(k).kind)));
+const gapType = (list: string) => `COALESCE(cg.investor_category, 'individual') IN (${list})`;
+const gap = (cond: string) => `(CASE WHEN ${cond} THEN 1 ELSE 0 END)`;
+const blank = (col: string) => `COALESCE(btrim(${col}), '') = ''`;
+
+export const clientGapCatalog: SubjectCatalog = {
+  subject: "client_gap",
+  table: "investors",
+  alias: "cg",
+  fields: [
+    { key: "client_name", label: "Client", type: "string", sql: "cg.name", ops: COMMON_STRING_OPS },
+    { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = cg.rm_id)", ops: COMMON_STRING_OPS, lookup: "user" },
+    { key: "desk_name", label: "Desk", type: "string", sql: "(SELECT d.name FROM users u JOIN desks d ON d.id = u.desk_id WHERE u.id = cg.rm_id)", ops: COMMON_STRING_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM branches b WHERE b.id = cg.branch_id)", ops: COMMON_STRING_OPS, branch: true },
+    { key: "live", label: "Live client", type: "string", sql: "(CASE WHEN cg.deleted_at IS NULL AND cg.merged_into_id IS NULL AND COALESCE(cg.status, 'active') NOT IN ('exited', 'closed') THEN 'Yes' ELSE 'No' END)", ops: COMMON_STRING_OPS },
+    { key: "onboarded_at", label: "Onboarded on", type: "date", sql: "(cg.onboarded_at AT TIME ZONE 'Asia/Kolkata')::date", ops: COMMON_DATE_OPS },
+    { key: "missing_pan", label: "PAN pending", type: "integer", sql: gap(`${blank("cg.pan")} OR cg.pan LIKE 'NOPAN:%'`), ops: COMMON_NUMBER_OPS },
+    { key: "missing_mobile", label: "Mobile pending", type: "integer", sql: gap(blank("cg.phone")), ops: COMMON_NUMBER_OPS },
+    { key: "missing_email", label: "Email pending", type: "integer", sql: gap(blank("cg.email")), ops: COMMON_NUMBER_OPS },
+    { key: "missing_category", label: "Category pending", type: "integer", sql: gap("cg.client_category IS NULL"), ops: COMMON_NUMBER_OPS },
+    { key: "missing_address", label: "Address pending", type: "integer", sql: gap(`${blank("cg.address->>'line1'")} AND ${blank("cg.address->>'city'")}`), ops: COMMON_NUMBER_OPS },
+    { key: "missing_aadhaar", label: "Aadhaar pending", type: "integer", sql: gap(`${gapType(GAP_PERSON)} AND ${blank("cg.aadhaar_last4")}`), ops: COMMON_NUMBER_OPS },
+    { key: "missing_dob", label: "Date of birth pending", type: "integer", sql: gap(`${gapType(GAP_DOB)} AND cg.dob IS NULL`), ops: COMMON_NUMBER_OPS },
+    { key: "missing_profession", label: "Profession pending", type: "integer", sql: gap(`${gapType(GAP_PERSON)} AND ${blank("cg.occupation")}`), ops: COMMON_NUMBER_OPS },
+    { key: "missing_company", label: "Company name pending", type: "integer", sql: gap(`${gapType(GAP_PERSON)} AND ${blank("cg.employer_name")}`), ops: COMMON_NUMBER_OPS },
+  ],
+  relations: {},
+};
+
 export const CATALOGS: Record<string, SubjectCatalog> = {
   investor: investorCatalog,
   lead: leadCatalog,
@@ -840,6 +889,7 @@ export const CATALOGS: Record<string, SubjectCatalog> = {
   equity_dmat: equityDmatCatalog,
   new_client: newClientCatalog,
   sip_rejection: sipRejectionCatalog,
+  client_gap: clientGapCatalog,
 };
 
 /** The field a subject's rows are filtered by for "Branch" on the report page, if it has one. */

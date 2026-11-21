@@ -39,6 +39,8 @@ export const REPORT_SUBJECTS = [
   "new_client",
   // SIP rejections by Branch → Desk → RM: rejected, purchase done, pending, without remarks (2026-11-20) — same flag.
   "sip_rejection",
+  // Clients with empty fields, counted by RM (We Care Data Update sheet, 2026-11-21) — same flag.
+  "client_gap",
 ] as const;
 export const REPORT_TYPES = ["detailed", "summary", "matrix"] as const;
 export const REPORT_SHARE_SCOPES = ["private", "team", "tenant"] as const;

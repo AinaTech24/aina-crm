@@ -35,6 +35,7 @@ export async function reportSubjectScope(tx: any, session: SessionUser, subject:
   switch (subject) {
     case "investor":
     case "new_client":
+    case "client_gap":
       return invAllowed ? investorScopeSql(tx, session, a) : sql`FALSE`;
     case "lead":
       return cap("lead.view.all") || cap("lead.view.assigned") ? leadScopeSql(session, a) : sql`FALSE`;
