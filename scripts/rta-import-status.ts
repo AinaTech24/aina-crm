@@ -6,7 +6,8 @@
  *
  * Prints, per firm: files by status per registrar, rows imported, the last
  * COMPLETED daily transaction feed per registrar (and how many days ago), files
- * stuck in the queue, then the distinct problems (refused passwords, failures,
+ * stuck in the queue, every CAMS schedule (Query Ref) with how many of its files
+ * opened or were refused, then the distinct problems (refused passwords, failures,
  * skipped rows) with how many files each. Writes nothing. No passwords, PANs or
  * client names are printed — only firm names, file types and the CRM's own
  * messages (which can name a folio number or a CAMS Query Ref).
@@ -25,7 +26,7 @@ const pad = (s: unknown, w: number) => String(s ?? "").slice(0, w).padEnd(w);
 const rpad = (s: unknown, w: number) => String(s ?? "").slice(0, w).padStart(w);
 
 async function main() {
-  const { perFirm, lastFeed, problems, silent } = await withSystem(async (tx) => {
+  const { perFirm, lastFeed, problems, silent, schedules } = await withSystem(async (tx) => {
     const perFirm = (
       await tx.execute(sql`
         SELECT t.id, COALESCE(NULLIF(t.display_name, ''), t.legal_name) AS firm, r.source,
@@ -91,7 +92,35 @@ async function main() {
       `)
     ).rows as Row[];
 
-    return { perFirm, lastFeed, problems, silent };
+    // Every CAMS schedule (Query Ref) seen in the window and how its files fared. The ref is in
+    // the attachment's name, or — for a refused ZIP — in the CRM's own message. A firm's OWN
+    // schedules should be all "opened"; one whose files are all refused was set up with a
+    // password the CRM does not hold (another back-office provider's, or a typo).
+    const schedules = (
+      await tx.execute(sql`
+        SELECT firm, ref, report,
+               COUNT(*) FILTER (WHERE status IN ('completed', 'partial'))::int AS opened,
+               COUNT(*) FILTER (WHERE status = 'rejected')::int AS refused,
+               COUNT(*) FILTER (WHERE status NOT IN ('completed', 'partial', 'rejected'))::int AS other,
+               min(created_at) AS first_at, max(created_at) AS last_at
+          FROM (
+            SELECT COALESCE(NULLIF(t.display_name, ''), t.legal_name) AS firm, r.status, r.created_at,
+                   COALESCE(substring(r.file_name from '(?:^|[^0-9])([0-9]{7,12})R[0-9]{1,3}'),
+                            substring(r.remarks from 'CAMS request ([0-9]{7,12})')) AS ref,
+                   COALESCE(substring(r.file_name from '(?:^|[^0-9])[0-9]{7,12}(R[0-9]{1,3})'),
+                            substring(r.remarks from 'CAMS request [0-9]{7,12} [(](R[0-9]{1,3})[)]')) AS report
+              FROM rta_file_imports r
+              JOIN tenants t ON t.id = r.tenant_id
+             WHERE r.deleted_at IS NULL AND r.source = 'cams'
+               AND r.created_at >= now() - make_interval(days => ${DAYS})
+          ) x
+         WHERE ref IS NOT NULL
+         GROUP BY firm, ref, report
+         ORDER BY firm, ref
+      `)
+    ).rows as Row[];
+
+    return { perFirm, lastFeed, problems, silent, schedules };
   });
 
   const ago = (v: unknown) => {
@@ -116,6 +145,15 @@ async function main() {
 
   console.log(`\nFIRMS WITH NO RTA FILE IN THE LAST ${DAYS} DAYS (${silent.length})`);
   for (const s of silent) console.log(`  ${pad(s.firm, 40)} last file ever: ${ago(s.last_ever)}`);
+
+  console.log(`\nCAMS SCHEDULES BY QUERY REF (${schedules.length}) — compare with CAMS → Auto Mailback Queue`);
+  console.log(`  ${pad("Firm", 34)} ${pad("Query Ref", 12)} ${pad("Rpt", 4)} ${rpad("Opened", 6)} ${rpad("Refused", 7)} ${rpad("Other", 5)}  First seen / last seen`);
+  for (const s of schedules) {
+    const verdict = n(s.opened) > 0 ? "" : n(s.refused) > 0 ? "  <-- password not in CRM" : "";
+    console.log(
+      `  ${pad(s.firm, 34)} ${pad(s.ref, 12)} ${pad(s.report ?? "", 4)} ${rpad(s.opened, 6)} ${rpad(s.refused, 7)} ${rpad(s.other, 5)}  ${ago(s.first_at)} / ${ago(s.last_at)}${verdict}`
+    );
+  }
 
   console.log(`\nPROBLEMS (${problems.length} distinct)`);
   let current = "";
