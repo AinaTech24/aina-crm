@@ -5,10 +5,15 @@
  * link" for each active one. The link is emailed to the team member (valid
  * one hour); the admin never sees it or the password. Uses inline status
  * messages, like the account panel above it.
+ *
+ * "Set password" (2026-11-21) gives the member a new password directly — for
+ * when the emailed link cannot reach them. It replaces whatever password they
+ * had (one set here earlier included), signs them out everywhere and cancels
+ * any reset link still waiting (/api/super-admin/tenants/[id]/set-password).
  */
 
 import { useMemo, useState } from "react";
-import { KeyRound, Loader2, Search, Users } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Loader2, LockKeyhole, Search, Users, Wand2 } from "lucide-react";
 import { ROLE_LABELS } from "@/lib/auth/rbac";
 
 export type TeamMember = {
@@ -27,6 +32,14 @@ const STATUS_TONE: Record<string, string> = {
   offboarding: "bg-amber-50 text-amber-700",
 };
 
+/** A random 14-character password: letters and digits, no look-alikes (0/O, 1/l/I). */
+function generatePassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const bytes = new Uint32Array(14);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
+
 const lastSeen = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }) : "Never";
 
@@ -34,6 +47,48 @@ export function TenantTeamPanel({ tenantId, members }: { tenantId: string; membe
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
+  // The row whose "Set password" form is open, and what is typed in it.
+  const [setFor, setSetFor] = useState<string | null>(null);
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [showPw, setShowPw] = useState(false);
+
+  function openSet(m: TeamMember) {
+    setSetFor(setFor === m.id ? null : m.id);
+    setPw("");
+    setPw2("");
+    setShowPw(false);
+    setMsg((x) => ({ ...x, [m.id]: { ok: true, text: "" } }));
+  }
+
+  async function savePassword(m: TeamMember) {
+    if (pw.length < 8) return setMsg((x) => ({ ...x, [m.id]: { ok: false, text: "Use at least 8 characters." } }));
+    if (pw !== pw2) return setMsg((x) => ({ ...x, [m.id]: { ok: false, text: "The two passwords do not match." } }));
+    setBusy(m.id);
+    try {
+      const res = await fetch(`/api/super-admin/tenants/${tenantId}/set-password`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: m.id, password: pw }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg((x) => ({ ...x, [m.id]: { ok: false, text: j.error ?? "Could not set the password." } }));
+        return;
+      }
+      const notes = [
+        `New password set for ${m.name}. Any earlier password and any unused reset link no longer work, and they are signed out everywhere — share the new password with them privately.`,
+        j.status && j.status !== "active" ? `Their login is ${j.status}, so they cannot sign in until it is active.` : "",
+        j.has2fa ? "Their two-factor code is still asked for at sign-in." : "",
+      ].filter(Boolean);
+      setMsg((x) => ({ ...x, [m.id]: { ok: true, text: notes.join(" ") } }));
+      setSetFor(null);
+      setPw("");
+      setPw2("");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -104,6 +159,17 @@ export function TenantTeamPanel({ tenantId, members }: { tenantId: string; membe
                   </td>
                   <td className="py-2.5 pr-3 whitespace-nowrap text-muted-foreground">{lastSeen(m.lastLoginAt)}</td>
                   <td className="py-2.5 text-right">
+                    <div className="inline-flex flex-wrap justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => openSet(m)}
+                      disabled={busy === m.id}
+                      aria-expanded={setFor === m.id}
+                      title={`Type a new password for ${m.name} — it replaces their current one`}
+                      className="rounded-md border px-3 py-1.5 text-xs inline-flex items-center gap-1.5 hover:bg-accent disabled:opacity-50 whitespace-nowrap"
+                    >
+                      <LockKeyhole className="size-3.5" /> Set password
+                    </button>
                     <button
                       type="button"
                       onClick={() => sendReset(m)}
@@ -119,8 +185,71 @@ export function TenantTeamPanel({ tenantId, members }: { tenantId: string; membe
                       }
                       className="rounded-md border px-3 py-1.5 text-xs inline-flex items-center gap-1.5 hover:bg-accent disabled:opacity-50 whitespace-nowrap"
                     >
-                      {busy === m.id ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />} Send reset link
+                      {busy === m.id && setFor !== m.id ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />} Send reset link
                     </button>
+                    </div>
+                    {setFor === m.id && (
+                      <form
+                        className="mt-2 ml-auto max-w-xs space-y-1.5 text-left"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void savePassword(m);
+                        }}
+                      >
+                        <label className="block text-xs text-muted-foreground" htmlFor={`pw-${m.id}`}>
+                          New password for {m.name}
+                        </label>
+                        <div className="flex gap-1.5">
+                          <input
+                            id={`pw-${m.id}`}
+                            type={showPw ? "text" : "password"}
+                            autoComplete="new-password"
+                            value={pw}
+                            onChange={(e) => setPw(e.target.value)}
+                            className="input-base text-sm h-8 flex-1 min-w-0"
+                            placeholder="At least 8 characters"
+                          />
+                          <button type="button" onClick={() => setShowPw((v) => !v)} className="btn-icon" aria-label={showPw ? "Hide password" : "Show password"}>
+                            {showPw ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const g = generatePassword();
+                              setPw(g);
+                              setPw2(g);
+                              setShowPw(true);
+                            }}
+                            className="btn-icon"
+                            aria-label="Generate a password"
+                            title="Generate a password"
+                          >
+                            <Wand2 className="size-3.5" />
+                          </button>
+                        </div>
+                        <input
+                          type={showPw ? "text" : "password"}
+                          autoComplete="new-password"
+                          value={pw2}
+                          onChange={(e) => setPw2(e.target.value)}
+                          className="input-base text-sm h-8 w-full"
+                          placeholder="Type it again"
+                          aria-label={`Confirm the new password for ${m.name}`}
+                        />
+                        <div className="flex justify-end gap-1.5">
+                          <button type="button" onClick={() => setSetFor(null)} className="rounded-md px-3 py-1.5 text-xs hover:bg-accent">
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={busy === m.id || !pw}
+                            className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs inline-flex items-center gap-1.5 disabled:opacity-50"
+                          >
+                            {busy === m.id && <Loader2 className="size-3.5 animate-spin" />} Save password
+                          </button>
+                        </div>
+                      </form>
+                    )}
                     {note?.text && <div className={`mt-1 text-xs ${note.ok ? "text-emerald-600" : "text-rose-600"}`}>{note.text}</div>}
                   </td>
                 </tr>
