@@ -10,7 +10,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, Pencil, Power, UserMinus, Trash2, Loader2, X, Mail, Phone, Building2, ShieldCheck, Users, KeyRound } from "lucide-react";
+import { Eye, Pencil, Power, UserMinus, Trash2, Loader2, X, Mail, Phone, Building2, ShieldCheck, Users, KeyRound, LockKeyhole } from "lucide-react";
+import { SetPasswordDialog } from "@/components/common/SetPasswordDialog";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
@@ -47,6 +48,7 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
   const [info, setInfo] = useState(false);
   const [busy, setBusy] = useState<null | "deactivate" | "offboard" | "trash" | "reset">(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [settingPw, setSettingPw] = useState(false);
   const [confirmOffboard, setConfirmOffboard] = useState(false);
   const [confirmTrash, setConfirmTrash] = useState(false);
 
@@ -147,6 +149,17 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
           {busy === "reset" ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
         </button>
       )}
+      {employee.status === "active" && (
+        <button
+          onClick={() => setSettingPw(true)}
+          disabled={busy !== null}
+          title="Set a new password yourself and share it"
+          aria-label="Set a new password"
+          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-50"
+        >
+          <LockKeyhole className="size-4" />
+        </button>
+      )}
       {!isGone && (
         <button
           onClick={() => setConfirmOffboard(true)}
@@ -221,6 +234,8 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
         onConfirm={sendReset}
         onCancel={() => setConfirmReset(false)}
       />
+
+      {settingPw && <SetPasswordDialog url={`/api/employees/${employee.id}/set-password`} name={employee.name} onClose={() => setSettingPw(false)} />}
 
       <ConfirmDialog
         open={confirmTrash}

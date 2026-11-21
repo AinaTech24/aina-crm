@@ -8,6 +8,7 @@
  */
 
 import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
 import { v4 as uuid } from "uuid";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
@@ -68,6 +69,47 @@ export async function sendResetEmail(o: { tenantId: string; email: string; name:
       note: "If you didn't expect this, please contact your administrator.",
     }),
     idempotencyKey: `pwreset-admin:${o.email}:${o.resetUrl.slice(-16)}`,
+  });
+  return res.sent;
+}
+
+/**
+ * Set a user's password directly — for when the reset email cannot reach
+ * them. Signs them out everywhere (sessions issued before now are revoked)
+ * and voids any reset link still open. The caller shows the password to the
+ * admin once; it is never logged or stored in clear.
+ */
+export async function setPasswordDirect(tx: Tx, userId: string, password: string): Promise<void> {
+  const hash = await bcrypt.hash(password, 12);
+  await tx.execute(sql`
+    UPDATE users
+       SET password_hash = ${hash},
+           sessions_invalid_after = date_trunc('second', now()),
+           updated_at = now()
+     WHERE id = ${userId}::uuid
+  `);
+  await tx.execute(sql`UPDATE password_resets SET consumed_at = now() WHERE user_id = ${userId}::uuid AND consumed_at IS NULL`);
+}
+
+/** Best-effort notice to the user that someone changed their password. */
+export async function sendPasswordChangedNotice(o: { tenantId: string; email: string; name: string | null; by: string }): Promise<boolean> {
+  const hi = `Hi${o.name ? " " + o.name : ""}`;
+  const res = await sendSystemEmail({
+    tenantId: o.tenantId,
+    to: o.email,
+    subject: "Your password was changed",
+    text:
+      `${hi},\n\n${o.by} set a new password for your account and signed you out of every device. ` +
+      `They will share it with you. After signing in, change it to one only you know under Settings → Profile.\n\n` +
+      `If you didn't ask for this, contact your administrator.`,
+    html: actionEmailHtml({
+      heading: "Your password was changed",
+      intro: `${hi}, ${o.by.charAt(0).toLowerCase() + o.by.slice(1)} set a new password for your account and signed you out of every device. They will share it with you; after signing in, change it under Settings → Profile.`,
+      buttonLabel: "Sign in",
+      buttonUrl: `${process.env.APP_URL ?? "http://localhost:3000"}/login`,
+      note: "If you didn't ask for this, please contact your administrator.",
+    }),
+    idempotencyKey: `pwset-admin:${o.email}:${Date.now()}`,
   });
   return res.sent;
 }
