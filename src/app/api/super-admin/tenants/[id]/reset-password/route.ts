@@ -4,16 +4,13 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  * Platform-admin action: send a password-reset link to one of the firm's team
  * members (`userId`, from the firm page's Team list), or — with no userId — to
- * the firm's owner (else the oldest active user with an email). Mirrors the
- * self-service /api/auth/forgot flow — a one-time hashed token + emailed link,
- * valid for 1 hour — but initiated by AINA support. The admin never sees the
- * link or the password; the user picks a new one via the link, and setting it
- * signs them out everywhere (/api/auth/reset). Audited.
+ * the firm's owner (else the oldest active user with an email). Same one-hour
+ * emailed link as Forgot password (lib/auth/admin-reset.ts); the admin never
+ * sees the link or the password, and setting it signs the user out everywhere.
+ * Audited.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto";
-import { v4 as uuid } from "uuid";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withPlatformAdmin } from "@/db/client";
@@ -21,18 +18,11 @@ import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 import { recordAudit } from "@/lib/audit";
 import { PLATFORM_TENANT_ID } from "@/lib/platform";
-import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
+import { createResetLink, maskEmail, resetBlocker, sendResetEmail } from "@/lib/auth/admin-reset";
 
 export const dynamic = "force-dynamic";
 
 const Body = z.object({ userId: z.string().uuid().optional() });
-
-function maskEmail(email: string): string {
-  const [user, domain] = email.split("@");
-  if (!domain) return "***";
-  const head = user.slice(0, 1);
-  return `${head}${"*".repeat(Math.max(1, user.length - 1))}@${domain}`;
-}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: tenantId } = await params;
@@ -60,30 +50,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           `);
       const user = (userRows.rows[0] as { id: string; email: string | null; name: string | null; status: string } | undefined) ?? null;
       if (!user) return { error: targetId ? "That team member is not in this firm." : "No active user with an email to reset for this tenant.", status: 404 } as const;
-      if (!user.email) return { error: "This team member has no email address to send the link to.", status: 409 } as const;
-      if (user.status !== "active") {
-        return {
-          error:
-            user.status === "invited"
-              ? "This team member has not accepted their invite yet — resend the invite from the firm's Team page instead."
-              : `This team member's login is ${user.status}, so a reset link would not let them in.`,
-          status: 409,
-        } as const;
-      }
+      const blocked = resetBlocker(user, "from the firm's Team Members page");
+      if (blocked) return { error: blocked, status: 409 } as const;
 
-      const token = crypto.randomBytes(32).toString("base64url");
-      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
       const email = String(user.email).toLowerCase();
-
-      await tx.execute(sql`
-        INSERT INTO password_resets (id, user_id, tenant_id, email, token_hash, expires_at,
-                                     request_ip, request_user_agent, created_at, updated_at)
-        VALUES (${uuid()}, ${user.id}, ${tenantId}, ${email}, ${tokenHash}, ${expiresAt},
-                ${req.headers.get("x-forwarded-for") ?? "aina-admin"},
-                ${req.headers.get("user-agent") ?? ""},
-                now(), now())
-      `);
+      const resetUrl = await createResetLink(tx, { id: user.id, tenantId, email }, req, "aina-admin");
       await recordAudit(tx, {
         tenantId: PLATFORM_TENANT_ID,
         actorUserId: session.userId,
@@ -92,35 +63,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         entityId: user.id,
         after: { tenantId, email: maskEmail(email) },
       });
-
-      const base = process.env.APP_URL ?? "http://localhost:3000";
-      return { resetUrl: `${base}/reset-password?token=${token}`, email, name: user.name ?? null };
+      return { resetUrl, email, name: user.name ?? null };
     });
 
     if ("error" in built) return NextResponse.json({ error: built.error }, { status: built.status });
 
-    const res = await sendSystemEmail({
-      tenantId,
-      to: built.email,
-      subject: "Reset your password",
-      text:
-        `Hi${built.name ? " " + built.name : ""},\n\n` +
-        `An administrator initiated a password reset for your account. Open this link to set a new password (valid for 1 hour):\n${built.resetUrl}\n\n` +
-        `If you didn't expect this, contact support.`,
-      html: actionEmailHtml({
-        heading: "Reset your password",
-        intro: `Hi${built.name ? " " + built.name : ""}, an administrator initiated a password reset for your account. This link is valid for 1 hour.`,
-        buttonLabel: "Set a new password",
-        buttonUrl: built.resetUrl,
-        note: "If you didn't expect this, please contact support.",
-      }),
-      idempotencyKey: `pwreset-admin:${built.email}:${built.resetUrl.slice(-16)}`,
-    });
-
+    const sent = await sendResetEmail({ tenantId, email: built.email, name: built.name, resetUrl: built.resetUrl, by: "An administrator" });
     return NextResponse.json({
       ok: true,
       sentTo: maskEmail(built.email),
-      emailSent: res.sent,
+      emailSent: sent,
       // Dev convenience only — never leak the live link in production.
       ...(process.env.NODE_ENV !== "production" ? { devResetUrl: built.resetUrl } : {}),
     });

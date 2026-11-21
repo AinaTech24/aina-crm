@@ -49,6 +49,8 @@ export interface FieldDef {
    * Shown only where the page asks for it (FilterBuilder teamLookup).
    */
   lookup?: "user" | "user_id";
+  /** The NAME of the branch a row belongs to — what the report page's Branch filter matches (2026-11-21). One per subject. */
+  branch?: true;
 }
 
 export interface SubjectCatalog {
@@ -69,7 +71,8 @@ export interface SubjectCatalog {
     | "business_line"
     | "equity_brokerage"
     | "equity_dmat"
-    | "new_client";
+    | "new_client"
+    | "sip_rejection";
   /** Primary table + alias used in compiled SQL. */
   table: string;
   alias: string;
@@ -274,7 +277,7 @@ export const investorCatalog: SubjectCatalog = {
     { key: "branch_id", label: "Branch", type: "uuid", sql: "inv.branch_id", ops: COMMON_ENUM_OPS },
     // Names for reports — "clients by RM / by branch" (the ids above stay for filters).
     { key: "rm_name", label: "RM name", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = inv.rm_id)", ops: COMMON_STRING_OPS, lookup: "user" },
-    { key: "branch_name", label: "Branch name", type: "string", sql: "(SELECT b.name FROM branches b WHERE b.id = inv.branch_id)", ops: COMMON_STRING_OPS },
+    { key: "branch_name", label: "Branch name", type: "string", sql: "(SELECT b.name FROM branches b WHERE b.id = inv.branch_id)", ops: COMMON_STRING_OPS, branch: true },
 
     {
       key: "nominee_name",
@@ -429,6 +432,7 @@ export const leadCatalog: SubjectCatalog = {
       sql: "(now()::date - ld.stage_changed_at::date)",
       ops: COMMON_NUMBER_OPS,
     },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.id = ld.owner_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -466,6 +470,7 @@ export const taskCatalog: SubjectCatalog = {
       sql: "GREATEST(0, (now()::date - tk.due_at::date))",
       ops: COMMON_NUMBER_OPS,
     },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.id = tk.assignee_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -487,6 +492,7 @@ export const userCatalog: SubjectCatalog = {
     },
     { key: "nism_expiry_at", label: "NISM expiry", type: "date", sql: "usr.nism_expiry_at", ops: COMMON_DATE_OPS },
     { key: "euin", label: "EUIN", type: "string", sql: "usr.euin", ops: COMMON_STRING_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM branches b WHERE b.id = usr.branch_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -509,6 +515,7 @@ export const transactionCatalog: SubjectCatalog = {
     { key: "source_feed", label: "Source", type: "enum", sql: "tx.source_feed", ops: COMMON_ENUM_OPS, enumValues: ["manual", "cams", "kfintech", "nse", "mfu", "other", "bse", "import"] },
     { key: "investor_id", label: "Client (id)", type: "uuid", sql: "tx.investor_id", ops: COMMON_ENUM_OPS },
     { key: "created_at", label: "Created", type: "datetime", sql: "tx.created_at", ops: COMMON_DATE_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM investors i JOIN branches b ON b.id = i.branch_id WHERE i.id = tx.investor_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -529,6 +536,7 @@ export const sipCatalog: SubjectCatalog = {
     { key: "next_installment_at", label: "Next due", type: "date", sql: "s.next_installment_at", ops: COMMON_DATE_OPS },
     { key: "investor_id", label: "Client (id)", type: "uuid", sql: "s.investor_id", ops: COMMON_ENUM_OPS },
     { key: "created_at", label: "Created", type: "datetime", sql: "s.created_at", ops: COMMON_DATE_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM investors i JOIN branches b ON b.id = i.branch_id WHERE i.id = s.investor_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -551,6 +559,7 @@ export const insuranceCatalog: SubjectCatalog = {
     { key: "next_premium_due_date", label: "Next premium due", type: "date", sql: "ip.next_premium_due_date", ops: COMMON_DATE_OPS },
     { key: "investor_id", label: "Client (id)", type: "uuid", sql: "ip.investor_id", ops: COMMON_ENUM_OPS },
     { key: "created_at", label: "Created", type: "datetime", sql: "ip.created_at", ops: COMMON_DATE_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM investors i JOIN branches b ON b.id = i.branch_id WHERE i.id = ip.investor_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -571,6 +580,7 @@ export const goalCatalog: SubjectCatalog = {
     { key: "next_review_at", label: "Next review", type: "datetime", sql: "g.next_review_at", ops: COMMON_DATE_OPS },
     { key: "investor_id", label: "Client (id)", type: "uuid", sql: "g.investor_id", ops: COMMON_ENUM_OPS },
     { key: "created_at", label: "Created", type: "datetime", sql: "g.created_at", ops: COMMON_DATE_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM investors i JOIN branches b ON b.id = i.branch_id WHERE i.id = g.investor_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -590,6 +600,7 @@ export const serviceRequestCatalog: SubjectCatalog = {
     { key: "resolved_at", label: "Resolved at", type: "datetime", sql: "sr.resolved_at", ops: COMMON_DATE_OPS },
     { key: "investor_id", label: "Client (id)", type: "uuid", sql: "sr.investor_id", ops: COMMON_ENUM_OPS },
     { key: "created_at", label: "Created", type: "datetime", sql: "sr.created_at", ops: COMMON_DATE_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM investors i JOIN branches b ON b.id = i.branch_id WHERE i.id = sr.investor_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -614,6 +625,7 @@ export const claimCatalog: SubjectCatalog = {
     { key: "investor_id", label: "Client (id)", type: "uuid", sql: "icl.investor_id", ops: COMMON_ENUM_OPS },
     { key: "rm_id", label: "RM (id)", type: "uuid", sql: "icl.rm_id", ops: COMMON_ENUM_OPS, lookup: "user_id" },
     { key: "created_at", label: "Created", type: "datetime", sql: "icl.created_at", ops: COMMON_DATE_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM investors i JOIN branches b ON b.id = i.branch_id WHERE i.id = icl.investor_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -640,6 +652,7 @@ export const reviewMeetingCatalog: SubjectCatalog = {
     { key: "created_at", label: "Created", type: "datetime", sql: "mtg.created_at", ops: COMMON_DATE_OPS },
     { key: "reschedule_count", label: "Reschedules", type: "integer", sql: "mtg.reschedule_count", ops: COMMON_NUMBER_OPS },
     { key: "duration_minutes", label: "Duration (min)", type: "integer", sql: "NULLIF(regexp_replace(COALESCE(mtg.duration_minutes,''), '[^0-9]', '', 'g'), '')::int", ops: COMMON_NUMBER_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.id = mtg.rm_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -661,6 +674,7 @@ export const businessEntryCatalog: SubjectCatalog = {
     { key: "created_at", label: "Created", type: "datetime", sql: "bze.created_at", ops: COMMON_DATE_OPS },
     { key: "total_amount", label: "Total business (₹)", type: "currency", sql: "bze.total_amount", ops: COMMON_NUMBER_OPS },
     { key: "liquid_net", label: "Liquid net (₹)", type: "currency", sql: "bze.liquid_net", ops: COMMON_NUMBER_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.id = bze.rm_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -708,6 +722,7 @@ export const businessLineCatalog: SubjectCatalog = {
     { key: "client_phone", label: "Client phone", type: "string", sql: "(SELECT i.phone FROM business_entries e JOIN investors i ON i.id = e.investor_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
     { key: "client_email", label: "Client email", type: "string", sql: "(SELECT i.email FROM business_entries e JOIN investors i ON i.id = e.investor_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
     { key: "client_city", label: "Client city", type: "string", sql: "(SELECT i.address->>'city' FROM business_entries e JOIN investors i ON i.id = e.investor_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM business_entries e JOIN users u ON u.id = e.rm_id JOIN branches b ON b.id = u.branch_id WHERE e.id = bl.entry_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -744,6 +759,7 @@ export const equityDmatCatalog: SubjectCatalog = {
     { key: "status", label: "Status", type: "enum", sql: "edm.status", ops: COMMON_ENUM_OPS, enumValues: ["active", "dormant", "closed"] },
     { key: "closed_date", label: "Closed on", type: "date", sql: "edm.closed_date", ops: COMMON_DATE_OPS },
     { key: "is_client", label: "CRM client", type: "string", sql: "(CASE WHEN edm.investor_id IS NULL THEN 'No' ELSE 'Yes' END)", ops: COMMON_STRING_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.id = edm.rm_id)", ops: COMMON_STRING_OPS, branch: true },
   ],
   relations: {},
 };
@@ -770,6 +786,38 @@ export const newClientCatalog: SubjectCatalog = {
     { key: "lumpsum_first_month", label: "Lumpsum (onboarding month)", type: "currency", sql: "(SELECT COALESCE(SUM(l.amount), 0) FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id WHERE e.investor_id = nci.id AND e.status <> 'cancelled' AND l.txn_type IN ('lumpsum', 'additional_purchase', 'switch', 'stp') AND to_char(e.business_date, 'YYYY-MM') = to_char(nci.onboarded_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM'))", ops: COMMON_NUMBER_OPS },
     { key: "insurance_first_month", label: "Insurance premium (onboarding month)", type: "currency", sql: "(SELECT COALESCE(SUM(p.annual_premium), 0) FROM insurance_policies p WHERE p.investor_id = nci.id AND p.status NOT IN ('cancelled', 'proposed') AND to_char(COALESCE(p.risk_cover_start_date, p.policy_start_date), 'YYYY-MM') = to_char(nci.onboarded_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM'))", ops: COMMON_NUMBER_OPS },
     { key: "client_status", label: "Client status", type: "string", sql: "(CASE WHEN nci.deleted_at IS NOT NULL OR nci.merged_into_id IS NOT NULL THEN 'removed' ELSE nci.status END)", ops: COMMON_STRING_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM branches b WHERE b.id = nci.branch_id)", ops: COMMON_STRING_OPS, branch: true },
+  ],
+  relations: {},
+};
+
+/**
+ * SIP rejections (We Care, 2026-11-20 — the firm's "SIP Rejection, Pending &
+ * Repurchase" sheet). One row per rejected debit; "Add. purchase" = recovered
+ * (Zoho "Purchase done"), pending = everything else. Branch and desk are the
+ * responsible RM's (users.branch_id / desk_id), as the sheet groups them.
+ */
+export const sipRejectionCatalog: SubjectCatalog = {
+  subject: "sip_rejection",
+  table: "sip_rejections",
+  alias: "srj",
+  fields: [
+    { key: "rejection_date", label: "Rejection date", type: "date", sql: "srj.rejection_date", ops: COMMON_DATE_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.id = srj.assigned_rm_id)", ops: COMMON_STRING_OPS, branch: true },
+    { key: "desk_name", label: "Desk", type: "string", sql: "(SELECT d.name FROM users u JOIN desks d ON d.id = u.desk_id WHERE u.id = srj.assigned_rm_id)", ops: COMMON_STRING_OPS },
+    { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = srj.assigned_rm_id)", ops: COMMON_STRING_OPS, lookup: "user" },
+    { key: "client_name", label: "Client", type: "string", sql: "(SELECT i.name FROM investors i WHERE i.id = srj.investor_id)", ops: COMMON_STRING_OPS },
+    { key: "scheme_name", label: "Scheme", type: "string", sql: "srj.scheme_name", ops: COMMON_STRING_OPS },
+    { key: "status", label: "Status", type: "enum", sql: "srj.recovery_status", ops: COMMON_ENUM_OPS, enumValues: ["pending", "client_contacted", "bank_issue", "mandate_issue", "reprocessed", "recovered", "not_recoverable"] },
+    { key: "rejection_amount", label: "Rejection value (₹)", type: "currency", sql: "srj.rejection_amount", ops: COMMON_NUMBER_OPS },
+    { key: "purchase_done_amount", label: "Add. purchase value (₹)", type: "currency", sql: "(CASE WHEN srj.recovery_status = 'recovered' THEN srj.rejection_amount ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "purchase_done_count", label: "Add. purchase no.", type: "integer", sql: "(CASE WHEN srj.recovery_status = 'recovered' THEN 1 ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "pending_amount", label: "Pending value (₹)", type: "currency", sql: "(CASE WHEN srj.recovery_status = 'recovered' THEN 0 ELSE srj.rejection_amount END)", ops: COMMON_NUMBER_OPS },
+    { key: "pending_count", label: "Pending no.", type: "integer", sql: "(CASE WHEN srj.recovery_status = 'recovered' THEN 0 ELSE 1 END)", ops: COMMON_NUMBER_OPS },
+    { key: "without_remarks", label: "Without remarks", type: "integer", sql: "(CASE WHEN COALESCE(btrim(srj.remarks), '') = '' THEN 1 ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "remarks", label: "Remarks", type: "string", sql: "srj.remarks", ops: COMMON_STRING_OPS },
+    { key: "reason", label: "Reason", type: "string", sql: "srj.rejection_reason", ops: COMMON_STRING_OPS },
+    { key: "source", label: "Recorded from", type: "string", sql: "(CASE WHEN srj.dedup_key LIKE 'zoho-sr:%' THEN 'Zoho SIP Reject' WHEN srj.dedup_key LIKE 'zoho:%' THEN 'Zoho SIP Tracking' ELSE 'RTA / CRM' END)", ops: COMMON_STRING_OPS },
   ],
   relations: {},
 };
@@ -791,7 +839,13 @@ export const CATALOGS: Record<string, SubjectCatalog> = {
   equity_brokerage: equityBrokerageCatalog,
   equity_dmat: equityDmatCatalog,
   new_client: newClientCatalog,
+  sip_rejection: sipRejectionCatalog,
 };
+
+/** The field a subject's rows are filtered by for "Branch" on the report page, if it has one. */
+export function branchField(subject: string): FieldDef | null {
+  return CATALOGS[subject]?.fields.find((f) => f.branch) ?? null;
+}
 
 export function getCatalog(subject: string): SubjectCatalog {
   const cat = CATALOGS[subject];

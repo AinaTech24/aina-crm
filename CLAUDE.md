@@ -2768,6 +2768,12 @@ These have clear hooks in the schema and architecture; pick them up in roadmap o
   (a viewer without it sees it read-only with a note, never a "forbidden" on Save).
   Taking Owner / Admin off YOUR OWN profile asks first: you cannot give it back to
   yourself afterwards, another owner has to.
+- **AINA support sets a team member's password** (2026-11-21, Aina Admin → MFD tenants → the firm → Team →
+  **Set password**; `POST /api/super-admin/tenants/[id]/set-password`, `platform.tenant.edit`): for when the emailed
+  reset link cannot reach the person. It REPLACES the current password (one set here earlier included), signs them
+  out everywhere (`sessions_invalid_after`, as `/api/auth/reset`), cancels every unused reset link so an older email
+  can never put a password back, and is audited `tenant.user_password_set` (masked email, links cancelled — never the
+  password). Two-factor still applies. The form has show / generate (14 characters, no look-alikes) and a confirm box.
 - **Billing** — Razorpay recurring auto-debit, HMAC-verified webhook, full
   subscription lifecycle, license gate restricting lapsed tenants to billing +
   support. Client-count quota (`packages.maxInvestors`) enforced on investor

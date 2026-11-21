@@ -3,7 +3,8 @@
 /**
  * The custom-report view's filter bar, Zoho style (We Care, 2026-11-19): a
  * date field, a period (presets apply at once; a custom range when both ends
- * are picked) and, for a summary report, Show details. It narrows one run
+ * are picked), a Branch (2026-11-21, when the report's module has one) and, for
+ * a summary report, Show details. It narrows one run
  * only — the saved report is untouched.
  */
 
@@ -26,7 +27,7 @@ const PERIODS: Array<[key: string, label: string]> = [
   ["custom", "Custom range"],
 ];
 
-export type ReportFilter = { field: string; period: string; from: string; to: string; details: boolean };
+export type ReportFilter = { field: string; period: string; from: string; to: string; details: boolean; branch?: string };
 
 export function reportFilterQuery(f: ReportFilter): string {
   const q = new URLSearchParams();
@@ -45,6 +46,7 @@ export function reportFilterQuery(f: ReportFilter): string {
     if (from) q.set("from", from);
     if (to) q.set("to", to);
   }
+  if (f.branch) q.set("branch", f.branch);
   q.set("details", f.details ? "1" : "0");
   return q.toString();
 }
@@ -54,8 +56,11 @@ export function ReportFilterBar({
   showDetailsSwitch,
   value,
   onApply,
+  branches = [],
 }: {
   dateFields: Array<{ key: string; label: string }>;
+  /** The firm's branch names; empty = this report's module has no branch, so no picker. */
+  branches?: string[];
   showDetailsSwitch: boolean;
   value: ReportFilter;
   onApply: (f: ReportFilter) => void;
@@ -95,6 +100,15 @@ export function ReportFilterBar({
             {PERIODS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </SelectField>
         </label>
+        {branches.length > 0 && (
+          <label className="text-sm min-w-44">
+            <span className="block text-xs text-muted-foreground mb-1">Branch</span>
+            <SelectField value={draft.branch ?? ""} onChange={(e) => set({ branch: e.target.value }, customReady)} className="w-full">
+              <option value="">All branches</option>
+              {branches.map((b) => <option key={b} value={b}>{b}</option>)}
+            </SelectField>
+          </label>
+        )}
         {draft.period === "custom" && (
           <>
             <label className="text-sm w-40">
@@ -121,6 +135,7 @@ export function ReportFilterBar({
         <CalendarRange className="size-3.5" />
         <span>
           Showing: <span className="text-foreground font-medium">{shown}</span>
+          {value.branch ? <span className="text-foreground font-medium"> · {value.branch}</span> : null}
         </span>
         {value.period && (
           <button

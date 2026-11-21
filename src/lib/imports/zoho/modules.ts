@@ -19,7 +19,7 @@
 
 import { cell, isoDate, zohoId } from "./values";
 
-export const ZOHO_MODULES = ["Leads", "Risk_Profiles", "Query_Tracker", "Calls", "SWP", "Equity", "Purchase_and_Redempti_01"] as const;
+export const ZOHO_MODULES = ["Leads", "Risk_Profiles", "Query_Tracker", "Calls", "SWP", "Equity", "Purchase_and_Redempti_01", "SIP_Reject"] as const;
 export type ZohoModule = (typeof ZOHO_MODULES)[number];
 
 export const MODULE_LABEL: Record<ZohoModule, string> = {
@@ -30,6 +30,7 @@ export const MODULE_LABEL: Record<ZohoModule, string> = {
   SWP: "SIP Tracking (rejected SIPs)",
   Equity: "Equity Brokerage",
   Purchase_and_Redempti_01: "MF Transaction line types (restore)",
+  SIP_Reject: "SIP Reject (rejections, purchase done / not done)",
 };
 
 export type ZohoRecord = Record<string, unknown>;
@@ -432,6 +433,47 @@ export function mapSipTracking(r: ZohoRecord): MappedSipRejection {
     debitDay: num(r.ECS_Date) || null,
     mft: ref(r.Source_MF_Transaction).name,
   };
+}
+
+// ── SIP Reject → SIP rejections (We Care, 2026-11-20) ────────────────────
+//
+// The firm's real rejection log: one SIP Reject record per client and date
+// (Owner, Remarks, Reason) with a SIP Rejection Details subform — one row per
+// rejected debit (Scheme, Amount, Status "Purchase done" / "Purchase not done").
+// Each subform row becomes one CRM SIP rejection; "Purchase done" = recovered.
+
+export type MappedSipRejectLine = {
+  zohoId: string;
+  owner: string;
+  clientZohoId: string;
+  clientName: string;
+  date: string | null;
+  remarks: string;
+  reason: string;
+  scheme: string | null;
+  amount: number;
+  purchaseDone: boolean;
+};
+
+/** A SIP Reject record (with its SIP_Rejection_Details array) → one line per rejected debit. */
+export function mapSipReject(r: ZohoRecord): MappedSipRejectLine[] {
+  const details = Array.isArray(r.SIP_Rejection_Details) ? (r.SIP_Rejection_Details as ZohoRecord[]) : [];
+  const client = ref(r.Client_Name);
+  const base = {
+    owner: ref(r.Owner).name,
+    clientZohoId: client.id,
+    clientName: client.name,
+    date: isoDate(r.Date) ?? isoDate(r.Created_Time),
+    remarks: cell(r.Remarks),
+    reason: cell(r.Reason),
+  };
+  return details.map((d) => ({
+    ...base,
+    zohoId: zohoId(d.id),
+    scheme: ref(d.Scheme_Name).name || null,
+    amount: num(d.Amount),
+    purchaseDone: /^purchase\s*done$/i.test(cell(d.Status)),
+  }));
 }
 
 // ── MF Transaction Purchase / Redemption lines → the line's Zoho type ────

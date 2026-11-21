@@ -19,7 +19,7 @@ import { TaskKanban } from "./TaskKanban";
 import { buttonClass } from "@/components/ui/button-class";
 import { overdueTaskSql, staffWhere, taskAwaitingSql } from "@/lib/metrics";
 import { FINANCIAL_TASK_TYPES } from "@/lib/dashboard/my/window";
-import { taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
+import { subTaskAssignedToSql, taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
 import { escalatedToSql } from "@/lib/tasks/escalation-ladder";
 
 export const dynamic = "force-dynamic";
@@ -82,7 +82,8 @@ export default async function TasksPage({
   //   ?layout= "" (list) | "kanban"
   // Legacy `?view=kanban` links (bookmarks, saved views) still work: they map
   // to the all-tasks scope on the board layout.
-  const rawView = sp.view ?? "";
+  // Notifications link to `view=assigned_to_me` — the same tab as `to_me`.
+  const rawView = sp.view === "assigned_to_me" ? "to_me" : sp.view ?? "";
   const legacyKanban = rawView === "kanban";
   const view = legacyKanban ? "" : rawView;
   const layout = legacyKanban || sp.layout === "kanban" ? "kanban" : "list";
@@ -112,6 +113,8 @@ export default async function TasksPage({
       conds.push(or(
         eq(tasks.assigneeId, session.userId),
         eq(tasks.createdById, session.userId),
+        // A sub-task of it delegated to me.
+        subTaskAssignedToSql(sql`${tasks.meta}`, session.userId),
         // A teammate's "Need information" question waiting on me.
         sql`${tasks.meta}->'infoRequest'->>'askedToId' = ${session.userId}`,
         // An overdue task the escalation ladder brought to me.
@@ -124,7 +127,8 @@ export default async function TasksPage({
     }
 
     // View-tab scope: tasks assigned TO me, or tasks I assigned (created).
-    if (view === "to_me") conds.push(eq(tasks.assigneeId, session.userId));
+    // "Assigned to me" includes a task whose sub-task was delegated to me.
+    if (view === "to_me") conds.push(or(eq(tasks.assigneeId, session.userId), subTaskAssignedToSql(sql`${tasks.meta}`, session.userId))!);
     else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
 
     // Status and the quick tabs apply to the LIST only — the KANBAN's columns

@@ -14,7 +14,7 @@ import { assertMobileAssignee, assertMobileSubjects } from "@/lib/mobile/record-
 import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { tasks, users, investors, leads } from "@/db/schema";
 import { bookBusinessFromTask } from "@/lib/tasks/book-business";
-import { taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
+import { subTaskAssignedToSql, taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -152,7 +152,7 @@ export async function GET(req: NextRequest) {
     const assigneeFilter = csv(g("assignee"));
     const due = g("due"); // today | overdue | sla_risk
     const approval = g("approval"); // "" | pending | mine  (awaiting sign-off)
-    const view = g("view"); // "" | to_me | by_me | kanban
+    const view = g("view") === "assigned_to_me" ? "to_me" : g("view"); // "" | to_me | by_me | kanban
     const isKanban = view === "kanban";
     const sortKey = (["created", "created_asc", "due", "due_desc", "priority"] as const).includes(g("sort") as any) ? g("sort") : "created";
     const createdFrom = g("created_from") || g("created");
@@ -166,11 +166,11 @@ export async function GET(req: NextRequest) {
       async (tx) => {
         const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
         if (session.mobile) conds.push(mobileTaskScope(session));
-        if (!canViewAll) conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+        if (!canViewAll) conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId), subTaskAssignedToSql(sql`${tasks.meta}`, session.userId))!);
         // view.all reaches other people's tasks only when their client / lead
         // is in the viewer's scope (lib/tasks/scope.ts).
         else conds.push(await taskScopeSql(tx, session, "tasks"));
-        if (view === "to_me") conds.push(eq(tasks.assigneeId, session.userId));
+        if (view === "to_me") conds.push(or(eq(tasks.assigneeId, session.userId), subTaskAssignedToSql(sql`${tasks.meta}`, session.userId))!);
         else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
         // Kanban shows every status; the list defaults to open when no status
         // filter — UNLESS an approval filter is active (pending-approval tasks
