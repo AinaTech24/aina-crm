@@ -12,7 +12,7 @@ import bcrypt from "bcryptjs";
 import { v4 as uuid } from "uuid";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
+import { sendSystemEmail, actionEmailHtml, type SystemEmailResult } from "@/lib/comms/system-email";
 
 export function maskEmail(email: string): string {
   const [user, domain] = email.split("@");
@@ -51,7 +51,7 @@ export async function createResetLink(
 }
 
 /** Email the link. `by` names who started it ("An administrator", "Your firm's admin"). */
-export async function sendResetEmail(o: { tenantId: string; email: string; name: string | null; resetUrl: string; by: string }): Promise<boolean> {
+export async function sendResetEmail(o: { tenantId: string; email: string; name: string | null; resetUrl: string; by: string }): Promise<SystemEmailResult> {
   const hi = `Hi${o.name ? " " + o.name : ""}`;
   const res = await sendSystemEmail({
     tenantId: o.tenantId,
@@ -70,7 +70,7 @@ export async function sendResetEmail(o: { tenantId: string; email: string; name:
     }),
     idempotencyKey: `pwreset-admin:${o.email}:${o.resetUrl.slice(-16)}`,
   });
-  return res.sent;
+  return res;
 }
 
 /**

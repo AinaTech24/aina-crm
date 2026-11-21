@@ -90,7 +90,7 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
         toast.error(j.error ?? `Failed (${res.status})`, "Couldn't send the reset link");
         return;
       }
-      if (j.emailSent === false) toast.error(`The link was created but the email to ${j.sentTo} could not be sent — check Settings → Email.`, "Email not sent");
+      if (j.emailSent === false) toast.error(`The link was created but the email to ${j.sentTo} could not be sent — the CRM's own outgoing email failed. Ask AINA support to check it, or ask them to set a password for this person.`, "Email not sent");
       else toast.success(`Reset link sent to ${j.sentTo} — it works for 1 hour`);
       setConfirmReset(false);
     } catch (e: any) {

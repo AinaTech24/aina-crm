@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       const msg =
         res.reason === "email_not_configured"
           ? "No API key configured yet — save your key first, then test."
-          : "Send failed — check the API key and From address (it must be a verified sender/domain).";
+          : `Send failed — ${res.detail ?? "check the server settings and the From address (it must be a sender the server allows)."}`;
       return NextResponse.json({ ok: false, error: msg, reason: res.reason }, { status: 400 });
     }
     return NextResponse.json({ ok: true });
