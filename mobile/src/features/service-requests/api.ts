@@ -143,6 +143,36 @@ export const SR_EVENT_LABEL: Record<string, string> = {
   resolution: "Resolution", assigned: "Reassigned", csat: "CSAT", escalated: "Escalated",
 };
 
+/** "2d 4h" / "5h 10m" / "12m" — two units at most, for a countdown. */
+export function fmtSpan(ms: number): string {
+  const m = Math.max(0, Math.round(Math.abs(ms) / 60_000));
+  const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), min = m % 60;
+  if (d) return h ? `${d}d ${h}h` : `${d}d`;
+  if (h) return min ? `${h}h ${min}m` : `${h}h`;
+  return `${min}m`;
+}
+
+/**
+ * A ticket's live SLA countdown for the list: "Respond in 3h" / "Response
+ * overdue 2h", then "Resolve in 2d 4h" / "Resolution overdue 1d"; once done,
+ * met or missed. Same rule as slaClock (overdue → red, within a day → amber).
+ */
+export function slaCountdown(kind: "response" | "resolution", due?: string | null, done?: string | null, now = Date.now()): { label: string; tone: Tone } | null {
+  if (!due) return null;
+  const d = new Date(due).getTime();
+  if (!isFinite(d)) return null;
+  const noun = kind === "response" ? "Response" : "Resolution";
+  if (done) {
+    const t = new Date(done).getTime();
+    if (!isFinite(t)) return null;
+    return t <= d ? { label: `${noun} on time`, tone: "success" } : { label: `${noun} late by ${fmtSpan(t - d)}`, tone: "danger" };
+  }
+  const ms = d - now;
+  if (ms < 0) return { label: `${noun} overdue ${fmtSpan(ms)}`, tone: "danger" };
+  const verb = kind === "response" ? "Respond" : "Resolve";
+  return { label: `${verb} in ${fmtSpan(ms)}`, tone: ms < 24 * 3_600_000 ? "warning" : "neutral" };
+}
+
 /** One SLA clock (web SlaCard): met / missed once done, else due / overdue / due within a day. */
 export function slaClock(due?: string | null, done?: string | null): { label: string; tone: Tone } | null {
   if (!due) return null;

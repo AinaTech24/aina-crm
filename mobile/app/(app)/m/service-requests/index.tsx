@@ -1,6 +1,9 @@
 /**
  * Service Requests — the client-servicing queue. SLA breaches float to the top
  * with a red rail, because those are the ones a client is already unhappy about.
+ * Each row carries its live SLA clocks (first response until someone has
+ * responded, then resolution), ticking every minute; "Mine" narrows the list,
+ * the tabs and the counts to tickets assigned to you.
  * Filter chips: Breached / Open / Resolved / All, and a search over ticket no,
  * subject, type and description. The FAB opens the web's New service request
  * form (service_request.manage). A failed load says so — it never reads as
@@ -23,8 +26,7 @@ import { ErrorState } from "../../../../src/components/states";
 import { FAB } from "../../../../src/components/ui/FAB";
 import { useMe, hasCap } from "../../../../src/api/me";
 import {
-  useServiceRequests, srStatusMeta, isSrOpen, isSlaBreached, srTypeLabel, PRIORITY_TONE, type ServiceRequest,
-} from "../../../../src/features/service-requests/api";
+  useServiceRequests, srStatusMeta, isSrOpen, isSlaBreached, srTypeLabel, PRIORITY_TONE, type ServiceRequest, slaCountdown } from "../../../../src/features/service-requests/api";
 import { timeAgo, titleCase } from "../../../../src/lib/format";
 import { spacing, palette, fontWeight } from "../../../../src/theme/tokens";
 import { toneColors } from "../../../../src/theme";
@@ -42,14 +44,20 @@ export default function ServiceRequestsList() {
   const { data, isLoading, isError, error, isRefetching, refetch } = useServiceRequests();
   const [tab, setTab] = React.useState<Bucket>("breached");
   const [q, setQ] = React.useState("");
-  const canCreate = hasCap(useMe().data?.capabilities, "service_request.manage");
+  const me = useMe().data;
+  const canCreate = hasCap(me?.capabilities, "service_request.manage");
+  const [mine, setMine] = React.useState(false);
+  // The SLA clocks tick: re-render each minute.
+  const [now, setNow] = React.useState(Date.now());
+  React.useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(t); }, []);
 
   const term = q.trim().toLowerCase();
   const all = React.useMemo(() => {
-    const list = Array.isArray(data) ? data : [];
+    let list = Array.isArray(data) ? data : [];
+    if (mine && me?.user?.id) list = list.filter((r) => r.assignedToUserId === me.user.id);
     if (!term) return list;
     return list.filter((r) => [r.ticketNo, r.subject, r.description, r.type ? srTypeLabel(r.type) : null].some((v) => typeof v === "string" && v.toLowerCase().includes(term)));
-  }, [data, term]);
+  }, [data, term, mine, me?.user?.id]);
   const buckets: Record<Bucket, ServiceRequest[]> = {
     all,
     breached: all.filter(isSlaBreached),
@@ -69,6 +77,7 @@ export default function ServiceRequestsList() {
       </Card>
       <View style={{ marginBottom: spacing.md }}><SearchBar value={q} onChangeText={setQ} placeholder="Search ticket, subject…" /></View>
       <View style={styles.chips}>
+        <Chip label="Mine" selected={mine} onPress={() => setMine((v) => !v)} />
         {TABS.map((t) => (
           <Chip key={t.key} label={`${t.label} (${buckets[t.key].length})`} selected={tab === t.key} onPress={() => setTab(t.key)} />
         ))}
@@ -97,7 +106,8 @@ export default function ServiceRequestsList() {
               <Text variant="body" tone="muted">{term ? `No tickets match “${q.trim()}”.` : tab === "breached" ? "Nothing past its SLA." : "Nothing here."}</Text>
             </View>
           }
-          renderItem={({ item }) => <SrRow r={item} onPress={() => router.push(`/m/service-requests/${item.id}` as any)} />}
+          extraData={now}
+          renderItem={({ item }) => <SrRow r={item} now={now} onPress={() => router.push(`/m/service-requests/${item.id}` as any)} />}
         />
       )}
       {canCreate ? <FAB label="New service request" onPress={() => router.push("/m/service-requests/new" as any)} /> : null}
@@ -105,9 +115,16 @@ export default function ServiceRequestsList() {
   );
 }
 
-function SrRow({ r, onPress }: { r: ServiceRequest; onPress: () => void }) {
+function SrRow({ r, now, onPress }: { r: ServiceRequest; now: number; onPress: () => void }) {
   const meta = srStatusMeta(r.status);
   const breached = isSlaBreached(r);
+  const open = isSrOpen(r);
+  // Open: the response clock until someone responds, and the resolution clock.
+  // Closed: how the resolution SLA ended.
+  const clocks = (open
+    ? [r.respondedAt ? null : slaCountdown("response", r.slaResponseAt, null, now), slaCountdown("resolution", r.slaResolutionAt, null, now)]
+    : [slaCountdown("resolution", r.slaResolutionAt, r.resolvedAt ?? r.closedAt ?? null, now)]
+  ).filter(Boolean) as { label: string; tone: any }[];
   return (
     <Pressable onPress={onPress}>
       <Card style={{ marginBottom: spacing.sm, ...(breached ? { borderLeftWidth: 3, borderLeftColor: toneColors("danger").fg } : null) }}>
@@ -118,6 +135,16 @@ function SrRow({ r, onPress }: { r: ServiceRequest; onPress: () => void }) {
         <Text variant="caption" tone="muted" numberOfLines={1} style={{ marginTop: 2 }}>
           {[r.ticketNo, r.type ? srTypeLabel(r.type) : null].filter(Boolean).join(" · ")}
         </Text>
+        {clocks.length ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.sm }}>
+            {clocks.map((c) => (
+              <View key={c.label} style={styles.clock}>
+                <Feather name="clock" size={12} color={toneColors(c.tone).fg} />
+                <Text variant="caption" style={{ color: toneColors(c.tone).fg, fontWeight: fontWeight.semibold }}>{c.label}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.sm }}>
           {breached ? <StatusPill label="SLA passed" tone="danger" size="sm" dot={false} /> : null}
           {r.priority ? <StatusPill label={titleCase(r.priority)} tone={PRIORITY_TONE[r.priority] ?? "neutral"} size="sm" dot={false} /> : null}
@@ -132,4 +159,5 @@ function SrRow({ r, onPress }: { r: ServiceRequest; onPress: () => void }) {
 const styles = StyleSheet.create({
   hero: { fontSize: 26, fontWeight: fontWeight.bold, letterSpacing: -0.4, marginTop: 2 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  clock: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: palette.surfaceSunken, borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: 2 },
 });
