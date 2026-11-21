@@ -76,6 +76,7 @@ import { ShellBox } from "@/components/layout/ShellBox";
 import { CustomizableNav, type NavItemData } from "@/components/layout/CustomizableNav";
 import { loadModuleControls } from "@/lib/platform/module-controls";
 import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
+import { ContentWatchdog } from "@/components/layout/ContentWatchdog";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { ActivityLauncher } from "@/components/activities/ActivityLauncher";
 import ProductTour from "@/components/layout/ProductTour";
@@ -804,6 +805,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* Floating quick-create button — bottom-right. Lets users add a lead,
           client, task, meeting, proposal or service request from anywhere
           without hunting through the sidebar. */}
+      {/* Reloads once when a page's content never arrives or a chunk fails after a deploy. */}
+      <ContentWatchdog />
       {!license.isRestricted && <QuickCreateFab />}
       {/* Ctrl/⌘-K command palette — jump to any module, quick-create, or search
           records. Gets the same role/license-filtered nav as the sidebar. */}
