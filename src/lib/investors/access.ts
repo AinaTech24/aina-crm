@@ -34,6 +34,38 @@ import { can, requireAny } from "@/lib/auth/rbac";
 // Session-level helper — its canonical home is the leads access module (its
 // first caller). Branch scoping is identical for clients and leads.
 import { isBranchScoped } from "@/lib/leads/access";
+import { loadTenantLicense } from "@/lib/auth/license";
+
+/**
+ * Desk heads (We Care, 2026-11-21): with the firm's "deskHeadAccess" switch on,
+ * someone people report to (users.reporting_manager_id, any depth) sees their
+ * own clients AND their reports' clients wherever the "own book" rule applies.
+ * Off — every other firm — the own book is exactly the viewer's own clients.
+ */
+export const DESK_HEAD_FLAG = "deskHeadAccess";
+
+/** The viewer plus everyone who reports to them (any depth), when the firm has desk heads; else just the viewer. */
+export async function ownBookRmIds(tx: any, session: SessionUser): Promise<string[]> {
+  const lic = await loadTenantLicense(session.tenantId, session.roles);
+  if (lic.featureFlags?.[DESK_HEAD_FLAG] !== true) return [session.userId];
+  const r = await tx.execute(sql`
+    WITH RECURSIVE team AS (
+      SELECT id FROM users WHERE tenant_id = ${session.tenantId}::uuid AND reporting_manager_id = ${session.userId}::uuid
+      UNION
+      SELECT u.id FROM users u JOIN team t ON u.reporting_manager_id = t.id WHERE u.tenant_id = ${session.tenantId}::uuid
+    )
+    SELECT id FROM team
+  `);
+  const ids = (r.rows as Array<{ id: string }>).map((x) => x.id).filter((id) => id !== session.userId);
+  return [session.userId, ...ids];
+}
+
+/** `<alias>.rm_id` is in the viewer's own book (see ownBookRmIds). */
+async function ownBookSql(tx: any, session: SessionUser, alias: string) {
+  const ids = await ownBookRmIds(tx, session);
+  if (ids.length === 1) return sql`${sql.raw(`${alias}.rm_id`)} = ${session.userId}::uuid`;
+  return sql`${sql.raw(`${alias}.rm_id`)} IN (SELECT jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)::uuid)`;
+}
 
 /** Throws 403 when the caller has no client visibility at all. */
 export function requireInvestorView(session: SessionUser) {
@@ -123,12 +155,12 @@ export async function investorScopeCondition(tx: any, session: SessionUser) {
   requireInvestorView(session);
   if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))) {
     if (session.roles.includes("branch_head")) return session.branchId ? eq(investors.branchId, session.branchId) : sql`FALSE`;
-    if (session.roles.includes("rm")) return eq(investors.rmId, session.userId);
+    if (session.roles.includes("rm")) return ownBookSql(tx, session, "investors");
   }
   if (!(await isDataScopeRestricted(tx, session.tenantId, session))) return undefined;
   if (isBranchScoped(session)) return eq(investors.branchId, session.branchId!);
   if (canViewAllInvestors(session)) return undefined;
-  return eq(investors.rmId, session.userId);
+  return ownBookSql(tx, session, "investors");
 }
 
 /**
@@ -140,14 +172,14 @@ export async function investorScopeSql(tx: any, session: SessionUser, alias = "i
   requireInvestorView(session);
   if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))) {
     if (session.roles.includes("branch_head")) return session.branchId ? sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid` : sql`FALSE`;
-    if (session.roles.includes("rm")) return sql`${sql.raw(`${alias}.rm_id`)} = ${session.userId}::uuid`;
+    if (session.roles.includes("rm")) return ownBookSql(tx, session, alias);
   }
   if (!(await isDataScopeRestricted(tx, session.tenantId, session))) return sql`TRUE`;
   if (isBranchScoped(session)) {
     return sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid`;
   }
   if (canViewAllInvestors(session)) return sql`TRUE`;
-  return sql`${sql.raw(`${alias}.rm_id`)} = ${session.userId}::uuid`;
+  return ownBookSql(tx, session, alias);
 }
 
 /** Authorize the parent before returning any child records or private files. */
