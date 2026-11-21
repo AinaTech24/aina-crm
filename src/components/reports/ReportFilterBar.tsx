@@ -57,10 +57,13 @@ export function ReportFilterBar({
   value,
   onApply,
   branches = [],
+  desks = [],
 }: {
   dateFields: Array<{ key: string; label: string }>;
   /** The firm's branch names; empty = this report's module has no branch, so no picker. */
   branches?: string[];
+  /** Desks (sub-teams) listed under their branch; a desk is picked as "desk:<name>". */
+  desks?: Array<{ name: string; branch: string }>;
   showDetailsSwitch: boolean;
   value: ReportFilter;
   onApply: (f: ReportFilter) => void;
@@ -105,7 +108,12 @@ export function ReportFilterBar({
             <span className="block text-xs text-muted-foreground mb-1">Branch</span>
             <SelectField value={draft.branch ?? ""} onChange={(e) => set({ branch: e.target.value }, customReady)} className="w-full">
               <option value="">All branches</option>
-              {branches.map((b) => <option key={b} value={b}>{b}</option>)}
+              {branches.flatMap((b) => [
+                <option key={b} value={b}>{b}</option>,
+                ...desks.filter((d) => d.branch === b).map((d) => (
+                  <option key={`desk:${d.name}`} value={`desk:${d.name}`}>{d.name}</option>
+                )),
+              ])}
             </SelectField>
           </label>
         )}
@@ -135,7 +143,7 @@ export function ReportFilterBar({
         <CalendarRange className="size-3.5" />
         <span>
           Showing: <span className="text-foreground font-medium">{shown}</span>
-          {value.branch ? <span className="text-foreground font-medium"> · {value.branch}</span> : null}
+          {value.branch ? <span className="text-foreground font-medium"> · {value.branch.replace(/^desk:/, "")}</span> : null}
         </span>
         {value.period && (
           <button

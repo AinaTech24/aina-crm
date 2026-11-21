@@ -13,8 +13,8 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { branches, savedReports, REPORT_SUBJECTS, REPORT_TYPES, REPORT_SHARE_SCOPES } from "@/db/schema";
-import { branchField } from "@/lib/filter/catalog";
+import { branches, desks, savedReports, REPORT_SUBJECTS, REPORT_TYPES, REPORT_SHARE_SCOPES } from "@/db/schema";
+import { branchField, deskField } from "@/lib/filter/catalog";
 import { FilterASTSchema } from "@/lib/filter/ast";
 import { assertValidReport } from "@/lib/reports/run";
 import { assertValidCategories, type CategoryColumn } from "@/lib/reports/categories";
@@ -56,18 +56,24 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     requireCap(session.roles, "reports.manage", session.permissions);
-    const { row, branchNames } = await withTenant(session.tenantId, async (tx) => {
+    const { row, branchNames, deskList } = await withTenant(session.tenantId, async (tx) => {
       const row = (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0];
       // The report page's Branch picker: the firm's branch names, when this subject can be filtered by branch.
       const branchNames = row && branchField(row.subject)
         ? (await tx.select({ name: branches.name }).from(branches).where(eq(branches.tenantId, session.tenantId))).map((b) => b.name).sort((a, b) => a.localeCompare(b))
         : [];
-      return { row, branchNames };
+      // …and its desks (Anand 1 …), listed under their branch, when the subject has a desk field.
+      const deskList = row && deskField(row.subject)
+        ? (await tx.select({ name: desks.name, branch: branches.name }).from(desks).innerJoin(branches, eq(branches.id, desks.branchId)).where(eq(desks.tenantId, session.tenantId)))
+            .sort((a, b) => a.name.localeCompare(b.name))
+        : [];
+      return { row, branchNames, deskList };
     });
     if (!row || !canSeeSavedReport(session, row)) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({
       ...row,
       branches: branchNames,
+      desks: deskList,
       isMine: mayChange(session, row),
       starred: ((row.starredBy as string[] | null) ?? []).includes(session.userId),
     });

@@ -20,7 +20,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { savedReports } from "@/db/schema";
 import { FilterASTSchema, and as astAnd, type FilterAST } from "@/lib/filter/ast";
-import { branchField } from "@/lib/filter/catalog";
+import { branchField, deskField } from "@/lib/filter/catalog";
 import { runDetailed, runMatrix, runSummary, type DrillValue } from "@/lib/reports/run";
 import { reportSubjectScope } from "@/lib/reports/scope";
 import { canSeeSavedReport } from "@/lib/reports/visibility";
@@ -67,9 +67,12 @@ async function run(id: string, view: View, uv: UrlView) {
     const scope = await reportSubjectScope(tx, session, r.subject);
     // The quick filter AND the date-range bar — both narrow this run only.
     const dated = withDateRange(r.subject, (view.filter ?? null) as FilterAST | null, { field: uv.dateField, from: uv.from, to: uv.to });
-    // The Branch picker narrows this run to one branch, through the subject's branch field.
-    const bf = uv.branch ? branchField(r.subject) : null;
-    const branchAst = bf ? ({ type: "predicate", field: { kind: "attr", path: bf.key }, op: "eq", value: uv.branch } as FilterAST) : null;
+    // The Branch picker narrows this run to one branch — or, for "desk:<name>", one
+    // desk inside a branch (Anand 1 …) — through the subject's branch / desk field.
+    const isDesk = !!uv.branch?.startsWith("desk:");
+    const bf = uv.branch ? (isDesk ? deskField(r.subject) : branchField(r.subject)) : null;
+    const pick = isDesk ? uv.branch!.slice(5) : uv.branch;
+    const branchAst = bf && pick ? ({ type: "predicate", field: { kind: "attr", path: bf.key }, op: "eq", value: pick } as FilterAST) : null;
     const extraAst = branchAst ? (dated ? astAnd(dated, branchAst) : astAnd(branchAst)) : dated;
     const base = {
       subject: r.subject,
