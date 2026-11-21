@@ -11,6 +11,17 @@
  * Those details travel as `typeDetails`; the server keeps only what the type
  * uses. Removed from the master at the firm's request (2026-10-13): CKYC
  * expiry, FATCA expiry and Service tier — do not put them back.
+ *
+ * Address: a complete Indian pincode fills a BLANK city, state and country
+ * (../investors/pincode.ts, the CRM's rule of 2026-11-14) — never a typed
+ * value; a typed state that disagrees stays, with a "Use <state>" switch. The
+ * pincode already on file when the edit form opens is not looked up. State
+ * and country pick from the CRM's lists (../investors/places.ts).
+ *
+ * What the family owns is not asked again (CLAUDE.md "Creating a family"):
+ * the client page passes famReview / famMember / famName to the edit form, so
+ * a family's review frequency shows read-only and is never sent, and a
+ * member's address says it follows the head's.
  */
 
 import type { FormSpec, FormValues } from "./types";
@@ -20,7 +31,11 @@ import {
   MARITAL_STATUSES, HOUSEHOLD_TYPES, CONTACT_OWNERS, NOMINEE_RELATIONS, COPARCENER_RELATIONS, SIGNATORY_DESIGNATIONS,
   BUSINESS_NATURES, GUARDIAN_RELATIONS, FATCA_ENTITY_CLASSES, NRI_ACCOUNT_TYPES,
 } from "../investors/client-types";
+import { INDIAN_STATES, COUNTRIES, canonicalState, isIndianAddress } from "../investors/places";
+import { pincodeFillFor, pincodeHint, shouldLookUpPincode } from "../investors/pincode";
 import { fmtDate } from "../../lib/format";
+import { clientPickerLine } from "../investors/picker";
+import { PanExistsNotice } from "../investors/PanExistsNotice";
 
 const u = (v: string) => (v?.trim() ? v.trim() : undefined);
 const num = (v: string) => {
@@ -29,7 +44,27 @@ const num = (v: string) => {
 };
 const upper = (v: string) => v.toUpperCase();
 const optPan = (v?: string) => (v?.trim() ? v.trim().toUpperCase() : undefined);
-const today = () => new Date().toISOString().slice(0, 10);
+/** Today in India (YYYY-MM-DD) — a UTC date reads yesterday until 05:30 IST. */
+const today = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** The CRM's lists (lib/investors/client-types.ts) the app's copy lacks. */
+const INCOME_RANGES = ["Below ₹5L", "₹5L – ₹15L", "₹15L – ₹50L", "₹50L – ₹1Cr", "₹1Cr – ₹5Cr", "Above ₹5Cr"];
+const OCCUPATIONS = ["Salaried", "Self-Employed", "Business Owner", "Professional (Doctor/CA/Lawyer)", "Retired", "Homemaker", "Student", "Other"];
+/** Household type from the client type and whether the client joins a family (web defaultHouseholdType). */
+function defaultHouseholdType(type: string, inFamily: boolean): string {
+  const kind = clientKind(type);
+  if (kind === "huf") return "HUF";
+  if (kind === "entity") return "Company";
+  return inFamily ? "Family" : "Individual";
+}
+const REVIEW_LABEL: Record<string, string> = { monthly: "Monthly", quarterly: "Quarterly", half_yearly: "Half-yearly", annual: "Annual" };
+const addrOf = (v: FormValues) => ({ pincode: String(v.pincode ?? ""), city: String(v.city ?? ""), state: String(v.state ?? ""), country: String(v.country ?? "") });
+/** A pincode that should be looked up now: typed (not the one on file at open), complete, Indian. */
+const pinToFill = (v: FormValues) => {
+  const pin = String(v.pincode ?? "").trim();
+  return pin && pin !== v._pinWas && pin !== v._pinDone && shouldLookUpPincode(pin, String(v.country ?? "")) ? pin : "";
+};
 
 const kindIs = (k: string) => (v: FormValues) => clientKind(v.investorCategory) === k;
 const typeIs = (t: string) => (v: FormValues) => v.investorCategory === t;
@@ -74,7 +109,9 @@ export const investorForm: FormSpec = {
   title: "Add investor",
   endpoint: "/api/investors",
   submitLabel: "Create investor",
-  invalidate: ["investors"],
+  invalidate: ["investors", "investor-kpis"],
+  // A PAN already in the CRM is never a second client: offer Reactivate / Open (create only).
+  notice: PanExistsNotice,
 
   // ?type=minor (etc.) opens the form ready for that client type, as on the web.
   initial: (params) => {
@@ -88,6 +125,7 @@ export const investorForm: FormSpec = {
       motherName: "",
       maritalStatus: "",
       occupation: "",
+      incomeRange: "",
       employerName: "",
       aadhaarLast4: "",
       email: "",
@@ -100,7 +138,7 @@ export const investorForm: FormSpec = {
       state: "",
       pincode: "",
       country: "India",
-      householdType: "",
+      householdType: defaultHouseholdType(type, !!params.familyId),
       familyOwnerName: "",
       investorCategory: type,
       _taxType: type,
@@ -129,6 +167,9 @@ export const investorForm: FormSpec = {
       reviewFrequency: "",
       notes: "",
       ...TYPE_DETAIL_BLANKS,
+      dateOfDemise: "",
+      _pinWas: "", _pinDone: "", _pinState: "", _useState: false,
+      _famMember: "", _famReview: "", _famName: "",
       // Edit-only fields (hidden in create via section visibleIf on `_edit`).
       _edit: "",
       _panLocked: "",
@@ -151,11 +192,17 @@ export const investorForm: FormSpec = {
     const out: Partial<FormValues> = {};
     // Next meeting date = last meeting date + review frequency (auto-derived).
     const months: Record<string, number> = { monthly: 1, quarterly: 3, half_yearly: 6, annual: 12 };
+    // Only when the last date or the frequency changes (the web's effect deps),
+    // so a next date picked by hand survives every other keystroke. Calendar
+    // arithmetic in UTC: a local-midnight date printed with toISOString() is
+    // the previous day in India.
     const m = months[v.reviewFrequency];
-    if (v.lastReviewAt && m) {
-      const d = new Date(v.lastReviewAt + "T00:00:00");
-      if (!isNaN(d.getTime())) {
-        d.setMonth(d.getMonth() + m);
+    const revKey = `${v.lastReviewAt ?? ""}|${v.reviewFrequency ?? ""}`;
+    if (revKey !== v._revKey) {
+      out._revKey = revKey;
+      const d = new Date(`${String(v.lastReviewAt ?? "").slice(0, 10)}T00:00:00Z`);
+      if (v.lastReviewAt && m && !isNaN(d.getTime())) {
+        d.setUTCMonth(d.getUTCMonth() + m);
         const next = d.toISOString().slice(0, 10);
         if (v.nextReviewAt !== next) out.nextReviewAt = next;
       }
@@ -167,7 +214,21 @@ export const investorForm: FormSpec = {
       out._taxType = v.investorCategory;
       if (!taxStatusOptions(v.investorCategory).includes(v.taxStatus)) out.taxStatus = defaultTaxStatus(v.investorCategory);
       if (singleHoldingOnly(v.investorCategory)) out.modeOfHolding = "Single";
+      // A new client type brings its own household type (Add client, as the web).
+      if (!v._edit) out.householdType = defaultHouseholdType(v.investorCategory, !!v._familyId);
     }
+    // Pincode -> blank city / state / country. Moving off the pincode on file
+    // forgets it, so typing it back looks it up (the web's usePincodeAutofill).
+    const pinNow = String(v.pincode ?? "").trim();
+    if (v._pinWas && pinNow !== v._pinWas) out._pinWas = "";
+    if (v._pinDone && pinNow !== v._pinDone) { out._pinDone = ""; out._pinState = ""; }
+    const cur = { ...v, ...out };
+    if (pinToFill(cur)) {
+      const f = pincodeFillFor(addrOf(cur));
+      if (f) Object.assign(out, f.set, { _pinDone: pinNow, _pinState: f.stateMismatch ?? "" });
+    }
+    if (v._useState && v._pinState) Object.assign(out, { state: v._pinState, _pinState: "", _useState: false });
+    else if (v._useState) out._useState = false;
     return Object.keys(out).length ? out : null;
   },
 
@@ -187,6 +248,20 @@ export const investorForm: FormSpec = {
     }
     if (kind === "huf" && !v.kName?.trim()) e.kName = "Add the Karta's name";
     for (const k of ["gPan", "kPan"]) if (v[k]?.trim() && !isPan(v[k].trim().toUpperCase())) e[k] = "PAN should look like ABCDE1234F";
+    // What the server's schema would refuse with a bare "invalid body".
+    if (v.name?.trim() && v.name.trim().length < 2) e.name = "Enter the full name";
+    if (v.email?.trim() && !EMAIL.test(v.email.trim())) e.email = "Enter a valid email";
+    if (v.aadhaarLast4?.trim() && !/^\d{4}$/.test(v.aadhaarLast4.trim())) e.aadhaarLast4 = "Only the last 4 digits";
+    const badRowPan = (rows: any[] | undefined) => (rows ?? []).some((r) => r?.name?.trim() && r?.pan?.trim() && !isPan(r.pan.trim().toUpperCase()));
+    if (kind === "entity" && badRowPan(v.signatories)) e.signatories = "A signatory's PAN should look like ABCDE1234F";
+    if (kind === "entity" && badRowPan(v.ubos)) e.ubos = "A beneficial owner's PAN should look like ABCDE1234F";
+    if (kind === "entity" && (v.ubos ?? []).some((o: any) => o?.holdingPct !== "" && o?.holdingPct != null && !(Number(o.holdingPct) >= 0 && Number(o.holdingPct) <= 100))) e.ubos = "Holding % must be between 0 and 100";
+    if (canNominate(v.investorCategory) && !v.nominationOptOut) {
+      const shares = (v.nominees ?? []).filter((n: any) => n?.name?.trim() && n?.sharePct !== "" && n?.sharePct != null).map((n: any) => Number(n.sharePct));
+      if (shares.some((x: number) => !(x >= 0 && x <= 100))) e.nominees = "A nominee's share must be between 0% and 100%";
+      else if (shares.reduce((a: number, b: number) => a + b, 0) > 100) e.nominees = "The nominees' shares add up to more than 100%";
+    }
+    if (v.dateOfDemise && v.dateOfDemise > today()) e.dateOfDemise = "The date of death can't be in the future";
     return Object.keys(e).length ? e : null;
   },
 
@@ -204,7 +279,8 @@ export const investorForm: FormSpec = {
         { key: "birthPlace", label: "Birth place", visibleIf: personal },
         { key: "motherName", label: "Mother's name", visibleIf: personal },
         { key: "maritalStatus", label: "Marital status", type: "select", visibleIf: adult, options: (v) => withCurrent(MARITAL_STATUSES, v.maritalStatus) },
-        { key: "occupation", label: "Profession", visibleIf: adult },
+        { key: "occupation", label: "Occupation", type: "select", visibleIf: adult, options: (v) => withCurrent(OCCUPATIONS, v.occupation) },
+        { key: "incomeRange", label: "Income range", type: "select", visibleIf: adult, options: (v) => withCurrent(INCOME_RANGES, v.incomeRange) },
         { key: "employerName", label: "Company name", visibleIf: adult },
         { key: "aadhaarLast4", label: "Aadhaar card (last 4)", keyboard: "number-pad" as any, placeholder: "last 4 digits only", visibleIf: personal, transform: (v) => v.replace(/\D/g, "").slice(0, 4) },
         { key: "businessName", label: "Business name", visibleIf: typeIs("sole_proprietor") },
@@ -222,7 +298,7 @@ export const investorForm: FormSpec = {
         { key: "gEmail", label: "Guardian's email", type: "email" },
         {
           key: "guardianInvestorId", label: "Guardian's client record", type: "typeahead", searchEndpoint: "/api/search", searchEnvelope: "investors",
-          searchLabel: (i) => i.name, searchSublabel: (i) => [i.pan_display, i.segment_tag].filter(Boolean).join(" · "),
+          searchLabel: (i) => i.name, searchSublabel: clientPickerLine,
           placeholder: "Search the guardian's client record…",
           help: "The minor's risk profile is the guardian's. Left blank, the guardian is found by the PAN above.",
         },
@@ -307,11 +383,19 @@ export const investorForm: FormSpec = {
     {
       title: "Mailing address",
       fields: [
+        {
+          key: "_addrFamily", label: "From the family", type: "readonly", visibleIf: (v) => !!v._famMember,
+          format: (_x, f) => `${f._famName || "This family"}: a member's address is the head's, and the CRM keeps it in step. A change here is kept only while the head has no address.`,
+        },
         { key: "street", label: "Mailing street", placeholder: "House / building, street, area" },
+        { key: "pincode", label: "Pincode", keyboard: "number-pad" as any, transform: (x) => x.replace(/\D/g, "").slice(0, 6), help: "A complete pincode fills a blank city and state." },
+        { key: "_pinHint", label: "Pincode", type: "readonly", visibleIf: (v) => !!pincodeHint(addrOf(v)) && String(v.pincode ?? "").trim() !== v._pinWas, format: (_x, f) => pincodeHint(addrOf(f)) },
+        { key: "_useState", label: "Use the pincode's state", type: "switch", visibleIf: (v) => !!v._pinState && (canonicalState(v.state) ?? v.state) !== v._pinState, help: "The state typed stays unless you switch this on." },
         { key: "city", label: "City" },
-        { key: "state", label: "State" },
-        { key: "pincode", label: "Zip", keyboard: "number-pad" as any },
-        { key: "country", label: "Country" },
+        // A dropdown for an Indian address (the CRM's list, a value on file kept); free text abroad.
+        { key: "state", label: "State", type: "select", visibleIf: (v) => isIndianAddress(v.country), options: (v) => withCurrent(INDIAN_STATES, v.state) },
+        { key: "state", label: "State / region", visibleIf: (v) => !isIndianAddress(v.country) },
+        { key: "country", label: "Country", type: "select", options: (v) => withCurrent(COUNTRIES, v.country) },
       ],
     },
     {
@@ -327,6 +411,9 @@ export const investorForm: FormSpec = {
         { key: "taxStatus", label: "Tax status", type: "select", options: (v) => withCurrent(taxStatusOptions(v.investorCategory), v.taxStatus) },
         { key: "residencyStatus", label: "Residential status", type: "select", options: [{ value: "", label: "Select" }, { value: "indian_resident", label: "Indian resident" }, { value: "nri", label: "NRI" }, { value: "oci", label: "OCI" }, { value: "pio", label: "PIO" }, { value: "foreign_national", label: "Foreign national" }] },
         { key: "kycStatus", label: "KYC status", type: "select", options: [{ value: "pending", label: "Pending" }, { value: "registered", label: "Registered" }, { value: "verified", label: "Verified" }, { value: "hold", label: "Hold" }, { value: "rejected", label: "Rejected" }, { value: "expired", label: "Expired" }, { value: "re_kyc_required", label: "Re-KYC required" }] },
+        // A minor's risk profile IS the guardian's (kept equal by the database) — never sent for a minor.
+        { key: "riskProfile", label: "Risk profile", type: "select", visibleIf: (v) => !kindIs("minor")(v), options: RISK_OPTIONS },
+        { key: "_minorRisk", label: "Risk profile", type: "readonly", visibleIf: kindIs("minor"), format: () => "Same as the guardian" },
       ],
     },
     {
@@ -335,7 +422,7 @@ export const investorForm: FormSpec = {
       fields: [
         { key: "secondHolderFirstName", label: "First name" },
         { key: "secondHolderLastName", label: "Last name" },
-        { key: "secondHolderOccupation", label: "Occupation" },
+        { key: "secondHolderOccupation", label: "Occupation", type: "select", options: (v) => withCurrent(OCCUPATIONS, v.secondHolderOccupation) },
         { key: "secondHolderCompanyName", label: "Company name" },
         { key: "secondHolderBirthPlace", label: "Birth place" },
         { key: "secondHolderMotherName", label: "Mother's name" },
@@ -403,7 +490,9 @@ export const investorForm: FormSpec = {
         { key: "anniversaryDate", label: "Anniversary date", type: "date", maxToday: true, visibleIf: adult },
         { key: "lastReviewAt", label: "Last meeting date", type: "date", maxToday: true },
         { key: "nextReviewAt", label: "Next meeting date", type: "date" },
-        { key: "reviewFrequency", label: "Review frequency", type: "select", options: [{ value: "", label: "Select" }, { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }, { value: "half_yearly", label: "Half-yearly" }, { value: "annual", label: "Annual" }] },
+        { key: "reviewFrequency", label: "Review frequency", type: "select", visibleIf: (v) => !v._famReview, options: [{ value: "", label: "Select" }, { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }, { value: "half_yearly", label: "Half-yearly" }, { value: "annual", label: "Annual" }] },
+        { key: "_reviewFamily", label: "Review frequency", type: "readonly", visibleIf: (v) => !!v._famReview, format: (_x, f) => `From the family — ${REVIEW_LABEL[f._famReview] ?? f._famReview}` },
+        { key: "dateOfDemise", label: "Date of death (demise)", type: "date", maxToday: true, help: "Recording it makes the client Inactive: live SIPs are stopped and pending orders cancelled." },
       ],
     },
     {
@@ -411,11 +500,7 @@ export const investorForm: FormSpec = {
       title: "Status & lifecycle",
       visibleIf: (v) => v._edit === "1",
       fields: [
-        { key: "dateOfDemise", label: "Date of death (demise)", type: "date", maxToday: true, help: "Recording it makes the client Inactive: live SIPs are stopped and pending orders cancelled." },
         { key: "status", label: "Client status", type: "select", help: "Inactive stops all live SIPs and cancels pending orders.", options: [{ value: "active", label: "Active" }, { value: "dormant", label: "Dormant" }, { value: "inactive", label: "Inactive" }, { value: "redemption_risk", label: "Redemption risk" }, { value: "closed", label: "Closed" }, { value: "exited", label: "Exited" }] },
-        // A minor's risk profile IS the guardian's (kept equal by the database).
-        { key: "riskProfile", label: "Risk profile", type: "select", visibleIf: (v) => !kindIs("minor")(v), options: RISK_OPTIONS },
-        { key: "_minorRisk", label: "Risk profile", type: "readonly", visibleIf: kindIs("minor"), format: () => "Same as the guardian" },
         { key: "alternatePhone", label: "Alternate mobile", type: "tel" },
         { key: "mandateStatus", label: "Mandate status", type: "select", options: [{ value: "", label: "—" }, { value: "none", label: "None" }, { value: "pending", label: "Pending" }, { value: "active", label: "Active" }, { value: "expired", label: "Expired" }, { value: "rejected", label: "Rejected" }, { value: "cancelled", label: "Cancelled" }] },
         { key: "mandateRefNo", label: "Mandate ref no" },
@@ -464,6 +549,8 @@ export const investorForm: FormSpec = {
     const isAdult = hasAdultDetails(type);
     const minor = clientKind(type) === "minor";
     const joint = !singleHoldingOnly(type);
+    // The pincode's answer, if it came in after the last change: blanks only.
+    const pinFill: { city?: string; state?: string; country?: string } = pinToFill(form) ? pincodeFillFor(addrOf(form))?.set ?? {} : {};
     const banks = ((form.bankAccounts as any[]) ?? [])
       .map((b) => ({ bankName: (b.bankName ?? "").trim(), accountMasked: u(b.accountMasked), ifsc: optPan(b.ifsc) }))
       .filter((b) => b.bankName);
@@ -479,6 +566,7 @@ export const investorForm: FormSpec = {
       motherName: isPersonal ? u(form.motherName) : undefined,
       maritalStatus: isAdult ? u(form.maritalStatus) : undefined,
       occupation: isAdult ? u(form.occupation) : undefined,
+      incomeRange: isAdult ? u(form.incomeRange) : undefined,
       employerName: isAdult ? u(form.employerName) : undefined,
       aadhaarLast4: isPersonal ? u(form.aadhaarLast4) : undefined,
       email: u(form.email),
@@ -488,10 +576,10 @@ export const investorForm: FormSpec = {
       whatsappPhone: form.whatsappPhone || form.phone || undefined,
       address: {
         line1: u(form.street),
-        city: u(form.city),
-        state: u(form.state),
+        city: u(pinFill.city ?? form.city),
+        state: u(pinFill.state ?? form.state),
         pincode: u(form.pincode),
-        country: u(form.country),
+        country: u(pinFill.country ?? form.country),
       },
       investorCategory: type,
       typeDetails: typeDetailsOf(form),
@@ -537,7 +625,8 @@ export const investorForm: FormSpec = {
       anniversaryDate: isAdult ? u(form.anniversaryDate) : undefined,
       lastReviewAt: u(form.lastReviewAt),
       nextReviewAt: u(form.nextReviewAt),
-      reviewFrequency: form.reviewFrequency || undefined,
+      // The family's cadence is the family's to change (the API ignores it for a member).
+      reviewFrequency: form._famReview ? undefined : form.reviewFrequency || undefined,
       notes: u(form.notes),
       // Edit-only fields — empty (hence undefined) on create, so they're omitted.
       alternatePhone: u(form.alternatePhone),
@@ -559,7 +648,7 @@ export const investorForm: FormSpec = {
 
   editTitle: "Edit client",
   editRecordEnvelope: "investor",
-  editInitial: (rec) => {
+  editInitial: (rec, params) => {
     const dstr = (v: any) => (v ? String(v).slice(0, 10) : "");
     const addr = rec.address ?? {};
     const td = rec.typeDetails ?? {};
@@ -588,6 +677,7 @@ export const investorForm: FormSpec = {
       motherName: rec.motherName ?? "",
       maritalStatus: rec.maritalStatus ?? "",
       occupation: rec.occupation ?? "",
+      incomeRange: rec.incomeRange ?? "",
       employerName: rec.employerName ?? "",
       aadhaarLast4: rec.aadhaarLast4 ?? "",
       email: rec.email ?? "",
@@ -601,6 +691,11 @@ export const investorForm: FormSpec = {
       state: addr.state ?? "",
       pincode: addr.pincode ?? "",
       country: addr.country ?? "India",
+      // The pincode on file is not looked up when the form opens.
+      _pinWas: String(addr.pincode ?? "").trim(), _pinDone: "", _pinState: "", _useState: false,
+      _famMember: params?.famMember === "1" ? "1" : "",
+      _famReview: params?.famReview ?? "",
+      _famName: params?.famName ?? "",
       householdType: rec.householdType ?? "",
       familyOwnerName: rec.familyOwnerName ?? "",
       investorCategory: type,
@@ -640,7 +735,11 @@ export const investorForm: FormSpec = {
       anniversaryDate: dstr(rec.anniversaryDate),
       lastReviewAt: dstr(rec.lastReviewAt),
       nextReviewAt: dstr(rec.nextReviewAt),
-      reviewFrequency: rec.reviewFrequency ?? "",
+      // A family member's cadence is the family's (next review is derived from it).
+      reviewFrequency: params?.famReview || rec.reviewFrequency || "",
+      // The next review on file is kept when the form opens; changing the last
+      // date or the frequency re-derives it.
+      _revKey: `${dstr(rec.lastReviewAt)}|${params?.famReview || rec.reviewFrequency || ""}`,
       notes: rec.notes ?? "",
       // The type's own details
       gName: td.guardian?.name ?? "", gPan: td.guardian?.pan ?? "", gRelation: td.guardian?.relation ?? "",

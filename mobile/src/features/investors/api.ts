@@ -55,6 +55,11 @@ export interface InvestorFilters {
   created_to?: string;
   sort?: string; // aum | created | name | sip | health | review
   dir?: "asc" | "desc";
+  /** "1" — the list's default view: a client who left (Closed / Exited) is
+   *  kept, not deleted, and stays out of the list until shown (web
+   *  /dashboard/investors: hidden unless a status is picked, a name is
+   *  searched, or "show" is tapped). */
+  live?: string;
 }
 
 export function useInvestors(filters: InvestorFilters) {
@@ -74,6 +79,7 @@ export function useInvestors(filters: InvestorFilters) {
         created_to: filters.created_to || undefined,
         sort: filters.sort || undefined,
         dir: filters.dir || undefined,
+        live: filters.live || undefined,
         page: pageParam,
         limit: PAGE_SIZE,
       }),
@@ -107,8 +113,20 @@ export function useInvestorBoard(filters: InvestorFilters, enabled: boolean) {
         created_to: filters.created_to || undefined,
         sort: filters.sort || undefined,
         dir: filters.dir || undefined,
+        live: filters.live || undefined,
         limit: 200,
       }),
+  });
+}
+
+/** How many clients have left (Closed / Exited) — the list's "N exited clients
+ *  are hidden — show" line. The status filter "closed" counts exited too. */
+export function useExitedCount(enabled: boolean) {
+  return useQuery({
+    queryKey: ["investors", "exited-count"],
+    enabled,
+    staleTime: 60_000,
+    queryFn: () => api.get<ListResponse>("/api/investors", { status: "closed", limit: 1 }).then((r) => Number(r.total ?? 0)),
   });
 }
 

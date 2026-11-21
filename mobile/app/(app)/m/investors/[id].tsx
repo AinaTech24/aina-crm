@@ -136,9 +136,27 @@ export default function InvestorDetail() {
   const doDelete = () => {
     setActions(false);
     confirmDelete(
-      { title: `Delete ${i.name}?`, message: "The client moves to Trash and can be restored within 30 days.", confirmLabel: "Delete" },
-      () => del.mutate(id!, { onSuccess: () => router.back() })
+      {
+        title: `Delete ${i.name}?`,
+        message: exited
+          ? "The client moves to Trash and can be restored within 30 days."
+          : "The client moves to Trash and can be restored within 30 days. A client who has left but may come back is better marked as exited — nothing is lost.",
+        confirmLabel: "Delete",
+      },
+      // A client who holds money with the registrar is kept; the server says why (toasted).
+      () => del.mutate(id!, { onSuccess: () => { toast.success(`${i.name} moved to Trash`); router.back(); } })
     );
+  };
+  // What the family owns is not asked again on the edit form: a member's
+  // address is the head's and everyone's review frequency is the family's
+  // (the CRM's investor PATCH ignores both). The form is told which applies.
+  const fam = d.family as { primaryInvestorId?: string | null; reviewFrequency?: string | null; familyName?: string | null } | null;
+  const editHref = () => {
+    const p = new URLSearchParams({ editId: String(id) });
+    if (fam?.primaryInvestorId && fam.primaryInvestorId !== i.id) p.set("famMember", "1");
+    if (fam?.reviewFrequency) p.set("famReview", fam.reviewFrequency);
+    if (fam?.familyName) p.set("famName", fam.familyName);
+    return `/m/investors/new?${p.toString()}`;
   };
   const sendStatement = (channel: "email" | "whatsapp") => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -228,7 +246,7 @@ export default function InvestorDetail() {
 
       {/* Actions sheet */}
       <BottomSheet visible={actions} onClose={() => setActions(false)} title={i.name}>
-        <Button label="Edit client" variant="secondary" full icon={<Feather name="edit-2" size={15} color={palette.ink} />} onPress={() => { setActions(false); router.push(`/m/investors/new?editId=${id}` as any); }} style={{ marginBottom: spacing.sm }} />
+        <Button label="Edit client" variant="secondary" full icon={<Feather name="edit-2" size={15} color={palette.ink} />} onPress={() => { setActions(false); router.push(editHref() as any); }} style={{ marginBottom: spacing.sm }} />
         <Button label="AI client brief" variant="secondary" full icon={<Feather name="zap" size={15} color={palette.ink} />} onPress={() => { setActions(false); setAiOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Quick comms" variant="secondary" full icon={<Feather name="send" size={15} color={palette.ink} />} onPress={() => { setActions(false); setCommsOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Send a form" variant="secondary" full icon={<Feather name="file-text" size={15} color={palette.ink} />} onPress={() => { setActions(false); setFormOpen(true); }} style={{ marginBottom: spacing.sm }} />

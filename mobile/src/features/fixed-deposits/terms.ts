@@ -44,6 +44,19 @@ export function maturityDateFor(depositDate: string, months: number, days: numbe
   return iso(Date.UTC(ty, tm, Math.min(d, lastDay)) + Math.max(0, days || 0) * 864e5);
 }
 
+/**
+ * The first interest date of a payout FD: one period after the deposit (monthly
+ * +1 month … yearly +12), never later than maturity. A cumulative FD pays with
+ * the principal, so its payout date is the maturity date.
+ */
+export function firstPayoutDate(depositDate: string, maturityDate: string, payout: string): string {
+  if (!depositDate) return "";
+  const months = ({ monthly: 1, quarterly: 3, half_yearly: 6, yearly: 12 } as Record<string, number>)[payout];
+  if (!months) return maturityDate || "";
+  const first = maturityDateFor(depositDate, months, 0);
+  return maturityDate && first > maturityDate ? maturityDate : first;
+}
+
 /** The tenure between two dates, as whole months plus the remaining days. */
 export function tenureBetween(depositDate: string, maturityDate: string): { months: number; days: number } {
   if (utc(maturityDate) <= utc(depositDate)) return { months: 0, days: 0 };
@@ -75,6 +88,9 @@ export function computeMaturity(i: { principal: number; rate: number; depositDat
   const per = PER_YEAR[i.payout] ?? 4;
   return { maturityAmount: round2(P), interest: round2((P * r * days) / 36500), periodicInterest: round2((P * r) / (100 * per)), days };
 }
+
+/** Days until maturity from `today` (India date); negative once past. */
+export const daysToMaturity = (maturityDate: string, today: string) => daysBetween(today, maturityDate);
 
 /** Today as an India (IST) yyyy-mm-dd. */
 export const indiaToday = (now = new Date()) => new Date(now.getTime() + 330 * 60_000).toISOString().slice(0, 10);

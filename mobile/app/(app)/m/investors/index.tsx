@@ -23,7 +23,8 @@ import { EmptyState, SearchEmptyState, ErrorState, NetworkErrorState } from "../
 import { InvestorCard } from "../../../../src/components/domain/InvestorCard";
 import { InvestorKpiStrip } from "../../../../src/features/investors/InvestorKpiStrip";
 import { InvestorFilters, EMPTY_FILTERS, countActive, type UiFilters } from "../../../../src/features/investors/InvestorFilters";
-import { useInvestors, flattenInvestors, useDeleteInvestor, useInvestorBoard, useMoveClientStage, type Investor } from "../../../../src/features/investors/api";
+import { useInvestors, flattenInvestors, useDeleteInvestor, useInvestorBoard, useMoveClientStage, useExitedCount, type Investor } from "../../../../src/features/investors/api";
+import { ownPan } from "../../../../src/features/investors/client-types";
 import { CLIENT_PHASE_STAGES, boardStage } from "../../../../src/features/investors/client-stages";
 import { KanbanBoard } from "../../../../src/components/domain/KanbanBoard";
 import { LayoutSwitch } from "../../../../src/components/ui/LayoutSwitch";
@@ -52,6 +53,8 @@ export default function InvestorsList() {
   const debounced = useDebounced(search);
   const del = useDeleteInvestor();
   const [layout, setLayout] = useState<"list" | "kanban">("list");
+  // Exited / closed clients are hidden by default, as on the web list.
+  const [showExited, setShowExited] = useState(false);
   const isKanban = layout === "kanban";
   const moveStage = useMoveClientStage();
 
@@ -71,18 +74,26 @@ export default function InvestorsList() {
       created_to: filters.created_to,
       sort: filters.sort,
       dir: filters.dir,
+      // Hidden unless a status is picked, a name is searched, or "show" is tapped.
+      live: !filters.status.length && !debounced.trim() && !showExited ? "1" : undefined,
     }),
-    [debounced, filters]
+    [debounced, filters, showExited]
   );
+  const hidingExited = !!apiFilters.live;
+  const exitedCount = useExitedCount(!filters.status.length && !debounced.trim()).data ?? 0;
 
   const query = useInvestors(apiFilters);
   const { rows, total } = flattenInvestors(query.data);
   const board = useInvestorBoard(apiFilters, isKanban);
   const boardRows = board.data?.rows ?? [];
   const moveClient = async (inv: Investor, toStageKey: string) => {
-    if (!inv.leadId) return;
-    await moveStage.mutateAsync({ leadId: inv.leadId, toStageKey });
-    toast.success(`Moved to ${CLIENT_PHASE_STAGES.find((s) => s.key === toStageKey)?.label ?? toStageKey}`);
+    if (!inv.leadId || moveStage.isPending) return;
+    try {
+      await moveStage.mutateAsync({ leadId: inv.leadId, toStageKey });
+      toast.success(`Moved to ${CLIENT_PHASE_STAGES.find((s) => s.key === toStageKey)?.label ?? toStageKey}`);
+    } catch {
+      /* the app-wide mutation handler toasts why */
+    }
     await board.refetch();
   };
   const activeCount = countActive(filters);
@@ -94,8 +105,8 @@ export default function InvestorsList() {
   const doDelete = (inv: Investor) => {
     setRowAction(null);
     confirmDelete(
-      { title: `Delete ${inv.name}?`, message: "The client moves to Trash and can be restored within 30 days.", confirmLabel: "Delete" },
-      () => del.mutate(inv.id)
+      { title: `Delete ${inv.name}?`, message: "The client moves to Trash and can be restored within 30 days. A client who has left but may come back is better marked as exited (open the client → More).", confirmLabel: "Delete" },
+      () => del.mutate(inv.id, { onSuccess: () => toast.success(`${inv.name} moved to Trash`) })
     );
   };
 
@@ -117,6 +128,15 @@ export default function InvestorsList() {
         ) : null}
         <LayoutSwitch value={layout} onChange={setLayout} />
       </View>
+      {exitedCount > 0 ? (
+        <Pressable onPress={() => setShowExited((v) => !v)} hitSlop={6} accessibilityRole="button">
+          <Text variant="caption" tone="muted">
+            {hidingExited
+              ? `${exitedCount.toLocaleString("en-IN")} exited ${exitedCount === 1 ? "client is" : "clients are"} hidden — show`
+              : "Showing exited clients — hide them"}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 
@@ -141,7 +161,7 @@ export default function InvestorsList() {
               return (
                 <View style={{ gap: 2 }}>
                   <Text variant="caption" style={{ fontWeight: fontWeight.semibold }} numberOfLines={1}>{inv.name}</Text>
-                  {inv.pan ? <Text variant="caption" tone="muted" numberOfLines={1}>{inv.pan}</Text> : null}
+                  {ownPan(inv.pan) ? <Text variant="caption" tone="muted" numberOfLines={1}>{ownPan(inv.pan)}</Text> : null}
                   {money ? <Text variant="caption" tone="muted" numberOfLines={1}>{money}</Text> : null}
                   {!inv.leadId ? <Text variant="caption" tone="faint" numberOfLines={1}>No onboarding journey</Text> : null}
                 </View>

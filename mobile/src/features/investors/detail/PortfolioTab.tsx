@@ -15,6 +15,9 @@ import { toast } from "../../../lib/toast";
 
 const churnTone = (b?: string) => (b === "high" ? palette.danger : b === "medium" ? palette.warning : palette.success);
 const num = (v: any) => (v == null ? 0 : Number(v));
+/** A null is not a zero: an amount the valuation could not work out (no NAV,
+ *  an incomplete history) reads "—", never ₹0. */
+const money = (v: any) => (v == null || v === "" || !Number.isFinite(Number(v)) ? "—" : inr(v));
 
 // A processed switch / STP / SWP can be confirmed to the client by email (web
 // TransactionLedger): POST record-email sends the vendor template about THIS
@@ -46,8 +49,8 @@ export function PortfolioTab({ d }: { d: any }) {
       <Section title="Live portfolio value" icon="pie-chart" right={v.asOf ? <Text variant="caption" tone="faint">as of {fmtDate(v.asOf)}</Text> : undefined}>
         <View style={styles.valGrid}>
           <ValCell label="Current value" value={inr(v.currentValue)} />
-          <ValCell label="Invested" value={inr(v.investedNet)} />
-          <ValCell label="Unrealised gain" value={inr(v.gain)} tone={num(v.gain) < 0 ? palette.danger : palette.success} sub={v.absoluteReturn != null ? `${Number(v.absoluteReturn).toFixed(1)}%` : undefined} />
+          <ValCell label="Invested" value={money(v.investedNet)} />
+          <ValCell label="Gain" value={money(v.gain)} tone={v.gain == null ? undefined : num(v.gain) < 0 ? palette.danger : palette.success} sub={v.absoluteReturn != null ? `${Number(v.absoluteReturn).toFixed(1)}%` : undefined} />
           <ValCell label="XIRR" value={v.xirr != null ? `${Number(v.xirr).toFixed(1)}%` : "—"} tone={num(v.xirr) < 0 ? palette.danger : palette.success} />
         </View>
         {holdings.length > 0 ? (
@@ -59,12 +62,15 @@ export function PortfolioTab({ d }: { d: any }) {
                   <Text variant="caption" tone="faint" numberOfLines={1}>{h.amcName ?? "—"}</Text>
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
-                  <Text variant="caption" style={{ fontWeight: fontWeight.semibold }}>{inr(h.currentValue)}</Text>
-                  <Text variant="caption" style={{ color: num(h.gain) < 0 ? palette.danger : palette.success }}>{num(h.gain) >= 0 ? "+" : ""}{inr(h.gain)}</Text>
+                  <Text variant="caption" style={{ fontWeight: fontWeight.semibold }}>{money(h.currentValue)}</Text>
+                  {h.gain != null ? (
+                    <Text variant="caption" style={{ color: num(h.gain) < 0 ? palette.danger : palette.success }}>{num(h.gain) >= 0 ? "+" : ""}{inr(h.gain)}</Text>
+                  ) : null}
                 </View>
               </View>
             ))}
-            {v.unpricedSchemes?.length ? <Text variant="caption" tone="warning" style={{ marginTop: spacing.xs }}>{v.unpricedSchemes.length} scheme(s) couldn't be priced.</Text> : null}
+            {holdings.length > 10 ? <Text variant="caption" tone="faint" style={{ marginTop: spacing.xs }}>+ {holdings.length - 10} more</Text> : null}
+            {num(v.unpricedSchemes) > 0 ? <Text variant="caption" tone="warning" style={{ marginTop: spacing.xs }}>{num(v.unpricedSchemes)} scheme{num(v.unpricedSchemes) === 1 ? "" : "s"} couldn't be priced.</Text> : null}
           </View>
         ) : (
           <Text variant="caption" tone="muted" style={{ marginTop: spacing.sm }}>No priced holdings yet.</Text>

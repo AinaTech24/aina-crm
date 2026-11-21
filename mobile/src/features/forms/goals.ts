@@ -12,9 +12,14 @@
  *        : targetAmount                                    (already future money)
  *
  * The web routes to the LIST after save → redirect returns null.
+ *
+ * The target date is written as the literal `${year}-12-31`. The web builds it
+ * with new Date(year, 11, 31).toISOString(), which in India (UTC+5:30) is the
+ * 30th — a day short; the app sends the year-end the form means.
  */
 
 import type { FormSpec } from "./types";
+import { clientPickerLine } from "../investors/picker";
 
 // monthsBetween(from, to) — mirrors src/lib/goal-planning/calc.ts.
 function monthsBetween(from: Date, to: Date): number {
@@ -25,10 +30,12 @@ export const goalForm: FormSpec = {
   title: "Add a goal",
   endpoint: "/api/goals",
   submitLabel: "Save goal",
-  invalidate: ["goals"],
+  invalidate: ["goals", "investor-full"],
 
   initial: (params) => ({
     investorId: params.investorId ?? "",
+    // ?investorId=&name= (the client page's "Add goal") shows the client, not a picker.
+    _investorName: params.investorId && params.name ? params.name : "",
     name: "",
     category: "retirement",
     targetMode: "today",
@@ -43,12 +50,24 @@ export const goalForm: FormSpec = {
     remarks: "",
   }),
 
+  // The API's ranges (POST /api/goals), so a bad number never comes back as "invalid body".
   validate: (v) => {
     const e: Record<string, string> = {};
+    const thisYear = new Date().getFullYear();
+    const year = parseInt(v.targetYear, 10);
+    const pct = (x: any) => (String(x ?? "").trim() === "" ? null : parseFloat(x));
     if (!v.investorId) e.investorId = "Pick a client";
     if (!v.name?.trim()) e.name = "Goal name is required";
-    if (!v.targetAmount) e.targetAmount = "Target amount is required";
+    else if (v.name.trim().length < 2) e.name = "Enter a longer goal name";
+    if (!(parseFloat(v.targetAmount) > 0)) e.targetAmount = "Target amount is required";
     if (!v.targetYear) e.targetYear = "Target year is required";
+    else if (!(year >= thisYear && year <= thisYear + 100)) e.targetYear = `Pick a year from ${thisYear} on`;
+    const r = pct(v.expectedReturnPct), i = pct(v.inflationPct), su = pct(v.stepUpPct);
+    if (r != null && !(r >= 1 && r <= 30)) e.expectedReturnPct = "Between 1% and 30%";
+    if (i != null && !(i >= 0 && i <= 20)) e.inflationPct = "Between 0% and 20%";
+    if (su != null && !(su >= 0 && su <= 30)) e.stepUpPct = "Between 0% and 30%";
+    if (parseFloat(v.currentValue) < 0) e.currentValue = "Can't be negative";
+    if (parseFloat(v.existingMonthlySip) < 0) e.existingMonthlySip = "Can't be negative";
     return Object.keys(e).length ? e : null;
   },
 
@@ -56,14 +75,16 @@ export const goalForm: FormSpec = {
     {
       title: "Goal",
       fields: [
+        { key: "_investorName", label: "Client", type: "readonly", visibleIf: (v) => !!v._investorName },
         {
           key: "investorId",
           label: "Client",
+          visibleIf: (v) => !v._investorName,
           type: "typeahead",
           searchEndpoint: "/api/search",
           searchEnvelope: "investors",
           searchLabel: (i) => i.name,
-          searchSublabel: (i) => [i.pan_display, i.segment_tag].filter(Boolean).join(" · "),
+          searchSublabel: clientPickerLine,
           placeholder: "Search a client by name or PAN…",
         },
         { key: "name", label: "Goal name", placeholder: "e.g. Riya's college fund" },
@@ -132,7 +153,7 @@ export const goalForm: FormSpec = {
 
   buildBody: (form, params) => {
     const year = parseInt(form.targetYear, 10);
-    const targetDateIso = new Date(year, 11, 31).toISOString().slice(0, 10);
+    const targetDateIso = `${year}-12-31`;
 
     // Replicate the web's live futureTarget computation.
     const targetAmount = parseFloat(form.targetAmount) || 0;

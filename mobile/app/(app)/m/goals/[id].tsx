@@ -7,7 +7,7 @@
  */
 
 import { ownPan } from "../../../../src/features/investors/client-types";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, ScrollView, Pressable, Linking, StyleSheet } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -58,16 +58,20 @@ export default function GoalDetail() {
   const currentVal = num(g.currentValue);
   const existingSip = num(g.existingMonthlySip ?? g.monthlyContribution);
   const ret = num(g.expectedReturn, 12) || 12;
-  const infl = num(g.inflationPct, 6) || 6;
+  // 0% inflation is a real assumption (a goal kept in future rupees), not a blank.
+  const infl = num(g.inflationPct, 6);
   const stepUp = num(g.stepUpPct, 0);
   const monthsLeft = monthsBetween(new Date(), new Date(g.targetDate));
 
-  const calc = useMemo(() => computeGoal({
+  // Plain computations, not hooks: this runs only after the early returns above,
+  // and a hook there changes the hook count between the loading render and this
+  // one — React throws "Rendered more hooks than during the previous render".
+  const calc = computeGoal({
     futureTarget: targetAmt, currentValue: currentVal, existingMonthlySip: existingSip,
     monthsLeft, expectedReturnPct: ret, inflationPct: infl, stepUpPct: stepUp,
-  }), [targetAmt, currentVal, existingSip, monthsLeft, ret, infl, stepUp]);
-  const sens = useMemo(() => sensitivitySipRates(targetAmt, currentVal, calc.months), [targetAmt, currentVal, calc.months]);
-  const years = useMemo(() => projectYearly({ currentValue: currentVal, initialMonthlySip: calc.requiredStepUpInitialSip || calc.requiredMonthlySipTotal, annualReturnPct: ret, stepUpPct: stepUp, months: calc.months }), [currentVal, calc, ret, stepUp]);
+  });
+  const sens = sensitivitySipRates(targetAmt, currentVal, calc.months);
+  const years = projectYearly({ currentValue: currentVal, initialMonthlySip: calc.requiredStepUpInitialSip || calc.requiredMonthlySipTotal, annualReturnPct: ret, stepUpPct: stepUp, months: calc.months });
 
   const pct = Math.min(100, Math.round(num(g.progressPct)));
   const expPct = Math.min(100, Math.round(num(g.expectedProgressPct)));
@@ -251,7 +255,7 @@ function EditGoalSheet({ visible, onClose, id, goal }: { visible: boolean; onClo
     setCurrentValue(String(toNumber(goal.currentValue)));
     setExistingSip(String(toNumber(goal.existingMonthlySip ?? goal.monthlyContribution)));
     setRet(String(toNumber(goal.expectedReturn) || 12));
-    setInfl(String(toNumber(goal.inflationPct) || 6));
+    setInfl(goal.inflationPct == null || goal.inflationPct === "" ? "6" : String(toNumber(goal.inflationPct)));
     setStepUp(String(toNumber(goal.stepUpPct) || 0));
     setGlide(goal.glidePath ?? "none");
     setRemarks(goal.remarks ?? "");
@@ -262,23 +266,30 @@ function EditGoalSheet({ visible, onClose, id, goal }: { visible: boolean; onClo
     setErr(null);
     const yr = parseInt(year, 10);
     const amt = parseFloat(amount) || 0;
-    if (!name.trim() || !amt || !yr) { setErr("Name, amount and year are required."); return; }
+    const r = parseFloat(ret), i = infl.trim() === "" ? 6 : parseFloat(infl), s = stepUp.trim() === "" ? 0 : parseFloat(stepUp);
+    const thisYear = new Date().getFullYear();
+    if (name.trim().length < 2 || !(amt > 0) || !yr) { setErr("Name, amount and year are required."); return; }
+    if (yr < thisYear || yr > thisYear + 100) { setErr(`Pick a target year from ${thisYear} on.`); return; }
+    if (!(r >= 1 && r <= 30)) { setErr("Return must be between 1% and 30%."); return; }
+    if (!(i >= 0 && i <= 20)) { setErr("Inflation must be between 0% and 20%."); return; }
+    if (!(s >= 0 && s <= 30)) { setErr("Step-up must be between 0% and 30%."); return; }
     const targetDate = `${yr}-12-31`;
     const yearsLeft = Math.max(0, monthsBetween(new Date(), new Date(targetDate))) / 12;
-    const future = mode === "today" ? inflatedTarget(amt, parseFloat(infl) || 6, yearsLeft) : amt;
+    const future = mode === "today" ? inflatedTarget(amt, i, yearsLeft) : amt;
     const body: Record<string, any> = {
       name: name.trim(),
       targetAmount: Math.round(future),
       targetMode: mode,
       presentTargetAmount: mode === "today" ? amt : undefined,
       targetDate,
-      inflationPct: parseFloat(infl) || 6,
-      stepUpPct: parseFloat(stepUp) || 0,
+      inflationPct: i,
+      stepUpPct: s,
       glidePath: glide,
       currentValue: parseFloat(currentValue) || 0,
       existingMonthlySip: parseFloat(existingSip) || 0,
-      expectedReturnPct: parseFloat(ret) || 12,
-      remarks: remarks || undefined,
+      expectedReturnPct: r,
+      // Sent as typed, so clearing the remarks clears them.
+      remarks: remarks.trim(),
     };
     try { await patch.mutateAsync(body); onClose(); } catch (e) { setErr(errorMessage(e, "Could not save.")); }
   };

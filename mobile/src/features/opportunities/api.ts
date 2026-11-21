@@ -117,13 +117,14 @@ export const BOARD_COLUMNS = [
 export const istDay = (n = 0) => new Date(Date.now() + 5.5 * 36e5 + n * 864e5).toISOString().slice(0, 10);
 export const istDayOf = (iso: string) => new Date(new Date(iso).getTime() + 5.5 * 36e5).toISOString().slice(0, 10);
 
-export interface BoardFilters { status?: string; q?: string; fu?: string; mine?: boolean }
+/** stage: a board column key, e.g. "later" for the parked ones (lib/opportunities/board.ts). */
+export interface BoardFilters { status?: string; q?: string; fu?: string; mine?: boolean; stage?: string }
 
 export function useOpportunityBoard(f: BoardFilters) {
   return useQuery({
     queryKey: ["opportunities", f],
     queryFn: () => api.get<{ rows: BoardRow[]; kpis: BoardKpis; canWork: boolean }>("/api/opportunities", {
-      status: f.status || undefined, q: f.q?.trim() || undefined, fu: f.fu || undefined, mine: f.mine ? "1" : undefined,
+      status: f.status || undefined, q: f.q?.trim() || undefined, fu: f.fu || undefined, mine: f.mine ? "1" : undefined, stage: f.stage || undefined,
     }),
     placeholderData: (prev) => prev,
   });

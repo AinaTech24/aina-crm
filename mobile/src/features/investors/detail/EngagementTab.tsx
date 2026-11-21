@@ -17,28 +17,37 @@ import { GiftsSection } from "./GiftsSection";
 import { BlueprintBar } from "./BlueprintBar";
 import { useSetConsent } from "../api";
 import { toast } from "../../../lib/toast";
+import { useRouter } from "expo-router";
 
 const CHANNELS = ["whatsapp", "email", "sms"] as const;
 const SCOPES = ["transactional", "marketing"] as const;
 
 export function EngagementTab({ d, id }: { d: any; id: string }) {
   const folios: any[] = d.folios ?? [];
-  const sips: any[] = d.sips ?? [];
+  // Live SIPs first (the record holds stopped and ended ones too).
+  const sips: any[] = [...(d.sips ?? [])].sort((a: any, b: any) => Number(b.status === "active") - Number(a.status === "active"));
+  const liveSips = sips.filter((s) => s.status === "active").length;
   const goals: any[] = d.goals ?? [];
   const openTasks: any[] = (d.tasks ?? []).filter((t: any) => t.status !== "completed");
   const srs: any[] = d.serviceRequests ?? [];
   const comms: any[] = d.communications ?? [];
 
-  // Consent matrix lookup: consents[channel][scope] = granted?
-  const consentMap: Record<string, Record<string, boolean>> = {};
+  // Consent matrix: consents[channel][scope] = the recorded status. A row for
+  // scope "all" answers for both columns unless that scope has its own row.
+  // Three states, because the rule has three (consentDecision): an opt-out
+  // blocks everything; marketing needs a grant; a service message goes unless
+  // the client opted out — so "nothing recorded" is not the same as "revoked".
+  const consentMap: Record<string, Record<string, "granted" | "revoked">> = {};
   for (const c of d.consents ?? []) {
     const ch = String(c.channel ?? "").toLowerCase();
     const sc = String(c.scope ?? "").toLowerCase();
-    const granted = c.status === "granted" || c.granted === true || c.grantedAt != null;
-    (consentMap[ch] ??= {})[sc] = granted;
+    const st = c.status === "granted" ? "granted" : c.status === "revoked" ? "revoked" : null;
+    if (st) (consentMap[ch] ??= {})[sc] = st;
   }
+  const consentOf = (ch: string, sc: string) => consentMap[ch]?.[sc] ?? consentMap[ch]?.all ?? null;
 
   const setConsent = useSetConsent(id);
+  const router = useRouter();
   const clientName = d.investor?.name ?? "this client";
 
   /**
@@ -109,7 +118,7 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
       </Section>
 
       {/* SIPs */}
-      <Section title="Active SIPs" icon="repeat" right={<Text variant="caption" tone="faint">{sips.length}</Text>}>
+      <Section title="SIPs" icon="repeat" right={<Text variant="caption" tone="faint">{liveSips} live{sips.length > liveSips ? ` · ${sips.length} in all` : ""}</Text>}>
         {sips.length === 0 ? <Empty text="No SIPs." /> : sips.slice(0, 12).map((s, i) => (
           <View key={s.id ?? i} style={styles.row}>
             <View style={{ flex: 1 }}>
@@ -122,17 +131,17 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
       </Section>
 
       {/* Goals */}
-      <Section title="Goals" icon="target" right={<Text variant="caption" tone="faint">{goals.length}</Text>}>
+      <Section title="Goals" icon="target" right={<Text variant="caption" tone="brand" onPress={() => router.push(`/m/goals/new?investorId=${id}&name=${encodeURIComponent(d.investor?.name ?? "")}` as any)}>Add goal</Text>}>
         {goals.length === 0 ? <Empty text="No goals." /> : goals.map((g, i) => {
           const pct = Number(g.progressPct ?? 0);
           return (
-            <View key={g.id ?? i} style={{ marginBottom: spacing.sm }}>
+            <Pressable key={g.id ?? i} style={{ marginBottom: spacing.sm }} onPress={() => g.id && router.push(`/m/goals/${g.id}` as any)} accessibilityRole="button">
               <View style={styles.goalHead}>
                 <Text variant="caption" style={{ flex: 1, fontWeight: fontWeight.medium }} numberOfLines={1}>{g.name ?? titleCase(g.category)}</Text>
                 <Text variant="caption" tone="muted">{inr(g.currentValue)} / {inr(g.targetAmount)}</Text>
               </View>
               <View style={styles.track}><View style={[styles.fill, { width: `${Math.max(0, Math.min(100, pct))}%` }]} /></View>
-            </View>
+            </Pressable>
           );
         })}
       </Section>
@@ -172,7 +181,8 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
           <View key={ch} style={styles.consentRow}>
             <Text variant="caption" style={{ flex: 1, fontWeight: fontWeight.medium }}>{titleCase(ch)}</Text>
             {SCOPES.map((sc) => {
-              const granted = !!consentMap[ch]?.[sc];
+              const state = consentOf(ch, sc);
+              const granted = state === "granted";
               return (
                 <Pressable
                   key={sc}
@@ -180,10 +190,12 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
                   onPress={() => toggleConsent(ch, sc, granted)}
                   disabled={setConsent.isPending}
                   accessibilityRole="button"
-                  accessibilityLabel={`${titleCase(ch)} ${sc} consent, ${granted ? "granted" : "not granted"}. Tap to change.`}
+                  accessibilityLabel={`${titleCase(ch)} ${sc} consent, ${state === "granted" ? "granted" : state === "revoked" ? "opted out" : "not recorded"}. Tap to change.`}
                 >
-                  {granted ? (
+                  {state === "granted" ? (
                     <Feather name="check-circle" size={16} color={palette.success} />
+                  ) : state === "revoked" ? (
+                    <Feather name="x-circle" size={16} color={palette.danger} />
                   ) : (
                     <Feather name="plus-circle" size={16} color={palette.faint} />
                   )}

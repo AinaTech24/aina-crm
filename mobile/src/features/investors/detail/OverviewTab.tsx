@@ -3,7 +3,7 @@
  * and the review-cadence editor (PATCHes reviewFrequency).
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { Text } from "../../../components/ui/Text";
 import { Button } from "../../../components/ui/Button";
@@ -98,16 +98,19 @@ export function OverviewTab({ d, id, startOpportunity }: { d: any; id: string; s
 
 /** A family member's cadence is the family's (the CRM ignores a change here). */
 function ReviewCadence({ id, current, family }: { id: string; current?: string; family: string | null }) {
+  // Every hook before the family branch: the branch can flip on a refetch (the
+  // client joins a family), and a hook below it would change the hook count.
   const [val, setVal] = useState<string>(current ?? "quarterly");
+  useEffect(() => { if (current) setVal(current); }, [current]);
+  const save = useSetReviewCadence(id);
   if (family) {
     return (
       <Section title="Review cadence" icon="repeat">
-        <Text style={{ fontWeight: fontWeight.semibold }}>{CADENCE.find((c) => c.key === current)?.label ?? titleCase(current ?? "") ?? "—"}</Text>
+        <Text style={{ fontWeight: fontWeight.semibold }}>{CADENCE.find((c) => c.key === current)?.label ?? (current ? titleCase(current) : "—")}</Text>
         <Text variant="caption" tone="muted">From {family} — change it on the family.</Text>
       </Section>
     );
   }
-  const save = useSetReviewCadence(id);
   const changed = val !== (current ?? "");
   return (
     <Section title="Review cadence" icon="repeat">

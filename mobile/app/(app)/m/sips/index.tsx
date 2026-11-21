@@ -20,6 +20,7 @@ import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
 import { TextField } from "../../../../src/components/ui/TextField";
 import { useSips, useDefendSip, bucketSips, sumAmount, isAtRisk, failureCount, type Sip } from "../../../../src/features/sips/api";
 import { AssignOpsSheet } from "../../../../src/features/tasks/AssignOpsSheet";
+import { ErrorState } from "../../../../src/components/states";
 import { toast } from "../../../../src/lib/toast";
 import { inr, fmtDate, titleCase } from "../../../../src/lib/format";
 import { spacing, palette, radius, fontWeight } from "../../../../src/theme/tokens";
@@ -35,7 +36,7 @@ const TABS: { key: Bucket; label: string }[] = [
 
 export default function SipTracker() {
   const router = useRouter();
-  const { data, isLoading, isRefetching, refetch } = useSips();
+  const { data, isLoading, isError, error, isRefetching, refetch } = useSips();
   const [tab, setTab] = React.useState<Bucket>("atRisk");
   const [sheet, setSheet] = React.useState<Sip | null>(null);
   const [opsFor, setOpsFor] = React.useState<Sip | null>(null);
@@ -66,8 +67,11 @@ export default function SipTracker() {
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
-      <ScreenHeader title="SIP Tracker" subtitle={`${b.all.length} SIPs`} />
-      {isLoading ? (
+      <ScreenHeader title="SIP Tracker" subtitle={data ? `${b.all.length} SIP${b.all.length === 1 ? "" : "s"}` : undefined} />
+      {/* A failed load is never "All clear": the hero would read nothing bouncing. */}
+      {isError && !data ? (
+        <ErrorState message={(error as any)?.message} onRetry={() => refetch()} />
+      ) : isLoading ? (
         <View style={{ padding: spacing.lg }}>
           {header}
           <Skeleton width="100%" height={72} style={{ marginTop: spacing.sm }} />
@@ -128,6 +132,7 @@ function SipRow({ s, onPress }: { s: Sip; onPress: () => void }) {
           <View style={styles.reasonRow}>
             <Feather name="alert-triangle" size={12} color={toneColors("danger").fg} />
             <Text variant="caption" style={{ color: toneColors("danger").fg, flex: 1 }} numberOfLines={1}>{s.lastFailureReason}</Text>
+            {s.lastFailureAt ? <Text variant="caption" tone="faint">{fmtDate(s.lastFailureAt)}</Text> : null}
           </View>
         ) : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.sm }}>
@@ -152,8 +157,8 @@ function SipSheet({ sip, onClose, onOpenClient, onAssignOps }: { sip: Sip | null
     defend.mutate(
       { id: sip.id, note: note.trim() || undefined },
       {
+        // A failure is toasted once, by the app-wide mutation handler.
         onSuccess: (r) => { toast.success(r?.deduped ? "Recovery task already open" : "Recovery task created"); onClose(); },
-        onError: (e: any) => toast.error(e?.body?.error || "Couldn't create the task"),
       }
     );
   };
@@ -168,7 +173,7 @@ function SipSheet({ sip, onClose, onOpenClient, onAssignOps }: { sip: Sip | null
       </View>
       {risk && sip.lastFailureReason ? (
         <View style={[styles.reasonBox, { backgroundColor: toneColors("danger").bg }]}>
-          <Text variant="caption" style={{ color: toneColors("danger").fg, fontWeight: fontWeight.semibold }}>Why it bounced</Text>
+          <Text variant="caption" style={{ color: toneColors("danger").fg, fontWeight: fontWeight.semibold }}>Why it bounced{sip.lastFailureAt ? ` · ${fmtDate(sip.lastFailureAt)}` : ""}</Text>
           <Text variant="body" style={{ color: palette.ink, marginTop: 2 }}>{sip.lastFailureReason}</Text>
         </View>
       ) : null}

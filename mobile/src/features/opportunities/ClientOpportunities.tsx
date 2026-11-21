@@ -1,8 +1,11 @@
 /**
  * The client page's Opportunities section — the CRM's OpportunitiesPanel:
  * this client's open opportunities (then the recently closed, folded), and
- * "New opportunity". One open opportunity per product; starting one for a
- * product already open answers with that one instead.
+ * "New opportunity". Several can be open for one product (a second SIP, a
+ * top-up, another policy — the firm's request of 2026-11-07): the sheet marks
+ * a product "one already open" but still lets it be picked. The server never
+ * makes the same click twice — the same person's opportunity for this client
+ * and product within a minute comes back instead of a new one.
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -57,7 +60,7 @@ export function ClientOpportunities({ investorId, startWith }: {
       {showClosed ? closed.map((o) => <OpportunityCard key={o.id} o={o} canWork={false} staff={staff} />) : null}
       {canWork ? (
         <NewOpportunitySheet investorId={investorId} visible={creating} onClose={() => setCreating(false)} initialProduct={startWith || undefined}
-          assignees={assigneeList(q.data?.assignees)} me={q.data?.me} />
+          assignees={assigneeList(q.data?.assignees)} me={q.data?.me} openProducts={openOnes.map((o) => o.product)} />
       ) : null}
     </Section>
   );
@@ -65,7 +68,7 @@ export function ClientOpportunities({ investorId, startWith }: {
 
 /** Start an opportunity: the product, roughly how much, who owns it, and
  *  Now (the first follow-up date) or Later (the client wants it, not yet). */
-export function NewOpportunitySheet({ investorId, visible, onClose, assignees, me, onCreated, initialProduct }: {
+export function NewOpportunitySheet({ investorId, visible, onClose, assignees, me, onCreated, initialProduct, openProducts = [] }: {
   investorId: string;
   visible: boolean;
   onClose: () => void;
@@ -73,6 +76,8 @@ export function NewOpportunitySheet({ investorId, visible, onClose, assignees, m
   me?: string;
   onCreated?: (id: string) => void;
   initialProduct?: string;
+  /** Products this client already has open — marked, still pickable. */
+  openProducts?: string[];
 }) {
   const create = useCreateOpportunity(investorId);
   const [product, setProduct] = useState<string | null>(initialProduct ?? null);
@@ -88,6 +93,7 @@ export function NewOpportunitySheet({ investorId, visible, onClose, assignees, m
 
   const reset = () => { setProduct(null); setValue(""); setMode("sip"); setOwnerId(null); setWhen("now"); setFollowUpOn(istDay(2)); setRevisitOn(istDay(90)); setReason(""); };
   const save = async () => {
+    if (create.isPending) return;
     if (!product) return toast.error("Pick the product.");
     if (when === "now" && (!followUpOn || followUpOn < istDay())) return toast.error("Pick a follow-up date from today on.");
     if (when === "later" && (!revisitOn || revisitOn <= istDay())) return toast.error("Pick a revisit date after today.");
@@ -101,7 +107,7 @@ export function NewOpportunitySheet({ investorId, visible, onClose, assignees, m
         source: "manual",
         ...(when === "now" ? { followUpOn } : { later: { revisitOn, reason: reason.trim() } }),
       });
-      toast.success(r.created ? "Opportunity started" : `This client already has an open ${r.opportunity.productLabel} opportunity`);
+      toast.success(r.created ? "Opportunity started" : `Already started a moment ago — opened that ${r.opportunity.productLabel} opportunity`);
       reset();
       onClose();
       onCreated?.(r.opportunity.id);
@@ -111,7 +117,7 @@ export function NewOpportunitySheet({ investorId, visible, onClose, assignees, m
   const ownerOptions = assignees.map((s) => ({ value: s.id, label: s.id === me ? `${s.name} (me)` : s.name }));
   return (
     <BottomSheet visible={visible} onClose={onClose} title="New opportunity">
-      <SelectField label="Product" required value={product} placeholder="Pick a product" options={OPPORTUNITY_PRODUCTS.map((p) => ({ value: p.key, label: p.label }))} onChange={setProduct} />
+      <SelectField label="Product" required value={product} placeholder="Pick a product" options={OPPORTUNITY_PRODUCTS.map((p) => ({ value: p.key, label: openProducts.includes(p.key) ? `${p.label} · one already open` : p.label }))} onChange={setProduct} />
       {isMf ? (
         <View style={{ marginBottom: spacing.md }}>
           <Segmented<"sip" | "lumpsum"> options={[{ key: "sip", label: "SIP" }, { key: "lumpsum", label: "Lumpsum" }]} value={mode} onChange={setMode} />

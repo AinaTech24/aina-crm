@@ -22,6 +22,7 @@ import { useSearch } from "../../../../src/features/search/api";
 import { useOpportunityBoard, useClientOpportunities, assigneeList, istDay, istDayOf, BOARD_COLUMNS, type BoardRow, type BoardFilters } from "../../../../src/features/opportunities/api";
 import { NewOpportunitySheet } from "../../../../src/features/opportunities/ClientOpportunities";
 import { inr, fmtDate } from "../../../../src/lib/format";
+import { clientPickerLine } from "../../../../src/features/investors/picker";
 import { spacing, palette, radius, fontWeight } from "../../../../src/theme/tokens";
 
 const FILTERS: Array<{ key: string; label: string; f: BoardFilters }> = [
@@ -29,6 +30,7 @@ const FILTERS: Array<{ key: string; label: string; f: BoardFilters }> = [
   { key: "overdue", label: "Overdue", f: { fu: "overdue" } },
   { key: "today", label: "Due today", f: { fu: "today" } },
   { key: "none", label: "No follow-up", f: { fu: "none" } },
+  { key: "later", label: "Later", f: { stage: "later" } },
   { key: "mine", label: "Mine", f: { mine: true } },
   { key: "won", label: "Won", f: { status: "won" } },
   { key: "lost", label: "Lost", f: { status: "lost" } },
@@ -134,12 +136,12 @@ function ClientPicker({ visible, onClose, onPick }: { visible: boolean; onClose:
   const search = useSearch(q);
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Which client?">
-      <SearchBar value={q} onChangeText={setQ} placeholder="Search a client…" />
+      <SearchBar value={q} onChangeText={setQ} placeholder="Search a client by name, PAN, mobile…" />
       <ScrollView style={{ maxHeight: 360, marginTop: spacing.sm }} keyboardShouldPersistTaps="handled">
         {(search.data?.investors ?? []).map((i) => (
           <Pressable key={i.id} style={styles.pick} onPress={() => { setQ(""); onPick(i.id); }} accessibilityRole="button">
             <Text variant="body" numberOfLines={1}>{i.name}</Text>
-            {i.phone ? <Text variant="caption" tone="muted">{i.phone}</Text> : null}
+            <Text variant="caption" tone="muted" numberOfLines={1}>{clientPickerLine(i as any)}</Text>
           </Pressable>
         ))}
       </ScrollView>
@@ -150,7 +152,8 @@ function ClientPicker({ visible, onClose, onPick }: { visible: boolean; onClose:
 /** The client's assignees come with their opportunities (GET …/opportunities). */
 function NewForClient({ investorId, onClose, onCreated }: { investorId: string; onClose: () => void; onCreated: (id: string) => void }) {
   const q = useClientOpportunities(investorId);
-  return <NewOpportunitySheet investorId={investorId} visible onClose={onClose} assignees={assigneeList(q.data?.assignees)} me={q.data?.me} onCreated={onCreated} />;
+  const open = (q.data?.items ?? []).filter((o) => o.status === "open").map((o) => o.product);
+  return <NewOpportunitySheet investorId={investorId} visible onClose={onClose} assignees={assigneeList(q.data?.assignees)} me={q.data?.me} onCreated={onCreated} openProducts={open} />;
 }
 
 function Metric({ label, value, sub, alarm }: { label: string; value: string; sub?: string; alarm?: boolean }) {

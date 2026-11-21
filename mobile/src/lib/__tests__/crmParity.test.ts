@@ -8,7 +8,7 @@
 jest.mock("../../api/client", () => ({ api: {} }));
 jest.mock("../offlineQueue", () => ({ queuedPost: jest.fn() }));
 
-import { computeMaturity, maturityDateFor, tenureBetween, tenureLabel, daysBetween } from "../../features/fixed-deposits/terms";
+import { computeMaturity, maturityDateFor, tenureBetween, tenureLabel, daysBetween, firstPayoutDate } from "../../features/fixed-deposits/terms";
 import { canonicalStage, groupByStage, stageDisplay, stageFilterValues, LEAD_STAGES } from "../../features/leads/api";
 import { canNominate, singleHoldingOnly, majorityDate, ownPan, taxStatusOptions, defaultTaxStatus, clientTypeOptions } from "../../features/investors/client-types";
 
@@ -36,6 +36,18 @@ describe("FD terms (web tests/fixed-deposits.test.ts)", () => {
     expect(payout?.maturityAmount).toBe(500000);
     expect(payout?.periodicInterest).toBe(9000);
     expect(computeMaturity({ principal: 0, rate: 7, depositDate: "2026-04-01", maturityDate: "2027-04-01", payout: "cumulative", compounding: "quarterly" })).toBeNull();
+  });
+  it("fills the interest payout date the CRM's way (terms.ts firstPayoutDate, 2026-11-17)", () => {
+    // A payout FD: one period after the deposit, clamped to the month end.
+    expect(firstPayoutDate("2026-04-15", "2029-04-15", "monthly")).toBe("2026-05-15");
+    expect(firstPayoutDate("2026-04-15", "2029-04-15", "quarterly")).toBe("2026-07-15");
+    expect(firstPayoutDate("2026-08-31", "2029-08-31", "half_yearly")).toBe("2027-02-28");
+    expect(firstPayoutDate("2026-04-15", "2029-04-15", "yearly")).toBe("2027-04-15");
+    // Never after maturity.
+    expect(firstPayoutDate("2026-04-15", "2026-06-10", "quarterly")).toBe("2026-06-10");
+    // A cumulative FD pays with the principal, on the maturity date.
+    expect(firstPayoutDate("2026-04-15", "2027-04-15", "cumulative")).toBe("2027-04-15");
+    expect(firstPayoutDate("", "2027-04-15", "monthly")).toBe("");
   });
 });
 

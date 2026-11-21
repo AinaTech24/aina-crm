@@ -9,7 +9,7 @@
  * the checklist, which the card shows.
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Pressable, ScrollView, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -359,7 +359,10 @@ function StepSheet({ o, spec, staff, onClose }: { o: OpportunityView; spec: Spec
 function FollowUpSheet({ o, visible, onClose }: { o: OpportunityView; visible: boolean; onClose: () => void }) {
   const w = useOpportunityWrite(o.id);
   const [day, setDay] = useState(o.followUpAt ? istDayOf(o.followUpAt) : istDay(2));
+  // Each opening starts from the follow-up as it stands now (it moves with every step).
+  useEffect(() => { if (visible) setDay(o.followUpAt ? istDayOf(o.followUpAt) : istDay(2)); }, [visible]);
   const save = async () => {
+    if (w.patch.isPending) return;
     if (!day || day < istDay()) return toast.error("Pick today or a later day.");
     try { await w.patch.mutateAsync({ followUpOn: day }); toast.success(`Follow-up set for ${fmtDate(day)}`); onClose(); } catch { /* global toast */ }
   };
@@ -376,7 +379,9 @@ function LaterSheet({ o, visible, onClose }: { o: OpportunityView; visible: bool
   const w = useOpportunityWrite(o.id);
   const [revisitOn, setRevisitOn] = useState(o.later?.revisitOn ?? istDay(90));
   const [reason, setReason] = useState(o.later?.reason ?? "");
+  useEffect(() => { if (visible) { setRevisitOn(o.later?.revisitOn ?? istDay(90)); setReason(o.later?.reason ?? ""); } }, [visible]);
   const save = async () => {
+    if (w.later.isPending) return;
     if (!revisitOn || revisitOn <= istDay()) return toast.error("Pick a revisit date after today.");
     try {
       await w.later.mutateAsync({ action: "park", revisitOn, reason: reason.trim() });
@@ -398,6 +403,8 @@ function LostSheet({ o, visible, onClose }: { o: OpportunityView; visible: boole
   const [reason, setReason] = useState(OPPORTUNITY_LOST_REASONS[0]);
   const [revisitOn, setRevisitOn] = useState("");
   const save = async () => {
+    if (w.advance.isPending) return;
+    if (revisitOn && revisitOn <= istDay()) return toast.error("Pick a revisit date after today, or leave it blank.");
     try {
       await w.advance.mutateAsync({ to: "lost", lostReason: reason, revisitOn: revisitOn || null });
       toast.success("Marked lost");

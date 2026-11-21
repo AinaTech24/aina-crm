@@ -51,11 +51,14 @@ export function useDefendSip() {
   });
 }
 
-/** At risk = a bounced debit on the ledger, or a feed-reported failure streak. */
-export const isAtRisk = (s: Sip) => (s.failedCount ?? 0) > 0 || (s.consecutiveFailures ?? 0) > 0;
-export const failureCount = (s: Sip) => Math.max(s.failedCount ?? 0, s.consecutiveFailures ?? 0);
 const STOPPED = new Set(["stopped", "cancelled", "rejected", "expired"]);
 export const isStopped = (s: Sip) => STOPPED.has(String(s.status ?? "").toLowerCase());
+/** At risk = a bounced debit on the ledger, or a feed-reported failure streak —
+ *  on a SIP that is still running. A stopped / cancelled SIP is not "bouncing
+ *  this month" (the ledger count is per client, so it would otherwise drag
+ *  every ended SIP of that client into the at-risk total). */
+export const isAtRisk = (s: Sip) => !isStopped(s) && ((s.failedCount ?? 0) > 0 || (s.consecutiveFailures ?? 0) > 0);
+export const failureCount = (s: Sip) => Math.max(s.failedCount ?? 0, s.consecutiveFailures ?? 0);
 export const isLive = (s: Sip) => String(s.status ?? "").toLowerCase() === "active";
 
 export interface SipBuckets { atRisk: Sip[]; live: Sip[]; stopped: Sip[]; all: Sip[] }

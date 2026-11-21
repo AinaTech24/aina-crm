@@ -25,7 +25,8 @@ const OCCASIONS = [
   { key: "festival", label: "Festival" },
   { key: "other", label: "Other" },
 ];
-const todayISO = () => new Date().toISOString().slice(0, 10);
+/** Today in India — a UTC date reads yesterday until 05:30 IST. */
+const todayISO = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
 
 export function GiftsSection({ id }: { id: string }) {
   const { data } = useGifts(id);

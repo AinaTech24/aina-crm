@@ -44,6 +44,8 @@ export function useSendClientForm() {
       // The send lands a communications row + may advance the lead blueprint.
       qc.invalidateQueries({ queryKey: ["activity-timeline"] });
       qc.invalidateQueries({ queryKey: ["investor"] });
+      qc.invalidateQueries({ queryKey: ["investor-full"] });
+      qc.invalidateQueries({ queryKey: ["lead-full"] });
       qc.invalidateQueries({ queryKey: ["lead"] });
     },
   });

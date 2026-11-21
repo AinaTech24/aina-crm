@@ -1,8 +1,10 @@
 /**
  * One fixed deposit — its terms, the maturity figures, and what happens to it
- * next: Renew (a new deposit carrying its terms; this one becomes Renewed),
- * Matured, Closed early, Cancelled, Edit, Delete. Every change re-syncs the
- * maturity follow-up on the server.
+ * next — the web's FdActions: an Applied FD gets "Receipt issued" or Cancel; an
+ * Active one Mark matured or Close early; Active or Matured can be renewed (a
+ * new deposit carrying its terms; this one becomes Renewed). Edit and Delete
+ * always. Every change re-syncs the maturity follow-up on the server, which
+ * also dates a closed deposit (a matured one on its maturity date).
  */
 
 import React from "react";
@@ -19,7 +21,7 @@ import { FieldRow } from "../../../../src/features/investors/detail/primitives";
 import { useFd, useUpdateFd, useDeleteFd } from "../../../../src/features/fixed-deposits/api";
 import {
   ISSUER_TYPE_LABELS, PAYOUT_LABELS, COMPOUNDING_LABELS, HOLDING_LABELS, TAX_FORM_LABELS, STATUS_LABELS,
-  computeMaturity, tenureLabel, indiaToday, daysBetween, isLive,
+  computeMaturity, tenureLabel, tenureBetween, indiaToday, daysBetween, isLive,
 } from "../../../../src/features/fixed-deposits/terms";
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { toast } from "../../../../src/lib/toast";
@@ -41,11 +43,20 @@ export default function FixedDepositDetail() {
   const figs = computeMaturity({ principal, rate, depositDate: String(fd.depositDate), maturityDate: String(fd.maturityDate), payout: fd.payout, compounding: fd.compounding });
   const live = isLive(fd.status);
   const left = daysBetween(indiaToday(), String(fd.maturityDate));
+  const tenure = tenureBetween(String(fd.depositDate).slice(0, 10), String(fd.maturityDate).slice(0, 10));
+  const payoutOn = fd.interestPayoutDate
+    ? fmtDate(fd.interestPayoutDate)
+    : fd.payout === "cumulative" ? `${fmtDate(fd.maturityDate)} (on maturity)` : null;
 
-  const setStatus = (status: string, label: string, closedOn?: boolean) => Alert.alert(`Mark ${label.toLowerCase()}?`, undefined, [
-    { text: "Cancel", style: "cancel" },
-    { text: label, onPress: () => update.mutate({ status, ...(closedOn ? { closedOn: indiaToday() } : {}) }, { onSuccess: () => toast.success(`Marked ${label.toLowerCase()}`) }) },
-  ]);
+  // Only the status is sent (as the web): the server dates the close itself —
+  // a matured FD on its maturity date, an early close today.
+  const setStatus = (status: string, title: string, confirmLabel: string, done: string, message?: string) => {
+    if (update.isPending) return;
+    Alert.alert(title, message, [
+      { text: "Not now", style: "cancel" },
+      { text: confirmLabel, style: status === "cancelled" ? "destructive" : "default", onPress: () => update.mutate({ status }, { onSuccess: () => toast.success(done) }) },
+    ]);
+  };
   const renew = () => {
     const p = new URLSearchParams({
       renew: fd.id, investorId: fd.investorId, ...(name ? { name } : {}),
@@ -54,14 +65,15 @@ export default function FixedDepositDetail() {
       depositDate: String(fd.maturityDate).slice(0, 10),
       principal: String(fd.payout === "cumulative" && maturityAmount ? maturityAmount : principal),
       interestRate: String(rate), payout: fd.payout, compounding: fd.compounding,
-      tenureMonths: String(fd.tenureMonths ?? 12), tenureDays: String(fd.tenureDays ?? 0),
-      holding: fd.holding, ...(fd.nomineeName ? { nomineeName: fd.nomineeName } : {}),
+      // The same tenure, read from its dates (the web's renewal).
+      tenureMonths: String(tenure.months), tenureDays: String(tenure.days),
+      holding: fd.holding, ...(fd.jointHolders ? { jointHolders: fd.jointHolders } : {}), ...(fd.nomineeName ? { nomineeName: fd.nomineeName } : {}),
       taxForm: fd.taxForm, seniorCitizen: fd.seniorCitizen ? "1" : "0", autoRenew: fd.autoRenew ? "1" : "0",
     });
     router.push(`/m/fixed-deposits/new?${p.toString()}` as any);
   };
   const remove = () => confirmDelete(
-    { title: "Delete this fixed deposit?", message: "Its maturity follow-up is cancelled too.", confirmLabel: "Delete" },
+    { title: "Delete this fixed deposit?", message: "Removes it from the client and the FD list, and cancels its maturity reminder. Use it for a record entered by mistake.", confirmLabel: "Delete" },
     () => del.mutate(fd.id, { onSuccess: () => { toast.success("Deleted"); router.back(); } }),
   );
 
@@ -90,6 +102,7 @@ export default function FixedDepositDetail() {
           <FieldRow label="Deposited" value={fmtDate(fd.depositDate)} />
           <FieldRow label="Maturity date" value={fmtDate(fd.maturityDate)} />
           <FieldRow label="Interest" value={PAYOUT_LABELS[fd.payout] ?? fd.payout} />
+          <FieldRow label="Interest payout date" value={payoutOn} />
           {fd.payout === "cumulative" ? <FieldRow label="Compounding" value={COMPOUNDING_LABELS[fd.compounding] ?? fd.compounding} /> : null}
           <FieldRow label="At maturity" value={maturityAmount != null ? `${inr(maturityAmount)}${fd.maturityAmountEntered ? " (from the receipt)" : ""}` : null} />
           {figs ? <FieldRow label="Interest over the term" value={inr(figs.interest)} /> : null}
@@ -105,10 +118,11 @@ export default function FixedDepositDetail() {
         </Card>
 
         <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-          {live ? <Button label="Renew" icon={<Feather name="refresh-cw" size={15} color="#fff" />} onPress={renew} full /> : null}
-          {live ? <Button label="Mark matured" variant="secondary" loading={update.isPending} onPress={() => setStatus("matured", "Matured", true)} full /> : null}
-          {live ? <Button label="Closed early" variant="secondary" loading={update.isPending} onPress={() => setStatus("closed_early", "Closed early", true)} full /> : null}
-          {fd.status === "applied" ? <Button label="Cancelled" variant="secondary" onPress={() => setStatus("cancelled", "Cancelled")} full /> : null}
+          {fd.status === "applied" ? <Button label="Receipt issued" icon={<Feather name="check-circle" size={15} color="#fff" />} loading={update.isPending} onPress={() => setStatus("active", "Receipt issued?", "Receipt issued", "Receipt issued — FD is active")} full /> : null}
+          {fd.status === "active" ? <Button label="Mark matured" icon={<Feather name="check-circle" size={15} color="#fff" />} loading={update.isPending} onPress={() => setStatus("matured", "Mark matured?", "Mark matured", "Marked matured")} full /> : null}
+          {fd.status === "active" || fd.status === "matured" ? <Button label="Renew" variant="secondary" icon={<Feather name="refresh-cw" size={15} color={palette.ink} />} onPress={renew} full /> : null}
+          {fd.status === "active" ? <Button label="Close early" variant="secondary" loading={update.isPending} onPress={() => setStatus("closed_early", "Close this FD early?", "Close early", "Marked closed early", "Use this when the client broke the deposit before maturity. The maturity reminder is cancelled.")} full /> : null}
+          {fd.status === "applied" ? <Button label="Cancel application" variant="secondary" loading={update.isPending} onPress={() => setStatus("cancelled", "Cancel this application?", "Cancel application", "Application cancelled", "The deposit was never placed.")} full /> : null}
           <Button label="Edit" variant="secondary" icon={<Feather name="edit-2" size={15} color={palette.ink} />} onPress={() => router.push(`/m/fixed-deposits/new?editId=${fd.id}` as any)} full />
           <Button label="Delete" variant="danger" loading={del.isPending} icon={<Feather name="trash-2" size={15} color="#fff" />} onPress={remove} full />
         </View>
