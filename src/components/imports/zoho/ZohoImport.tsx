@@ -534,8 +534,9 @@ function BusinessStep() {
   const [preview, setPreview] = useState<BusinessImportResult | null>(null);
   const [done, setDone] = useState<BusinessImportResult | null>(null);
   const [toMe, setToMe] = useState(false);
+  const [refresh, setRefresh] = useState(false);
 
-  async function send(f: File, dryRun: boolean) {
+  async function send(f: File, dryRun: boolean, refreshExisting = refresh) {
     setBusy(dryRun ? "preview" : "import");
     setErr(null);
     try {
@@ -543,6 +544,7 @@ function BusinessStep() {
       fd.append("file", f);
       fd.append("dryRun", dryRun ? "1" : "0");
       fd.append("unmatchedToMe", toMe ? "1" : "0");
+      fd.append("refreshExisting", refreshExisting ? "1" : "0");
       const res = await fetch("/api/imports/zoho/business", { method: "POST", body: fd });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -561,13 +563,16 @@ function BusinessStep() {
 
   const r = done ?? preview;
   const unmatched = (preview?.owners ?? []).filter((o) => o.owner && !o.user);
-  const canImport = !!preview && preview.entries > 0 && (unmatched.length === 0 || toMe);
+  const canImport = !!preview && (preview.created > 0 || (preview.refreshed ?? 0) > 0) && (unmatched.length === 0 || toMe);
 
   async function apply() {
     if (!file || !preview) return;
     const ok = await confirmDialog({
       title: "Import this business?",
-      message: `${preview.created} entries with ${preview.lines} lines, as confirmed business. No email is sent, no SIP is added to the SIP book.`,
+      message:
+        `${preview.created} entries with ${preview.lines} lines, as confirmed business` +
+        (preview.refreshed ? `, and ${preview.refreshed} imported entries updated to match Zoho` : "") +
+        ". No email is sent, no SIP is added to the SIP book.",
       confirmLabel: "Import",
     });
     if (ok) await send(file, false);
@@ -603,13 +608,28 @@ function BusinessStep() {
               />
             </label>
             {file && <span className="text-sm text-muted-foreground truncate max-w-xs">{file.name}</span>}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={refresh}
+                disabled={!!busy}
+                onChange={(e) => {
+                  setRefresh(e.target.checked);
+                  if (file) void send(file, true, e.target.checked);
+                }}
+              />
+              Also update transactions already imported that changed in Zoho
+            </label>
           </div>
         )}
         {err && <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{err}</div>}
         {r && (
           <>
             {done ? (
-              <p className="text-sm">{done.created} entries with {done.lines} lines added as confirmed business.</p>
+              <p className="text-sm">
+                {done.created} entries with {done.lines} lines added as confirmed business
+                {done.refreshed ? `; ${done.refreshed} imported entries updated to match Zoho` : ""}.
+              </p>
             ) : (
               <p className="text-xs text-muted-foreground">Preview — nothing has been saved yet.</p>
             )}
@@ -617,6 +637,7 @@ function BusinessStep() {
               <Stat label="MF Transactions" value={r.parents} />
               <Stat label={done ? "Entries added" : "Entries to add"} value={r.created} />
               <Stat label="Scheme lines" value={r.lines} />
+              {refresh && <Stat label={done ? "Updated from Zoho" : "To update from Zoho"} value={r.refreshed ?? 0} />}
               <Stat label="Client not linked" value={r.clients.unlinked} tone="warn" />
               <Stat label="Skipped" value={r.skippedByReason.reduce((n, x) => n + x.count, 0)} tone="warn" />
             </div>
@@ -651,6 +672,23 @@ function BusinessStep() {
                 </div>
               </details>
             )}
+            {(r.keptAsIs ?? []).length > 0 && (
+              <details className="text-sm">
+                <summary className="cursor-pointer font-medium">Changed in Zoho, left as is in the CRM ({r.keptAsIs.length})</summary>
+                <div className="mt-2 max-h-72 overflow-auto">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {r.keptAsIs.map((u) => (
+                        <tr key={u.mft}>
+                          <td className="tabular-nums text-muted-foreground w-24">{u.mft}</td>
+                          <td className="text-muted-foreground">{u.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
             {!done && unmatched.length > 0 && (
               <div className="rounded-md border border-warning/50 bg-warning/5 p-3 space-y-2 text-sm">
                 <div className="font-medium">{unmatched.length} owner{unmatched.length === 1 ? " has" : "s have"} no user in the CRM</div>
@@ -664,7 +702,7 @@ function BusinessStep() {
               <div className="flex justify-end">
                 <Button variant="primary" disabled={!canImport || !!busy} onClick={apply}>
                   {busy === "import" ? <Loader2 className="size-4 animate-spin" /> : null}
-                  Import {preview?.created ?? 0} entries
+                  Import {preview?.created ?? 0} entries{preview?.refreshed ? ` · update ${preview.refreshed}` : ""}
                 </Button>
               </div>
             )}

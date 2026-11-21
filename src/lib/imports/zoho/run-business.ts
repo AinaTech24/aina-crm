@@ -29,6 +29,8 @@ import { loadClientMatcher, stampZohoIds } from "./client-match";
 import { entryKey, planBusiness, type PlannedEntry } from "./business";
 import type { ImportActor, OwnerLine } from "./run-contacts";
 import { ZohoFileError } from "./workbook";
+import { refreshZohoEntries, type ExistingZohoEntry, type RefreshItem } from "./refresh-business";
+import { matchBookedBusiness } from "@/lib/business/rta-match";
 
 export type BusinessImportResult = {
   dryRun: boolean;
@@ -44,6 +46,12 @@ export type BusinessImportResult = {
   skippedByReason: Array<{ reason: string; count: number }>;
   /** What the CRM will count vs Zoho's own totals. */
   totals: { gross: number; redemption: number; zohoPurchase: number; zohoRedemption: number };
+  /** With refreshExisting: MFTs already in the CRM that changed in Zoho and were updated. */
+  refreshed: number;
+  /** With refreshExisting: MFTs already in the CRM and identical in Zoho. */
+  unchanged: number;
+  /** With refreshExisting: changed MFTs left alone (edited or cancelled in the CRM). */
+  keptAsIs: Array<{ mft: string; reason: string }>;
 };
 
 class Rollback extends Error {
@@ -55,7 +63,7 @@ class Rollback extends Error {
 export async function importZohoBusiness(
   actor: ImportActor,
   sheets: { parent: Record<string, unknown>[]; sip: Record<string, unknown>[]; purchase: Record<string, unknown>[] },
-  opts: { dryRun: boolean; unmatchedOwnersToMe: boolean; tx?: Tx }
+  opts: { dryRun: boolean; unmatchedOwnersToMe: boolean; refreshExisting?: boolean; tx?: Tx }
 ): Promise<BusinessImportResult> {
   const plan = planBusiness(sheets.parent, sheets.sip, sheets.purchase);
 
@@ -73,6 +81,9 @@ export async function importZohoBusiness(
       unlinked: [],
       skippedByReason: [],
       totals: { gross: 0, redemption: 0, zohoPurchase: plan.zohoTotals.purchase, zohoRedemption: plan.zohoTotals.redemption },
+      refreshed: 0,
+      unchanged: 0,
+      keptAsIs: [],
     };
     const skipped = new Map<string, number>();
     const skip = (reason: string) => skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
@@ -107,12 +118,21 @@ export async function importZohoBusiness(
     const matcher = await loadClientMatcher(tx, actor.tenantId, fileNames);
 
     // ── Already imported ──
-    const done = new Set(
-      ((await tx.execute(sql`
-        SELECT split_part(notes, ' · ', 1) AS marker, product_type FROM business_entries
-         WHERE tenant_id = ${actor.tenantId}::uuid AND notes LIKE 'Zoho MFT%'
-      `)).rows as Array<{ marker: string; product_type: string }>).map((r) => entryKey(r.marker.replace(/^Zoho /, ""), r.product_type))
-    );
+    const existingRows = (await tx.execute(sql`
+      SELECT id, split_part(notes, ' · ', 1) AS marker, product_type, status, to_char(business_date, 'YYYY-MM-DD') AS business_date,
+             notes, platform, investor_id, client_name, rm_id
+        FROM business_entries
+       WHERE tenant_id = ${actor.tenantId}::uuid AND notes LIKE 'Zoho MFT%'
+       ORDER BY created_at
+    `)).rows as Array<ExistingZohoEntry & { marker: string; product_type: string }>;
+    const existing = new Map<string, ExistingZohoEntry>();
+    for (const r of existingRows) {
+      const k = entryKey(r.marker.replace(/^Zoho /, ""), r.product_type);
+      if (!existing.has(k)) existing.set(k, r);
+    }
+    const done = new Set(existing.keys());
+    const toRefresh: RefreshItem[] = [];
+    const refreshSeen = new Set<string>();
 
     const typeCounts = new Map<string, number>();
     const productCounts = new Map<string, number>();
@@ -121,7 +141,16 @@ export async function importZohoBusiness(
 
     for (const e of plan.entries) {
       if (done.has(entryKey(e.mft, e.product))) {
-        skip("Already imported");
+        const k = entryKey(e.mft, e.product);
+        const ex = existing.get(k);
+        if (opts.refreshExisting && ex && e.businessDate && !refreshSeen.has(k)) {
+          refreshSeen.add(k);
+          const c = e.clientZohoId ? matcher.resolve(e.clientZohoId) : undefined;
+          const o = e.ownerText ? userByKey.get(ownerKey(e.ownerText)) : undefined;
+          toRefresh.push({ planned: e, existing: ex, client: c ? { id: c.id } : null, ownerId: o?.id ?? null });
+        } else {
+          skip("Already imported");
+        }
         continue;
       }
       done.add(entryKey(e.mft, e.product));
@@ -209,6 +238,25 @@ export async function importZohoBusiness(
     }
     await stampZohoIds(tx, actor.tenantId, actor.userId, matcher.stamps());
 
+    // ── Already imported but changed in Zoho since → refreshed (refresh-business.ts) ──
+    if (toRefresh.length) {
+      const r = await refreshZohoEntries(tx, actor.tenantId, toRefresh);
+      result.refreshed = r.refreshed;
+      result.unchanged = r.unchanged;
+      result.keptAsIs = r.keptAsIs;
+      if (r.unchanged) skipped.set("Already imported, unchanged in Zoho", r.unchanged);
+      // Rebuilt lines get their RTA outcome decided again. Best effort: never fails the import.
+      if (r.refreshed && !opts.dryRun) {
+        try {
+          await tx.transaction(async (sp) => {
+            await matchBookedBusiness(sp as unknown as Tx, actor.tenantId);
+          });
+        } catch (err) {
+          console.error("[zoho-business] RTA re-match after refresh failed", (err as Error)?.message);
+        }
+      }
+    }
+
     result.byProduct = [...productCounts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
     result.types = [...typeCounts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
     result.skippedByReason = [...skipped.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
@@ -219,7 +267,7 @@ export async function importZohoBusiness(
       action: "business_entry.bulk_import",
       entityType: "business_entry",
       entityId: null,
-      meta: { source: "zoho_mf_transactions", parents: result.parents, created: result.created, lines: result.lines, clients: result.clients, skipped: result.skippedByReason },
+      meta: { source: "zoho_mf_transactions", parents: result.parents, created: result.created, lines: result.lines, refreshed: result.refreshed, keptAsIs: result.keptAsIs.length, clients: result.clients, skipped: result.skippedByReason },
     });
 
     if (opts.dryRun) throw new Rollback(result);

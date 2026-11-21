@@ -4,7 +4,9 @@ import { handleApiError } from "@/lib/api/error-handler";
  * export: the parent sheet + "SIP and SIP Stop" + "Purchase and Redemption"
  * subform sheets, in one workbook), dryRun ("1" = preview, nothing saved),
  * unmatchedToMe ("1" = entries of an owner with no user go to the person
- * importing). Only for a firm with the "Zoho CRM import" flag. See
+ * importing), refreshExisting ("1" = MF Transactions already imported that
+ * changed in Zoho are updated, see refresh-business.ts). Only for a firm with
+ * the "Zoho CRM import" flag. See
  * lib/imports/zoho/run-business.ts.
  */
 import { NextRequest, NextResponse } from "next/server";
@@ -36,7 +38,11 @@ export async function POST(req: NextRequest) {
     const result = await importZohoBusiness(
       { tenantId: session.tenantId, userId: session.userId, branchId: session.branchId ?? null, roles: session.roles },
       { parent: found.parent, sip: found.sip, purchase: found.purchase },
-      { dryRun: form.get("dryRun") === "1", unmatchedOwnersToMe: form.get("unmatchedToMe") === "1" }
+      {
+        dryRun: form.get("dryRun") === "1",
+        unmatchedOwnersToMe: form.get("unmatchedToMe") === "1",
+        refreshExisting: form.get("refreshExisting") === "1",
+      }
     );
     return NextResponse.json({ ...result, sheets: found.names });
   } catch (err) {
