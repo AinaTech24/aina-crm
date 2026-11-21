@@ -134,7 +134,7 @@ export function ProfileSettings() {
 
         {!u.emailVerified ? (
           <Button label="Send verification email" variant="secondary" style={{ marginTop: spacing.sm }} loading={verifyEmail.isPending}
-            onPress={() => verifyEmail.mutate()} icon={<Feather name="mail" size={16} color={palette.ink} />} />
+            onPress={() => verifyEmail.mutate(undefined, { onSuccess: (r: any) => (r?.emailSent === false ? toast.error("The email could not be sent. Try again later.") : toast.success("Verification email sent")) })} icon={<Feather name="mail" size={16} color={palette.ink} />} />
         ) : null}
 
         {/* 2FA nudge */}
@@ -143,7 +143,7 @@ export function ProfileSettings() {
           <Text variant="body" style={{ flex: 1, color: palette.ink }}>
             {data.twoFaEnabled ? "2FA enabled — your account is protected." : "2FA not enabled. Turn it on for extra security."}
           </Text>
-          <Button label={data.twoFaEnabled ? "Manage" : "Enable"} size="sm" variant="secondary" onPress={() => router.push("/m/settings/security" as any)} />
+          <Button label={data.twoFaEnabled ? "Manage" : "Enable"} size="sm" variant="secondary" onPress={() => router.push("/m/settings-security" as any)} />
         </Card>
 
         {/* Your details */}

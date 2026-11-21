@@ -5,16 +5,13 @@
  */
 
 import React from "react";
-import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { ModuleList } from "../../../../src/components/ModuleList";
 import { GenericCard } from "../../../../src/components/domain/GenericCard";
-import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
-import { EmptyState } from "../../../../src/components/states";
+import { WebOnlyState } from "../../../../src/components/WebOnlyState";
 import { useModuleList } from "../../../../src/features/list";
 import { REGISTRY, defaultFilter } from "../../../../src/features/registry";
 import { MENU } from "../../../../src/navigation/menu";
-import { palette } from "../../../../src/theme/tokens";
 import { CalendarScreen } from "../../../../src/features/calendar/Calendar";
 import { Billing } from "../../../../src/features/billing/Billing";
 import { FirmProfile } from "../../../../src/features/firm/FirmProfile";
@@ -71,18 +68,12 @@ export default function GenericModuleList() {
 
   const cfg = REGISTRY[module];
 
+  // A link (usually a notification) to a CRM page the app has no screen for:
+  // hand it to the web CRM instead of a "coming up" dead end.
   if (!cfg) {
     const item = MENU.flatMap((g) => g.items).find((it) => it.key === module);
-    return (
-      <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
-        <ScreenHeader title={item?.label ?? "Module"} />
-        <EmptyState
-          icon={(item?.icon as any) ?? "grid"}
-          title={`${item?.label ?? "This module"} — coming up`}
-          message="Its data already lives in your CRM; the native screen is next on the build list."
-        />
-      </View>
-    );
+    const title = item?.label ?? (module ? module.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Page");
+    return <WebOnlyState title={title} webPath={`/dashboard/${module ?? ""}`} icon={(item?.icon as any) ?? "external-link"} />;
   }
 
   return (

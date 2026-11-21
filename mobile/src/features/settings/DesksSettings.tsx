@@ -13,6 +13,7 @@ import { Card } from "../../components/ui/Card";
 import { Text } from "../../components/ui/Text";
 import { Button } from "../../components/ui/Button";
 import { TextField } from "../../components/ui/TextField";
+import { SelectField } from "../../components/ui/SelectField";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { StatusPill } from "../../components/ui/StatusPill";
 import { LoadingState, ErrorState } from "../../components/states";
@@ -29,6 +30,7 @@ export function DesksSettings() {
   const assign = useAssignDesk();
 
   const [name, setName] = useState("");
+  const [branchSel, setBranchSel] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
   const [picker, setPicker] = useState<DeskMember | null>(null);
 
@@ -37,19 +39,24 @@ export function DesksSettings() {
 
   const { branches, desks, members } = data;
   const deskName = (id: string | null) => desks.find((d) => d.id === id)?.name ?? null;
+  const branchName = (id: string) => branches.find((b) => b.id === id)?.name ?? "";
+  // A desk belongs to one branch: create it in the branch chosen (not always the
+  // first one), and offer a member only their own branch's desks — the assign
+  // route leaves that check to the caller.
+  const branchId = branchSel || branches[0]?.id || "";
+  const memberDesks = picker ? desks.filter((d) => d.branchId === picker.branchId) : [];
   const count = (deskId: string) => members.filter((m) => m.deskId === deskId).length;
 
   const addDesk = () => {
     setErr(null);
     if (name.trim().length < 1) return setErr("Enter a desk name.");
-    const branchId = branches[0]?.id;
     if (!branchId) return setErr("No branch found.");
     create.mutate({ branchId, name: name.trim() }, { onSuccess: () => setName(""), onError: (e: any) => setErr(e?.message ?? "Could not create desk.") });
   };
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Desks" subtitle="Sub-branch teams" onBack={() => router.back()} />
+      <ScreenHeader title="Desks" onBack={() => router.back()} />
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }}
         keyboardShouldPersistTaps="handled"
@@ -57,6 +64,7 @@ export function DesksSettings() {
         showsVerticalScrollIndicator={false}
       >
         <Card>
+          {branches.length > 1 ? <SelectField label="Branch" value={branchId} options={branches.map((b) => ({ value: b.id, label: b.name }))} onChange={setBranchSel} /> : null}
           <TextField label="Add a desk" value={name} onChangeText={setName} placeholder="e.g. DK, RC, Team 1" />
           {err ? <Text variant="caption" style={{ color: palette.danger, marginBottom: spacing.sm }}>{err}</Text> : null}
           <Button label="Create desk" full loading={create.isPending} onPress={addDesk} icon={<Feather name="plus" size={16} color={palette.white} />} />
@@ -72,7 +80,7 @@ export function DesksSettings() {
                 <View style={styles.iconWrap}><Feather name="share-2" size={15} color={palette.brandDark} /></View>
                 <View style={{ flex: 1 }}>
                   <Text variant="body">{d.name}</Text>
-                  <Text variant="caption" tone="muted">{count(d.id)} member{count(d.id) === 1 ? "" : "s"}</Text>
+                  <Text variant="caption" tone="muted">{branches.length > 1 && branchName(d.branchId) ? `${branchName(d.branchId)} · ` : ""}{count(d.id)} member{count(d.id) === 1 ? "" : "s"}</Text>
                 </View>
                 <Pressable accessibilityRole="button" accessibilityLabel={`Delete desk ${d.name}`} onPress={() => confirmDelete({ title: "Delete desk?", message: `"${d.name}" — members become unassigned.` }, () => del.mutate(d.id))} hitSlop={8} style={styles.delBtn}>
                   <Feather name="trash-2" size={16} color={palette.danger} />
@@ -85,7 +93,7 @@ export function DesksSettings() {
         <Text style={styles.section}>TEAM MEMBERS</Text>
         <Card flat style={{ padding: 0 }}>
           {members.map((m, i) => (
-            <Pressable key={m.id} style={[styles.row, i < members.length - 1 && styles.divider]} onPress={() => setPicker(m)}>
+            <Pressable key={m.id} accessibilityRole="button" style={[styles.row, i < members.length - 1 && styles.divider]} onPress={() => setPicker(m)}>
               <View style={{ flex: 1 }}>
                 <Text variant="body">{m.name}</Text>
                 <Text variant="caption" tone="muted">{Array.isArray(m.roles) ? m.roles.map(titleCase).join(", ") : "—"}</Text>
@@ -104,7 +112,8 @@ export function DesksSettings() {
             <Text variant="body" style={{ color: picker?.deskId == null ? palette.brandDark : palette.ink }}>Unassigned</Text>
             {picker?.deskId == null ? <Feather name="check" size={18} color={palette.brand} /> : null}
           </Pressable>
-          {desks.map((d) => (
+          {memberDesks.length === 0 ? <Text variant="caption" tone="muted" style={{ padding: spacing.sm }}>No desks in this member's branch yet.</Text> : null}
+          {memberDesks.map((d) => (
             <Pressable key={d.id} style={styles.opt} onPress={() => { if (picker) assign.mutate({ userId: picker.id, deskId: d.id }); setPicker(null); }}>
               <Text variant="body" style={{ color: picker?.deskId === d.id ? palette.brandDark : palette.ink }}>{d.name}</Text>
               {picker?.deskId === d.id ? <Feather name="check" size={18} color={palette.brand} /> : null}
@@ -123,5 +132,5 @@ const styles = StyleSheet.create({
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
   iconWrap: { width: 34, height: 34, borderRadius: radius.md, backgroundColor: palette.brandLight, alignItems: "center", justifyContent: "center" },
   delBtn: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
-  opt: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.md, paddingHorizontal: spacing.sm },
+  opt: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 48, paddingVertical: spacing.md, paddingHorizontal: spacing.sm },
 });

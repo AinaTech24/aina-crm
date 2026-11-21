@@ -16,6 +16,7 @@ import { CallLogPrompt } from "../../src/features/activities/CallLogPrompt";
 import { watchSimCalls } from "../../src/features/activities/simCallSync";
 import { OfflineBanner } from "../../src/components/ui/OfflineBanner";
 import { AppLock } from "../../src/components/AppLock";
+import { LicenseGate } from "../../src/components/LicenseGate";
 import { useRecentlyViewed } from "../../src/state/recentlyViewed";
 import { configurePushHandler, registerForPush } from "../../src/lib/push";
 import { useOfflineQueue, watchConnectivityAndFlush } from "../../src/lib/offlineQueue";
@@ -26,11 +27,16 @@ import { palette } from "../../src/theme/tokens";
 // the first back press goes Home instead of exiting the app.
 export const unstable_settings = { initialRouteName: "(tabs)" };
 
+/** The push that cold-started the app is acted on ONCE per launch — the OS keeps
+ *  returning it, so signing out and back in used to replay an old tap. */
+let initialPushHandled = false;
+
 /** Push payloads carry a web path ("/dashboard/tasks/…") or a full URL; map
  *  it to the native route, or null when this app has no screen for it. */
 function routeFromPush(url: string): string | null {
   try {
-    const path = /^https?:\/\//i.test(url) ? new URL(url).pathname : url;
+    // Keep the query: /dashboard/tasks?approval=mine opens the approvals view.
+    const path = /^https?:\/\//i.test(url) ? (() => { const u = new URL(url); return u.pathname + u.search; })() : url;
     if (path.startsWith("/m/")) return path;
     return toMobileRoute(path);
   } catch {
@@ -51,7 +57,10 @@ export default function AppLayout() {
     if (status !== "authed") return;
     const go = (url: string) => { const r = routeFromPush(url); if (r) router.push(r as any); };
     const sub = addNotificationTapListener(go);
-    getInitialNotificationUrl().then((u) => { if (u) go(u); });
+    if (!initialPushHandled) {
+      initialPushHandled = true;
+      getInitialNotificationUrl().then((u) => { if (u) go(u); }).catch(() => {});
+    }
     return () => sub.remove();
   }, [status, router]);
   // Apply the firm's brand colour app-wide (and live whenever the theme is saved).
@@ -90,6 +99,8 @@ export default function AppLayout() {
       {/* Semi-automatic call logging — prompts to log a call on return to the app. */}
       <CallLogPrompt />
       <OfflineBanner />
+      {/* A lapsed firm sees only Billing and Sync — the web dashboard's rule. */}
+      <LicenseGate />
       {/* Biometric gate (opt-in, App preferences) — last so it paints over everything. */}
       <AppLock />
     </>

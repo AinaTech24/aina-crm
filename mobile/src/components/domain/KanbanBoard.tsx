@@ -49,7 +49,7 @@ export function KanbanBoard<T>({ columns, items, columnOf, keyOf, renderCard, on
   const move = (it: T, to: string) => {
     const k = keyOf(it);
     setPending((p) => ({ ...p, [k]: to }));
-    Promise.resolve(onMove?.(it, to)).catch(() => {}).finally(() =>
+    new Promise<unknown>((resolve) => resolve(onMove?.(it, to))).catch(() => {}).finally(() =>
       setPending((p) => {
         const { [k]: _, ...rest } = p;
         return rest;
@@ -84,7 +84,7 @@ export function KanbanBoard<T>({ columns, items, columnOf, keyOf, renderCard, on
                     <View style={styles.card}>
                       <View style={{ flex: 1 }}>{renderCard(it)}</View>
                       {movable(it) ? (
-                        <Pressable onPress={() => startMove(it)} hitSlop={10} accessibilityLabel="Move" style={styles.moveBtn}>
+                        <Pressable onPress={() => startMove(it)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Move" style={styles.moveBtn}>
                           <Feather name="more-vertical" size={16} color={palette.faint} />
                         </Pressable>
                       ) : null}
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   colDot: { width: 8, height: 8, borderRadius: 4 },
   countBadge: { backgroundColor: palette.surface, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   card: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs, backgroundColor: palette.surface, borderRadius: radius.md, borderWidth: 1, borderColor: palette.line, padding: spacing.md, marginBottom: spacing.sm },
-  moveBtn: { paddingTop: 2 },
+  moveBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center", marginTop: -6, marginRight: -6 },
   empty: { textAlign: "center", paddingVertical: spacing.lg },
-  option: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.lineSoft },
+  option: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 48, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.lineSoft },
 });

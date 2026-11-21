@@ -6,6 +6,7 @@ import { bulkGet, bulkSet } from "./bulkStorage";
 import { getAccountScope, onAccountChange } from "./accountScope";
 import { useConnectivity } from "../state/connectivity";
 import { toast } from "./toast";
+import { API_BASE_URL } from "../config";
 
 const MAX = 100;
 const key = (owner: string) => `offline_queue_v2.${owner}`;
@@ -153,9 +154,21 @@ async function queuedWrite<T>(input: Input): Promise<T | null> {
 }
 export const queuedPost = <T = unknown>(path: string, body: unknown, label: string) => queuedWrite<T>({ method: "POST", path, body, label });
 export const queuedPatch = <T = unknown>(path: string, body: unknown, label: string) => queuedWrite<T>({ method: "PATCH", path, body, label });
+/** "Offline" is only cleared by a request that gets an answer. With nothing
+ *  queued and nothing refetching, the banner stayed up long after the signal came
+ *  back — so while offline, ask the public health check now and then. */
+async function probeOnline(): Promise<void> {
+  if (useConnectivity.getState().online) return;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5_000);
+  try {
+    await fetch(`${API_BASE_URL}/api/health`, { method: "GET", signal: controller.signal });
+    useConnectivity.getState().setOnline(true);
+  } catch { /* still offline */ } finally { clearTimeout(timer); }
+}
 export function watchConnectivityAndFlush(): () => void {
   const flush = () => { void useOfflineQueue.getState().flush().catch(() => {}); };
   const unsubscribe = useConnectivity.subscribe((state, prev) => { if (state.online && !prev.online) flush(); });
-  const timer = setInterval(flush, 15_000);
+  const timer = setInterval(() => { void probeOnline(); flush(); }, 15_000);
   return () => { unsubscribe(); clearInterval(timer); };
 }

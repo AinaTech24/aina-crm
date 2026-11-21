@@ -10,7 +10,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { View, TextInput, Pressable, Linking, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { View, TextInput, Pressable, Linking, StyleSheet, KeyboardAvoidingView, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -25,6 +25,17 @@ import { palette, radius, spacing, fontSize } from "../src/theme/tokens";
 
 const LAST_EMAIL_KEY = "last_login_email";
 
+/** The server answers in terse lower-case ("invalid credentials"); say it like a person. */
+function friendly(message: string): string {
+  const m = message.trim().toLowerCase();
+  if (m === "invalid credentials") return "That email and password don't match.";
+  if (m === "account inactive") return "This account is not active. Ask your firm's admin.";
+  if (m === "invalid code") return "That code didn't work. Check it and try again.";
+  if (m === "invalid challenge" || m.startsWith("challenge expired")) return "That sign-in took too long. Enter your password again.";
+  if (m === "email + password required") return "Enter your email and password.";
+  return message;
+}
+
 export default function Login() {
   const router = useRouter();
   const { t } = useTranslation();
@@ -34,6 +45,9 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false);
   const [code, setCode] = useState("");
   const [challenge, setChallenge] = useState<string | null>(null);
+  // Backup codes ("a1b2c-3d4e5") are letters + digits + a dash — the 6-digit
+  // number pad could never type one, so a lost phone locked the user out here.
+  const [backup, setBackup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pwRef = useRef<TextInput>(null);
@@ -42,38 +56,56 @@ export default function Login() {
     storageGet(LAST_EMAIL_KEY).then((v) => { if (v) setEmail(v); }).catch(() => {});
   }, []);
 
+  // Busy stays on through signIn, so a second tap (or the keyboard's Go plus
+  // the button) can't start a second sign-in.
   const finish = async (token: string) => {
     storageSet(LAST_EMAIL_KEY, email.trim()).catch(() => {});
-    await signIn(token);
-    router.replace("/(app)/(tabs)/home");
+    try {
+      await signIn(token);
+      router.replace("/(app)/(tabs)/home");
+    } catch {
+      setBusy(false);
+      setError("Couldn't save your sign-in on this phone. Try again.");
+    }
   };
 
   const onPassword = async () => {
+    if (busy) return;
     if (!email.trim() || !password) return setError(t("login.missing"));
     setBusy(true);
     setError(null);
     const r = await mobileLogin(email.trim(), password);
-    setBusy(false);
     if (r.kind === "ok") return finish(r.token);
-    if (r.kind === "2fa") return setChallenge(r.challenge);
-    setError(r.message);
+    setBusy(false);
+    if (r.kind === "2fa") { setCode(""); setBackup(false); return setChallenge(r.challenge); }
+    // Includes the firm-requires-2FA 403 ("Sign in once on the web to set it up").
+    setError(friendly(r.message));
   };
 
   const onCode = async () => {
-    if (!challenge) return;
+    if (!challenge || busy) return;
+    const value = backup ? code.trim().toLowerCase() : code.replace(/\s/g, "");
+    if (value.length < 6) return setError(backup ? "Enter one of your backup codes." : "Enter the 6-digit code from your authenticator app.");
     setBusy(true);
     setError(null);
-    const r = await mobileVerify2fa(challenge, code.trim());
-    setBusy(false);
+    const r = await mobileVerify2fa(challenge, value);
     if (r.kind === "ok") return finish(r.token);
-    setError(r.kind === "error" ? r.message : "Invalid code");
+    setBusy(false);
+    const message = r.kind === "error" ? r.message : "invalid code";
+    // An expired challenge can't be retried — back to the password step.
+    if (/challenge/i.test(message)) { setChallenge(null); setCode(""); setPassword(""); }
+    setError(friendly(message));
   };
 
   // Reset lives on the web (it emails a link) — hand off to the same backend.
   const forgot = () => Linking.openURL(`${API_BASE_URL}/forgot-password`).catch(() => {});
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    // Android draws edge to edge (SDK 57), so the OS no longer resizes the window
+    // for the keyboard: pad on both platforms and let the card scroll, or the
+    // Sign in / Verify button sits under the keyboard on a small phone.
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: palette.surfaceAlt }} behavior="padding">
+    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <Animated.View entering={FadeInDown.duration(400)} style={styles.card}>
         <Text variant="title" center>
           {t("app.name")}
@@ -131,21 +163,34 @@ export default function Login() {
             </View>
           </>
         ) : (
-          <TextInput
-            style={styles.input}
-            placeholder={t("login.code")}
-            placeholderTextColor={palette.faint}
-            keyboardType="number-pad"
-            textContentType="oneTimeCode"
-            autoComplete="one-time-code"
-            maxLength={6}
-            value={code}
-            onChangeText={setCode}
-            editable={!busy}
-            onSubmitEditing={onCode}
-            autoFocus
-            accessibilityLabel={t("login.code")}
-          />
+          <>
+            <TextInput
+              key={backup ? "backup" : "totp"}
+              style={styles.input}
+              placeholder={backup ? "Backup code" : t("login.code")}
+              placeholderTextColor={palette.faint}
+              keyboardType={backup ? "default" : "number-pad"}
+              textContentType={backup ? "none" : "oneTimeCode"}
+              autoComplete={backup ? "off" : "one-time-code"}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={backup ? 12 : 6}
+              value={code}
+              onChangeText={setCode}
+              editable={!busy}
+              onSubmitEditing={onCode}
+              autoFocus
+              accessibilityLabel={backup ? "Backup code" : t("login.code")}
+            />
+            <Pressable
+              onPress={() => { setBackup((b) => !b); setCode(""); setError(null); }}
+              disabled={busy}
+              style={styles.linkBtn}
+              accessibilityRole="button"
+            >
+              <Text variant="label" tone="brand">{backup ? "Use the code from your authenticator app" : "Lost your phone? Use a backup code"}</Text>
+            </Pressable>
+          </>
         )}
 
         {error ? (
@@ -160,24 +205,27 @@ export default function Login() {
           <Button
             label={t("login.back")}
             variant="ghost"
+            disabled={busy}
             onPress={() => {
               setChallenge(null);
               setCode("");
+              setBackup(false);
               setError(null);
             }}
           />
         ) : (
-          <Pressable onPress={forgot} hitSlop={8} style={{ alignSelf: "center", marginTop: spacing.lg }} accessibilityRole="link">
+          <Pressable onPress={forgot} style={[styles.linkBtn, { marginTop: spacing.sm }]} accessibilityRole="link">
             <Text variant="label" tone="brand">{t("login.forgot")}</Text>
           </Pressable>
         )}
       </Animated.View>
+    </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: spacing["2xl"], backgroundColor: palette.surfaceAlt },
+  container: { flexGrow: 1, justifyContent: "center", padding: spacing["2xl"], backgroundColor: palette.surfaceAlt },
   card: {
     backgroundColor: palette.surface,
     borderRadius: radius.xl,
@@ -201,5 +249,6 @@ const styles = StyleSheet.create({
   },
   pwWrap: { position: "relative" },
   pwInput: { paddingRight: 44 },
-  eye: { position: "absolute", right: spacing.md, top: 0, height: 48, justifyContent: "center" },
+  eye: { position: "absolute", right: spacing.xs, top: 0, height: 48, width: 44, alignItems: "center", justifyContent: "center" },
+  linkBtn: { alignSelf: "center", minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm, marginBottom: spacing.sm },
 });

@@ -4,15 +4,12 @@
  */
 
 import React from "react";
-import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { DetailScaffold } from "../../../../src/components/DetailScaffold";
-import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
-import { ErrorState } from "../../../../src/components/states";
+import { WebOnlyState } from "../../../../src/components/WebOnlyState";
 import { useModuleItem } from "../../../../src/features/list";
 import { REGISTRY } from "../../../../src/features/registry";
-import { palette } from "../../../../src/theme/tokens";
 
 export default function GenericModuleDetail() {
   const { module, id } = useLocalSearchParams<{ module: string; id: string }>();
@@ -28,14 +25,7 @@ export default function GenericModuleDetail() {
     cfg ? `${cfg.endpoint}/${id}` : ""
   );
 
-  if (!cfg) {
-    return (
-      <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
-        <ScreenHeader title="Details" />
-        <ErrorState message="Unknown module" />
-      </View>
-    );
-  }
+  if (!cfg) return <WebOnlyState title="Details" webPath={`/dashboard/${module ?? ""}/${id ?? ""}`} />;
 
   const item = cfg.listOnly ? cachedItem : ((cfg.detailEnvelope && data?.[cfg.detailEnvelope]) || data);
   const spec = item ? cfg.detail(item) : {};

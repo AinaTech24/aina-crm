@@ -34,6 +34,14 @@ import { toneColors } from "../../../../src/theme";
 
 const MANAGER_ROLES = ["owner", "branch_head"];
 
+/** GPS is a nicety: indoors, or with location off, a fix can take half a minute
+ *  (plus the reverse-geocode call), and the punch used to wait for all of it. */
+const LOCATION_WAIT_MS = 6_000;
+const locationOrNull = () => Promise.race([
+  getCheckinLocation().catch(() => null),
+  new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATION_WAIT_MS)),
+]);
+
 export default function Attendance() {
   const me = useMe();
   const isManagerRole = (me.data?.user.roles ?? []).some((r) => MANAGER_ROLES.includes(r));
@@ -66,9 +74,10 @@ export default function Attendance() {
   const todayStatus = todayRow ? statusLabel(todayRow, workEnd) : null;
 
   const punch = async (action: "in" | "out") => {
+    if (busy || clock.isPending) return;
     setBusy(true);
-    // Location is a nicety — never block the punch on it.
-    const loc = await getCheckinLocation().catch(() => null);
+    // Location is a nicety — never block the punch on it for long.
+    const loc = await locationOrNull();
     clock.mutate(
       { action, ...(loc ? { lat: loc.lat, lng: loc.lng } : {}) },
       {
@@ -76,7 +85,8 @@ export default function Attendance() {
           if (r?.error) return toast.error(r.error);
           toast.success(action === "in" ? "Clocked in — have a good day" : "Clocked out");
         },
-        onError: (e: any) => toast.error(e?.body?.error || "Couldn't record that"),
+        // The failure itself ("You're already clocked in.") is the global
+        // mutation toast — a second one here showed it twice.
         onSettled: () => setBusy(false),
       }
     );
@@ -154,7 +164,7 @@ export default function Attendance() {
             <SectionLabel icon="calendar" text={`THIS MONTH`} />
             <Card flat>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Metric label="Days present" value={String(daysPresent)} />
+                <Metric label="Days present" value={monthRows.length ? String(daysPresent) : "—"} />
                 <View style={styles.vline} />
                 <Metric label="Hours logged" value={monthMins > 0 ? `${Math.floor(monthMins / 60)}h` : "—"} />
                 <View style={styles.vline} />

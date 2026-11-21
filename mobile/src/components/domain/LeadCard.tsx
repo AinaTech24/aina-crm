@@ -12,8 +12,8 @@ import { Card } from "../ui/Card";
 import { Text } from "../ui/Text";
 import { StatusPill } from "../ui/StatusPill";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
-import { inr, initials, titleCase, fmtDate } from "../../lib/format";
-import { stageMeta, stageDisplay, type Lead } from "../../features/leads/api";
+import { inr, initials, fmtDate, parseDate } from "../../lib/format";
+import { stageMeta, stageDisplay, leadSourceLabel, type Lead } from "../../features/leads/api";
 
 const BAND_TONE: Record<string, string> = { hot: palette.danger, warm: palette.warning, cold: palette.muted };
 
@@ -27,21 +27,23 @@ function BandChip({ band }: { band?: string | null }) {
   );
 }
 
-export function LeadCard({ lead, onPress, compact }: { lead: Lead; onPress: () => void; compact?: boolean }) {
+/** `onLongPress` (optional) is passed to the card — the leads list uses it for its row actions. */
+export function LeadCard({ lead, onPress, onLongPress, compact }: { lead: Lead; onPress: () => void; onLongPress?: () => void; compact?: boolean }) {
   const router = useRouter();
   const meta = stageMeta(lead.stage);
-  const overdue = !!lead.nextFollowUpAt && new Date(lead.nextFollowUpAt).getTime() < Date.now() && !lead.convertedAt;
+  const followUp = parseDate(lead.nextFollowUpAt);
+  const overdue = !!followUp && followUp.getTime() < Date.now() && !lead.convertedAt;
   const amount = lead.intendedAmount ?? lead.expectedBusinessAmount;
 
   if (compact) {
     return (
-      <Card onPress={onPress} style={styles.compact} padded={false}>
+      <Card onPress={onPress} onLongPress={onLongPress} style={styles.compact} padded={false}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
           <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>{lead.name ?? "Lead"}</Text>
           <BandChip band={lead.scoreBand} />
         </View>
         <Text variant="caption" tone="muted" numberOfLines={1}>
-          {amount ? `${inr(amount)} · ` : ""}{titleCase(lead.source)}
+          {amount ? `${inr(amount)} · ` : ""}{lead.source ? leadSourceLabel(lead.source) : ""}
         </Text>
         {overdue ? <StatusPill label="Overdue" tone="danger" size="sm" dot={false} /> : null}
       </Card>
@@ -49,7 +51,7 @@ export function LeadCard({ lead, onPress, compact }: { lead: Lead; onPress: () =
   }
 
   return (
-    <Card onPress={onPress} style={{ marginBottom: spacing.md }}>
+    <Card onPress={onPress} onLongPress={onLongPress} style={{ marginBottom: spacing.md }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
         <View style={styles.avatar}>
           <Text style={{ color: palette.brandDark, fontWeight: "700" }}>{initials(lead.name)}</Text>
@@ -57,7 +59,7 @@ export function LeadCard({ lead, onPress, compact }: { lead: Lead; onPress: () =
         <View style={{ flex: 1, gap: 3 }}>
           <Text variant="subtitle" numberOfLines={1}>{lead.name ?? "Lead"}</Text>
           <Text variant="caption" tone="muted" numberOfLines={1}>
-            {titleCase(lead.source) || "—"}{lead.city ? ` · ${lead.city}` : ""}{lead.ownerName ? ` · RM ${lead.ownerName}` : ""}
+            {leadSourceLabel(lead.source)}{lead.city ? ` · ${lead.city}` : ""}{lead.ownerName ? ` · RM ${lead.ownerName}` : ""}
           </Text>
           <View style={styles.badges}>
             {meta ? <StatusPill label={stageDisplay(lead.stage)} tone={meta.tone} size="sm" /> : null}
@@ -66,7 +68,8 @@ export function LeadCard({ lead, onPress, compact }: { lead: Lead; onPress: () =
         </View>
         <View style={{ alignItems: "flex-end", gap: 2 }}>
           <Text variant="caption" tone="faint">Intended</Text>
-          <Text variant="subtitle">{inr(amount)}</Text>
+          {/* No amount on the lead is "—", not ₹0. */}
+          <Text variant="subtitle">{amount != null && Number(amount) > 0 ? inr(amount) : "—"}</Text>
           {lead.nextFollowUpAt ? <Text variant="caption" tone={overdue ? "danger" : "muted"}>{fmtDate(lead.nextFollowUpAt)}</Text> : null}
         </View>
       </View>

@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from "react";
-import { View, Pressable, StyleSheet, ScrollView } from "react-native";
+import { View, Pressable, StyleSheet, ScrollView, TextInput } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { palette, radius, spacing, fontSize } from "../../theme/tokens";
 import { useBrand } from "../../theme/brand";
@@ -24,6 +24,8 @@ export function SelectField({
   placeholder = "Select…",
   required,
   disabled = false,
+  error,
+  searchable,
 }: {
   label: string;
   value: string | null;
@@ -32,8 +34,15 @@ export function SelectField({
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
+  /** Validation message under the control (red border + line). */
+  error?: string;
+  /** A search box over the options — for long lists (countries, banks…). */
+  searchable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const shown = searchable && q.trim() ? options.filter((o) => o.label.toLowerCase().includes(q.trim().toLowerCase())) : options;
+  const close = () => { setOpen(false); setQ(""); };
   const { brand, brandDark } = useBrand();
   const selected = options.find((o) => o.value === value);
 
@@ -43,16 +52,29 @@ export function SelectField({
         {label}
         {required ? <Text style={{ color: palette.danger }}> *</Text> : null}
       </Text>
-      <Pressable disabled={disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} style={[styles.control, disabled && { opacity: 0.5 }]} onPress={() => setOpen(true)}>
-        <Text style={{ color: selected ? palette.ink : palette.faint, fontSize: fontSize.md, flex: 1 }}>
+      <Pressable disabled={disabled} accessibilityRole="button" accessibilityLabel={`${label}, ${selected?.label ?? placeholder}`} accessibilityState={{ disabled }} style={[styles.control, error ? { borderColor: palette.danger } : null, disabled && { opacity: 0.5 }]} onPress={() => setOpen(true)}>
+        <Text style={{ color: selected ? palette.ink : palette.faint, fontSize: fontSize.md, flex: 1 }} numberOfLines={1}>
           {selected?.label ?? placeholder}
         </Text>
         <Feather name="chevron-down" size={18} color={palette.faint} />
       </Pressable>
+      {error ? <Text variant="caption" tone="danger" style={{ marginTop: 4 }}>{error}</Text> : null}
 
-      <BottomSheet visible={open} onClose={() => setOpen(false)} title={label}>
+      <BottomSheet visible={open} onClose={close} title={label}>
+        {searchable ? (
+          <TextInput
+            value={q}
+            onChangeText={setQ}
+            placeholder="Search…"
+            placeholderTextColor={palette.faint}
+            autoCorrect={false}
+            style={styles.search}
+            accessibilityLabel={`Search ${label}`}
+          />
+        ) : null}
         <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: spacing.xs }} keyboardShouldPersistTaps="handled">
-          {options.map((o) => (
+          {searchable && shown.length === 0 ? <Text variant="caption" tone="muted" style={{ padding: spacing.md }}>No match for “{q.trim()}”.</Text> : null}
+          {shown.map((o) => (
             <Pressable
               key={o.value}
               accessibilityRole="button"
@@ -60,7 +82,7 @@ export function SelectField({
               style={styles.option}
               onPress={() => {
                 onChange(o.value);
-                setOpen(false);
+                close();
               }}
             >
               <Text variant="body" style={{ color: o.value === value ? brandDark : palette.ink }}>
@@ -85,6 +107,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     height: 48,
     backgroundColor: palette.surface,
+  },
+  search: {
+    borderWidth: 1,
+    borderColor: palette.line,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    height: 44,
+    fontSize: fontSize.md,
+    color: palette.ink,
+    backgroundColor: palette.surfaceAlt,
+    marginBottom: spacing.sm,
   },
   option: {
     minHeight: 48,

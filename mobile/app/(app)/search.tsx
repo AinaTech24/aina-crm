@@ -72,6 +72,7 @@ export default function GlobalSearch() {
                 {recent.map((it, i) => (
                   <Pressable
                     key={`${it.type}-${it.id}`}
+                    accessibilityRole="button"
                     style={[styles.row, i < recent.length - 1 && styles.divider]}
                     onPress={() => router.push(`/m/${it.type === "investor" ? "investors" : "leads"}/${it.id}` as any)}
                   >
@@ -87,6 +88,8 @@ export default function GlobalSearch() {
           )
         ) : search.isLoading ? (
           <View style={{ paddingTop: spacing["2xl"], alignItems: "center" }}><ActivityIndicator color={palette.brand} /></View>
+        ) : search.isError && !r ? (
+          <Hint icon="wifi-off" text="Couldn't search right now. Check your connection and try again." />
         ) : total === 0 ? (
           <Hint icon="search" text={`No matches for "${term}".`} />
         ) : (
@@ -131,7 +134,7 @@ function InvestorRow({ it, last, onOpen }: { it: SearchInvestor; last: boolean; 
   return (
     <View style={[styles.row, !last && styles.divider]}>
       <Avatar name={it.name} tone={palette.violet} />
-      <Pressable style={{ flex: 1 }} onPress={onOpen}>
+      <Pressable style={{ flex: 1, minHeight: 44, justifyContent: "center" }} onPress={onOpen} accessibilityRole="button">
         <Text variant="body" numberOfLines={1}>{it.name}</Text>
         {sub ? <Text variant="caption" tone="muted" numberOfLines={1}>{sub}</Text> : null}
       </Pressable>
@@ -146,7 +149,7 @@ function LeadRow({ it, last, onOpen }: { it: SearchLead; last: boolean; onOpen: 
   return (
     <View style={[styles.row, !last && styles.divider]}>
       <Avatar name={it.name} tone={palette.brand} />
-      <Pressable style={{ flex: 1 }} onPress={onOpen}>
+      <Pressable style={{ flex: 1, minHeight: 44, justifyContent: "center" }} onPress={onOpen} accessibilityRole="button">
         <Text variant="body" numberOfLines={1}>{it.name}</Text>
         {sub ? <Text variant="caption" tone="muted" numberOfLines={1}>{sub}</Text> : null}
       </Pressable>
@@ -158,7 +161,7 @@ function LeadRow({ it, last, onOpen }: { it: SearchLead; last: boolean; onOpen: 
 function FolioRow({ it, last, onOpen }: { it: SearchFolio; last: boolean; onOpen: () => void }) {
   const aum = money(it.aum);
   return (
-    <Pressable style={[styles.row, !last && styles.divider]} onPress={onOpen}>
+    <Pressable style={[styles.row, !last && styles.divider]} onPress={onOpen} accessibilityRole="button">
       <View style={[styles.iconCircle, { backgroundColor: palette.brandLight }]}><Feather name="folder" size={15} color={palette.brand} /></View>
       <View style={{ flex: 1 }}>
         <Text variant="body" numberOfLines={1}>{it.folio_number}</Text>
@@ -173,7 +176,7 @@ function FolioRow({ it, last, onOpen }: { it: SearchFolio; last: boolean; onOpen
 function SipRow({ it, last, onOpen }: { it: SearchSip; last: boolean; onOpen: () => void }) {
   const amt = money(it.amount);
   return (
-    <Pressable style={[styles.row, !last && styles.divider]} onPress={onOpen}>
+    <Pressable style={[styles.row, !last && styles.divider]} onPress={onOpen} accessibilityRole="button">
       <View style={[styles.iconCircle, { backgroundColor: palette.successBg }]}><Feather name="repeat" size={15} color={palette.success} /></View>
       <View style={{ flex: 1 }}>
         <Text variant="body" numberOfLines={1}>{it.scheme_name ?? "SIP"}</Text>
@@ -187,7 +190,7 @@ function SipRow({ it, last, onOpen }: { it: SearchSip; last: boolean; onOpen: ()
 
 // ── Bits ──
 function Actions({ phone, onCall, onOpen, subject }: { phone?: string | null; onCall: () => void; onOpen: () => void; subject?: { type: "investor" | "lead"; id: string; name?: string | null } }) {
-  if (!phone) return <Pressable onPress={onOpen} hitSlop={6} accessibilityRole="button" accessibilityLabel="Open"><Feather name="chevron-right" size={16} color={palette.faint} /></Pressable>;
+  if (!phone) return <Pressable onPress={onOpen} style={styles.iconBtnPlain} accessibilityRole="button" accessibilityLabel={`Open ${subject?.name ?? ""}`.trim()}><Feather name="chevron-right" size={16} color={palette.faint} /></Pressable>;
   return (
     <View style={{ flexDirection: "row", gap: spacing.sm }}>
       <Pressable onPress={onCall} hitSlop={6} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel={`Call ${subject?.name ?? ""}`.trim()}><Feather name="phone" size={15} color={palette.brand} /></Pressable>
@@ -225,5 +228,6 @@ const styles = StyleSheet.create({
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
   avatar: { width: 34, height: 34, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   iconCircle: { width: 34, height: 34, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
-  iconBtn: { width: 34, height: 34, borderRadius: radius.pill, backgroundColor: palette.surfaceSunken, alignItems: "center", justifyContent: "center" },
+  iconBtn: { width: 40, height: 40, borderRadius: radius.pill, backgroundColor: palette.surfaceSunken, alignItems: "center", justifyContent: "center" },
+  iconBtnPlain: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
 });

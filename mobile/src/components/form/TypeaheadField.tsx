@@ -21,7 +21,10 @@ export function TypeaheadField({
   onChange,
   onSelect,
   displayLabel,
+  error,
 }: {
+  /** Validation message under the control. */
+  error?: string;
   onSelect?: (row: any) => void;
   displayLabel?: string;
   field: FieldSpec;
@@ -53,7 +56,18 @@ export function TypeaheadField({
       api.get<any>(field.searchEndpoint!, { [param]: debounced, ...(field.searchExtraParams ?? {}) }),
     staleTime: 30_000,
   });
-  const rows: any[] = (data && (data[envelope] ?? [])) || [];
+  const rows: any[] = Array.isArray(data?.[envelope]) ? data[envelope] : [];
+
+  // A value preset from route params (?investorId=…) has no label yet — ask the
+  // spec for the record's name instead of showing "Selected".
+  const needLabel = !!value && !displayLabel && !selectedLabel && !!field.searchInitialLabel;
+  const initialLabel = useQuery({
+    queryKey: ["typeahead-label", field.searchEndpoint, field.key, value],
+    enabled: needLabel,
+    queryFn: async () => (await field.searchInitialLabel!(value)) ?? null,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
 
   const pick = (row: any) => {
     onChange(getValue(row));
@@ -69,7 +83,8 @@ export function TypeaheadField({
     setSelectedLabel("");
   };
 
-  const display = value ? displayLabel || selectedLabel || "Selected" : field.placeholder ?? "Search…";
+  // What the user just picked wins over a label carried in from the form.
+  const display = value ? selectedLabel || displayLabel || initialLabel.data || "Selected" : field.placeholder ?? "Search…";
 
   return (
     <View style={{ marginBottom: spacing.lg }}>
@@ -78,7 +93,7 @@ export function TypeaheadField({
         {field.required ? <Text style={{ color: palette.danger }}> *</Text> : null}
       </Text>
       <View style={{ flexDirection: "row", gap: spacing.sm }}>
-        <Pressable style={styles.control} onPress={() => setOpen(true)}>
+        <Pressable style={[styles.control, error ? { borderColor: palette.danger } : null]} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`${field.label}, ${display}`}>
           <Feather name="search" size={16} color={palette.faint} />
           <Text style={{ color: value ? palette.ink : palette.faint, fontSize: fontSize.md, flex: 1 }} numberOfLines={1}>
             {display}
@@ -95,6 +110,7 @@ export function TypeaheadField({
           {field.help}
         </Text>
       ) : null}
+      {error ? <Text variant="caption" tone="danger" style={{ marginTop: 4 }}>{error}</Text> : null}
 
       <BottomSheet visible={open} onClose={() => setOpen(false)} title={field.label}>
         <View style={styles.searchBox}>
@@ -107,6 +123,8 @@ export function TypeaheadField({
             placeholderTextColor={palette.faint}
             style={styles.searchInput}
             returnKeyType="search"
+            autoCorrect={false}
+            accessibilityLabel={`Search ${field.label}`}
           />
           {isFetching ? <ActivityIndicator size="small" color={palette.brand} /> : null}
         </View>
@@ -124,7 +142,7 @@ export function TypeaheadField({
             rows.map((r) => {
               const val = getValue(r);
               return (
-                <Pressable key={val} style={styles.row} onPress={() => pick(r)}>
+                <Pressable key={val} style={styles.row} onPress={() => pick(r)} accessibilityRole="button">
                   <View style={{ flex: 1 }}>
                     <Text variant="body" numberOfLines={1}>
                       {getLabel(r)}
@@ -186,6 +204,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
+    minHeight: 48,
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: palette.lineSoft,

@@ -19,6 +19,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import type { Tone } from "../../theme";
+import { fmtTime, parseDate } from "../../lib/format";
 
 export type AttendanceStatus = "present" | "absent" | "half_day" | "week_off" | "holiday" | "on_leave";
 
@@ -88,7 +89,8 @@ export function useClock() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { action: "in" | "out"; lat?: number; lng?: number }) => api.post<ClockResult>("/api/attendance/clock", v),
-    onSuccess: () => {
+    // A 400 "You're already clocked in." means the screen was stale — refresh it either way.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["attendance"] });
       qc.invalidateQueries({ queryKey: ["command-center"] });
     },
@@ -121,7 +123,7 @@ export function durationLabel(row: AttendanceRow | undefined, now = Date.now()):
   let mins = row.total_minutes ?? 0;
   if (isClockedIn(row)) {
     const since = row.last_punch_kind === "in" && row.last_punch_at ? row.last_punch_at : row.clock_in_at;
-    const started = since ? new Date(since).getTime() : NaN;
+    const started = since ? (parseDate(since)?.getTime() ?? NaN) : NaN;
     if (isFinite(started)) mins += Math.max(0, Math.round((now - started) / 60000));
   }
   if (!mins) return "—";
@@ -130,10 +132,9 @@ export function durationLabel(row: AttendanceRow | undefined, now = Date.now()):
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+/** India time (the attendance day is India's), "—" for none. */
 export function timeLabel(iso?: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+  return fmtTime(iso) || "—";
 }
 
 export const STATUS_TONE: Record<string, Tone> = {

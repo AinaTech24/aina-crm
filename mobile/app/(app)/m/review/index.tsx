@@ -14,11 +14,16 @@ import { Text } from "../../../../src/components/ui/Text";
 import { Skeleton } from "../../../../src/components/ui/Skeleton";
 import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
 import { useEfforts, useSipHealth, useNetSales, currentPeriod, prevPeriod, num, type EffortRow } from "../../../../src/features/business/api";
-import { inr } from "../../../../src/lib/format";
+import { inr, monthLabel } from "../../../../src/lib/format";
+import { ApiError } from "../../../../src/api/client";
 import { spacing, palette, radius, fontWeight } from "../../../../src/theme/tokens";
 import { toneColors, type Tone } from "../../../../src/theme";
 
-const periodLabel = (p: string) => new Date(p + "-01").toLocaleString("en-IN", { month: "long", year: "numeric" });
+const periodLabel = (p: string) => monthLabel(p);
+/** Positive green, negative red, nothing grey — "₹0 net" is not an achievement. */
+const signTone = (n: number): Tone => (n > 0 ? "success" : n < 0 ? "danger" : "neutral");
+const whyMissing = (e: unknown) =>
+  e instanceof ApiError && e.status === 403 ? "Needs the business Reports permission." : "Couldn't load this — pull to refresh.";
 
 export default function MonthlyReview() {
   const thisMonth = React.useMemo(() => currentPeriod(), []);
@@ -31,19 +36,22 @@ export default function MonthlyReview() {
   const refetch = () => { efforts.refetch(); sip.refetch(); net.refetch(); };
   const ns = net.data?.total;
   const sh = sip.data;
+  // A month with no business entries has no business figure — "—", not ₹0.
+  const noEntries = !!ns && num(ns.gross) === 0 && num(ns.redemption) === 0;
+  const money = (v: unknown) => (noEntries ? "—" : inr(num(v)));
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       <ScreenHeader title="Monthly Review" subtitle={periodLabel(period)} />
-      <Screen scroll padded onRefresh={refetch} refreshing={efforts.isRefetching} contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
+      <Screen scroll padded onRefresh={refetch} refreshing={efforts.isRefetching || sip.isRefetching || net.isRefetching} contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
         {/* Month stepper */}
         <View style={styles.stepper}>
-          <Pressable style={styles.stepBtn} onPress={() => setPeriod(prevPeriod(period))} hitSlop={8}>
+          <Pressable style={styles.stepBtn} onPress={() => setPeriod(prevPeriod(period))} accessibilityRole="button" accessibilityLabel="Previous month">
             <Feather name="chevron-left" size={18} color={palette.ink} />
             <Text variant="caption" style={{ color: palette.ink }}>Prev</Text>
           </Pressable>
           <Text variant="body" style={{ fontWeight: fontWeight.semibold }}>{periodLabel(period)}</Text>
-          <Pressable style={[styles.stepBtn, isCurrent && { opacity: 0.3 }]} onPress={() => !isCurrent && setPeriod(thisMonth)} disabled={isCurrent} hitSlop={8}>
+          <Pressable style={[styles.stepBtn, isCurrent && { opacity: 0.3 }]} onPress={() => !isCurrent && setPeriod(thisMonth)} disabled={isCurrent} accessibilityRole="button" accessibilityLabel="This month" accessibilityState={{ disabled: isCurrent }}>
             <Text variant="caption" style={{ color: palette.ink }}>This month</Text>
             <Feather name="chevron-right" size={18} color={palette.ink} />
           </Pressable>
@@ -52,14 +60,16 @@ export default function MonthlyReview() {
         {/* Net sales */}
         <SectionLabel icon="trending-up" text="NET SALES" />
         <Card>
-          {net.isLoading ? <Skeleton width="100%" height={50} /> : (
+          {net.isLoading ? <Skeleton width="100%" height={50} /> : !ns ? (
+            <Text variant="body" tone="muted">{whyMissing(net.error)}</Text>
+          ) : (
             <>
               <View style={styles.threeUp}>
-                <Big label="Gross" value={inr(num(ns?.gross))} tone="neutral" />
-                <Big label="Redemption" value={inr(num(ns?.redemption))} tone="warning" />
-                <Big label="Net" value={inr(num(ns?.net))} tone={num(ns?.net) >= 0 ? "success" : "danger"} />
+                <Big label="Gross" value={money(ns.gross)} tone="neutral" />
+                <Big label="Redemption" value={money(ns.redemption)} tone={noEntries || num(ns.redemption) === 0 ? "neutral" : "warning"} />
+                <Big label="Net" value={money(ns.net)} tone={noEntries ? "neutral" : signTone(num(ns.net))} />
               </View>
-              {num(ns?.gross) === 0 ? <Text variant="caption" tone="faint" style={{ marginTop: spacing.sm }}>No business booked in this month.</Text> : null}
+              {noEntries ? <Text variant="caption" tone="faint" style={{ marginTop: spacing.sm }}>No business booked in this month.</Text> : null}
             </>
           )}
         </Card>
@@ -67,12 +77,14 @@ export default function MonthlyReview() {
         {/* SIP health */}
         <SectionLabel icon="repeat" text="SIP BOOK HEALTH" />
         <Card>
-          {sip.isLoading ? <Skeleton width="100%" height={50} /> : sh ? (
+          {sip.isLoading ? <Skeleton width="100%" height={50} /> : sip.isError ? (
+            <Text variant="body" tone="muted">{whyMissing(sip.error)}</Text>
+          ) : sh ? (
             <>
               <View style={styles.threeUp}>
-                <Big label="Live SIP" value={inr(num(sh.liveSip?.amount))} tone="success" hint={`${num(sh.liveSip?.count)} SIPs`} />
-                <Big label="Fresh" value={inr(num(sh.fresh?.amount))} tone="brand" hint={`${num(sh.fresh?.count)} new`} />
-                <Big label="Net SIP" value={inr(num(sh.netSip))} tone={num(sh.netSip) >= 0 ? "success" : "danger"} />
+                <Big label="Live SIP" value={inr(num(sh.liveSip?.amount))} tone="neutral" hint={`${num(sh.liveSip?.count)} SIPs`} />
+                <Big label="Fresh" value={inr(num(sh.fresh?.amount))} tone="neutral" hint={`${num(sh.fresh?.count)} new`} />
+                <Big label="Net SIP" value={inr(num(sh.netSip))} tone={signTone(num(sh.netSip))} />
               </View>
               <View style={styles.sipMeta}>
                 <Mini label="Stopped" value={`${inr(num(sh.stopped?.amount))} · ${num(sh.stopped?.count)}`} />
@@ -88,15 +100,14 @@ export default function MonthlyReview() {
         <Card flat style={{ padding: 0, overflow: "hidden" }}>
           {efforts.isLoading ? (
             <View style={{ padding: spacing.lg }}><Skeleton width="100%" height={40} /></View>
-          ) : (efforts.data?.rows.length ?? 0) === 0 ? (
+          ) : efforts.isError ? (
+            <View style={{ padding: spacing.lg }}><Text variant="body" tone="muted">{whyMissing(efforts.error)}</Text></View>
+          ) : (efforts.data?.rows?.length ?? 0) === 0 ? (
             <View style={{ padding: spacing.lg }}><Text variant="body" tone="muted">No effort targets set for this month.</Text></View>
           ) : (
             (efforts.data?.rows ?? []).map((r, i, arr) => <EffortRowView key={r.key} row={r} last={i === arr.length - 1} />)
           )}
         </Card>
-        <Text variant="caption" tone="faint" style={{ marginTop: spacing.md, textAlign: "center" }}>
-          Set effort targets on the web to track plan vs actual here.
-        </Text>
       </Screen>
     </View>
   );
@@ -132,7 +143,7 @@ function SectionLabel({ icon, text }: { icon: any; text: string }) {
 
 const styles = StyleSheet.create({
   stepper: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  stepBtn: { flexDirection: "row", alignItems: "center", gap: 2 },
+  stepBtn: { flexDirection: "row", alignItems: "center", gap: 2, minHeight: 44, paddingHorizontal: spacing.xs },
   threeUp: { flexDirection: "row", gap: spacing.md },
   sipMeta: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
   effRow: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg },

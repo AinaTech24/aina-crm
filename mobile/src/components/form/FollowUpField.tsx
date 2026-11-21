@@ -13,7 +13,7 @@ export function FollowUpField({ value, onChange, label = "Next follow-up (option
     const d = new Date(); d.setDate(d.getDate() + days);
     onChange(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${time}`);
   };
-  const picker = <DateTimePicker value={new Date(`${date || "2026-01-01"}T${time}:00`)} mode="time" onChange={(event, d) => {
+  const picker = <DateTimePicker value={new Date(`${date || "2026-01-01"}T${time}:00`)} mode="time" display={Platform.OS === "ios" ? "spinner" : "default"} onChange={(event, d) => {
     if (Platform.OS === "android") setOpen(false);
     if (event.type === "set" && d) onChange(`${date}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
   }} />;

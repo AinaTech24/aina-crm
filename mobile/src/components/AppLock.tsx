@@ -112,7 +112,7 @@ export function AppLock() {
           <Text style={{ color: palette.white, fontWeight: fontWeight.semibold }}>Unlock</Text>
         </Pressable>
 
-        <Pressable onPress={() => { setLocked(false); signOut(); }} hitSlop={8} style={{ marginTop: spacing.xl }} accessibilityRole="button">
+        <Pressable onPress={() => { setLocked(false); signOut(); }} style={{ marginTop: spacing.lg, minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md }} accessibilityRole="button">
           <Text variant="caption" tone="muted">Can't unlock? Sign out</Text>
         </Pressable>
       </View>

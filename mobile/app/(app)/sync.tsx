@@ -10,6 +10,7 @@ import { useOfflineQueue, editableQueueFields, type QueuedWrite } from "../../sr
 import { confirmDelete } from "../../src/lib/confirm";
 import { toast } from "../../src/lib/toast";
 import { spacing } from "../../src/theme/tokens";
+import { fmtDateTime } from "../../src/lib/format";
 
 export default function SyncScreen() {
   const router = useRouter();
@@ -28,7 +29,7 @@ export default function SyncScreen() {
       <Button label={flushing ? "Syncing…" : "Sync now"} disabled={flushing} onPress={() => run(flush)} />
       {items.map((item) => <Card key={item.id} style={{ gap: spacing.sm }}>
         <Text variant="label">{item.label}</Text>
-        <Text variant="caption" tone="muted">{new Date(item.at).toLocaleString()} · {item.status === "failed" ? "Needs review" : item.attempts ? "Waiting to retry" : "Pending"}</Text>
+        <Text variant="caption" tone="muted">{fmtDateTime(item.at)} · {item.status === "failed" ? "Needs review" : item.attempts ? "Waiting to retry" : "Pending"}</Text>
         {item.error ? <Text tone="danger">{item.error}</Text> : null}
         <Button label={expanded === item.id ? "Hide saved details" : "Inspect saved details"} variant="ghost" onPress={() => setExpanded(expanded === item.id ? null : item.id)} />
         {expanded === item.id ? <View style={{ gap: spacing.xs }}>{Object.entries((item.body ?? {}) as Record<string, unknown>).filter(([key, value]) => ["name", "phone", "email", "subject", "notes", "note", "status", "nextFollowUpAt", "occurredAt"].includes(key) && value != null).map(([key, value]) => <Text selectable key={key} variant="caption">{key.replace(/([A-Z])/g, " $1")}: {String(value)}</Text>)}</View> : null}

@@ -31,7 +31,9 @@ export const MENU: MenuGroup[] = [
     title: "Overview",
     items: [
       { key: "attendance", label: "Attendance", icon: "clock", route: "/m/attendance" },
-      { key: "review", label: "Monthly Review", icon: "clipboard", route: "/m/review" },
+      // Net sales, SIP health and efforts all require reports.business / reports.manage
+      // on the server — an RM used to open this to a page of ₹0 tiles.
+      { key: "review", label: "Monthly Review", icon: "clipboard", route: "/m/review", anyCap: ["reports.business", "reports.manage"] },
       { key: "business", label: "Business", icon: "bar-chart-2", route: "/m/business", anyCap: ["dashboard.view.owner", "reports.business", "reports.manage"] },
     ],
   },

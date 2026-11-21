@@ -39,6 +39,7 @@ function AnimatedCard({ children, onPress, onLongPress, style, padded = true, fl
   if (!onPress && !onLongPress) return <View style={[base, style]}>{children}</View>;
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       onLongPress={onLongPress}
       onPressIn={() => (scale.value = withTiming(0.98, { duration: 90 }))}
@@ -53,7 +54,7 @@ function StaticCard({ children, onPress, onLongPress, style, padded = true, flat
   const base = baseStyle(padded, flat);
   if (!onPress && !onLongPress) return <View style={[base, style]}>{children}</View>;
   return (
-    <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [base, pressed && { opacity: 0.92 }, style]}>
+    <Pressable accessibilityRole="button" onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [base, pressed && { opacity: 0.92 }, style]}>
       {children}
     </Pressable>
   );

@@ -19,7 +19,7 @@ import { Card } from "../../../src/components/ui/Card";
 import { Text } from "../../../src/components/ui/Text";
 import { StatusPill } from "../../../src/components/ui/StatusPill";
 import { Skeleton } from "../../../src/components/ui/Skeleton";
-import { useMe } from "../../../src/api/me";
+import { useMe, hasAnyCap } from "../../../src/api/me";
 import { queuedPatch, useOfflineQueue } from "../../../src/lib/offlineQueue";
 import { useDashboardHome, useMyDay, useMyPerformance, isoDay, type Kpi, type DayMeeting, type DayFollowup, type DayTask, type Touchpoint, type AgendaDay, type MyPerformance, type PerfKpi } from "../../../src/features/dashboard/api";
 import { useCommandCenter, toneColor, featherIcon, toMobileRoute, type CommandGroup, type CommandItem } from "../../../src/features/command-center/api";
@@ -28,7 +28,7 @@ import { startCall } from "../../../src/features/activities/callAndLog";
 import { openWhatsApp } from "../../../src/features/activities/whatsapp";
 import { useAttendance, findDay, isoDay as attIsoDay } from "../../../src/features/attendance/api";
 import { toast } from "../../../src/lib/toast";
-import { inr, initials, titleCase } from "../../../src/lib/format";
+import { inr, initials, titleCase, fmtTime } from "../../../src/lib/format";
 import { spacing, palette, radius, fontWeight } from "../../../src/theme/tokens";
 import { toneColors, type Tone } from "../../../src/theme";
 import { asIcon } from "../../../src/lib/icons";
@@ -43,7 +43,8 @@ const openWa = (
   text: string,
   subject?: { type: "investor" | "lead"; id: string | null; name?: string | null; purpose?: string }
 ) => openWhatsApp({ phone, text, subjectType: subject?.type, subjectId: subject?.id, name: subject?.name, purpose: subject?.purpose });
-function timeLabel(at?: string | null): string { if (!at) return ""; const d = new Date(at); return isNaN(d.getTime()) ? "" : d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }); }
+/** India time, whatever zone the phone is in; "" for none. */
+const timeLabel = (at?: string | null): string => fmtTime(at);
 const PRIORITY_TONE: Record<string, Tone> = { urgent: "danger", high: "warning", normal: "info", low: "neutral" };
 
 // ── Week strip helpers ──
@@ -63,6 +64,10 @@ const DOT_COLORS = { meetings: palette.brand, followups: palette.warning, tasks:
 /** Command-queue groups already shown by the day's plan / touchpoints — excluded
  *  from "Needs you now" so the same item never appears twice on Home. */
 const PLAN_COVERS = new Set(["tasks_overdue", "lead_followups", "meetings_today", "birthdays_today", "birthdays"]);
+/** Home worklist chips the day's plan already lists item by item (on today). */
+const PLAN_CHIPS = new Set(["tasksOverdue", "tasksToday", "followupsDue", "meetingsToday"]);
+/** Days the attendance seed marks as not a working day — no clock-in nudge. */
+const OFF_DAY = new Set(["week_off", "holiday", "on_leave"]);
 
 export default function Home() {
   const router = useRouter();
@@ -111,8 +116,18 @@ export default function Home() {
 
   const kpis = dash.data?.kpis ?? [];
   const byKey = (k: string): Kpi | undefined => kpis.find((x) => x.key === k);
-  const fmt = (k?: Kpi): string => (k ? (k.format === "inr" ? inr(k.value) : k.value.toLocaleString("en-IN")) : "—");
-  const attention = (dash.data?.worklist ?? []).filter((w) => w.count > 0);
+  // A figure the server did not send is "—", never ₹0 / 0.
+  const fmt = (k?: Kpi): string => {
+    if (!k || k.value == null || !Number.isFinite(Number(k.value))) return "—";
+    return k.format === "inr" ? inr(k.value) : Number(k.value).toLocaleString("en-IN");
+  };
+  const caps = me.data?.capabilities;
+  const canLead = hasAnyCap(caps, ["lead.edit.all", "lead.edit.assigned"]);
+  const canMeet = hasAnyCap(caps, ["review_meeting.manage.all", "review_meeting.manage.assigned"]);
+  // Counts the day's plan doesn't already list (on today it lists overdue and
+  // today's tasks, follow-ups and meetings one by one — the chip repeated them).
+  const planShown = isToday && !day.isError && !!day.data;
+  const attention = (dash.data?.worklist ?? []).filter((w) => w.count > 0 && !(planShown && PLAN_CHIPS.has(w.key)));
   const recent = useRecentlyViewed((s) => s.items);
 
   const md = day.data;
@@ -139,7 +154,6 @@ export default function Home() {
 
       {manager || operations ? <Card style={{ marginTop: spacing.lg }}>
         <Text variant="subtitle">{manager ? (roles.includes("owner") ? "Firm overview" : "Your branch") : operations ? "Operations desk" : "Your day, in focus"}</Text>
-        <Text tone="muted" style={{ marginTop: spacing.xs }}>{manager ? "Review achievement, team workload and business." : operations ? "Enter business and resolve pending client work." : "Start with overdue work, then your next meeting or follow-up."}</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginTop: spacing.sm }}>
           {(manager ? [{ label: "Monthly targets", route: "/m/mobile-targets" }, { label: "Team tasks", route: "/(app)/(tabs)/tasks?due=overdue" }, { label: "Business", route: "/m/business-entries" }]
             : operations ? [{ label: "Enter business", route: "/m/business-entries?create=1" }, { label: "Service requests", route: "/m/service-requests" }, { label: "Tasks", route: "/(app)/(tabs)/tasks" }]
@@ -171,15 +185,16 @@ export default function Home() {
       <View style={styles.quickRow}>
         <QuickAction icon="phone" label="Log call" onPress={() => router.push("/m/activities/new" as any)} />
         <QuickAction icon="check-square" label="New task" onPress={() => router.push("/m/tasks/new" as any)} />
-        <QuickAction icon="trending-up" label="New lead" onPress={() => router.push("/m/leads/new" as any)} />
-        <QuickAction icon="video" label="Meeting" onPress={() => router.push("/m/review-meetings/new" as any)} />
+        {/* Only the creates the server will accept from this user. */}
+        {canLead ? <QuickAction icon="trending-up" label="New lead" onPress={() => router.push("/m/leads/new" as any)} /> : null}
+        {canMeet ? <QuickAction icon="video" label="Meeting" onPress={() => router.push("/m/review-meetings/new" as any)} /> : null}
       </View>
 
       {/* Attention chips (overdue / reviews due — counts that aren't in today's plan) */}
       {attention.length > 0 ? (
         <View style={styles.chipsRow}>
           {attention.map((w) => (
-            <Pressable key={w.key} style={[styles.attnChip, { backgroundColor: toneColors(w.tone).bg }]} onPress={() => router.push(w.href as any)}>
+            <Pressable key={w.key} accessibilityRole="button" style={[styles.attnChip, { backgroundColor: toneColors(w.tone).bg }]} onPress={() => router.push(w.href as any)}>
               <Feather name={asIcon(w.icon)} size={12} color={toneColors(w.tone).fg} />
               <Text variant="caption" style={{ color: toneColors(w.tone).fg, fontWeight: fontWeight.semibold }}>{w.count} {w.label.toLowerCase()}</Text>
             </Pressable>
@@ -193,7 +208,7 @@ export default function Home() {
           <Feather name="calendar" size={13} color={palette.muted} />
           <Text variant="caption" tone="faint" style={{ letterSpacing: 0.6 }}>MY SCHEDULE</Text>
         </View>
-        <Pressable onPress={() => router.push("/m/calendar" as any)} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+        <Pressable onPress={() => router.push("/m/calendar" as any)} accessibilityRole="button" style={{ flexDirection: "row", alignItems: "center", gap: 2, minHeight: 44, paddingLeft: spacing.sm }}>
           <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Full calendar</Text>
           <Feather name="chevron-right" size={13} color={palette.brand} />
         </Pressable>
@@ -257,8 +272,8 @@ export default function Home() {
 
       {/* Clock-in nudge — only while the day is still unstarted, so it disappears
           the moment it stops being useful rather than nagging all day. */}
-      {attendance.data && !todayAttendance?.clock_in_at ? (
-        <Pressable style={styles.clockBanner} onPress={() => router.push("/m/attendance" as any)}>
+      {attendance.data && !todayAttendance?.clock_in_at && !OFF_DAY.has(String(todayAttendance?.status ?? "")) ? (
+        <Pressable style={styles.clockBanner} accessibilityRole="button" onPress={() => router.push("/m/attendance" as any)}>
           <View style={styles.clockIcon}><Feather name="log-in" size={18} color={toneColors("success").fg} /></View>
           <View style={{ flex: 1 }}>
             <Text variant="body" style={{ fontWeight: fontWeight.semibold }}>You haven't clocked in</Text>
@@ -309,7 +324,7 @@ export default function Home() {
           <SectionLabel icon="clock" text="RECENTLY VIEWED" />
           <Card flat style={{ padding: 0, overflow: "hidden" }}>
             {recent.map((r, i) => (
-              <Pressable key={`${r.type}-${r.id}`} style={[styles.row, i < recent.length - 1 && styles.divider]} onPress={() => router.push(`/m/${r.type === "investor" ? "investors" : "leads"}/${r.id}` as any)}>
+              <Pressable key={`${r.type}-${r.id}`} accessibilityRole="button" style={[styles.row, i < recent.length - 1 && styles.divider]} onPress={() => router.push(`/m/${r.type === "investor" ? "investors" : "leads"}/${r.id}` as any)}>
                 <View style={[styles.avatar, { backgroundColor: palette.violet }]}><Text style={{ color: palette.white, fontWeight: fontWeight.bold, fontSize: 12 }}>{initials(r.name)}</Text></View>
                 <Text variant="body" style={{ flex: 1, color: palette.ink }} numberOfLines={1}>{r.name}</Text>
                 <Text variant="caption" tone="faint">{r.type === "investor" ? "Client" : "Lead"}</Text>
@@ -337,7 +352,7 @@ function UrgentGroup({ g, router }: { g: CommandGroup; router: ReturnType<typeof
       </View>
       {shown.map((it) => <UrgentRow key={it.itemKey} it={it} router={router} />)}
       {g.count > shown.length && g.href ? (
-        <Pressable style={styles.moreRow} onPress={() => { const r = toMobileRoute(g.href!); if (r) router.push(r as any); }}>
+        <Pressable style={styles.moreRow} accessibilityRole="button" onPress={() => { const r = toMobileRoute(g.href!); if (r) router.push(r as any); }}>
           <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>See all {g.count}</Text>
         </Pressable>
       ) : null}
@@ -348,7 +363,7 @@ function UrgentGroup({ g, router }: { g: CommandGroup; router: ReturnType<typeof
 function UrgentRow({ it, router }: { it: CommandItem; router: ReturnType<typeof useRouter> }) {
   const open = () => { const r = toMobileRoute(it.href); if (r) router.push(r as any); };
   return (
-    <Pressable style={styles.planRow} onPress={open}>
+    <Pressable style={styles.planRow} onPress={open} accessibilityRole="button">
       <View style={{ flex: 1 }}>
         <Text variant="body" numberOfLines={1}>{it.title}</Text>
         <Text variant="caption" tone="muted" numberOfLines={1}>
@@ -356,8 +371,9 @@ function UrgentRow({ it, router }: { it: CommandItem; router: ReturnType<typeof 
         </Text>
       </View>
       {it.amount ? <Text variant="caption" style={{ color: palette.ink, fontWeight: fontWeight.semibold }}>{inr(it.amount)}</Text> : null}
+      {/* Call / WhatsApp are logged against the client — without one there is nothing to log to. */}
       <RowActions
-        phone={it.phone}
+        phone={it.client?.id ? it.phone : null}
         onCall={() => startCall({ subjectType: "investor", subjectId: it.client?.id ?? "", name: it.client?.name ?? it.title, phone: it.phone ?? "" })}
         subject={{ type: "investor", id: it.client?.id ?? null, name: it.client?.name, purpose: "Needs attention" }}
       />
@@ -462,20 +478,20 @@ function MeetingRow({ m, onOpen }: { m: DayMeeting; onOpen: () => void }) {
   const subjectType = m.investor_id ? "investor" : "lead";
   const subjectId = m.investor_id ?? m.lead_id ?? "";
   return (
-    <Pressable style={styles.planRow} onPress={onOpen}>
+    <Pressable style={styles.planRow} onPress={onOpen} accessibilityRole="button">
       <View style={[styles.roundIcon, { backgroundColor: palette.brandLight }]}><Feather name="video" size={16} color={palette.brand} /></View>
       <View style={{ flex: 1 }}>
         <Text variant="body" numberOfLines={1}>{m.subject || titleCase(m.meeting_type) || "Meeting"}</Text>
         <Text variant="caption" tone="muted" numberOfLines={1}>{t ? `${t} · ` : ""}{m.client_name ?? "—"}{m.meeting_mode ? ` · ${titleCase(m.meeting_mode)}` : ""}</Text>
       </View>
-      <RowActions phone={m.phone} onCall={() => startCall({ subjectType, subjectId, name: m.client_name ?? "Client", phone: m.phone ?? "" })} subject={{ type: subjectType, id: subjectId, name: m.client_name, purpose: "Meeting" }} />
+      <RowActions phone={subjectId ? m.phone : null} onCall={() => startCall({ subjectType, subjectId, name: m.client_name ?? "Client", phone: m.phone ?? "" })} subject={{ type: subjectType, id: subjectId, name: m.client_name, purpose: "Meeting" }} />
     </Pressable>
   );
 }
 
 function FollowupRow({ f, onOpen }: { f: DayFollowup; onOpen: () => void }) {
   return (
-    <Pressable style={styles.planRow} onPress={onOpen}>
+    <Pressable style={styles.planRow} onPress={onOpen} accessibilityRole="button">
       <View style={[styles.roundIcon, { backgroundColor: f.overdue ? toneColors("danger").bg : palette.warningBg }]}><Feather name="corner-up-right" size={16} color={f.overdue ? toneColors("danger").fg : palette.warning} /></View>
       <View style={{ flex: 1 }}>
         <Text variant="body" numberOfLines={1}>{f.name ?? "Lead"}</Text>
@@ -493,7 +509,7 @@ function TaskRow({ t, busy, onDone, onOpen }: { t: DayTask; busy: boolean; onDon
   return (
     <View style={styles.planRow}>
       <Pressable onPress={onDone} disabled={busy || !!queued} style={{ minWidth: 48, minHeight: 48, justifyContent: "center", alignItems: "center" }} accessibilityRole="button" accessibilityLabel={`Mark "${t.title ?? "task"}" done`}><Feather name="circle" size={22} color={palette.faint} /></Pressable>
-      <Pressable style={{ flex: 1 }} onPress={onOpen}>
+      <Pressable style={{ flex: 1, minHeight: 44, justifyContent: "center" }} onPress={onOpen} accessibilityRole="button">
         <Text variant="body" numberOfLines={1}>{t.title ?? "Task"}</Text>
         <Text variant="caption" numberOfLines={1} style={t.overdue ? { color: toneColors("danger").fg } : undefined} tone={t.overdue ? undefined : "muted"}>
           {queued ? (queued.status === "failed" ? "Completion needs review in Sync" : "Completion saved on phone · Sync pending") : t.overdue ? "Overdue" : timeLabel(t.due_at) || "Due"}
@@ -514,11 +530,11 @@ function TouchpointRow({ t, last, onOpen }: { t: Touchpoint; last: boolean; onOp
   return (
     <View style={[styles.row, !last && styles.divider]}>
       <View style={[styles.roundIcon, { backgroundColor: isBday ? "#FCE7F3" : palette.successBg }]}><Feather name={isBday ? "gift" : "award"} size={16} color={isBday ? "#DB2777" : palette.success} /></View>
-      <Pressable style={{ flex: 1 }} onPress={onOpen}>
+      <Pressable style={{ flex: 1, minHeight: 44, justifyContent: "center" }} onPress={onOpen} accessibilityRole="button">
         <Text variant="body" numberOfLines={1}>{t.name ?? "Client"}</Text>
         <Text variant="caption" tone="muted">{label} · {when}</Text>
       </Pressable>
-      <Pressable onPress={() => openWa(t.whatsapp_phone || t.phone, msg, { type: "investor", id: t.id, name: t.name, purpose: isBday ? "Birthday wish" : "Anniversary wish" })} style={styles.wishBtn}>
+      <Pressable onPress={() => openWa(t.whatsapp_phone || t.phone, msg, { type: "investor", id: t.id, name: t.name, purpose: isBday ? "Birthday wish" : "Anniversary wish" })} style={styles.wishBtn} accessibilityRole="button" accessibilityLabel={`WhatsApp ${t.name ?? "client"} a wish`}>
         <Feather name="message-circle" size={14} color={palette.white} />
         <Text variant="caption" style={{ color: palette.white, fontWeight: fontWeight.semibold }}>Wish</Text>
       </Pressable>
@@ -541,7 +557,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return <View style={{ flex: 1, alignItems: "center" }}><Text style={{ fontSize: 16, fontWeight: fontWeight.bold }} numberOfLines={1}>{value}</Text><Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text></View>;
 }
 function QuickAction({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.quickAction}><View style={styles.quickIcon}><Feather name={asIcon(icon)} size={18} color={palette.brand} /></View><Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text></Pressable>;
+  return <Pressable onPress={onPress} style={styles.quickAction} accessibilityRole="button" accessibilityLabel={label}><View style={styles.quickIcon}><Feather name={asIcon(icon)} size={18} color={palette.brand} /></View><Text variant="caption" tone="muted" numberOfLines={1}>{label}</Text></Pressable>;
 }
 function SectionLabel({ icon, text }: { icon: string; text: string }) {
   return <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.xl, marginBottom: spacing.sm }}><Feather name={asIcon(icon)} size={13} color={palette.muted} /><Text variant="caption" tone="faint" style={{ letterSpacing: 0.6 }}>{text}</Text></View>;
@@ -582,7 +598,7 @@ const styles = StyleSheet.create({
   dayNum: { fontSize: 17, fontWeight: fontWeight.bold },
   dotRow: { flexDirection: "row", gap: 3, height: 5, alignItems: "center" },
   dot: { width: 5, height: 5, borderRadius: 3 },
-  attnChip: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6 },
+  attnChip: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 36, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6 },
   roundIcon: { width: 36, height: 36, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   groupTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs },
   // Caps the day's task list to ~4 rows before it scrolls internally, so a big
@@ -592,6 +608,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
   avatar: { width: 32, height: 32, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
-  iconBtn: { width: 34, height: 34, borderRadius: radius.pill, backgroundColor: palette.surfaceSunken, alignItems: "center", justifyContent: "center" },
-  wishBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: palette.success, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  iconBtn: { width: 40, height: 40, borderRadius: radius.pill, backgroundColor: palette.surfaceSunken, alignItems: "center", justifyContent: "center" },
+  wishBtn: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 40, backgroundColor: palette.success, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
 });

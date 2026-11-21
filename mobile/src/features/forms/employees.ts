@@ -7,7 +7,9 @@
  * generated invite link) — so redirect returns null (go back / stay).
  */
 
+import { Alert, Share } from "react-native";
 import type { FormSpec } from "./types";
+import { toast } from "../../lib/toast";
 
 const u = (v: string) => (v?.trim() ? v.trim() : undefined);
 
@@ -26,6 +28,7 @@ export const employeeForm: FormSpec = {
   validate: (v) => {
     const e: Record<string, string> = {};
     if (!v.email?.trim()) e.email = "Work email is required";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email.trim())) e.email = "Enter a valid email address";
     if (!Array.isArray(v.roles) || v.roles.length === 0) e.roles = "Pick at least one role";
     return Object.keys(e).length ? e : null;
   },
@@ -54,13 +57,26 @@ export const employeeForm: FormSpec = {
     },
   ],
 
+  // A blank name must be LEFT OUT: the route takes name as min(1).optional(),
+  // so "" was a 400 "invalid body" for everyone who skipped the field.
   buildBody: (form) => ({
-    name: form.name,
-    email: form.email,
+    name: u(form.name),
+    email: String(form.email ?? "").trim(),
     roles: Array.isArray(form.roles) ? form.roles : [],
   }),
 
-  // Web shows the generated invite link inline and does not navigate; the
-  // response returns { inviteUrl } (no record id). Just go back.
-  redirect: () => null,
+  // The route returns { inviteUrl, emailSent }. When the email could not be
+  // sent the link is the only way in — the web shows it, so the app must too.
+  afterCreate: (json, _v, { router }) => {
+    const url = typeof json?.inviteUrl === "string" ? json.inviteUrl : null;
+    if (json?.emailSent === false && url) {
+      Alert.alert("Invite created", `The invite email could not be sent. Share this link with them (valid for 7 days):\n\n${url}`, [
+        { text: "Share link", onPress: () => { Share.share({ message: url }).catch(() => {}); router.back(); } },
+        { text: "Done", style: "cancel", onPress: () => router.back() },
+      ]);
+      return;
+    }
+    toast.success("Invite sent");
+    router.back();
+  },
 };

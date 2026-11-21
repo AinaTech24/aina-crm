@@ -20,11 +20,19 @@ import {
   currentPeriod, num, type PiSlice,
 } from "../../../../src/features/business/api";
 import { type Kpi } from "../../../../src/features/dashboard/api";
-import { inr, titleCase } from "../../../../src/lib/format";
+import { inr, monthLabel } from "../../../../src/lib/format";
+import { ApiError } from "../../../../src/api/client";
 import { spacing, palette, radius, fontWeight } from "../../../../src/theme/tokens";
 import { toneColors, type Tone } from "../../../../src/theme";
 
 const CLASS_COLORS = ["#2563EB", "#7C3AED", "#16A34A", "#D97706", "#DC2626", "#0EA5E9", "#DB2777", "#64748B"];
+
+/** Money that moved: green only when it is positive, red when negative, grey at
+ *  nothing — "₹0 net" is not an achievement. */
+const signTone = (n: number): Tone => (n > 0 ? "success" : n < 0 ? "danger" : "neutral");
+/** Why a report card has no figures — never print ₹0 for "couldn't load". */
+const whyMissing = (e: unknown) =>
+  e instanceof ApiError && e.status === 403 ? "Business reports need the Reports permission." : "Couldn't load this — pull to refresh.";
 
 export default function BusinessDashboard() {
   const period = React.useMemo(() => currentPeriod(), []);
@@ -34,15 +42,22 @@ export default function BusinessDashboard() {
   const pi = usePortfolioIntel();
 
   const refetch = () => { kpis.refetch(); netSales.refetch(); sip.refetch(); pi.refetch(); };
-  const refreshing = kpis.isRefetching || netSales.isRefetching || pi.isRefetching;
+  const refreshing = kpis.isRefetching || netSales.isRefetching || sip.isRefetching || pi.isRefetching;
 
   const byKey = (k: string): Kpi | undefined => kpis.data?.kpis.find((x) => x.key === k);
-  const fmtKpi = (k?: Kpi) => (k ? (k.format === "inr" ? inr(k.value) : k.value.toLocaleString("en-IN")) : "—");
-  const scope = kpis.data?.scope === "me" ? "Your book" : "Firm-wide";
+  const fmtKpi = (k?: Kpi) => (!k || k.value == null || !Number.isFinite(Number(k.value)) ? "—" : k.format === "inr" ? inr(k.value) : Number(k.value).toLocaleString("en-IN"));
+  const kpiScope = kpis.data?.scope;
+  const scope = kpiScope === "me" ? "Your book" : kpiScope === "branch" ? "Your branch" : kpiScope === "firm" ? "Firm-wide" : undefined;
 
   const ns = netSales.data?.total;
   const sh = sip.data;
-  const periodLabel = new Date(period + "-01").toLocaleString("en-IN", { month: "long", year: "numeric" });
+  const periodLabel = monthLabel(period);
+  // Net sales + SIP health are the firm's booked business (Business Entries) —
+  // not scoped to a book, so say so when the tiles above are a book or branch.
+  const firmOnly = kpiScope && kpiScope !== "firm" ? " · FIRM-WIDE" : "";
+  // A month with no entries at all has no business figure ("—"), not ₹0.
+  const noEntries = !!ns && num(ns.gross) === 0 && num(ns.redemption) === 0;
+  const money = (v: unknown) => (noEntries ? "—" : inr(num(v)));
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
@@ -66,25 +81,29 @@ export default function BusinessDashboard() {
         )}
 
         {/* This month's business */}
-        <SectionLabel icon="bar-chart-2" text={`BUSINESS · ${periodLabel.toUpperCase()}`} />
+        <SectionLabel icon="bar-chart-2" text={`BUSINESS · ${periodLabel.toUpperCase()}${firmOnly}`} />
         <Card>
           {netSales.isLoading || sip.isLoading ? (
             <Skeleton width="100%" height={60} />
+          ) : netSales.isError && sip.isError ? (
+            <EmptyRow icon="lock" text={whyMissing(netSales.error)} />
           ) : (
             <>
-              <View style={styles.threeUp}>
-                <Big label="Gross" value={inr(num(ns?.gross))} tone="neutral" />
-                <Big label="Redemption" value={inr(num(ns?.redemption))} tone="warning" />
-                <Big label="Net business" value={inr(num(ns?.net))} tone={num(ns?.net) >= 0 ? "success" : "danger"} />
-              </View>
+              {ns ? (
+                <View style={styles.threeUp}>
+                  <Big label="Gross" value={money(ns.gross)} tone="neutral" />
+                  <Big label="Redemption" value={money(ns.redemption)} tone={noEntries || num(ns.redemption) === 0 ? "neutral" : "warning"} />
+                  <Big label="Net business" value={money(ns.net)} tone={noEntries ? "neutral" : signTone(num(ns.net))} />
+                </View>
+              ) : <EmptyRow icon="bar-chart-2" text={whyMissing(netSales.error)} />}
               {sh ? (
                 <View style={styles.sipRow}>
-                  <Mini label="Net SIP" value={inr(num(sh.netSip))} />
+                  <Mini label="Net SIP" value={inr(num(sh.netSip))} tone={signTone(num(sh.netSip))} />
                   <Mini label="Fresh SIP" value={`${inr(num(sh.fresh?.amount))} · ${num(sh.fresh?.count)}`} />
                   <Mini label="Bounced" value={String(num(sh.bounced?.count))} tone={num(sh.bounced?.count) > 0 ? "danger" : "neutral"} />
                 </View>
               ) : null}
-              {num(ns?.gross) === 0 && num(ns?.net) === 0 ? (
+              {noEntries ? (
                 <Text variant="caption" tone="faint" style={{ marginTop: spacing.sm }}>No business booked in this period yet.</Text>
               ) : null}
             </>
@@ -96,6 +115,8 @@ export default function BusinessDashboard() {
         <Card>
           {pi.isLoading ? (
             <Skeleton width="100%" height={80} />
+          ) : pi.isError ? (
+            <EmptyRow icon="pie-chart" text={whyMissing(pi.error)} />
           ) : num(pi.data?.totalAum) === 0 || (pi.data?.byClass.length ?? 0) === 0 ? (
             <EmptyRow icon="pie-chart" text="Asset-class mix appears once folio holdings are imported." />
           ) : (
@@ -103,7 +124,7 @@ export default function BusinessDashboard() {
               {(pi.data?.byClass ?? []).slice(0, 6).map((c, i) => <Bar key={c.label} slice={c} color={CLASS_COLORS[i % CLASS_COLORS.length]} />)}
               <View style={styles.piMeta}>
                 <Mini label="Direct-plan" value={`${Math.round(num(pi.data?.directPlanPct))}%`} />
-                <Mini label="Top AMC" value={pi.data?.byAmc[0]?.label ? `${pi.data.byAmc[0].label} · ${Math.round(pi.data.byAmc[0].pct)}%` : "—"} />
+                <Mini label="Top AMC" value={pi.data?.byAmc?.[0]?.label ? `${pi.data.byAmc[0].label} · ${Math.round(num(pi.data.byAmc[0].pct))}%` : "—"} />
               </View>
               {(pi.data?.warnings ?? []).slice(0, 2).map((w, i) => (
                 <View key={i} style={styles.warn}><Feather name="alert-triangle" size={13} color={toneColors("warning").fg} /><Text variant="caption" style={{ color: palette.ink, flex: 1 }}>{w.text}</Text></View>

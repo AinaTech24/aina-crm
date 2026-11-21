@@ -5,7 +5,7 @@
  */
 
 import type { useRouter } from "expo-router";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 export type FieldType =
   | "text"
@@ -45,6 +45,11 @@ export interface FieldSpec {
   format?: (v: any, form: FormValues) => string;
   /** date: cap the max selectable date at today. */
   maxToday?: boolean;
+  /** date: earliest / latest selectable day, "YYYY-MM-DD" (max wins over maxToday). */
+  min?: string;
+  max?: string;
+  /** select: show a search box over the options (long lists, e.g. countries). */
+  searchable?: boolean;
   keyboard?: "default" | "email-address" | "phone-pad" | "numeric" | "decimal-pad";
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   /** onChange transform (e.g. uppercase PAN, digits-only Aadhaar). */
@@ -70,6 +75,12 @@ export interface FieldSpec {
   searchValue?: (row: any) => string; // default row.id
   searchSublabel?: (row: any) => string;
   searchExtraParams?: Record<string, string>;
+  /** Form key holding the picked record's NAME (e.g. "investorName"), shown
+   *  instead of "Selected" when the id was preset from route params. */
+  searchDisplayKey?: string;
+  /** Resolve the name for a preset id (e.g. GET /api/investors/:id). Used only
+   *  when no label is known yet; return null to fall back to "Selected". */
+  searchInitialLabel?: (id: string) => Promise<string | null>;
 
   // repeater (list of sub-objects, e.g. nominees / referrals)
   itemFields?: FieldSpec[];
@@ -120,6 +131,19 @@ export interface FormSpec {
   afterCreate?: (json: any, v: FormValues, ctx: AfterCreateCtx) => Promise<void> | void;
   /** Derived fields recomputed on every change (e.g. nextReviewAt). */
   derive?: (v: FormValues) => Partial<FormValues> | null;
+  /**
+   * Side effect run after every form change (a useEffect) — for work `derive`
+   * can't do synchronously, e.g. an async lookup whose answer should show the
+   * moment it lands: call `rederive()` then (derive re-runs on the current form).
+   * May return a cleanup, run before the next change.
+   */
+  effect?: (v: FormValues, ctx: { setField: (key: string, value: any) => void; rederive: () => void }) => void | (() => void);
+  /**
+   * A 409 whose body the form can act on (e.g. `{ existing }` — a client in the
+   * Trash to restore). Return what to show in place of the error line, or null
+   * for the plain message.
+   */
+  on409?: (body: any, ctx: AfterCreateCtx & { form: FormValues; dismiss: () => void }) => ReactNode | null;
   /** TanStack query keys to invalidate on success (for list freshness). */
   invalidate?: string[];
   /** A live notice under the first section (e.g. the lead duplicate scan). It

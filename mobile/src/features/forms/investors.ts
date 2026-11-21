@@ -232,6 +232,21 @@ export const investorForm: FormSpec = {
     return Object.keys(out).length ? out : null;
   },
 
+  // `derive` starts the pincode lookup but can only fill on the NEXT change;
+  // watch for the answer and re-run derive when it lands (blanks only — derive's
+  // own rule), so city / state appear at once. pincodeHint reads the cache
+  // without asking again, so a failed lookup is not retried in a loop.
+  effect: (v, { rederive }) => {
+    if (!pinToFill(v)) return;
+    const addr = addrOf(v);
+    if (pincodeHint(addr)) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      if (pincodeHint(addr) || ++tries >= 40) { clearInterval(timer); rederive(); }
+    }, 250);
+    return () => clearInterval(timer);
+  },
+
   validate: (v) => {
     const e: Record<string, string> = {};
     const kind = clientKind(v.investorCategory);

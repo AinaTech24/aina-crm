@@ -5,14 +5,11 @@
  */
 
 import React from "react";
-import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { FormScreen } from "../../../../src/components/form/FormScreen";
-import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
-import { EmptyState } from "../../../../src/components/states";
+import { WebOnlyState } from "../../../../src/components/WebOnlyState";
 import { getForm } from "../../../../src/features/forms";
 import { MENU } from "../../../../src/navigation/menu";
-import { palette } from "../../../../src/theme/tokens";
 
 export default function GenericModuleNew() {
   const { module } = useLocalSearchParams<{ module: string }>();
@@ -21,16 +18,7 @@ export default function GenericModuleNew() {
 
   if (!spec) {
     const item = MENU.flatMap((g) => g.items).find((it) => it.key === module);
-    return (
-      <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
-        <ScreenHeader title={item?.label ? `New ${item.label}` : "New"} />
-        <EmptyState
-          icon="edit-3"
-          title="Form coming up"
-          message="This module's create form is next on the build list."
-        />
-      </View>
-    );
+    return <WebOnlyState title={item?.label ? `New ${item.label}` : "New"} webPath={`/dashboard/${module ?? ""}/new`} icon="edit-3" />;
   }
 
   return <FormScreen spec={spec} />;

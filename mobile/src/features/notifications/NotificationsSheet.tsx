@@ -14,7 +14,7 @@ import { Text } from "../../components/ui/Text";
 import { toMobileRoute } from "../command-center/api";
 import { timeAgo } from "../../lib/format";
 import { palette, spacing, radius, fontWeight } from "../../theme/tokens";
-import { useNotifications, useMarkRead, isUnread, type AppNotification } from "./api";
+import { useNotifications, useMarkRead, isUnread, unreadCount, type AppNotification } from "./api";
 
 const SHOWN = 6;
 
@@ -24,10 +24,10 @@ export function NotificationsSheet({ visible, onClose }: { visible: boolean; onC
   const markRead = useMarkRead();
 
   const rows = (data?.notifications ?? []).slice(0, SHOWN);
-  const unread = (data?.notifications ?? []).filter(isUnread);
+  const unread = unreadCount(data);
 
   const open = (n: AppNotification) => {
-    if (isUnread(n) && n.id) markRead.mutate({ ids: [n.id] });
+    if (isUnread(n)) markRead.mutate({ ids: [n.id] });
     const route = n.linkUrl ? toMobileRoute(n.linkUrl) : null;
     onClose();
     if (route) router.push(route as any);
@@ -40,8 +40,8 @@ export function NotificationsSheet({ visible, onClose }: { visible: boolean; onC
 
   return (
     <BottomSheet visible={visible} onClose={onClose} title="Notifications">
-      {unread.length > 0 ? (
-        <Pressable onPress={() => markRead.mutate({ all: true })} hitSlop={8} style={styles.markAll}>
+      {unread > 0 ? (
+        <Pressable onPress={() => markRead.mutate({ all: true })} disabled={markRead.isPending} accessibilityRole="button" style={styles.markAll}>
           <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Mark all read</Text>
         </Pressable>
       ) : null}
@@ -53,7 +53,7 @@ export function NotificationsSheet({ visible, onClose }: { visible: boolean; onC
         </View>
       ) : (
         rows.map((n, i) => (
-          <Pressable key={n.id ?? i} style={[styles.row, i < rows.length - 1 && styles.divider]} onPress={() => open(n)}>
+          <Pressable key={n.id ?? i} accessibilityRole="button" style={[styles.row, i < rows.length - 1 && styles.divider]} onPress={() => open(n)}>
             <View style={[styles.dot, { backgroundColor: isUnread(n) ? palette.brand : "transparent" }]} />
             <View style={{ flex: 1 }}>
               <Text variant="body" numberOfLines={2} style={{ fontWeight: (isUnread(n) ? fontWeight.semibold : fontWeight.regular) }}>{n.title ?? "Notification"}</Text>
@@ -64,7 +64,7 @@ export function NotificationsSheet({ visible, onClose }: { visible: boolean; onC
         ))
       )}
 
-      <Pressable onPress={viewAll} style={styles.viewAll}>
+      <Pressable onPress={viewAll} accessibilityRole="button" style={styles.viewAll}>
         <Text variant="body" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>View all notifications</Text>
         <Feather name="chevron-right" size={16} color={palette.brand} />
       </Pressable>
@@ -73,10 +73,10 @@ export function NotificationsSheet({ visible, onClose }: { visible: boolean; onC
 }
 
 const styles = StyleSheet.create({
-  markAll: { alignSelf: "flex-end", marginBottom: spacing.sm },
+  markAll: { alignSelf: "flex-end", minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs },
   empty: { alignItems: "center", paddingVertical: spacing.xl },
   row: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, paddingVertical: spacing.md },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },
   dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
-  viewAll: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, paddingTop: spacing.md, marginTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
+  viewAll: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, minHeight: 44, paddingTop: spacing.md, marginTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.line },
 });

@@ -21,7 +21,7 @@ export function currentPeriod(): string {
 }
 
 // ── Headline KPIs (reuse the home endpoint) ──
-export interface HomeKpis { scope: "firm" | "me"; kpis: Kpi[] }
+export interface HomeKpis { scope: "firm" | "branch" | "me"; kpis: Kpi[] }
 export function useBusinessKpis() {
   return useQuery({
     queryKey: ["dashboard-home"],

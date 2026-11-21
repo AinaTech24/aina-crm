@@ -39,6 +39,7 @@ export function DateField({
   required,
   error,
   max,
+  min,
   placeholder = "Select date",
   help,
 }: {
@@ -49,6 +50,8 @@ export function DateField({
   error?: string;
   /** Max selectable date as ISO ("YYYY-MM-DD"). */
   max?: string;
+  /** Min selectable date as ISO ("YYYY-MM-DD"). */
+  min?: string;
   placeholder?: string;
   help?: string;
 }) {
@@ -69,6 +72,8 @@ export function DateField({
       <View style={{ flexDirection: "row", gap: spacing.sm }}>
         <Pressable
           style={[styles.control, error ? { borderColor: palette.danger } : null]}
+          accessibilityRole="button"
+          accessibilityLabel={`${label}, ${value ? pretty(value) : placeholder}`}
           onPress={() => {
             setTemp(value ? fromISO(value) : new Date());
             setOpen(true);
@@ -103,6 +108,7 @@ export function DateField({
           mode="date"
           display="default"
           maximumDate={max ? fromISO(max) : undefined}
+          minimumDate={min ? fromISO(min) : undefined}
           onChange={onAndroidChange}
         />
       ) : null}
@@ -115,6 +121,7 @@ export function DateField({
             mode="date"
             display="spinner"
             maximumDate={max ? fromISO(max) : undefined}
+            minimumDate={min ? fromISO(min) : undefined}
             onChange={(_e, d) => d && setTemp(d)}
             style={{ alignSelf: "center" }}
           />

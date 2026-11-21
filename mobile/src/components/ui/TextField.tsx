@@ -20,6 +20,7 @@ export function TextField({
   autoCapitalize = "sentences",
   secureTextEntry,
   disabled,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -32,6 +33,8 @@ export function TextField({
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   secureTextEntry?: boolean;
   disabled?: boolean;
+  /** Hard cap on typed characters (match the server's zod .max()). */
+  maxLength?: number;
 }) {
   return (
     <View style={{ marginBottom: spacing.lg }}>
@@ -40,7 +43,7 @@ export function TextField({
         {required ? <Text style={{ color: palette.danger }}> *</Text> : null}
       </Text>
       <TextInput
-        style={[styles.input, multiline && styles.multiline, error && { borderColor: palette.danger }]}
+        style={[styles.input, multiline && styles.multiline, error && { borderColor: palette.danger }, disabled && { opacity: 0.6 }]}
         editable={!disabled}
         accessibilityLabel={label}
         value={value}
@@ -51,6 +54,7 @@ export function TextField({
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
         secureTextEntry={secureTextEntry}
+        maxLength={maxLength}
       />
       {error ? (
         <Text variant="caption" tone="danger" style={{ marginTop: 4 }}>

@@ -71,9 +71,9 @@ export function BottomSheet({
     <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.root} ref={rootRef} collapsable={false}>
         <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-          <Pressable style={styles.backdrop} onPress={onClose} />
+          <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" />
         </Animated.View>
-        <Animated.View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) + kbOverlap }, sheetStyle]}>
+        <Animated.View accessibilityViewIsModal style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) + kbOverlap }, sheetStyle]}>
           <View style={styles.grabber} />
           {title ? (
             <Text variant="subtitle" style={{ marginBottom: spacing.md }}>

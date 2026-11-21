@@ -109,16 +109,24 @@ const ICON_MAP: Record<string, string> = {
 };
 export const featherIcon = (lucide: string) => ICON_MAP[lucide] ?? "alert-circle";
 
+/** Query params a native screen understands, kept when a web link is mapped. */
+const KEEP_QUERY: Record<string, string[]> = {
+  // Tasks tab reads ?due=overdue|today and ?approval=mine (approval notifications).
+  "/tasks": ["approval", "due"],
+};
+
 /** Convert a web /dashboard/... href to the mobile route (best-effort). */
 export function toMobileRoute(href: string): string | null {
   if (!href?.startsWith("/dashboard/")) return null;
-  const path = href.replace(/^\/dashboard\//, "").split("?")[0].replace(/\/+$/, "");
+  const [rawPath, rawQuery = ""] = href.replace(/^\/dashboard\//, "").split("?");
+  const path = rawPath.replace(/\/+$/, "");
   const seg = path.split("/").filter(Boolean);
   if (seg.length === 0) return null;
   // Web pages whose native screen lives at a different path, and pages the CRM
   // removed (it redirects them; older notifications still link to them). Without
   // this /dashboard/tasks/daily opened /m/tasks/daily, read as a task id.
   const ALIASES: Record<string, string> = {
+    tasks: "/tasks",
     "tasks/daily": "/tasks", "tasks/daily/team": "/tasks", "tasks/weekly-pack": "/tasks",
     "my-day": "/home", "command-center": "/home", "next-best-action": "/home",
     "pipeline-board": "/leads", lifecycle: "/leads", opportunities: "/m/opportunities",
@@ -126,6 +134,10 @@ export function toMobileRoute(href: string): string | null {
     "compliance/command-center": "/home", "compliance/amfi-circulars": "/home", "content-library": "/home",
     "complaints/disclosure": "/m/service-requests",
   };
-  if (ALIASES[seg.join("/")]) return ALIASES[seg.join("/")];
-  return "/m/" + seg.join("/");
+  const target = ALIASES[seg.join("/")] ?? "/m/" + seg.join("/");
+  const keep = KEEP_QUERY[target];
+  if (!keep || !rawQuery) return target;
+  const name = (pair: string) => { try { return decodeURIComponent(pair.split("=")[0] ?? ""); } catch { return ""; } };
+  const kept = rawQuery.split("&").filter((pair) => keep.includes(name(pair)));
+  return kept.length ? `${target}?${kept.join("&")}` : target;
 }

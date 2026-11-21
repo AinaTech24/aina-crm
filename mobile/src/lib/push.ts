@@ -12,13 +12,19 @@ import { Platform } from "react-native";
 import { storageGet, storageSet } from "./storage";
 import { PUSH_TOKEN_KEY } from "../config";
 import { registerDevice } from "../api";
+import { isExpoGo } from "../push";
+import { getAccountScope } from "./accountScope";
 
 let configured = false;
+/** `${account}:${expoToken}` registered with the server during THIS launch. */
+const registered = new Set<string>();
 
 /** Install the foreground-notification handler once (safe on every platform). */
 export function configurePushHandler(): void {
   if (configured) return;
   configured = true;
+  // Expo Go (SDK 53+) throws while initialising expo-notifications — see src/push.ts.
+  if (isExpoGo || Platform.OS === "web") return;
   try {
     const Notifications = require("expo-notifications");
     Notifications.setNotificationHandler({
@@ -35,7 +41,7 @@ export function configurePushHandler(): void {
  * projectId — returns null in all those cases.
  */
 export async function registerForPush(sessionToken: string): Promise<string | null> {
-  if (Platform.OS === "web") return null;
+  if (Platform.OS === "web" || isExpoGo) return null;
   let Notifications: any;
   let Constants: any;
   try {
@@ -70,17 +76,22 @@ export async function registerForPush(sessionToken: string): Promise<string | nu
     const expoPushToken = tokenResp?.data;
     if (!expoPushToken) return null;
 
-    // Avoid re-registering an unchanged token every launch.
-    const prev = await storageGet(PUSH_TOKEN_KEY);
-    if (prev !== expoPushToken) {
-      await registerDevice(sessionToken, {
-        expoPushToken,
-        platform: Platform.OS === "ios" ? "ios" : "android",
-        deviceName: Constants?.deviceName ?? undefined,
-        appVersion: Constants?.expoConfig?.version ?? undefined,
-      });
-      await storageSet(PUSH_TOKEN_KEY, expoPushToken);
-    }
+    // Register once per launch per account (a token refresh re-runs this effect).
+    // The token is remembered — for sign-out's unregister — only once the server
+    // has it: a failed POST used to be cached as done, so that phone never
+    // received a push again.
+    const owner = getAccountScope().owner ?? "";
+    const key = `${owner}:${expoPushToken}`;
+    if (registered.has(key)) return expoPushToken;
+    const ok = await registerDevice(sessionToken, {
+      expoPushToken,
+      platform: Platform.OS === "ios" ? "ios" : "android",
+      deviceName: Constants?.deviceName ?? undefined,
+      appVersion: Constants?.expoConfig?.version ?? undefined,
+    });
+    if (!ok) return null;
+    registered.add(key);
+    if ((await storageGet(PUSH_TOKEN_KEY)) !== expoPushToken) await storageSet(PUSH_TOKEN_KEY, expoPushToken);
     return expoPushToken;
   } catch {
     // Any failure (Expo Go, no projectId, network) is non-fatal.

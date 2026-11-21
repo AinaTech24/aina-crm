@@ -20,10 +20,12 @@ import type { FieldSpec, Option } from "../../features/forms/types";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
 
-const TODAY = (() => {
+/** Today as YYYY-MM-DD — computed per render: a module-level constant went stale
+ *  overnight, and a "no later than today" date then refused today itself. */
+const today = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-})();
+};
 
 function normOptions(opts: FieldSpec["options"], form?: Record<string, any>): Option[] {
   const list = typeof opts === "function" ? opts(form ?? {}) : opts;
@@ -57,6 +59,8 @@ export function FieldRenderer({
           onChange={apply}
           placeholder={field.placeholder}
           required={field.required}
+          error={error}
+          searchable={field.searchable}
         />
       );
 
@@ -68,17 +72,18 @@ export function FieldRenderer({
           onChange={onChange}
           required={field.required}
           error={error}
-          max={field.maxToday ? TODAY : undefined}
+          max={field.max ?? (field.maxToday ? today() : undefined)}
+          min={field.min}
           placeholder={field.placeholder}
           help={field.help}
         />
       );
 
     case "lookup":
-      return <LookupField field={field} value={value ?? ""} onChange={onChange} form={form} />;
+      return <LookupField field={field} value={value ?? ""} onChange={onChange} form={form} error={error} />;
 
     case "typeahead":
-      return <TypeaheadField field={field} value={value ?? ""} onChange={onChange} />;
+      return <TypeaheadField field={field} value={value ?? ""} onChange={onChange} error={error} displayLabel={field.searchDisplayKey ? (form?.[field.searchDisplayKey] || undefined) : undefined} />;
 
     case "audience":
       return <AudienceField field={field} value={value ?? ""} onChange={onChange} />;
@@ -95,6 +100,7 @@ export function FieldRenderer({
             ) : null}
           </View>
           <Switch
+            accessibilityLabel={field.label}
             value={!!value}
             onValueChange={onChange}
             trackColor={{ true: palette.brand, false: palette.line }}
@@ -225,7 +231,7 @@ function RepeaterField({
             <Text variant="label" tone="muted">
               {field.itemTitle ? field.itemTitle(row, i) : `#${i + 1}`}
             </Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Remove row" onPress={() => removeRow(i)} hitSlop={8}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Remove row" onPress={() => removeRow(i)} style={styles.removeBtn}>
               <Feather name="trash-2" size={16} color={palette.danger} />
             </Pressable>
           </View>
@@ -259,7 +265,8 @@ function MultiLookupField({ field, value, onChange, form }: { field: FieldSpec; 
     queryFn: () => api.get<any>(field.lookupEndpoint!),
     staleTime: 5 * 60_000,
   });
-  const rows: any[] = (data && data[field.lookupEnvelope ?? "rows"]) || [];
+  const raw = data?.[field.lookupEnvelope ?? "rows"];
+  const rows: any[] = Array.isArray(raw) ? raw : Array.isArray(data) ? data : [];
   const opts = rows
     .filter((r) => !field.lookupFilter || field.lookupFilter(r, form ?? {}))
     .map((r) => ({ value: field.lookupValue ? field.lookupValue(r) : String(r.id), label: field.lookupLabel ? field.lookupLabel(r) : r.name ?? String(r.id) }));
@@ -301,6 +308,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     backgroundColor: palette.surfaceAlt,
   },
+  removeBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginRight: -spacing.sm },
   repHeader: {
     flexDirection: "row",
     alignItems: "center",

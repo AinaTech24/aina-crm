@@ -17,6 +17,7 @@ import { StatusPill } from "../../components/ui/StatusPill";
 import { LoadingState, ErrorState } from "../../components/states";
 import { palette, radius, spacing, fontSize, fontWeight } from "../../theme/tokens";
 import { useProfile, useTwoFaSetup, useTwoFaEnable, useTwoFaDisable } from "./api";
+import { useSession } from "../../state/session";
 
 type Phase = "idle" | "enrolling" | "showBackup";
 
@@ -33,6 +34,7 @@ export function SecuritySettings() {
   const [backup, setBackup] = useState<string[]>([]);
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const signOut = useSession((s) => s.signOut);
 
   if (isLoading) return <View style={styles.screen}><ScreenHeader title="Two-factor authentication" /><LoadingState /></View>;
   if (isError || !data) return <View style={styles.screen}><ScreenHeader title="Two-factor authentication" /><ErrorState onRetry={refetch} /></View>;
@@ -76,6 +78,9 @@ export function SecuritySettings() {
         </Text>
 
         {err ? <Text variant="caption" style={{ color: palette.danger, marginTop: spacing.md }}>{err}</Text> : null}
+        {/* 2FA changes need a sign-in from the last 15 minutes (the server's rule);
+            a refreshed session keeps its original sign-in time, so offer the way. */}
+        {err && /sign in again/i.test(err) ? <Button label="Sign in again" variant="secondary" style={{ marginTop: spacing.sm }} onPress={() => signOut()} /> : null}
 
         {/* ENABLE — idle */}
         {!enabled && phase === "idle" ? (

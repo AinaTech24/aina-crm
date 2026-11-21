@@ -138,10 +138,11 @@ export function OrganisationSettings() {
         <Card>
           {editable("Organisation name (display)", "displayName")}
           {editable("Legal name", "legalName")}
-          <RO label="Owner" value={me?.user.name ?? "—"} note={me?.user.email} />
+          {/* No owner field in /api/tenant — only the owner may be shown as owner. */}
+          {me?.user.roles.includes("owner") ? <RO label="Owner" value={me.user.name ?? "—"} note={me.user.email} /> : null}
           <RO label="ARN" value={t.arn ?? "—"} note="Managed by AINA" />
-          <RO label="Principal EUIN" value={t.principalEuin ?? "—"} note="Managed by AINA" />
-          <RO label="GSTIN" value={t.gstNumber ?? "—"} last />
+          <RO label="Principal EUIN" value={t.principalEuin ?? "—"} note="Managed by AINA" last={!canEdit} />
+          {canEdit ? <RO label="GSTIN" value={t.gstNumber ?? "—"} last /> : null}
         </Card>
 
         <Text style={styles.section}>CONTACT</Text>

@@ -11,7 +11,7 @@ import { Card } from "../ui/Card";
 import { Text } from "../ui/Text";
 import { StatusPill } from "../ui/StatusPill";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
-import { titleCase, fmtDate } from "../../lib/format";
+import { titleCase, fmtDate, parseDate } from "../../lib/format";
 import { taskStatusBadge } from "../../lib/status";
 import { TASK_PRIORITY_TONE, slaInfo, checklistProgress, type Task } from "../../features/tasks/api";
 import { toneColors } from "../../theme";
@@ -31,7 +31,7 @@ export function TaskCard({ task, onPress, compact }: { task: Task; onPress: () =
   const status = taskStatusBadge(task.status);
   const priTone = TASK_PRIORITY_TONE[task.priority ?? ""] ?? "neutral";
   const rail = toneColors(priTone).fg;
-  const overdue = ["open", "in_progress", "blocked"].includes(task.status ?? "") && !!task.dueAt && new Date(task.dueAt).getTime() < Date.now();
+  const overdue = ["open", "in_progress", "blocked"].includes(task.status ?? "") && (parseDate(task.dueAt)?.getTime() ?? Infinity) < Date.now();
   const done = task.status === "completed";
   const sla = slaInfo(task);
   const cl = checklistProgress(task);

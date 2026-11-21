@@ -108,44 +108,83 @@ export async function apiRequest<T = any>(path: string, opts: RequestOptions = {
     throw new ApiError(0, "Network error — check your connection", undefined, "network");
   }
 
-  // 401 → refresh once + retry, else sign out.
+  // 401 → refresh once + retry, else sign out — but ONLY when the server says
+  // the SESSION is gone. A 401 for a wrong current password or a wrong 2FA code
+  // (Profile → Change password, Security → 2FA) is the user's typo, and used to
+  // sign them out with "Your session has expired".
   assertSameAccount();
+  let text: string | null = null;
   if (res.status === 401 && token) {
-    const oldToken = token;
-    if (!refreshes.has(oldToken)) refreshes.set(oldToken, refreshToken(oldToken).finally(() => refreshes.delete(oldToken)));
-    let fresh: string | null | undefined;
-    try { fresh = await refreshes.get(oldToken); }
-    catch { throw new ApiError(0, "Session service unavailable. Your offline changes are safe.", undefined, "network"); }
+    text = await res.text();
     assertSameAccount();
-    if (fresh) {
-      await useSession.getState().setToken(fresh);
+    if (isSessionFailure(safeJson(text))) {
+      text = null;
+      const oldToken = token;
+      if (!refreshes.has(oldToken)) refreshes.set(oldToken, refreshToken(oldToken).finally(() => refreshes.delete(oldToken)));
+      let fresh: string | null | undefined;
+      try { fresh = await refreshes.get(oldToken); }
+      catch { throw new ApiError(0, "Session service unavailable. Your offline changes are safe.", undefined, "network"); }
       assertSameAccount();
-      token = fresh;
-      try {
-        res = await rawFetch(path, opts, token);
-      } catch {
-        throw new ApiError(0, "Network error — check your connection", undefined, "network");
+      if (fresh) {
+        await useSession.getState().setToken(fresh);
+        assertSameAccount();
+        token = fresh;
+        try {
+          res = await rawFetch(path, opts, token);
+        } catch {
+          throw new ApiError(0, "Network error — check your connection", undefined, "network");
+        }
       }
-    }
-    if (res.status === 401) {
-      assertSameAccount();
-      await useSession.getState().signOut();
-      throw new ApiError(401, "Your session has expired. Please sign in again.");
+      if (res.status === 401) {
+        text = await res.text();
+        assertSameAccount();
+        if (!fresh || isSessionFailure(safeJson(text))) {
+          await useSession.getState().signOut();
+          throw new ApiError(401, "Your session has expired. Please sign in again.");
+        }
+      }
     }
   }
 
   // Got an HTTP response → we're online (even a 4xx/5xx means the network is up).
   useConnectivity.getState().setOnline(true);
 
-  const text = await res.text();
+  if (text === null) text = await res.text();
   assertSameAccount();
   const data = text ? safeJson(text) : null;
 
   if (!res.ok) {
-    const message = (data && (data.error || data.message)) || `Request failed (${res.status})`;
-    throw new ApiError(res.status, message, data);
+    throw new ApiError(res.status, serverMessage(data, res.status), data);
   }
   return data as T;
+}
+
+/** The server's own words for "no valid session" (middleware + requireSession
+ *  + /api/auth/refresh). Any other 401 is a wrong password / code — a form error. */
+const SESSION_ERRORS = new Set(["not authenticated", "not signed in", "session revoked", "session expired", "unauthorized", "invalid session"]);
+function isSessionFailure(data: any): boolean {
+  const e = typeof data?.error === "string" ? data.error.trim().toLowerCase() : "";
+  return !e || SESSION_ERRORS.has(e);
+}
+
+/**
+ * The server's message, verbatim — plus the first validation issue when the
+ * message alone is a generic "invalid body" (zod `issues`, or `details.fieldErrors`
+ * from the routes that flatten), so a rejected save says WHICH field.
+ */
+export function serverMessage(data: any, status: number): string {
+  const raw = data?.error ?? data?.message;
+  const base = typeof raw === "string" && raw.trim() ? raw.trim() : `Request failed (${status})`;
+  const issue = Array.isArray(data?.issues) ? data.issues.find((i: any) => typeof i?.message === "string") : null;
+  const fieldErrors = data?.details?.fieldErrors;
+  const field = fieldErrors && typeof fieldErrors === "object"
+    ? (Object.values(fieldErrors).flat().find((m) => typeof m === "string") as string | undefined)
+    : undefined;
+  const detail = issue
+    ? `${Array.isArray(issue.path) && issue.path.length ? `${issue.path.join(".")}: ` : ""}${issue.message}`
+    : field;
+  if (detail && detail !== base && /^(invalid|validation)/i.test(base)) return `${base} — ${detail}`;
+  return base;
 }
 
 function safeJson(text: string): any {

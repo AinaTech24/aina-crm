@@ -8,7 +8,7 @@
  *   - wizard (spec.steps) — a stepper with Back/Next; submit on the last step
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, ScrollView, KeyboardAvoidingView, StyleSheet } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,6 +25,7 @@ import { useFormDraft } from "../../lib/useFormDraft";
 import { useConnectivity } from "../../state/connectivity";
 import { queuedPost } from "../../lib/offlineQueue";
 import { palette, spacing, fontSize, fontWeight } from "../../theme/tokens";
+import { fmtDateTime } from "../../lib/format";
 import type { FormSpec, FormValues, SectionSpec } from "../../features/forms/types";
 
 export function FormScreen({ spec }: { spec: FormSpec }) {
@@ -73,6 +74,11 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
   const [step, setStep] = useState(0);
   // RM double-booking (409 rm_conflict) → surface the clash + "Schedule anyway".
   const [conflicts, setConflicts] = useState<any[] | null>(null);
+  // `busy` disables the button only after a re-render; a fast double tap (or
+  // the keyboard's Done plus the button) could post the record twice.
+  const submitting = useRef(false);
+  // A 409 the spec knows how to answer (spec.on409) — its body, until dismissed.
+  const [conflict409, setConflict409] = useState<any | null>(null);
 
   // Once the edit record loads, hydrate the form from it (once).
   useEffect(() => {
@@ -100,6 +106,29 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
     });
     if (errors[key]) setErrors((e) => ({ ...e, [key]: "" }));
   };
+
+  // spec.effect: async work after a change (e.g. the pincode lookup) can
+  // re-apply derive the moment its answer lands, instead of on the next keystroke.
+  // It also re-renders once (the tick), so a cache-backed readonly line (the
+  // pincode hint) shows even when derive has nothing to set — without
+  // changing `form`, so the effect is not re-triggered by it.
+  const [, bumpTick] = useState(0);
+  const rederive = useCallback(() => {
+    if (spec.derive) {
+      setForm((s) => {
+        const d = spec.derive!(s);
+        return d ? { ...s, ...d } : s;
+      });
+    }
+    bumpTick((n) => n + 1);
+  }, [spec, setForm]);
+  const setFieldRef = useRef(setField);
+  setFieldRef.current = setField;
+  useEffect(() => {
+    if (!spec.effect || !draft.ready) return;
+    return spec.effect(form, { setField: (k, v) => setFieldRef.current(k, v), rederive }) ?? undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, draft.ready]);
 
   // Field keys that are actually visible in the given sections (respects visibleIf).
   const visibleKeysIn = (sections: SectionSpec[]): string[] =>
@@ -131,6 +160,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
   };
 
   const submit = async (opts?: { force?: boolean }) => {
+    if (submitting.current) return;
     setBanner(null);
     if (!opts?.force) {
       const errs = spec.validate?.(form) ?? null;
@@ -149,6 +179,8 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
     }
     setErrors({});
     setConflicts(null);
+    setConflict409(null);
+    submitting.current = true;
     setBusy(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     try {
@@ -183,10 +215,16 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
         return;
       }
+      if (e instanceof ApiError && e.status === 409 && spec.on409 && e.body) {
+        setConflict409(e.body);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+        return;
+      }
       const msg = e instanceof ApiError ? e.message : "Could not save. Please try again.";
       setBanner(msg);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   };
@@ -265,6 +303,12 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
               {banner}
             </Text>
           ) : null}
+          {conflict409 && spec.on409
+            ? spec.on409(conflict409, { router, params, post: api.post, form, dismiss: () => setConflict409(null) }) ??
+              <Text variant="body" tone="danger" center style={{ marginTop: spacing.sm, color: palette.danger }}>
+                {String(conflict409?.error ?? "This record already exists.")}
+              </Text>
+            : null}
         </ScrollView>
 
         <View style={[styles.bar, { paddingBottom: insets.bottom + spacing.md }]}>
@@ -275,7 +319,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
               </View>
               <View style={{ flex: 2 }}>
                 {isLast ? (
-                  <Button label={submitText} onPress={submit} loading={busy} full />
+                  <Button label={submitText} onPress={() => submit()} loading={busy} full />
                 ) : (
                   <Button label="Next" onPress={goNext} full />
                 )}
@@ -284,7 +328,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
           ) : isWizard && !isLast ? (
             <Button label="Next" onPress={goNext} full />
           ) : (
-            <Button label={submitText} onPress={submit} loading={busy} full />
+            <Button label={submitText} onPress={() => submit()} loading={busy} full />
           )}
         </View>
       </KeyboardAvoidingView>
@@ -299,7 +343,7 @@ export function FormScreen({ spec }: { spec: FormSpec }) {
             <Text variant="body" numberOfLines={1}>{c.subject || (c.meeting_type ? String(c.meeting_type).replace(/_/g, " ") : "Meeting")}{c.name ? ` · ${c.name}` : ""}</Text>
             {c.meeting_date ? (
               <Text variant="caption" tone="muted">
-                {new Date(c.meeting_date).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                {fmtDateTime(c.meeting_date)}
                 {c.duration_minutes ? ` · ${c.duration_minutes} min` : ""}
               </Text>
             ) : null}

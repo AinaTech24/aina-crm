@@ -13,7 +13,7 @@ import { Card } from "../../src/components/ui/Card";
 import { Text } from "../../src/components/ui/Text";
 import { Skeleton } from "../../src/components/ui/Skeleton";
 import { ScreenHeader } from "../../src/components/ui/ScreenHeader";
-import { useNotifications, useMarkRead, isUnread, type AppNotification } from "../../src/features/notifications/api";
+import { useNotifications, useMarkRead, isUnread, unreadCount, type AppNotification } from "../../src/features/notifications/api";
 import { toMobileRoute } from "../../src/features/command-center/api";
 import { timeAgo } from "../../src/lib/format";
 import { spacing, palette, radius, fontWeight } from "../../src/theme/tokens";
@@ -25,10 +25,10 @@ export default function Notifications() {
   const markRead = useMarkRead();
 
   const rows = data?.notifications ?? [];
-  const unread = rows.filter(isUnread);
+  const unread = unreadCount(data);
 
   const open = (n: AppNotification) => {
-    if (isUnread(n) && n.id) markRead.mutate({ ids: [n.id] });
+    if (isUnread(n)) markRead.mutate({ ids: [n.id] });
     // Server hrefs are web paths; only follow ones this app can actually render.
     const route = n.linkUrl ? toMobileRoute(n.linkUrl) : null;
     if (route) router.push(route as any);
@@ -38,10 +38,10 @@ export default function Notifications() {
     <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
       <ScreenHeader
         title="Notifications"
-        subtitle={unread.length ? `${unread.length} unread` : "All caught up"}
+        subtitle={unread ? `${unread} unread` : "All caught up"}
         right={
-          unread.length > 0 ? (
-            <Pressable onPress={() => markRead.mutate({ all: true })} hitSlop={8}>
+          unread > 0 ? (
+            <Pressable onPress={() => markRead.mutate({ all: true })} disabled={markRead.isPending} accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.xs }}>
               <Text variant="caption" style={{ color: palette.brand, fontWeight: fontWeight.semibold }}>Mark all read</Text>
             </Pressable>
           ) : undefined
@@ -58,7 +58,7 @@ export default function Notifications() {
         ) : (
           <Card flat style={{ padding: 0, overflow: "hidden" }}>
             {rows.map((n, i) => (
-              <Pressable key={n.id ?? i} style={[styles.row, i < rows.length - 1 && styles.divider, isUnread(n) && styles.unreadRow]} onPress={() => open(n)}>
+              <Pressable key={n.id ?? i} accessibilityRole="button" style={[styles.row, i < rows.length - 1 && styles.divider, isUnread(n) && styles.unreadRow]} onPress={() => open(n)}>
                 <View style={[styles.dot, { backgroundColor: isUnread(n) ? palette.brand : "transparent" }]} />
                 <View style={{ flex: 1 }}>
                   <Text variant="body" numberOfLines={2} style={{ fontWeight: (isUnread(n) ? fontWeight.semibold : fontWeight.regular) }}>{n.title ?? "Notification"}</Text>

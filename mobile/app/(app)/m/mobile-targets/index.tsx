@@ -31,7 +31,7 @@ export default function Targets() {
       setEdits({}); await q.refetch(); toast.success("Monthly targets saved");
     } catch (e) { toast.error(errorMessage(e)); } finally { setBusy(false); }
   };
-  return <View style={{ flex: 1 }}><ScreenHeader title="Targets vs achievement" />
+  return <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}><ScreenHeader title="Targets vs achievement" />
     <Screen scroll padded><MonthField value={period} disabled={editing || busy} onChange={setPeriod} />
       {!valid ? <Text tone="danger">Enter a month such as 2026-09.</Text> : q.isLoading ? <LoadingState /> : q.isError ? <ErrorState onRetry={q.refetch} /> : q.data ? <>
         {!editing && q.data.branches.length ? <SelectField label="View" value={scopeType} options={[{ value: "user", label: "Team member" }, { value: "branch", label: "Branch" }]}

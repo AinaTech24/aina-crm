@@ -8,7 +8,7 @@ import { TypeaheadField } from "../../../../src/components/form/TypeaheadField";
 import { DateField } from "../../../../src/components/form/DateField";
 import { api } from "../../../../src/api/client";
 import { spacing, palette } from "../../../../src/theme/tokens";
-import { inr, titleCase } from "../../../../src/lib/format";
+import { inr, titleCase, fmtDate } from "../../../../src/lib/format";
 import { ErrorState, LoadingState } from "../../../../src/components/states";
 import { toast } from "../../../../src/lib/toast";
 import { errorMessage } from "../../../../src/lib/errors";
@@ -43,6 +43,7 @@ export default function BusinessEntries() {
     setErrors(e); setError(""); if (!Object.keys(e).length) setMode("review");
   };
   const save = async () => {
+    if (busy) return;
     setError(""); setBusy(true);
     try {
       await api.post("/api/mobile/business", { ...form, amount: Number(form.amount) });
@@ -54,7 +55,7 @@ export default function BusinessEntries() {
   const issue = (key: string) => errors[key] ? <Text tone="danger" style={{ marginBottom: spacing.sm }}>{errors[key]}</Text> : null;
   const back = () => { if (busy) return; if (mode === "review") setMode("entry"); else if (mode !== "list") setMode("list"); else router.back(); };
   return <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
-    <ScreenHeader title={mode === "list" ? "Business history" : mode === "review" ? "Review business" : mode === "saved" ? "Business saved" : "Enter business"} subtitle={mode === "entry" ? "Complete the details, then review before saving" : "SIP · Lumpsum · Insurance"} onBack={back} />
+    <ScreenHeader title={mode === "list" ? "Business history" : mode === "review" ? "Review business" : mode === "saved" ? "Business saved" : "Enter business"} onBack={back} />
     {q.isLoading || !draft.ready ? <LoadingState /> : q.isError ? <ErrorState onRetry={q.refetch} /> : mode === "list" || !q.data?.canEnter ? <Screen scroll padded onRefresh={q.refetch} refreshing={q.isRefetching}>
       {q.data?.canEnter ? <Button label="Enter business" onPress={() => setMode("entry")} /> : null}
       <TextField label="Search client" value={search} onChangeText={setSearch} />
@@ -66,7 +67,7 @@ export default function BusinessEntries() {
         <Button label="Clear filters" variant="secondary" onPress={() => { setFilters({ q: "", product: "", rmId: "", from: "", to: "" }); setSearch(""); setPage(0); }} />
       </Card> : null}
       {!q.data?.entries.length ? <Text style={{ marginVertical: spacing.lg }}>No business matches these filters.</Text> : null}
-      {(q.data?.entries || []).map((e: any) => <Card key={`${e.kind}-${e.id}`} style={{ marginTop: spacing.md }}><Text variant="subtitle">{e.client}</Text><Text>{titleCase(e.product)} · {inr(Number(e.amount || 0))}</Text><Text tone="muted">{e.date || "No date"} · {e.rm || "Unassigned"} · {titleCase(e.status)}</Text></Card>)}
+      {(q.data?.entries || []).map((e: any) => <Card key={`${e.kind}-${e.id}`} style={{ marginTop: spacing.md }}><Text variant="subtitle">{e.client}</Text><Text>{titleCase(e.product)} · {inr(Number(e.amount || 0))}</Text><Text tone="muted">{fmtDate(e.date) || "No date"} · {e.rm || "Unassigned"} · {titleCase(e.status)}</Text></Card>)}
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginVertical: spacing.lg }}><Button label="Previous" variant="secondary" disabled={!page} onPress={() => setPage(p => p - 1)} /><Text>Page {page + 1}</Text><Button label="Next" variant="secondary" disabled={!q.data?.hasMore} onPress={() => setPage(p => p + 1)} /></View>
     </Screen> : mode === "saved" ? <Screen padded scroll><Card><Text variant="subtitle">{inr(Number(form.amount))} recorded</Text><Text>{form.client} · {form.name}</Text><Text tone="muted">Saved to your firm's business records.</Text></Card><View style={{ gap: spacing.md, marginTop: spacing.lg }}><Button label="Add another business" onPress={() => { setForm(blank()); setErrors({}); setMode("entry"); }} /><Button label="Done" variant="secondary" onPress={() => { setForm(blank()); setMode("list"); }} /></View></Screen> : <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg }} keyboardShouldPersistTaps="handled">

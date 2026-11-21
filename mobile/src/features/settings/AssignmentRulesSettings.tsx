@@ -21,6 +21,7 @@ import { confirmDelete } from "../../lib/confirm";
 import { titleCase } from "../../lib/format";
 import { palette, spacing, fontSize, fontWeight } from "../../theme/tokens";
 import { useAssignmentRules, useCreateAssignmentRule, useDeleteAssignmentRule, useToggleAssignmentRule, useEmployeesLite } from "./api";
+import { useMe } from "../../api/me";
 
 const SUBJECTS = [{ value: "lead", label: "Leads" }, { value: "investor", label: "Clients" }];
 const STRATEGIES = [
@@ -36,6 +37,10 @@ export function AssignmentRulesSettings() {
   const create = useCreateAssignmentRule();
   const del = useDeleteAssignmentRule();
   const toggle = useToggleAssignmentRule();
+  // The tile opens for settings.desks (back office and ops too), but the rules
+  // routes only accept writes from an owner or branch head — read-only for the rest.
+  const roles = useMe().data?.user.roles ?? [];
+  const canEdit = roles.includes("owner") || roles.includes("branch_head");
 
   const [name, setName] = useState("");
   const [subjectType, setSubjectType] = useState("lead");
@@ -61,13 +66,14 @@ export function AssignmentRulesSettings() {
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Auto-assignment rules" subtitle="Route new leads & clients" onBack={() => router.back()} />
+      <ScreenHeader title="Auto-assignment rules" onBack={() => router.back()} />
       <ScrollView
         contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["3xl"] }}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={palette.brand} />}
         showsVerticalScrollIndicator={false}
       >
+        {canEdit ? <>
         <Text style={styles.section}>ADD A RULE</Text>
         <Card>
           <TextField label="Rule name" value={name} onChangeText={setName} placeholder="e.g. New website leads → sales pod" />
@@ -86,6 +92,7 @@ export function AssignmentRulesSettings() {
           {err ? <Text variant="caption" style={{ color: palette.danger, marginTop: spacing.sm }}>{err}</Text> : null}
           <Button label="Create rule" full style={{ marginTop: spacing.md }} loading={create.isPending} onPress={submit} icon={<Feather name="plus" size={16} color={palette.white} />} />
         </Card>
+        </> : null}
 
         <Text style={styles.section}>RULES</Text>
         {isLoading ? (
@@ -105,14 +112,16 @@ export function AssignmentRulesSettings() {
                   </Text>
                 </View>
                 <Switch
+                  disabled={!canEdit || toggle.isPending}
+                  accessibilityLabel={`${r.name} active`}
                   value={!!activeOf(r)}
                   onValueChange={(v) => toggle.mutate({ id: r.id, isActive: v })}
                   trackColor={{ true: palette.brand, false: palette.line }}
                   thumbColor={palette.white}
                 />
-                <Pressable accessibilityRole="button" accessibilityLabel={`Delete rule ${r.name}`} onPress={() => confirmDelete({ title: "Delete rule?", message: `"${r.name}"` }, () => del.mutate(r.id))} hitSlop={8} style={styles.delBtn}>
+                {canEdit ? <Pressable accessibilityRole="button" accessibilityLabel={`Delete rule ${r.name}`} onPress={() => confirmDelete({ title: "Delete rule?", message: `"${r.name}"` }, () => del.mutate(r.id))} hitSlop={8} style={styles.delBtn}>
                   <Feather name="trash-2" size={16} color={palette.danger} />
-                </Pressable>
+                </Pressable> : null}
               </View>
             ))}
           </Card>

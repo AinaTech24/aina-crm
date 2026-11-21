@@ -1,4 +1,4 @@
-import { inr, inrFull, initials, titleCase, timeAgo, toNumber } from "../format";
+import { inr, inrFull, initials, titleCase, timeAgo, toNumber, parseDate, fmtDate, fmtTime, monthLabel } from "../format";
 
 describe("toNumber", () => {
   it("coerces numbers and numeric strings, else 0", () => {
@@ -56,5 +56,29 @@ describe("timeAgo", () => {
     expect(timeAgo(now - 3 * 3_600_000)).toBe("3h ago");
     expect(timeAgo(now - 2 * 86_400_000)).toBe("2d ago");
     expect(timeAgo("not a date")).toBe("");
+  });
+});
+
+describe("parseDate / India-time formatting", () => {
+  it("reads Postgres text timestamps the same as ISO", () => {
+    const iso = parseDate("2026-11-20T03:30:00.000Z")!.getTime();
+    expect(parseDate("2026-11-20 03:30:00+00")!.getTime()).toBe(iso);
+    expect(parseDate("2026-11-20 09:00:00.123456+05:30")!.getTime()).toBe(iso + 123);
+    expect(parseDate("2026-11-20 09:00:00+0530")!.getTime()).toBe(iso);
+  });
+  it("returns null for empty or bad input", () => {
+    expect(parseDate(null)).toBeNull();
+    expect(parseDate("")).toBeNull();
+    expect(parseDate("not a date")).toBeNull();
+  });
+  it("formats on the India calendar day and clock", () => {
+    // 20:00 UTC is already the next morning in India.
+    expect(fmtDate("2026-11-20 20:00:00+00")).toMatch(/21 Nov 2026/);
+    expect(fmtDate("2026-11-20")).toMatch(/20 Nov 2026/);
+    expect(fmtTime("2026-11-20 03:30:00+00").toLowerCase()).toMatch(/^9:00\s?am$/);
+    expect(fmtDate(undefined)).toBe("");
+  });
+  it("labels a YYYY-MM month without a zone shift", () => {
+    expect(monthLabel("2026-11")).toMatch(/November 2026/);
   });
 });

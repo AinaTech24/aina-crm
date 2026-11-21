@@ -12,12 +12,12 @@ import { Feather } from "@expo/vector-icons";
 import { palette, TOUCH_MIN } from "../theme/tokens";
 import { HeaderProfileButton } from "./HeaderProfileButton";
 import { NotificationsSheet } from "../features/notifications/NotificationsSheet";
-import { useNotifications, isUnread } from "../features/notifications/api";
+import { useNotifications, unreadCount } from "../features/notifications/api";
 
 export function HeaderActions() {
   const router = useRouter();
   const { data } = useNotifications();
-  const unread = (data?.notifications ?? []).filter(isUnread).length;
+  const unread = unreadCount(data);
   const [notifOpen, setNotifOpen] = useState(false);
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>

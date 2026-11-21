@@ -20,10 +20,14 @@ import { palette, radius, spacing, fontSize, fontWeight } from "../../theme/toke
 import { useRiskTemplate, useSaveRiskTemplate } from "./api";
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+/** The server's question key must start with a letter ("1. Age" → "q_1_age"). */
+const questionKey = (s: string, i: number) => { const k = slug(s); return !k ? `q${i + 1}` : /^[a-z]/.test(k) ? k : `q_${k}`.slice(0, 64); };
 
 interface Opt { value?: string; label: string; score: string }
 interface Q { key?: string; label: string; helperText: string; options: Opt[] }
-interface Band { id?: string; label: string; minScore: string; maxScore: string; color: string; description: string }
+// `allocation` is not edited here, but it is the PDF's indicative allocation:
+// carried through so a save from the phone doesn't wipe it.
+interface Band { id?: string; label: string; minScore: string; maxScore: string; color: string; description: string; allocation?: unknown }
 
 export function RiskQuestionnaireSettings() {
   const router = useRouter();
@@ -48,7 +52,7 @@ export function RiskQuestionnaireSettings() {
       key: q.key, label: q.label ?? "", helperText: q.helperText ?? "",
       options: (q.options ?? []).map((o: any) => ({ value: o.value, label: o.label ?? "", score: String(o.score ?? 0) })),
     })));
-    setBands((t.bands ?? []).map((b: any) => ({ id: b.id, label: b.label ?? "", minScore: String(b.minScore ?? 0), maxScore: String(b.maxScore ?? 0), color: b.color ?? "#0ea5e9", description: b.description ?? "" })));
+    setBands((t.bands ?? []).map((b: any) => ({ id: b.id, label: b.label ?? "", minScore: String(b.minScore ?? 0), maxScore: String(b.maxScore ?? 0), color: b.color ?? "#0ea5e9", description: b.description ?? "", allocation: b.allocation })));
     setReady(true);
   }, [data, ready]);
 
@@ -60,24 +64,43 @@ export function RiskQuestionnaireSettings() {
 
   const onSave = () => {
     setMsg(null);
+    // The server's own limits (lib/risk-profile/template.ts), said here in words
+    // instead of a bare "invalid body".
+    const qs = questions.filter((q) => q.label.trim());
+    const bs = bands.filter((b) => b.label.trim());
+    const days = Number(interval);
+    const problem =
+      name.trim().length < 2 ? "Give the questionnaire a name." :
+      !(days >= 30 && days <= 3650) ? "Review interval must be between 30 and 3650 days." :
+      qs.length === 0 ? "Add at least one question." :
+      qs.some((q) => q.label.trim().length < 2) ? "Each question needs a label of at least 2 characters." :
+      qs.some((q) => q.options.filter((o) => o.label.trim()).length < 2) ? "Each question needs at least 2 answers." :
+      qs.some((q) => q.options.some((o) => o.label.trim() && !(Number(o.score) >= -10 && Number(o.score) <= 20))) ? "Answer scores must be between -10 and 20." :
+      bs.length < 2 ? "Add at least 2 risk bands." : null;
+    if (problem) return setMsg(problem);
+    const t = data?.template ?? {};
     const tpl = {
-      name: name.trim() || "Risk profile",
-      reviewIntervalDays: Number(interval) || 365,
-      questions: questions.filter((q) => q.label.trim()).map((q, qi) => ({
-        key: q.key || slug(q.label) || `q${qi}`,
+      name: name.trim(),
+      // Not edited on the phone — sent back as they are so a save keeps them
+      // (requireEmailOtp would otherwise fall back to the server default ON).
+      ...(typeof t.description === "string" ? { description: t.description } : {}),
+      ...(typeof t.requireEmailOtp === "boolean" ? { requireEmailOtp: t.requireEmailOtp } : {}),
+      reviewIntervalDays: days,
+      questions: qs.map((q, qi) => ({
+        key: q.key || questionKey(q.label, qi),
         label: q.label.trim(),
         helperText: q.helperText.trim() || undefined,
         type: "single",
         options: q.options.filter((o) => o.label.trim()).map((o) => ({ value: o.value || slug(o.label) || "opt", label: o.label.trim(), score: Number(o.score) || 0 })),
       })),
-      bands: bands.filter((b) => b.label.trim()).map((b) => ({ id: b.id || slug(b.label), label: b.label.trim(), minScore: Number(b.minScore) || 0, maxScore: Number(b.maxScore) || 0, color: b.color || undefined, description: b.description.trim() || undefined })),
+      bands: bs.map((b) => ({ id: b.id || slug(b.label) || "band", label: b.label.trim(), minScore: Number(b.minScore) || 0, maxScore: Number(b.maxScore) || 0, color: b.color || undefined, description: b.description.trim() || undefined, ...(b.allocation ? { allocation: b.allocation } : {}) })),
     };
     save.mutate(tpl, { onSuccess: () => setMsg("Saved."), onError: (e: any) => setMsg(e?.message ?? "Could not save — check band coverage & unique questions.") });
   };
 
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Risk questionnaire" subtitle="Questions, scoring & bands" onBack={() => router.back()} />
+      <ScreenHeader title="Risk questionnaire" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing["4xl"] }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {!canEdit ? <Card flat style={{ marginBottom: spacing.md }}><Text variant="caption" tone="muted">Only the firm owner can edit this. Shown read-only.</Text></Card> : null}
 
@@ -99,7 +122,7 @@ export function RiskQuestionnaireSettings() {
             {q.options.map((o, oi) => (
               <View key={oi} style={styles.optRow}>
                 <View style={{ flex: 3 }}><TextField label="" value={o.label} onChangeText={(v) => setOpt(qi, oi, { label: v })} placeholder="Answer" /></View>
-                <View style={{ flex: 1 }}><TextField label="" value={o.score} onChangeText={(v) => setOpt(qi, oi, { score: v.replace(/[^0-9-]/g, "") })} keyboardType="number-pad" placeholder="0" /></View>
+                <View style={{ flex: 1 }}><TextField label="" value={o.score} onChangeText={(v) => setOpt(qi, oi, { score: v.replace(/[^0-9-]/g, "") })} keyboardType="numbers-and-punctuation" placeholder="0" /></View>
                 {canEdit ? <Pressable accessibilityRole="button" accessibilityLabel="Remove answer" onPress={() => setQ(qi, { options: q.options.filter((_, j) => j !== oi) })} hitSlop={6} style={{ paddingBottom: 22 }}><Feather name="x" size={16} color={palette.muted} /></Pressable> : null}
               </View>
             ))}
@@ -118,8 +141,8 @@ export function RiskQuestionnaireSettings() {
             </View>
             <TextField label="Label" value={b.label} onChangeText={(v) => setB(bi, { label: v })} placeholder="e.g. Conservative" />
             <View style={{ flexDirection: "row", gap: spacing.md }}>
-              <View style={{ flex: 1 }}><TextField label="Min score" value={b.minScore} onChangeText={(v) => setB(bi, { minScore: v.replace(/\D/g, "") })} keyboardType="number-pad" /></View>
-              <View style={{ flex: 1 }}><TextField label="Max score" value={b.maxScore} onChangeText={(v) => setB(bi, { maxScore: v.replace(/\D/g, "") })} keyboardType="number-pad" /></View>
+              <View style={{ flex: 1 }}><TextField label="Min score" value={b.minScore} onChangeText={(v) => setB(bi, { minScore: v.replace(/[^0-9-]/g, "") })} keyboardType="numbers-and-punctuation" /></View>
+              <View style={{ flex: 1 }}><TextField label="Max score" value={b.maxScore} onChangeText={(v) => setB(bi, { maxScore: v.replace(/[^0-9-]/g, "") })} keyboardType="numbers-and-punctuation" /></View>
             </View>
             <TextField label="Colour (hex)" value={b.color} onChangeText={(v) => setB(bi, { color: v })} autoCapitalize="none" />
             <TextField label="Description (optional)" value={b.description} onChangeText={(v) => setB(bi, { description: v })} />

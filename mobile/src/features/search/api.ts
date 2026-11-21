@@ -14,7 +14,11 @@ import { api } from "../../api/client";
 
 /** `pan_display` is the client's own PAN masked (ABC••••4F), or null when the
  *  column holds a registrar key; the raw PAN is never sent (web /api/search). */
-export interface SearchInvestor { id: string; name: string; pan_display: string | null; minor?: boolean; phone: string | null; email: string | null; segment_tag: string | null }
+export interface SearchInvestor {
+  id: string; name: string; pan_display: string | null; minor?: boolean; phone: string | null; email: string | null; segment_tag: string | null;
+  /** Also on the server's row (web /api/search): client status, the RM's name, and the PAN as the viewer may see it. */
+  status?: string | null; rm_name?: string | null; pan?: string | null;
+}
 export interface SearchLead { id: string; name: string; phone: string | null; email: string | null; stage: string | null; source: string | null }
 export interface SearchFolio { id: string; folio_number: string; amc_name: string | null; aum: string | number | null; investor_name: string | null; investor_id: string | null }
 export interface SearchSip { id: string; scheme_name: string | null; amount: string | number | null; status: string | null; investor_name: string | null; investor_id: string | null }
@@ -34,7 +38,13 @@ export function useSearch(q: string) {
   const term = q.trim();
   return useQuery({
     queryKey: ["search", term],
-    queryFn: () => api.get<SearchResults>("/api/search", { q: term }),
+    // Every group as an array, always — a group the server leaves out (or a
+    // { groups: [] } short-query reply) must not reach .length / .map as undefined.
+    queryFn: async (): Promise<SearchResults> => {
+      const r = await api.get<Partial<SearchResults>>("/api/search", { q: term });
+      const list = <T,>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
+      return { q: r?.q ?? term, investors: list(r?.investors), leads: list(r?.leads), folios: list(r?.folios), sips: list(r?.sips) };
+    },
     enabled: term.length >= MIN_QUERY,
     staleTime: 30_000,
     // Keep the last results visible while the next query flies — a list that

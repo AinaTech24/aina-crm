@@ -65,9 +65,11 @@ export function FirmProfile() {
         <Section title="Regulatory" />
         <Card flat style={{ padding: 0 }}>
           <Row label="ARN" value={t.arn} note="Managed by AINA" />
-          <Row label="Principal EUIN" value={t.principalEuin} note="Managed by AINA" />
-          <Row label="GSTIN" value={t.gstNumber} />
-          <Row label="Owner" value={me?.user.name} note={me?.user.email} last />
+          {/* /api/tenant gives GSTIN only to settings.users holders, and has no
+              owner field: the old "Owner" row printed the VIEWER as the owner. */}
+          <Row label="Principal EUIN" value={t.principalEuin} note="Managed by AINA" last={!canEdit} />
+          {canEdit ? <Row label="GSTIN" value={t.gstNumber} last={!me?.user.roles.includes("owner")} /> : null}
+          {me?.user.roles.includes("owner") ? <Row label="Owner" value={me?.user.name} note={me?.user.email} last /> : null}
         </Card>
 
         <Section title="Contact" />
