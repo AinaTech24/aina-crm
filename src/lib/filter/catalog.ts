@@ -69,7 +69,8 @@ export interface SubjectCatalog {
     | "business_line"
     | "equity_brokerage"
     | "equity_dmat"
-    | "new_client";
+    | "new_client"
+    | "sip_rejection";
   /** Primary table + alias used in compiled SQL. */
   table: string;
   alias: string;
@@ -774,6 +775,37 @@ export const newClientCatalog: SubjectCatalog = {
   relations: {},
 };
 
+/**
+ * SIP rejections (We Care, 2026-11-20 — the firm's "SIP Rejection, Pending &
+ * Repurchase" sheet). One row per rejected debit; "Add. purchase" = recovered
+ * (Zoho "Purchase done"), pending = everything else. Branch and desk are the
+ * responsible RM's (users.branch_id / desk_id), as the sheet groups them.
+ */
+export const sipRejectionCatalog: SubjectCatalog = {
+  subject: "sip_rejection",
+  table: "sip_rejections",
+  alias: "srj",
+  fields: [
+    { key: "rejection_date", label: "Rejection date", type: "date", sql: "srj.rejection_date", ops: COMMON_DATE_OPS },
+    { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM users u JOIN branches b ON b.id = u.branch_id WHERE u.id = srj.assigned_rm_id)", ops: COMMON_STRING_OPS },
+    { key: "desk_name", label: "Desk", type: "string", sql: "(SELECT d.name FROM users u JOIN desks d ON d.id = u.desk_id WHERE u.id = srj.assigned_rm_id)", ops: COMMON_STRING_OPS },
+    { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = srj.assigned_rm_id)", ops: COMMON_STRING_OPS, lookup: "user" },
+    { key: "client_name", label: "Client", type: "string", sql: "(SELECT i.name FROM investors i WHERE i.id = srj.investor_id)", ops: COMMON_STRING_OPS },
+    { key: "scheme_name", label: "Scheme", type: "string", sql: "srj.scheme_name", ops: COMMON_STRING_OPS },
+    { key: "status", label: "Status", type: "enum", sql: "srj.recovery_status", ops: COMMON_ENUM_OPS, enumValues: ["pending", "client_contacted", "bank_issue", "mandate_issue", "reprocessed", "recovered", "not_recoverable"] },
+    { key: "rejection_amount", label: "Rejection value (₹)", type: "currency", sql: "srj.rejection_amount", ops: COMMON_NUMBER_OPS },
+    { key: "purchase_done_amount", label: "Add. purchase value (₹)", type: "currency", sql: "(CASE WHEN srj.recovery_status = 'recovered' THEN srj.rejection_amount ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "purchase_done_count", label: "Add. purchase no.", type: "integer", sql: "(CASE WHEN srj.recovery_status = 'recovered' THEN 1 ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "pending_amount", label: "Pending value (₹)", type: "currency", sql: "(CASE WHEN srj.recovery_status = 'recovered' THEN 0 ELSE srj.rejection_amount END)", ops: COMMON_NUMBER_OPS },
+    { key: "pending_count", label: "Pending no.", type: "integer", sql: "(CASE WHEN srj.recovery_status = 'recovered' THEN 0 ELSE 1 END)", ops: COMMON_NUMBER_OPS },
+    { key: "without_remarks", label: "Without remarks", type: "integer", sql: "(CASE WHEN COALESCE(btrim(srj.remarks), '') = '' THEN 1 ELSE 0 END)", ops: COMMON_NUMBER_OPS },
+    { key: "remarks", label: "Remarks", type: "string", sql: "srj.remarks", ops: COMMON_STRING_OPS },
+    { key: "reason", label: "Reason", type: "string", sql: "srj.rejection_reason", ops: COMMON_STRING_OPS },
+    { key: "source", label: "Recorded from", type: "string", sql: "(CASE WHEN srj.dedup_key LIKE 'zoho-sr:%' THEN 'Zoho SIP Reject' WHEN srj.dedup_key LIKE 'zoho:%' THEN 'Zoho SIP Tracking' ELSE 'RTA / CRM' END)", ops: COMMON_STRING_OPS },
+  ],
+  relations: {},
+};
+
 export const CATALOGS: Record<string, SubjectCatalog> = {
   investor: investorCatalog,
   lead: leadCatalog,
@@ -791,6 +823,7 @@ export const CATALOGS: Record<string, SubjectCatalog> = {
   equity_brokerage: equityBrokerageCatalog,
   equity_dmat: equityDmatCatalog,
   new_client: newClientCatalog,
+  sip_rejection: sipRejectionCatalog,
 };
 
 export function getCatalog(subject: string): SubjectCatalog {

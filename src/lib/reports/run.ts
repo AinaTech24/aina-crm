@@ -27,7 +27,7 @@ import { groupField } from "./grouping";
 import { growthByKey } from "./growth";
 import { findCategory, categorySql, isCategoryKey, type CategoryColumn } from "./categories";
 
-export type ReportSubject = "investor" | "lead" | "task" | "user" | "transaction" | "sip" | "insurance" | "goal" | "service_request" | "claim" | "review_meeting" | "business_line" | "equity_brokerage" | "equity_dmat" | "new_client";
+export type ReportSubject = "investor" | "lead" | "task" | "user" | "transaction" | "sip" | "insurance" | "goal" | "service_request" | "claim" | "review_meeting" | "business_line" | "equity_brokerage" | "equity_dmat" | "new_client" | "sip_rejection";
 
 export type ReportAggregate = "count" | "sum" | "avg" | "min" | "max";
 
@@ -79,6 +79,7 @@ const RECORD_PAGE: Record<string, { col: string; path: string }> = {
   business_line: { col: "entry_id", path: "/dashboard/business-entries/" },
   equity_dmat: { col: "investor_id", path: "/dashboard/investors/" },
   new_client: { col: "id", path: "/dashboard/investors/" },
+  sip_rejection: { col: "investor_id", path: "/dashboard/investors/" },
   transaction: { col: "investor_id", path: "/dashboard/investors/" },
   sip: { col: "investor_id", path: "/dashboard/investors/" },
 };

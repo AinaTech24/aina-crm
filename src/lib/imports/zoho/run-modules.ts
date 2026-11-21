@@ -27,7 +27,7 @@ import { ZohoFileError } from "./workbook";
 import { upsertZohoBrokerageDays } from "@/lib/equity/brokerage-days";
 import { cell as zCell, isoDate as zIsoDate, zohoId as zId } from "./values";
 import {
-  DEFAULT_RISK_BANDS, MODULE_LABEL, brokerageByMonth, categoryFromScore, mapCall, mapLead, mapLineType, mapRiskProfile, mapSipTracking, mapTask, num,
+  DEFAULT_RISK_BANDS, MODULE_LABEL, brokerageByMonth, categoryFromScore, mapCall, mapLead, mapLineType, mapRiskProfile, mapSipReject, mapSipTracking, mapTask, num,
   type MappedTask, type RiskBand, type ZohoModule, type ZohoRecord,
 } from "./modules";
 
@@ -421,6 +421,67 @@ export async function importZohoModule(
         result.created++;
       }
       await insertAll(sipRejections, rows);
+    }
+
+    if (module === "SIP_Reject") {
+      // Every rejected debit, recovered ("Purchase done") or pending, keyed by
+      // the subform row id so a re-sync updates status / remarks instead of
+      // duplicating. Owner = the person responsible (the firm's sheet groups by
+      // it). Stamped escalated: no alert flood for months-old rejections.
+      const lines = records.flatMap(mapSipReject);
+      for (const m of lines) noteOwner(m.owner);
+      finishOwners();
+      const existing = new Map(
+        ((await tx.execute(sql`
+          SELECT id, dedup_key FROM sip_rejections WHERE tenant_id = ${actor.tenantId}::uuid AND dedup_key LIKE 'zoho-sr:%'
+        `)).rows as Array<{ id: string; dedup_key: string }>).map((r) => [r.dedup_key, r.id])
+      );
+      const inserts: Array<typeof sipRejections.$inferInsert> = [];
+      const updates: Array<{ id: string; d: string; a: string; s: string; rd: string | null; rm: string | null; sc: string | null; re: string | null; rs: string }> = [];
+      for (const m of lines) {
+        const client = clientOf.get(m.clientZohoId);
+        if (!client) { skip("Client not in the CRM"); continue; }
+        if (!m.date) { skip("No date"); continue; }
+        if (!(m.amount > 0)) { skip("No amount"); continue; }
+        const key = `zoho-sr:${m.zohoId}`;
+        const status = m.purchaseDone ? "recovered" : "pending";
+        const rm = userId(m.owner) ?? client.rm_id;
+        const reason = m.reason || "Rejected (Zoho SIP Reject)";
+        count(m.date.slice(0, 7));
+        const id = existing.get(key);
+        if (id) {
+          updates.push({ id, d: m.date, a: String(m.amount), s: status, rd: m.purchaseDone ? m.date : null, rm, sc: m.scheme, re: m.remarks || null, rs: reason });
+          result.updated++;
+          continue;
+        }
+        inserts.push({
+          tenantId: actor.tenantId,
+          investorId: client.id,
+          rejectionDate: m.date,
+          rejectionAmount: String(m.amount),
+          rejectionReason: reason,
+          schemeName: m.scheme,
+          assignedRmId: rm,
+          recoveryStatus: status,
+          recoveryDate: m.purchaseDone ? m.date : null,
+          statusChangedAt: now,
+          escalatedAt: now,
+          remarks: m.remarks || null,
+          dedupKey: key,
+        } as any);
+        result.created++;
+      }
+      await insertAll(sipRejections, inserts);
+      for (let i = 0; i < updates.length; i += 500) {
+        await tx.execute(sql`
+          UPDATE sip_rejections r SET rejection_date = v.d, rejection_amount = v.a, recovery_status = v.s, recovery_date = v.rd,
+                 assigned_rm_id = v.rm, scheme_name = v.sc, remarks = v.re, rejection_reason = v.rs, updated_at = now()
+            FROM jsonb_to_recordset(${JSON.stringify(updates.slice(i, i + 500))}::jsonb)
+                 AS v(id uuid, d date, a numeric, s text, rd date, rm uuid, sc text, re text, rs text)
+           WHERE r.id = v.id AND r.tenant_id = ${actor.tenantId}::uuid
+        `);
+      }
+      result.notes.push(`${lines.length} rejected debits in the file: ${inserts.length} added, ${updates.length} refreshed from Zoho.`);
     }
 
     if (module === "Purchase_and_Redempti_01") {

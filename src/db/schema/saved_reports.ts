@@ -37,6 +37,8 @@ export const REPORT_SUBJECTS = [
   "equity_dmat",
   // Clients onboarded, with source, referrer and the business of their first month (2026-11-20) — same flag.
   "new_client",
+  // SIP rejections by Branch → Desk → RM: rejected, purchase done, pending, without remarks (2026-11-20) — same flag.
+  "sip_rejection",
 ] as const;
 export const REPORT_TYPES = ["detailed", "summary", "matrix"] as const;
 export const REPORT_SHARE_SCOPES = ["private", "team", "tenant"] as const;
