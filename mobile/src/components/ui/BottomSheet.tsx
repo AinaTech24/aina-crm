@@ -8,10 +8,14 @@
  * to edge, so a modal is no longer resized for it) the sheet lifts by exactly
  * the part that is covered — a note's Save button was hidden behind the
  * keyboard. Measured, so a window the OS did resize is not lifted twice.
+ *
+ * `scroll`: a tall form (the after-call prompt, a ticket editor) scrolls
+ * inside the sheet instead of running off a small screen. Opt-in, because a
+ * sheet whose content is itself a list must not nest it in a ScrollView.
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, View, Pressable, StyleSheet, useWindowDimensions, Keyboard, Platform } from "react-native";
+import { Modal, View, Pressable, ScrollView, StyleSheet, useWindowDimensions, Keyboard, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing, runOnJS } from "react-native-reanimated";
 import { palette, radius, spacing } from "../../theme/tokens";
@@ -25,11 +29,13 @@ export function BottomSheet({
   onClose,
   title,
   children,
+  scroll = false,
 }: {
   visible: boolean;
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
+  scroll?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -80,7 +86,15 @@ export function BottomSheet({
               {title}
             </Text>
           ) : null}
-          {children}
+          {scroll ? (
+            <ScrollView
+              style={{ maxHeight: Math.max(240, height * 0.85 - kbOverlap - insets.top - 120) }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {children}
+            </ScrollView>
+          ) : children}
         </Animated.View>
       </View>
     </Modal>

@@ -20,6 +20,7 @@ import { Text } from "../../../src/components/ui/Text";
 import { SkeletonList } from "../../../src/components/ui/Skeleton";
 import { EmptyState, SearchEmptyState, ErrorState } from "../../../src/components/states";
 import { TaskCard } from "../../../src/components/domain/TaskCard";
+import { SwipeableTaskRow } from "../../../src/features/tasks/SwipeableTaskRow";
 import { TaskFilters, EMPTY_TASK_FILTERS, countTaskFilters, type UiTaskFilters } from "../../../src/features/tasks/TaskFilters";
 import { useTasks, useTaskKpis, tasksOf, TASK_STATUSES, type Task } from "../../../src/features/tasks/api";
 import { KanbanBoard } from "../../../src/components/domain/KanbanBoard";
@@ -151,7 +152,8 @@ export default function TasksTab() {
         <FlashList
           data={tasks}
           keyExtractor={(t) => t.id}
-          renderItem={({ item }) => <TaskCard task={item} onPress={() => router.push(`/m/tasks/${item.id}`)} />}
+          // Swipe right to complete, left to snooze or open the client / lead.
+          renderItem={({ item }) => <SwipeableTaskRow task={item} />}
           ListHeaderComponent={header}
           contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 96 }}
           refreshing={isRefetching && !isFetchingNextPage}
