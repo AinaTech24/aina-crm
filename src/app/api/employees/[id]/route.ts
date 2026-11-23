@@ -21,6 +21,7 @@ import { knownNavKeys } from "@/config/nav-access";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { offboardUser, type OffboardSummary } from "@/lib/offboarding";
 import { clearSessionRevocationCache, clearDeviceSessionCache } from "@/lib/auth/revocation";
+import { aliveClient } from "@/lib/metrics/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -108,8 +109,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const stats = await tx.execute(sql`
       SELECT
         (SELECT COUNT(*)::int FROM investors WHERE rm_id = ${id}::uuid AND status = 'active') AS active_clients,
-        (SELECT COALESCE(SUM(aum::numeric),0)::numeric FROM investors WHERE rm_id = ${id}::uuid AND status = 'active') AS my_aum,
-        (SELECT COALESCE(SUM(active_sip_amount::numeric),0)::numeric FROM investors WHERE rm_id = ${id}::uuid AND status = 'active') AS my_sip,
+        (SELECT COALESCE(SUM(aum::numeric),0)::numeric FROM investors e WHERE e.rm_id = ${id}::uuid AND ${aliveClient("e")}) AS my_aum,
+        (SELECT COALESCE(SUM(active_sip_amount::numeric),0)::numeric FROM investors e WHERE e.rm_id = ${id}::uuid AND ${aliveClient("e")}) AS my_sip,
         (SELECT COUNT(*)::int FROM tasks WHERE assignee_id = ${id}::uuid AND status IN ('open','in_progress')) AS open_tasks,
         (SELECT COUNT(*)::int FROM tasks WHERE assignee_id = ${id}::uuid AND status IN ('open','in_progress') AND due_at < now()) AS overdue_tasks,
         (SELECT COUNT(*)::int FROM review_meetings WHERE rm_id = ${id}::uuid AND status IN ('scheduled','confirmed') AND meeting_date >= now()) AS upcoming_meetings

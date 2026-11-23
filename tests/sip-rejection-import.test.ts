@@ -14,6 +14,21 @@ const HEAD = "AMC_CODE|FOLIO_NO|PAN|SCHEME|REJ_DATE|SIP_AMT|REASON";
 const row = (o: Partial<Record<string, string>> = {}) =>
   [o.amc ?? "P", o.folio ?? "1234567/89", o.pan ?? "", o.scheme ?? "ICICI Bluechip", o.date ?? "25-05-2026", o.amt ?? "5,000.00", o.reason ?? "Insufficient funds"].join("|");
 
+describe("parseSipRejectionReport — other column names", () => {
+  const H = "AMC_CODE|ACNO|PAN|SCHEME|REJECTED_DATE|INSTALMENT AMOUNT|REJECT_REASON";
+  const r = (date: string) => ["P", "1234567", "", "ICICI Bluechip", date, "5,000.00", "Insufficient funds"].join("|");
+  it("reads the folio, date, amount and reason under their other names", () => {
+    const [x] = parseSipRejectionReport([H, r("25-May-26")].join("\n"), "kfintech");
+    expect(x.folioNumber).toBe("1234567");
+    expect(x.rejectionDate).toBe("2026-05-25");
+    expect(x.amount).toBe(5000);
+    expect(x.reason).toBe("Insufficient funds");
+  });
+  it.each(["25/05/2026", "20260525", "2026/05/25", "May 25, 2026"])("reads the date %s", (d) => {
+    expect(parseSipRejectionReport([H, r(d)].join("\n"), "cams")[0].rejectionDate).toBe("2026-05-25");
+  });
+});
+
 describe("parseSipRejectionReport", () => {
   it("reads the usual CAMS column names, a comma amount and no PAN", () => {
     const [r] = parseSipRejectionReport([HEAD, row()].join("\n"), "cams");

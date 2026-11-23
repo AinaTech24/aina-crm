@@ -14,6 +14,7 @@ import { can } from "@/lib/auth/rbac";
 import { investorScopeSql } from "@/lib/investors/access";
 import { assertModuleEnabled } from "@/lib/auth/license";
 import { needsNomineeSql } from "@/lib/investors/type-rules";
+import { aliveClient } from "@/lib/metrics/scope";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -35,8 +36,8 @@ export async function GET() {
           SELECT
             COUNT(*) FILTER (WHERE status = 'active')::int AS total_active,
             COUNT(*)::int AS total_all,
-            COALESCE(SUM(aum::numeric) FILTER (WHERE status = 'active'), 0)::numeric AS total_aum,
-            COALESCE(SUM(active_sip_amount::numeric) FILTER (WHERE status = 'active'), 0)::numeric AS sip_book,
+            COALESCE(SUM(aum::numeric) FILTER (WHERE ${aliveClient("investors")}), 0)::numeric AS total_aum,
+            COALESCE(SUM(active_sip_amount::numeric) FILTER (WHERE ${aliveClient("investors")}), 0)::numeric AS sip_book,
             COUNT(*) FILTER (WHERE status = 'active' AND service_tier = 'A')::int AS tier_a,
             COUNT(*) FILTER (
               WHERE status = 'active' AND next_review_at IS NOT NULL AND next_review_at <= now()

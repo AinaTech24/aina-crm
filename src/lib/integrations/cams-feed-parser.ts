@@ -220,13 +220,13 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   type: ["TR_TYPE", "TXN_TYPE", "TRANS_TYPE", "TRTYPE", "TXNTYPE", "TRANSTYPE", "TYPE", "TRANSACTION TYPE", "TRANSACTION HEAD", "TRANSACTION_HEAD", "TRXN_TYPE", "TD_TRTYPE"],
   typeDesc: ["TRANS_DESC", "TRANS DESCRIPTION", "TRANSACTION DESCRIPTION", "TRANSACTION_DESCRIPTION", "TXN_DESC_CAMS", "TRXN_NATURE", "TRDESC"],
   typeSub: ["TRANSACTION SUB", "TRANSACTION_SUB", "TRXNSUBTYP", "SUB_TYPE", "TRANSACTION_TYPE"],
-  orderDate: ["TR_DATE", "TXN_DATE", "TRANS_DATE", "TRDATE", "TXNDATE", "TRANSDATE", "DATE", "POST_DATE", "POST DATE", "TXN_DT", "TRANSACTION DATE", "TRADDATE", "TRAD DATE", "TRADE DATE", "TRADE_DATE_TIME", "TD_TRDT"],
+  orderDate: ["TR_DATE", "TXN_DATE", "TRANS_DATE", "TRDATE", "TXNDATE", "TRANSDATE", "DATE", "POST_DATE", "POST DATE", "TXN_DT", "TRANSACTION DATE", "TRADDATE", "TRAD DATE", "TRADE DATE", "TRADE_DATE_TIME", "TD_TRDT", "TRXN_DATE", "TRXN_DT", "TRAN_DATE"],
   amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "PURCHASE_AMOUNT", "RED_AMOUNT", "PLOT_AMOUNT", "AMOUNT (IN RS.)", "AMOUNT IN RS", "NET_AMOUNT", "GROSS AMOUNT", "TD_AMT"],
   units: ["UNITS", "UNIT", "QTY", "QUANTITY", "NO_OF_UNITS", "NO OF UNITS", "PLOT_UNITS", "TD_UNITS"],
   nav: ["NAV", "RATE", "NAV_PUR", "NAV_RATE", "PUR_NAV", "ALLOT_NAV", "ALLOTNAV", "PRICE", "PURPRICE", "TD_NAV"],
   externalRef: ["ORDER_REF", "REF_NO", "REF NO", "TXN_ID", "TXN ID", "TXN_REF", "TXN REF", "REF_NUM", "REF NUM", "TRANSACTION NUMBER", "TRANSACTION ID", "TRXNNO", "TRXN_NO", "TRANSACTION_ID", "TRANSACTION_NUMBER", "UNQNO"],
-  status: ["STATUS", "TR_STATUS", "TXN_STATUS", "STATUS_DESC", "STATUS DESC", "TRANSACTION STATUS", "TRXNSTAT", "ORDER STATUS", "TRNSTAT"],
-  reasonCode: ["REASON_CODE", "REJ_CODE", "REJECT_CODE", "REASON CODE", "REJ CODE", "REJ_REASON", "REJ REASON", "ORDER REMARK", "REMARKS", "NCTREMARKS"],
+  status: ["STATUS", "TR_STATUS", "TXN_STATUS", "STATUS_DESC", "STATUS DESC", "TRANSACTION STATUS", "TRXNSTAT", "ORDER STATUS", "TRNSTAT", "TRXN_STATUS", "TRANS_STATUS"],
+  reasonCode: ["REASON_CODE", "REJ_CODE", "REJECT_CODE", "REASON CODE", "REJ CODE", "REJ_REASON", "REJ REASON", "ORDER REMARK", "REMARKS", "NCTREMARKS", "REASON", "REJECT_REASON", "REJECTION_REASON", "REJ_REMARKS", "RETURN_REASON", "FAIL_REASON", "ERROR_DESC"],
 };
 
 export const DEFAULT_CAMS_MAP: Record<string, number> = {
@@ -268,7 +268,7 @@ function normaliseFeedStatus(s: string): CanonicalTransaction["status"] {
   // "UNSUCCESSFUL", "PAYMENT FAILED"). Anything else fell to "successful" below, so a bounced SIP
   // was counted as money collected and never reached the SIP Rejections page.
   if (/^REJ|REJECT/.test(u)) return "rejected";
-  if (/FAIL|BOUNC|DISHON|UNSUCC|RETURN|NOT\s*(HONOUR|HONOR)/.test(u)) return "failed";
+  if (/FAIL|BOUNC|DISHON|UNSUCC|RETURN|UNPAID|NOT\s*(HONOUR|HONOR|ALLOT|PROCESS)|INSUFFICIENT|INVALID|INELIGIBLE|REF\s*TO\s*DRAWER/.test(u)) return "failed";
   if (["PENDING", "N", "INITIATED", "AWAITED"].includes(u)) return "pending";
   return "successful"; // a posted reverse-feed row is, by definition, processed
 }
@@ -279,7 +279,7 @@ function normaliseFeedStatus(s: string): CanonicalTransaction["status"] {
  * Read as processed, a bounced SIP never reached the SIP Rejections page. Only a row the status
  * column left at "successful" is changed, and never a reversal (it has its own handling).
  */
-const TYPE_TEXT_BOUNCE = /REJECT|DISHON|BOUNC|NACH\s*RETURN|RETURNED\s*(BY|FROM)?\s*BANK|UNSUCCESS|PAYMENT\s*FAIL/;
+const TYPE_TEXT_BOUNCE = /REJECT|DISHON|BOUNC|NACH\s*RETURN|ECS\s*RETURN|RETURNED\s*(BY|FROM)?\s*BANK|UNSUCCESS|PAYMENT\s*FAIL|DEBIT\s*FAIL|(SIP|SYSTEMATIC|INSTAL?L?MENT)[^|]*(FAIL|UNPAID)/;
 export function statusWithTypeText(
   status: CanonicalTransaction["status"],
   typeText: string,
@@ -385,6 +385,12 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
       externalRef = `${refPrefix}:nk:${createHash("sha256").update(natural).digest("hex").slice(0, 24)}#${n}`;
     }
 
+    const status = statusWithTypeText(
+      normaliseFeedStatus(val("status")),
+      `${val("type")} ${val("typeDesc")} ${val("typeSub")}`,
+      isReversal,
+    );
+
     rows.push({
       externalRef,
       pan,
@@ -399,12 +405,12 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
       units: unitsSigned,
       nav: parseFloat(val("nav").replace(/[, ]/g, "")) || 0,
       orderDate,
-      status: statusWithTypeText(
-        normaliseFeedStatus(val("status")),
-        `${val("type")} ${val("typeDesc")} ${val("typeSub")}`,
-        isReversal,
-      ),
+      status,
       reasonCode: val("reasonCode") || undefined,
+      // The reason a bounce gives is what the SIP Rejections page and the "why SIPs bounced" card
+      // show; it was never set on a feed row, so both read "not recorded". Only a bounce carries it —
+      // on a processed row the same column is just a remark.
+      reasonDescription: (status === "rejected" || status === "failed") && val("reasonCode") ? val("reasonCode") : undefined,
       isReversal,
       raw: {
         type: val("type").slice(0, 40),

@@ -51,3 +51,20 @@ describe("a bounce written in the transaction's type text", () => {
     expect(out("Systematic Investment Purchase").status).toBe("successful");
   });
 });
+
+describe("other header spellings and the reason a bounce carries", () => {
+  const H = "PAN|FOLIO_NO|AMC_CODE|PRODUCT_CODE|SCHEME_NAME|TRXN_TYPE|TRAN_DATE|AMOUNT|UNITS|NAV|TRXN_STATUS|REJECTION_REASON";
+  const r = (status: string, reason: string) => `ABCDE1234F|1234567|C|PC1|Some Fund|SIP|17/11/2026|5000|50.0|100.0|${status}|${reason}`;
+  const one = (status: string, reason: string) => parseReverseFeed([H, r(status, reason)].join("\n"), "t")[0];
+
+  it("finds the date and status under their other names", () => {
+    const t = one("REJECTED", "Insufficient balance");
+    expect(t.status).toBe("rejected");
+    expect(t.orderDate).toBe("2026-11-17");
+  });
+
+  it("carries the reason on a bounce, and none on a processed instalment", () => {
+    expect(one("REJECTED", "Insufficient balance").reasonDescription).toBe("Insufficient balance");
+    expect(one("ALLOTTED", "").reasonDescription ?? "").toBe("");
+  });
+});

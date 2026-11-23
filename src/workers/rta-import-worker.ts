@@ -38,6 +38,7 @@ import { importRtaFolios, type RtaImportSummary } from "@/lib/rta/import";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 import { isEncryptedOffice, openEncryptedOffice, encryptedOfficeMessage } from "@/lib/rta/office-decrypt";
 import { RICH_KINDS, classifyMailback, isSipRejectionFileName } from "@/lib/rta/classify-mailback";
+import { reconcileSipKind } from "@/lib/rta/sip-kind";
 import { appendMailbackPassword, getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
 import { materialiseSipRejectionsAfterImport } from "@/lib/rta/sip-rejection-rows";
@@ -437,6 +438,25 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
   // Free the large buffers before the (memory-heavy) parse so they can be GC'd.
   dataBuf = Buffer.alloc(0);
   buf = Buffer.alloc(0);
+
+  // A SIP register uploaded under another kind (the dialog starts on "Daily transaction feed") is read
+  // as what it is — otherwise it "completes" having written no SIP (lib/rta/sip-kind.ts).
+  const sipFix = reconcileSipKind(kind, innerName, text);
+  if (sipFix) {
+    const was = kind;
+    kind = sipFix.kind;
+    await withTenant(
+      tenantId,
+      async (tx) => {
+        await tx.execute(sql`
+          UPDATE rta_file_imports
+             SET kind = ${kind},
+                 remarks = ${sanitizeText(`Read as a SIP register, not as "${was.replace(/_/g, " ")}": ${sipFix.why}`)}
+           WHERE id = ${importId}::uuid`);
+      },
+      ctx,
+    );
+  }
 
   // 4 + 5. Process in one tenant transaction, then persist counters.
   try {
@@ -1210,6 +1230,11 @@ export async function sweepKeptCompletedFiles(): Promise<number> {
 export type RtaRerunJob = { mode: "rerun"; tenantId: string };
 
 const RERUN_MAX_FILES = 40;
+/**
+ * How many times one file is re-run automatically. Each nightly run counted, so three nights before the
+ * folio master arrived used the budget up and the skipped rows never landed. A re-run is idempotent.
+ */
+const RERUN_MAX_TIMES = 10;
 const RERUN_MAX_BYTES = 20 * 1024 * 1024;
 const SNAPSHOT_KINDS = ["monthly_sip_book", "monthly_aum_statement", "nach_mandate_status", "folio_master_dump", "cas_holdings"];
 
@@ -1225,7 +1250,7 @@ export async function runRerunJob(job: RtaRerunJob): Promise<{ requeued: number 
          AND f.status IN ('partial', 'failed')
          AND f.created_at > now() - interval '45 days'
          AND COALESCE(f.file_size_bytes, 0) < ${RERUN_MAX_BYTES}
-         AND COALESCE((f.summary->>'reruns')::int, 0) < 3
+         AND COALESCE((f.summary->>'reruns')::int, 0) < ${RERUN_MAX_TIMES}
          AND (f.errors::text ILIKE '%import the folio master first%'
               OR f.errors::text ILIKE '%not in client master%'
               OR f.errors::text ILIKE '%not linked to a client%'
@@ -1233,18 +1258,28 @@ export async function runRerunJob(job: RtaRerunJob): Promise<{ requeued: number 
               OR f.remarks ILIKE 'Import did not finish%'
               OR f.remarks ILIKE 'Import never started%'
               OR f.remarks ILIKE 'Import stopped%')
+         -- A SNAPSHOT (SIP register, AUM, mandates, masters) is not re-run once a newer file has taken its
+         -- place, so an old state never overwrites a newer one. "Taken its place" means the newer file
+         -- COMPLETED and placed about as many rows as this one holds. Any newer file of the same kind used
+         -- to do it — a header-only file, another ARN's register, a partial one — and the older file's
+         -- skipped rows (a SIP register uploaded before the folio master) stayed out for ever.
          AND (f.kind NOT IN (${sql.join(SNAPSHOT_KINDS.map((k) => sql`${k}`), sql`, `)})
               OR NOT EXISTS (
                 SELECT 1 FROM rta_file_imports n
                  WHERE n.tenant_id = f.tenant_id AND n.source = f.source AND n.kind = f.kind
                    AND n.deleted_at IS NULL AND n.created_at > f.created_at
-                   AND n.status IN ('completed', 'partial')))
+                   AND n.status = 'completed'
+                   AND COALESCE(n.rows_imported, 0) > 0
+                   AND COALESCE(n.rows_imported, 0) >= COALESCE(f.rows_total, 0) * 0.9))
        ORDER BY f.created_at DESC
        LIMIT ${RERUN_MAX_FILES}`);
     return r.rows as Array<{ id: string; source: RtaSource; kind: RtaFileKind; file_name: string; file_key: string }>;
   });
 
   let requeued = 0;
+  // Oldest first: the query takes the newest files, but they are RE-RUN in the order they arrived, so
+  // the newest snapshot is applied last and its state is the one that stays.
+  rows.reverse();
   for (const r of rows) {
     await withTenant(job.tenantId, async (tx) => {
       await tx.execute(sql`

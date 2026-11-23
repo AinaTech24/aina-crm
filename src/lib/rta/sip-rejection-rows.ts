@@ -24,7 +24,7 @@ import { withTenant } from "@/db/client";
 
 type Executor = { execute: (q: SQL) => Promise<{ rows: unknown[] }> };
 
-/** How far back (by the day the transaction was imported) a bounce is picked up. */
+/** How far back (by the day the transaction was imported or last changed) a bounce is picked up. */
 export const SIP_REJECTION_LOOKBACK_DAYS = 90;
 
 export async function materialiseSipRejectionRows(
@@ -39,8 +39,8 @@ export async function materialiseSipRejectionRows(
       rejection_reason, scheme_name, folio_number, amc_name, assigned_rm_id,
       follow_up_date, recovery_status, reason_category, dedup_key, escalated_at
     )
-    SELECT t.tenant_id, t.investor_id, t.id, t.order_date::date, t.amount,
-      t.reason_description, t.scheme_name, t.folio_number, t.amc_name, i.rm_id,
+    SELECT t.tenant_id, t.investor_id, t.id, t.order_date::date, COALESCE(t.amount, 0),
+      COALESCE(t.reason_description, t.reason_code), t.scheme_name, t.folio_number, t.amc_name, i.rm_id,
       (t.order_date::date + 2), 'pending',
       CASE
         WHEN lower(coalesce(t.reason_description, '') || ' ' || coalesce(t.reason_code, ''))
@@ -56,7 +56,7 @@ export async function materialiseSipRejectionRows(
     WHERE t.type = 'sip'
       AND t.status IN ('rejected', 'failed')
       AND t.order_date IS NOT NULL
-      AND t.created_at >= now() - interval '${since}'
+      AND GREATEST(t.created_at, t.updated_at) >= now() - interval '${since}'
       AND NOT EXISTS (
         SELECT 1 FROM sip_rejections sr
         WHERE sr.tenant_id = t.tenant_id AND sr.transaction_id = t.id
@@ -66,7 +66,7 @@ export async function materialiseSipRejectionRows(
         WHERE sr.tenant_id = t.tenant_id
           AND sr.investor_id = t.investor_id
           AND sr.rejection_date = t.order_date::date
-          AND sr.rejection_amount = t.amount
+          AND sr.rejection_amount = COALESCE(t.amount, 0)
       )
     ON CONFLICT (tenant_id, transaction_id) WHERE transaction_id IS NOT NULL DO NOTHING
     RETURNING 1

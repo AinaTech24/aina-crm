@@ -57,7 +57,7 @@ export type CanonicalSipRow = {
   schemeCode: string;
   schemeName: string;
   amount: number;
-  frequency: "monthly" | "quarterly" | "weekly" | "fortnightly" | "yearly";
+  frequency: "monthly" | "quarterly" | "weekly" | "fortnightly" | "half_yearly" | "yearly";
   sipDate?: string;
   startDate?: string;
   endDate?: string;
@@ -123,13 +123,13 @@ const DEFAULT_SIP_REJECT_MAP: Record<string, number> = {
 
 const SIP_REJECT_ALIASES: Record<string, string[]> = {
   amcName: ["AMC", "AMC_NAME", "AMC NAME", "AMC_CODE", "AMC CODE", "FMIM_CODE", "FUND", "FUND_NAME", "MUTUAL_FUND", "AMC_CD", "AMC_DESC"],
-  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIO_NUMBER", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIO NUMBER", "FOLIONUM", "FOL_NO", "FOLIOCHK", "ACCOUNT NUMBER", "ACCOUNT NO"],
+  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIO_NUMBER", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIO NUMBER", "FOLIONUM", "FOL_NO", "FOLIOCHK", "ACCOUNT NUMBER", "ACCOUNT NO", "ACNO", "AC_NO"],
   pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER", "PAN NUMBER", "PAN1", "PAN_PEKRN"],
   schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "SCHEME", "SCHEME_DESC", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME", "FUND DESCRIPTION", "FUND_DESCRIPTION", "FUNDDESC"],
-  rejectionDate: ["REJECT_DATE", "REJECTION_DATE", "REJ_DATE", "REJECT DATE", "REJECTION DATE", "REJECTED_ON", "REJECTED ON", "BOUNCE_DATE", "RETURN_DATE", "DATE", "REJ_DT", "REJECTION_DT", "TRXN_DATE", "TRADE_DATE", "TRADDATE", "ORDER DATE", "ORDER_DATE", "INSTALLMENT_DATE", "INSTALLMENT DATE", "SIP_DATE", "DUE_DATE", "DUE DATE"],
-  amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "SIP_AMOUNT", "SIP_AMT", "SIP AMOUNT", "INSTALLMENT AMT", "INSTALLMENT_AMT", "INSTALLMENT AMOUNT", "INSTALLMENT_AMOUNT", "INSTAL_AMT", "INSTL_AMT", "AMOUNT (IN RS.)", "AMOUNT IN RS", "REJECTED_AMOUNT"],
+  rejectionDate: ["REJECT_DATE", "REJECTION_DATE", "REJ_DATE", "REJECT DATE", "REJECTION DATE", "REJECTED_ON", "REJECTED ON", "BOUNCE_DATE", "RETURN_DATE", "DATE", "REJ_DT", "REJECTION_DT", "TRXN_DATE", "TRADE_DATE", "TRADDATE", "ORDER DATE", "ORDER_DATE", "INSTALLMENT_DATE", "INSTALLMENT DATE", "SIP_DATE", "DUE_DATE", "DUE DATE", "REJECTED_DATE", "TRANSACTION DATE", "TRANSACTION_DATE", "INSTALMENT_DATE", "INSTALMENT DATE"],
+  amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "SIP_AMOUNT", "SIP_AMT", "SIP AMOUNT", "INSTALLMENT AMT", "INSTALLMENT_AMT", "INSTALLMENT AMOUNT", "INSTALLMENT_AMOUNT", "INSTAL_AMT", "INSTL_AMT", "AMOUNT (IN RS.)", "AMOUNT IN RS", "REJECTED_AMOUNT", "INSTALMENT_AMOUNT", "INSTALMENT AMOUNT", "INSTALMENT_AMT", "INSTALMENT AMT"],
   reasonCode: ["REASON_CODE", "REJ_CODE", "REJECT_CODE", "REASON CODE", "REJ CODE", "REJ_REASON", "REJ REASON", "FAIL_CODE", "RETURN_CODE"],
-  reason: ["REASON", "REASON_DESC", "REASON DESCRIPTION", "REMARK", "REMARKS", "REJ_DESC", "REJECT_DESC", "REJECTION_REASON", "REJECTION_REMARKS", "REJECTION REMARKS", "REJ_REMARK", "BOUNCE_REASON", "RETURN_REASON", "FAILURE_REASON", "ORDER REMARK", "ORDER_REMARK", "ORDER STATUS", "ORDER_STATUS"],
+  reason: ["REASON", "REASON_DESC", "REASON DESCRIPTION", "REMARK", "REMARKS", "REJ_DESC", "REJECT_DESC", "REJECTION_REASON", "REJECT_REASON", "REJECTION_REMARKS", "REJECTION REMARKS", "REJ_REMARK", "BOUNCE_REASON", "RETURN_REASON", "FAILURE_REASON", "ORDER REMARK", "ORDER_REMARK", "ORDER STATUS", "ORDER_STATUS"],
 };
 
 const DEFAULT_BROKERAGE_MAP: Record<string, number> = {
@@ -335,7 +335,7 @@ export function parseSipRejectionReport(
       // A date the file does not give (or we cannot read) is "" — NOT today. Today
       // misdated the rejection, and because the date is part of its identity the
       // same file re-run on another day inserted every row again.
-      rejectionDate: normaliseDate(val("rejectionDate")) ?? "",
+      rejectionDate: normaliseDate(val("rejectionDate")) ?? otherDateSpellings(val("rejectionDate")) ?? "",
       amount: parseAmount(val("amount")),
       reasonCode,
       // `||`, not `??`: a file with no reason-code column gives "" here, and
@@ -509,7 +509,9 @@ export function parseSipBook(
       folioNumber: val("folioNumber"),
       schemeCode: val("schemeCode") || schemeName,
       schemeName,
-      amount: parseFloat(val("amount").replace(/[, ]/g, "")) || 0,
+      // "5,000", "Rs. 5,000.00", "₹5000", "INR 5000" — parseFloat read the last three as 0
+      // and imported an active SIP of nothing.
+      amount: Math.abs(parseAmount(val("amount"))),
       frequency: normaliseFrequency(val("frequency")),
       sipDate: val("sipDate") || undefined,
       startDate: realDate(val("startDate")),
@@ -518,7 +520,7 @@ export function parseSipBook(
       mandateRefNo: val("mandateRefNo") || undefined,
       ceaseDate: realDate(val("ceaseDate")),
       registrationType: val("registrationType") || undefined,
-      targetScheme: val("targetScheme") || undefined,
+      targetScheme: cleanTargetScheme(val("targetScheme")),
       registrarStatus: val("registrarStatus") || undefined,
       registrarEndDate: realDate(val("registrarEndDate")),
       registrarRemark: val("registrarRemark") || undefined,
@@ -541,8 +543,50 @@ function realDate(d?: string): string | undefined {
   const us = d?.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)$/i);
   const iso = us
     ? `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}`
-    : normaliseDate(d);
+    : (normaliseDate(d) ?? otherDateSpellings(d));
   return iso && iso >= "1950-01-01" ? iso : undefined;
+}
+
+/**
+ * Date spellings the general reader does not know, for the SIP register only: a cease
+ * date it cannot read counts as "no cease date" (the SIP stays active), and a start
+ * date it cannot read matches any closed SIP of the folio and leaves the row out.
+ *   13-Sep-26 · 13/09/26 · 13.09.2026 · 20260913 · 2026/09/13 · Sep 13, 2026
+ * A two-digit year is 20yy; day-first unless the first number cannot be a day's month.
+ */
+export function otherDateSpellings(d?: string): string | null {
+  const s = (d ?? "").trim();
+  if (!s) return null;
+  const ymd = (y: number, m: number, day: number): string | null =>
+    m >= 1 && m <= 12 && day >= 1 && day <= 31
+      ? `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+      : null;
+  let m: RegExpMatchArray | null;
+  if ((m = s.match(/^(\d{4})(\d{2})(\d{2})$/))) return ymd(+m[1], +m[2], +m[3]);
+  if ((m = s.match(/^(\d{4})[\/.](\d{1,2})[\/.](\d{1,2})/))) return ymd(+m[1], +m[2], +m[3]);
+  if ((m = s.match(/^(\d{1,2})[-\/. ]([A-Za-z]{3})[A-Za-z]*[-\/. ,]+(\d{2})\b(?!\d)/))) {
+    const mm = MONTHS_MAP[m[2].toUpperCase()];
+    return mm ? ymd(2000 + +m[3], +mm, +m[1]) : null;
+  }
+  if ((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})(?!\d)/))) {
+    let day = +m[1];
+    let mon = +m[2];
+    if (mon > 12 && day <= 12) [day, mon] = [mon, day];
+    const y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+    return ymd(y, mon, day);
+  }
+  if ((m = s.match(/^([A-Za-z]{3})[A-Za-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/))) {
+    const mm = MONTHS_MAP[m[1].toUpperCase()];
+    return mm ? ymd(+m[3], +mm, +m[2]) : null;
+  }
+  return null;
+}
+
+/** A "target scheme" cell that names no scheme: 0, -, NA, N/A, NIL, NONE, a lone dot. */
+export function cleanTargetScheme(raw: string): string | undefined {
+  const t = raw.trim();
+  if (!t || /^(0+|-+|\.+|n\/?a|nil|none|null|not applicable)$/i.test(t)) return undefined;
+  return t;
 }
 
 // ── NACH Mandate Status ─────────────────────────────────────────────────
@@ -690,7 +734,7 @@ function splitLine(line: string, delim: string): string[] {
   return line.split(delim);
 }
 
-function normaliseFrequency(freq: string): "monthly" | "quarterly" | "weekly" | "fortnightly" | "yearly" {
+function normaliseFrequency(freq: string): "monthly" | "quarterly" | "weekly" | "fortnightly" | "half_yearly" | "yearly" {
   const f = freq.toLowerCase();
   // CAMS WBR49 codes: OM once a month, OW once a week, Q quarterly, OF / FN
   // fortnightly, OY / Y yearly. (D, daily, has no slot and stays monthly.)
@@ -698,11 +742,15 @@ function normaliseFrequency(freq: string): "monthly" | "quarterly" | "weekly" | 
   if (code === "ow" || code === "w") return "weekly";
   if (code === "q" || code === "oq") return "quarterly";
   if (code === "of" || code === "fn") return "fortnightly";
+  if (code === "oh" || code === "h" || code === "hy" || code === "sa") return "half_yearly";
   if (code === "oy" || code === "y") return "yearly";
-  if (f.includes("quarter")) return "quarterly";
-  if (f.includes("weekly")) return "weekly";
-  if (f.includes("fortnight")) return "fortnightly";
-  if (f.includes("year")) return "yearly";
+  // Spelt out — and the short forms registrars print: "Qtrly", "Wkly", "Annual",
+  // "Half Yearly" (which is NOT yearly: it is twice a year, so ₹6,000 is ₹1,000 a month, not ₹500).
+  if (/half|semi|6\s*m/.test(f)) return "half_yearly";
+  if (/quart|qtr/.test(f)) return "quarterly";
+  if (/fort|fnight/.test(f)) return "fortnightly";
+  if (/week|wk/.test(f)) return "weekly";
+  if (/year|annual|yrly|\byr\b/.test(f)) return "yearly";
   return "monthly";
 }
 

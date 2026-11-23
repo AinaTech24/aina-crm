@@ -14,6 +14,7 @@ import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
 import { investorScopeSql } from "@/lib/investors/access";
 import { needsNomineeSql } from "@/lib/investors/type-rules";
+import { aliveClient } from "@/lib/metrics/scope";
 
 /**
  * KPI strip for the Investors list page.
@@ -37,8 +38,8 @@ export async function InvestorKpiStrip({
         SELECT
           COUNT(*) FILTER (WHERE status = 'active')::int AS total_active,
           COUNT(*)::int AS total_all,
-          COALESCE(SUM(aum::numeric) FILTER (WHERE status = 'active'), 0)::numeric AS total_aum,
-          COALESCE(SUM(active_sip_amount::numeric) FILTER (WHERE status = 'active'), 0)::numeric AS sip_book,
+          COALESCE(SUM(aum::numeric) FILTER (WHERE ${aliveClient("investors")}), 0)::numeric AS total_aum,
+          COALESCE(SUM(active_sip_amount::numeric) FILTER (WHERE ${aliveClient("investors")}), 0)::numeric AS sip_book,
           COUNT(*) FILTER (WHERE status = 'active' AND service_tier = 'A')::int AS tier_a,
           COUNT(*) FILTER (
             WHERE status = 'active'
