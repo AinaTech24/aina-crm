@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Loader2, PencilLine } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { buttonClass } from "@/components/ui/button-class";
-import { BULK_FIELDS, BULK_FIELD_BY_KEY, BULK_TEXT_MAX } from "@/lib/investors/bulk-fields";
+import { BULK_FIELDS, BULK_TEXT_MAX } from "@/lib/investors/bulk-fields";
 import { DateField } from "@/components/ui/DateField";
 import { formatDateLabel } from "@/lib/dates/typed-date";
 
@@ -26,12 +26,28 @@ export type MassUpdateOptions = {
 
 const GROUPS = ["Relationship", "Classification", "Service", "Profile", "Address", "Tags"] as const;
 
+/** What the dialog needs to know about a field — Clients' registry and Families' both fit. */
+export type MassUpdateField = {
+  key: string;
+  label: string;
+  group: string;
+  kind: "enum" | "text" | "date" | "branch" | "rm" | "tag";
+  options?: Array<{ value: string; label: string }>;
+  nullable: boolean;
+  hint?: string;
+  master?: "occupation" | "income_range";
+  maxLength?: number;
+};
+
 export function MassUpdateDialog({
   open,
   onOpenChange,
   count,
   options,
   onApply,
+  fields = BULK_FIELDS,
+  groups = GROUPS,
+  noun = { one: "client", many: "clients" },
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -39,6 +55,12 @@ export function MassUpdateDialog({
   options: MassUpdateOptions;
   /** Resolves with an error message, or null on success. */
   onApply: (field: string, value: string | null) => Promise<string | null>;
+  /** The fields to offer (default: Clients'). */
+  fields?: readonly MassUpdateField[];
+  /** The group headings, in order (default: Clients'). */
+  groups?: readonly string[];
+  /** What the selected records are called (default: client / clients). */
+  noun?: { one: string; many: string };
 }) {
   const [field, setField] = useState("");
   const [value, setValue] = useState("");
@@ -56,7 +78,7 @@ export function MassUpdateDialog({
     }
   }, [open]);
 
-  const def = field ? BULK_FIELD_BY_KEY.get(field) : undefined;
+  const def = field ? fields.find((f) => f.key === field) : undefined;
   const choices = useMemo(() => {
     if (!def) return [];
     if (def.kind === "branch") return options.branches;
@@ -65,7 +87,7 @@ export function MassUpdateDialog({
   }, [def, options.branches, options.rms]);
   const suggestions = def?.master === "occupation" ? options.occupations : def?.master === "income_range" ? options.incomeRanges : [];
 
-  const clients = `${count.toLocaleString("en-IN")} ${count === 1 ? "client" : "clients"}`;
+  const clients = `${count.toLocaleString("en-IN")} ${count === 1 ? noun.one : noun.many}`;
   const shown = clear ? null : value.trim();
   const shownLabel =
     shown == null ? null : def?.kind === "date" ? formatDateLabel(shown) || shown : (choices.find((c) => c.value === shown)?.label ?? shown);
@@ -124,9 +146,9 @@ export function MassUpdateDialog({
               className="input-base w-full"
             >
               <option value="">Choose a field…</option>
-              {GROUPS.map((g) => (
+              {groups.map((g) => (
                 <optgroup key={g} label={g}>
-                  {BULK_FIELDS.filter((f) => f.group === g).map((f) => (
+                  {fields.filter((f) => f.group === g).map((f) => (
                     <option key={f.key} value={f.key}>
                       {f.label}
                     </option>
@@ -165,7 +187,7 @@ export function MassUpdateDialog({
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
                     disabled={clear}
-                    maxLength={BULK_TEXT_MAX}
+                    maxLength={def.maxLength ?? BULK_TEXT_MAX}
                     list={suggestions.length ? `${inputId}-list` : undefined}
                     placeholder={def.kind === "tag" ? "e.g. Diwali 2026" : undefined}
                     className="input-base w-full"
@@ -199,7 +221,7 @@ export function MassUpdateDialog({
             <div className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-xs">
               <p className="font-medium text-foreground">{sentence}</p>
               <p className="mt-1 text-muted-foreground">
-                Every client&apos;s previous value is kept in the audit log. Automations are not triggered by this change.
+                Every {noun.one}&apos;s previous value is kept in the audit log. Automations are not triggered by this change.
               </p>
             </div>
           )}

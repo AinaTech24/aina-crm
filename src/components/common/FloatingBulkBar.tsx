@@ -47,6 +47,8 @@ export function FloatingBulkBar({
   showSegment = true,
   showReview = true,
   showStage = false,
+  showDelete = true,
+  noun = "clients",
 }: {
   selectedCount: number;
   totalMatching?: number;
@@ -54,7 +56,8 @@ export function FloatingBulkBar({
   allMatchingSelected?: boolean;
   onSelectAllMatching?: () => void;
   onClear: () => void;
-  onApplyAction: (action: string, payload: Record<string, any>) => Promise<void>;
+  /** Resolve `false` to keep the pop-up open (a failed update shows its error there). */
+  onApplyAction: (action: string, payload: Record<string, any>) => Promise<void | boolean>;
   busy?: boolean;
   error?: string | null;
   customActions?: ReactNode;
@@ -63,6 +66,10 @@ export function FloatingBulkBar({
   showSegment?: boolean;
   showReview?: boolean;
   showStage?: boolean;
+  /** The red bin button. Off where a record can't simply be deleted (Families). */
+  showDelete?: boolean;
+  /** What the selected records are called in the pop-ups ("clients", "families"). */
+  noun?: string;
 }) {
   const [activeModal, setActiveModal] = useState<BulkActionType | null>(null);
   const [assignRm, setAssignRm] = useState<string | null>(null);
@@ -75,8 +82,8 @@ export function FloatingBulkBar({
   if (selectedCount === 0) return null;
 
   const handleApply = async (action: string, payload: Record<string, any> = {}) => {
-    await onApplyAction(action, payload);
-    setActiveModal(null);
+    const ok = await onApplyAction(action, payload);
+    if (ok !== false) setActiveModal(null);
   };
 
   const barContent = (
@@ -168,14 +175,16 @@ export function FloatingBulkBar({
 
           {customActions}
 
-          <button
-            type="button"
-            onClick={() => setActiveModal("delete")}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/15 transition-colors"
-            title="Delete selected"
-          >
-            <Trash2 className="size-3.5" />
-          </button>
+          {showDelete && (
+            <button
+              type="button"
+              onClick={() => setActiveModal("delete")}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/15 transition-colors"
+              title="Delete selected"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          )}
         </div>
 
         <button
@@ -241,7 +250,7 @@ export function FloatingBulkBar({
 
           {activeModal === "review" && (
             <div className="space-y-3">
-              <p className="text-muted-foreground">Set next scheduled review date for {selectedCount} clients:</p>
+              <p className="text-muted-foreground">Set next scheduled review date for {selectedCount} {noun}:</p>
               <DateField
                 value={reviewDate}
                 onChange={(e) => setReviewDate(e.target.value)}

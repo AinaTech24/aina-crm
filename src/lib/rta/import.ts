@@ -25,6 +25,7 @@ import { resolveSchemeIdentity } from "./resolve-scheme";
 import { ownersOfFolios, releaseFormerOwners } from "./former-owners";
 import { fillCityStateFromPincode } from "@/lib/pincode/fill";
 import { followMerges, resolveNoPanClients, resolvePanClients, type ClientHint } from "./client-match";
+import { autoFamiliesAllowed } from "@/lib/families/auto";
 
 /**
  * Build a Postgres array literal that binds a JS array as ONE array value.
@@ -754,6 +755,12 @@ export async function importRtaFolios(
         WHERE m.id = v.mid AND m.tenant_id = ${tenantId}::uuid
       `);
     }
+
+    // A firm that keeps its families by hand switches this off (Aina Admin →
+    // "Do not create families automatically", lib/families/auto.ts): the minors
+    // are still linked to their guardian above, but no family is created and
+    // nobody is placed into one. Nothing else in this import touches families.
+    if (!(await autoFamiliesAllowed(tenantId))) return summary;
 
     // (b) One household family per guardian — reuse the guardian's existing
     //     family, or a family they already head (a prior import), else create one.

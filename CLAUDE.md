@@ -1073,6 +1073,37 @@ catalog — Payroll is gated by its capabilities, My pay is self-only.
   number) and the PF ECR v2 / ESIC files (`lib/payroll/filings.ts`, approved
   runs, `payroll.manage`, audited). Every result carries `statutory` wages.
 
+## Families made by the CRM itself — a per-firm switch (2026-11-23)
+
+Shah Financial Services keeps its families by hand. The ONLY automatic creator is the RTA
+folio import's minors step (`importRtaFolios` step 6: a guardian gets "<guardian> Family" and
+their minors are placed in it). The firm switch **`noAutoFamilies`** (`lib/families/auto.ts`,
+feature flag in `config/feature-flags.ts`, group Families, editable in Aina Admin, off for
+everyone) stops it: the minors are still linked to their guardian (`guardian_investor_id`),
+but no family is created and nobody is placed in one. Migration 0283 switches it on for the
+firm whose ARN contains 173086 (it sets `app.is_platform_admin`, like any migration that
+touches `subscriptions` under RLS). Families people make — New family, Map clients, the
+suggestions panel — are never affected, and families already created are not removed. A new
+automatic family creator must call `autoFamiliesAllowed(tenantId)` first.
+
+## Families — select many, "Update a field" (2026-11-23)
+
+The Families list has the Clients list's selection: tick rows, tick the page, or "Select all
+N matching records" (`GET /api/families/ids`, same filter as the page —
+`lib/families/list-filter.ts` is the ONE definition of what the list shows). The floating bar
+offers Reassign RM, Next Review and **Update a field** (`MassUpdateDialog` given the family
+registry). Code: `lib/families/bulk-fields.ts` (registry shared by dialog and server),
+`bulk-update.ts`, `POST /api/families/bulk`, `components/families/FamiliesTable.tsx`.
+
+- Fields: family RM, branch, category, review frequency, next review, first meeting, notes,
+  add / remove a tag. Never identity (name, code, head) or derived figures.
+- **The same rules as editing one family**: the RM goes through `setFamilyRm` (head + members),
+  a review frequency re-works the next review and reaches the members, health is re-scored.
+  Only families whose value changes are written; one `family.bulk_field` audit row each. No
+  `family.updated` events (a mass edit must not fire hundreds of automations).
+- At most 2,000 families per request (`FAMILY_BULK_MAX`); the table says when "all matching"
+  was cut. Scope is `familyScopeSql`: a family outside the viewer's book is "not in your book".
+
 ## Creating a family
 
 The New family form (`/dashboard/families/new`, `NewFamilyForm`) asks for the
@@ -1365,6 +1396,42 @@ client).
   rows, newest first; a mail whose attachment could not be stored is held and
   retried, never deleted. The whole-firm passes after an import run only when
   it landed rows.
+
+### Why the SIP book did not grow after every file was uploaded (2026-11-23, Ahpal)
+
+Several independent causes, each fixed and pinned by `tests/rta-sip-registration-match.test.ts`
+and `tests/rta-sip-register-import.test.ts`:
+
+- **A registration is told apart by its START DATE** (`lib/rta/sip-match.ts`, pure), plus the SIP
+  day when several share a start date — not by folio + scheme. The old key let a cancelled ₹2,000
+  row stop the live ₹5,000 SIP beside it, collapsed two live SIPs into one and added a stopped copy
+  on every re-import. A cancelled row now stops only its own registration; a cancelled one the CRM
+  never held is left out (history); an undated legacy SIP is adopted; a re-dated SIP with the same
+  amount and day that the file does not list is adopted, not doubled.
+- **A transfer registration is not a SIP** (`isTransferRegistration`, a deny-list: SO / SI / R / DTP /
+  STP / SWP / switch …); it stops only its own registration. Everything else is a SIP, so a new
+  registrar word is not silently dropped.
+- **A SIP register uploaded under the dialog's default kind wrote no SIPs.** The worker now sniffs
+  the header (`lib/rta/sip-kind.ts`, CAMS AUT_TRNTYP + AUTO_AMOUN; KFin TRTYPE + ACNO + FREQ +
+  PAIDINST…) and the file name (`isSipRegisterFileName`) — a name only overrides the default pick,
+  never a deliberate choice, a rejection report or a master / holdings upload.
+- **Re-runs**: a newer file used to cancel an older one's re-run whatever it held, the cap was 3 and
+  they ran newest-first. Now a newer file supersedes only when it completed with ≥ 90% of the older
+  one's rows, the cap is 10, and they run oldest-first.
+- **Parsing**: "Rs. 5,000", ₹, "INR" and a negative amount read; "Half Yearly", "Qtrly", "Annual"…
+  read (`normaliseFrequency`); cease dates in 7 spellings; a target scheme of 0 / - / NA is none.
+- **SIPs of a closed / exited client are not in the book** (`aliveClient`), so a register full of
+  them looked like "nothing imported". The import now counts them and says so in the row-0 note
+  (`hiddenSipsNote`). The client KPI strips and the employee totals use `aliveClient` for AUM and
+  SIP book too, so they agree with the dashboards.
+- **SIP rejections**: the transaction-feed upsert now repairs a stored row's type / date / amount /
+  scheme on re-import; the feed parser knows more date / status / reason headers and carries the
+  reason; the rejection report knows more column names and skips ₹0 rows; the materialiser is
+  NULL-amount safe and looks back by the row's last change, not just its import time.
+- Not fixed: dashboards that read `sip_rejections` vs the transactions ledger can differ; a bounce
+  in both the feed and a rejection report can double-count; the SIP Rejections page is capped at
+  200 rows; the real registrar vocabulary beyond what is listed is unverified without a sample.
+  A completed file is kept 14 days — re-upload it, or use Re-import on its row, to apply the fixes.
 
 ### Why an upload "did not go through", and the SIP rejection report (2026-10-30)
 

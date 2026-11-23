@@ -41,7 +41,8 @@ import {
 } from "./parsers";
 import { registrarSipState } from "./sip-registrar-status";
 import { clientIdForFolio, clientIdForPan, followMerges, resolvePanClients, type ClientHint } from "./client-match";
-import { leftOutNote, notASipLabel } from "./sip-left-out";
+import { hiddenSipsNote, isTransferRegistration, leftOutNote, notASipLabel } from "./sip-left-out";
+import { matchRegistration } from "./sip-match";
 
 // A registrar reason this import wrote earlier, replaced (not stacked) on the next report.
 const REG_PREFIX_RE = "^(CAMS|KFintech|Registrar): [^·]*( · ceased [^·]*)?( · )?";
@@ -594,6 +595,14 @@ async function processTransactionFeed(
         )
         ON CONFLICT (tenant_id, order_id) WHERE order_id IS NOT NULL DO UPDATE SET
           folio_id = EXCLUDED.folio_id,
+          -- Re-reading a file REPAIRS what an earlier reading got wrong. The type, date, amount and scheme
+          -- were never rewritten, so a bounced SIP first stored as a "lumpsum purchase dated the day it was
+          -- imported" stayed that for ever and every parser fix since only helped rows inserted AFTER it.
+          type = EXCLUDED.type,
+          order_date = EXCLUDED.order_date,
+          amount = EXCLUDED.amount,
+          scheme_code = EXCLUDED.scheme_code,
+          scheme_name = EXCLUDED.scheme_name,
           direction = EXCLUDED.direction,
           -- A transaction a later reversal cancelled stays cancelled when its
           -- own file is re-read.
@@ -734,6 +743,12 @@ async function processSipRejectionReport(
     if (!r.rejectionDate) {
       skipped++;
       errors.push({ row: i + 1, reason: "the rejection date is missing or not in a form this importer reads — row not imported" });
+      continue;
+    }
+    if (!(r.amount > 0)) {
+      // An amount this importer could not read is 0 — and a SIP rejection of nothing is not a rejection.
+      skipped++;
+      errors.push({ row: i + 1, reason: "the amount is missing or not in a form this importer reads — row not imported" });
       continue;
     }
     if (r.rejectionDate < minDate) minDate = r.rejectionDate;
@@ -1096,6 +1111,21 @@ async function processFolioMasterDump(
   };
 }
 
+/**
+ * "Is this stored SIP the registration `r` describes?" — same start date (or none stored)
+ * and the same amount (within 1%, or none stored). Used to take an STP / SWP out of the book
+ * without touching a genuine SIP that happens to share its folio and scheme.
+ */
+function sameRegistrationSql(r: { startDate?: string; amount: number }) {
+  const start = r.startDate
+    ? sql`(start_date IS NULL OR start_date = ${r.startDate}::date OR to_char(start_date, 'YYYY-DD-MM') = ${r.startDate})`
+    : sql`TRUE`;
+  const amount = r.amount > 0
+    ? sql`(COALESCE(amount, 0) = 0 OR amount BETWEEN ${r.amount}::numeric * 0.99 AND ${r.amount}::numeric * 1.01)`
+    : sql`TRUE`;
+  return sql`(${start} AND ${amount})`;
+}
+
 async function processSipBook(
   tx: Tx,
   args: { tenantId: string; source: RtaSource; text: string }
@@ -1135,6 +1165,26 @@ async function processSipBook(
   /** Every folio in the book, loaded on the first row that needs it. */
   let folioIndex: Map<string, FolioCandidate[]> | undefined;
 
+  // What THIS file says about each folio + scheme: the start dates of its SIP registrations
+  // (live and cancelled) and how many are live. Several registrations can share a folio and
+  // scheme, so a row is matched to a stored SIP by its start date (lib/rta/sip-match.ts).
+  const fileFacts = new Map<string, { starts: Map<string, number>; liveRows: number }>();
+  for (const r of rows) {
+    if (!r.folioNumber || !r.schemeCode) continue;
+    if (isTransferRegistration((r.registrationType ?? "").trim()) || r.targetScheme) continue;
+    const k = `${r.folioNumber}|${r.schemeCode}`;
+    const f = fileFacts.get(k) ?? { starts: new Map<string, number>(), liveRows: 0 };
+    if (r.startDate) f.starts.set(r.startDate, (f.starts.get(r.startDate) ?? 0) + 1);
+    if (!(r.ceaseDate && r.ceaseDate <= todayIst)) f.liveRows++;
+    fileFacts.set(k, f);
+  }
+  const NO_FACTS = { starts: new Map<string, number>(), liveRows: 0 };
+  /** SIPs stopped here as STP / SWP registrations (the cache must be refreshed after them). */
+  let stoppedAsTransfer = 0;
+  /** Live SIPs filed under a client who is closed, exited, in the Trash or merged away — kept, but not in the book. */
+  let hiddenSips = 0;
+  const hiddenClients = new Set<string>();
+
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
 
@@ -1153,18 +1203,22 @@ async function processSipBook(
     // and only a transfer has a TARGET scheme. On Nimesh C Shah's 7 Oct file
     // the SO rows alone were Rs 68.56 L a month — they had all come in as SIPs.
     const regType = (r.registrationType ?? "").trim();
-    const isSipType = !regType || /^(p|sip|isip|xsip|csip|micro ?sip|purchase|systematic purchase)$/i.test(regType);
-    if (!isSipType || r.targetScheme) {
-      // An earlier import may have stored it as a SIP: take that copy out of
-      // the book, so re-importing the report also cleans up after itself.
+    if (isTransferRegistration(regType) || r.targetScheme) {
+      // An earlier import may have stored it as a SIP: take THAT copy out of the book, so
+      // re-importing the report also cleans up after itself. It is the same registration —
+      // same start date and amount — not every SIP that shares the folio and scheme: a client
+      // can run an STP out of a scheme and a genuine SIP into it.
       if (r.folioNumber && (r.schemeCode || r.schemeName)) {
-        await tx.execute(sql`
+        const stopped = await tx.execute(sql`
           UPDATE sips SET status = 'stopped', remarks = ${NOT_A_SIP_REMARK}, updated_at = now()
            WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${r.folioNumber} AND status = 'active'
              AND (scheme_code = ${r.schemeCode || r.schemeName}
                   OR lower(regexp_replace(COALESCE(scheme_name, ''), '[^a-zA-Z0-9]', '', 'g'))
                    = lower(regexp_replace(${r.schemeName || r.schemeCode}, '[^a-zA-Z0-9]', '', 'g')))
+             AND ${sameRegistrationSql(r)}
+          RETURNING id
         `);
+        stoppedAsTransfer += stopped.rows.length;
       }
       leaveOut(notASipLabel(regType, !!r.targetScheme));
       continue;
@@ -1216,13 +1270,16 @@ async function processSipBook(
     // otherwise fall back to whoever owns the folio.
     let investorId: string | null = null;
     let rmId: string | null = null;
+    let standing = true;
     const chosen = await clientForRow(tx, args.tenantId, r.pan || undefined, folioInvestorId ? String(folioInvestorId) : null);
     if (chosen) {
       const who = await tx.execute(sql`
-        SELECT id, rm_id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND id = ${chosen}::uuid LIMIT 1
+        SELECT id, rm_id, status, deleted_at, merged_into_id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND id = ${chosen}::uuid LIMIT 1
       `);
-      investorId = (who.rows[0] as any)?.id ?? null;
-      rmId = (who.rows[0] as any)?.rm_id ?? null;
+      const w = who.rows[0] as { id?: string; rm_id?: string | null; status?: string; deleted_at?: unknown; merged_into_id?: unknown } | undefined;
+      investorId = w?.id ?? null;
+      rmId = w?.rm_id ?? null;
+      standing = !!w && !w.deleted_at && !w.merged_into_id && w.status !== "closed" && w.status !== "exited";
     }
     if (!investorId) {
       skipped++;
@@ -1246,30 +1303,16 @@ async function processSipBook(
 
     await tx.execute(sql`SAVEPOINT rta_item`);
     try {
-      // Match on the STABLE key (tenant, investor, folio, scheme) — NOT amount.
-      // Including amount meant a step-up SIP (amount changes between monthly
-      // books) failed to match and inserted a duplicate active SIP, inflating
-      // active-SIP count + AUM projections. Update the amount on match instead.
-      //
-      // Match on folio_NUMBER, not folio_id. folio_id is a surrogate key that
-      // CHANGES when the folio master is re-imported: the new folio row gets a
-      // fresh uuid, the existing SIP still points at the old one, the lookup
-      // misses and a duplicate active SIP is inserted. That is not theoretical —
-      // it produced 96 byte-identical duplicate SIPs on one firm, same folio,
-      // scheme, amount and start date, differing only in when they were written.
-      //
-      // The folio number is what the registrar actually keys on and survives a
-      // re-import. investor_id is dropped from the match for the same reason:
-      // a re-imported client is a new row, and the folio number already scopes
-      // this tightly enough.
-      // A registration already identified as an STP/SWP (not a SIP) stays out
-      // of the book — the registrar re-sends it in every report.
+      // A registration already identified as an STP/SWP (not a SIP) stays out of the book —
+      // the registrar re-sends it in every report. It is THAT registration (same start date
+      // and amount) that stays out, not every SIP in the same folio and scheme.
       const transfer = await tx.execute(sql`
         SELECT 1 FROM sips
         WHERE tenant_id = ${args.tenantId}::uuid
           AND folio_number = ${r.folioNumber}
           AND scheme_code = ${r.schemeCode}
           AND remarks = ${NOT_A_SIP_REMARK}
+          AND ${sameRegistrationSql(r)}
         LIMIT 1
       `);
       if (transfer.rows.length) {
@@ -1278,96 +1321,86 @@ async function processSipBook(
         continue;
       }
 
-      const existing = await tx.execute(sql`
-        SELECT id FROM sips
-        WHERE tenant_id = ${args.tenantId}::uuid
-          AND folio_number = ${r.folioNumber}
-          AND scheme_code = ${r.schemeCode}
-          AND status = 'active'
-        LIMIT 1
-      `);
+      // Every SIP the CRM holds for this folio and scheme, whatever its status — and which of
+      // them THIS row is (lib/rta/sip-match.ts).
+      //
+      // The folio is matched by NUMBER, not folio_id: folio_id is a surrogate key that CHANGES
+      // when the folio master is re-imported, so the lookup missed and a duplicate active SIP
+      // went in (96 byte-identical copies on one firm). investor_id is not part of it either:
+      // a re-imported client is a new row, and the folio number scopes this tightly enough.
+      //
+      // A folio + scheme can hold SEVERAL registrations (a cancelled ₹2,000 SIP and a live
+      // ₹5,000 one; two SIPs on different days). They are told apart by START DATE — not by
+      // amount, which a step-up changes. Keyed on folio + scheme alone, a cancelled row stopped
+      // the live SIP beside it and two live SIPs collapsed into one.
+      //
+      // The scheme matches by code OR by name: a report with no code column was keyed on the
+      // NAME and the next one (with a code) must adopt that row, not add a second copy (846 such
+      // pairs on one book).
+      const held = (await tx.execute(sql`
+        SELECT id, investor_id, scheme_code, status, amount::float8 AS amount,
+               start_date::text AS start_date, sip_date,
+               COALESCE(end_date, updated_at::date)::text AS closed_by, updated_at
+          FROM sips
+         WHERE tenant_id = ${args.tenantId}::uuid
+           AND folio_number = ${r.folioNumber}
+           AND (scheme_code = ${r.schemeCode}
+                OR lower(regexp_replace(COALESCE(scheme_name, ''), '[^a-zA-Z0-9]', '', 'g'))
+                 = lower(regexp_replace(${r.schemeName || r.schemeCode}, '[^a-zA-Z0-9]', '', 'g')))
+         ORDER BY created_at
+      `)).rows as Array<{
+        id: string; investor_id: string; scheme_code: string | null; status: string; amount: number | null;
+        start_date: string | null; sip_date: string | null; closed_by: string | null; updated_at: string;
+      }>;
+      const match = matchRegistration(
+        { startDate: r.startDate, amount: r.amount, sipDate: r.sipDate, live: sipStatus === "active" },
+        held.map((h) => ({
+          id: String(h.id), status: h.status, amount: h.amount, startDate: h.start_date, sipDate: h.sip_date, closedBy: h.closed_by,
+        })),
+        fileFacts.get(`${r.folioNumber}|${r.schemeCode}`) ?? NO_FACTS,
+      );
+      const heldRow = match ? held.find((h) => String(h.id) === match.id) : undefined;
 
-      let existingId = (existing.rows[0] as any)?.id;
-
-      // The same registration under a different scheme key: a report that
-      // carried no code column was keyed on the scheme NAME, and the next one
-      // (with a code column) missed it and inserted a second copy beside it —
-      // 846 such pairs on one book. Same folio + same scheme name is the same
-      // SIP; adopt that row and give it the proper code.
-      if (!existingId && r.schemeName) {
-        const byName = await tx.execute(sql`
-          SELECT id FROM sips
-          WHERE tenant_id = ${args.tenantId}::uuid
-            AND folio_number = ${r.folioNumber}
-            AND lower(regexp_replace(COALESCE(scheme_name, ''), '[^a-zA-Z0-9]', '', 'g'))
-              = lower(regexp_replace(${r.schemeName}, '[^a-zA-Z0-9]', '', 'g'))
-            AND status = 'active'
-          ORDER BY amount DESC NULLS LAST
-          LIMIT 1
-        `);
-        existingId = (byName.rows[0] as any)?.id;
-        if (existingId) {
-          await tx.execute(sql`UPDATE sips SET scheme_code = ${r.schemeCode} WHERE id = ${existingId}::uuid`);
-        }
-      }
-
-      // The same registration, already CLOSED here — completed on evidence that
-      // its instalments stopped (completeExpiredSips, scripts/mark-sip-transfers),
-      // stopped on a cease date, or stopped by hand. Registrars keep listing a
-      // registration long after it stops collecting, and matching only active
-      // rows re-inserted every one of them as a fresh active SIP on the next
-      // report, undoing the closure. Same folio + scheme + start date is the
-      // same registration (an older CAMS import read 2/9 as 2 September, so the
-      // swapped date matches too); a later start date is a new one.
-      if (!existingId) {
-        const closed = await tx.execute(sql`
-          SELECT id, investor_id, status, amount, updated_at FROM sips
-          WHERE tenant_id = ${args.tenantId}::uuid
-            AND folio_number = ${r.folioNumber}
-            AND status IN ('completed', 'stopped')
-            AND (scheme_code = ${r.schemeCode}
-                 OR lower(regexp_replace(COALESCE(scheme_name, ''), '[^a-zA-Z0-9]', '', 'g'))
-                  = lower(regexp_replace(${r.schemeName || r.schemeCode}, '[^a-zA-Z0-9]', '', 'g')))
-            AND (${r.startDate ?? null}::date IS NULL
-                 OR start_date = ${r.startDate ?? null}::date
-                 OR to_char(start_date, 'YYYY-DD-MM') = ${r.startDate ?? null}
-                 OR (start_date IS NULL AND ${r.startDate ?? null}::date <= COALESCE(end_date, updated_at::date)))
-          ORDER BY updated_at DESC
-          LIMIT 1
-        `);
-        const c = closed.rows[0] as { id: string; investor_id: string; status: string; amount: string | null; updated_at: string } | undefined;
-        if (c) {
-          // Completed on evidence, so only evidence reopens it: an instalment
-          // of this amount collected after it was closed (the feed can arrive
-          // late). A stopped one — cease date, or a person — stays stopped.
-          const amt = Number(c.amount ?? 0);
-          const resumed = c.status === "completed" && sipStatus === "active" && amt > 0
-            ? (await tx.execute(sql`
-                SELECT 1 FROM transactions x
-                WHERE x.tenant_id = ${args.tenantId}::uuid AND x.investor_id = ${c.investor_id}::uuid
-                  AND x.folio_number = ${r.folioNumber} AND x.type = 'sip'
-                  AND x.order_date > ${c.updated_at}::date
-                  AND abs(x.amount - ${amt}::numeric) <= ${amt}::numeric * 0.02
-                LIMIT 1
-              `)).rows.length > 0
-            : false;
-          if (!resumed) {
-            // Closed here already; label it with what the registrar says
-            // ("KFintech: Terminated by Investor"). The status stays as it is.
-            if (reg.reason) {
-              await tx.execute(sql`
-                UPDATE sips
-                   SET updated_at = now(),
-                       remarks = left(${reg.reason} || COALESCE(' · ' || NULLIF(regexp_replace(COALESCE(remarks, ''), ${REG_PREFIX_RE}, ''), ''), ''), 500)
-                 WHERE id = ${c.id}::uuid AND COALESCE(remarks, '') NOT LIKE ${reg.reason + "%"}
-              `);
-            }
-            await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
-            leaveOut("SIPs already closed in the CRM (cease date, completed or stopped)");
-            continue;
+      let existingId: string | undefined;
+      if (match && match.status === "active") {
+        existingId = match.id;
+      } else if (match && heldRow) {
+        // The same registration, already CLOSED here — completed on evidence that its instalments
+        // stopped (completeExpiredSips, scripts/mark-sip-transfers), stopped on a cease date, or
+        // stopped by hand. Registrars keep listing a registration long after it stops collecting,
+        // and matching only active rows re-inserted every one of them as a fresh active SIP on
+        // the next report, undoing the closure.
+        //
+        // Completed on evidence, so only evidence reopens it: an instalment of this amount
+        // collected after it was closed (the feed can arrive late). A stopped one — cease date,
+        // or a person — stays stopped.
+        const amt = Number(heldRow.amount ?? 0);
+        const resumed = heldRow.status === "completed" && sipStatus === "active" && amt > 0
+          ? (await tx.execute(sql`
+              SELECT 1 FROM transactions x
+              WHERE x.tenant_id = ${args.tenantId}::uuid AND x.investor_id = ${heldRow.investor_id}::uuid
+                AND x.folio_number = ${r.folioNumber} AND x.type = 'sip'
+                AND x.order_date > ${heldRow.updated_at}::date
+                AND abs(x.amount - ${amt}::numeric) <= ${amt}::numeric * 0.02
+              LIMIT 1
+            `)).rows.length > 0
+          : false;
+        if (!resumed) {
+          // Closed here already; label it with what the registrar says
+          // ("KFintech: Terminated by Investor"). The status stays as it is.
+          if (reg.reason) {
+            await tx.execute(sql`
+              UPDATE sips
+                 SET updated_at = now(),
+                     remarks = left(${reg.reason} || COALESCE(' · ' || NULLIF(regexp_replace(COALESCE(remarks, ''), ${REG_PREFIX_RE}, ''), ''), ''), 500)
+               WHERE id = ${match.id}::uuid AND COALESCE(remarks, '') NOT LIKE ${reg.reason + "%"}
+            `);
           }
-          existingId = c.id;
+          await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
+          leaveOut("SIPs already closed in the CRM (cease date, completed or stopped)");
+          continue;
         }
+        existingId = match.id;
       }
 
       if (existingId) {
@@ -1382,6 +1415,8 @@ async function processSipBook(
         await tx.execute(sql`
           UPDATE sips
           SET amount = ${r.amount}::numeric,
+              -- A report with the scheme code replaces a row that was keyed on the scheme NAME.
+              scheme_code = CASE WHEN ${r.schemeCode}::text <> COALESCE(${r.schemeName ?? null}::text, '') THEN ${r.schemeCode}::text ELSE scheme_code END,
               next_installment_at = COALESCE(${r.nextInstallmentAt ?? null}::date, next_installment_at),
               start_date = COALESCE(${r.startDate ?? null}::date, start_date),
               end_date = COALESCE(${r.endDate ?? null}::date, end_date),
@@ -1405,15 +1440,21 @@ async function processSipBook(
         await tx.execute(sql`
           INSERT INTO sips (
             tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
-            amount, frequency, sip_date, start_date, end_date, next_installment_at, mandate_id, status, rm_id
+            amount, frequency, sip_date, start_date, end_date, next_installment_at, mandate_id, status, rm_id, remarks
           ) VALUES (
             ${args.tenantId}::uuid, ${investorId}::uuid, ${folioId}::uuid, ${r.folioNumber}, ${r.schemeCode}, ${amcName},
             ${r.schemeCode}, ${r.schemeName}, ${r.amount}, ${r.frequency}, ${r.sipDate ?? null}, ${r.startDate ?? null}::date,
-            ${r.endDate ?? null}::date, ${r.nextInstallmentAt ?? null}::date, ${mandateId}::uuid, 'active', ${rmId}::uuid
+            ${r.endDate ?? null}::date, ${r.nextInstallmentAt ?? null}::date, ${mandateId}::uuid, 'active', ${rmId}::uuid,
+            left(${reg.reason ?? null}::text, 500)
           )
         `);
       }
 
+      // A live SIP of a client the book does not count (closed, exited, in the Trash, merged).
+      if (sipStatus === "active" && !standing && investorId) {
+        hiddenSips++;
+        hiddenClients.add(investorId);
+      }
       imported++;
       await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
     } catch (e: any) {
@@ -1447,8 +1488,10 @@ async function processSipBook(
   // Registrations the ledger shows to be STPs/SWPs leave the book
   // (lib/finance/sip-lifecycle.ts) before the cache is refreshed.
   const transfers = await markSystematicTransfers(tx, args.tenantId);
-  if (imported > 0 || transfers > 0) await refreshActiveSipAmount(tx, { tenantId: args.tenantId });
+  if (imported > 0 || transfers > 0 || stoppedAsTransfer > 0) await refreshActiveSipAmount(tx, { tenantId: args.tenantId });
 
+  const hidden = hiddenSipsNote(hiddenSips, hiddenClients.size);
+  if (hidden) errors.unshift({ row: 0, reason: hidden });
   const note = leftOutNote(leftOut);
   if (note) errors.unshift({ row: 0, reason: note });
 

@@ -5,32 +5,28 @@ import { Plus, HeartHandshake } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { formatDate } from "@/lib/format";
-import { formatINR } from "@/lib/utils";
 import { familyHealth, type MemberForHealth, type FamilyHealthBreakdown } from "@/lib/families/health";
-import { RowActions } from "@/components/common/RowActions";
 import { familyQuickFilterOptions } from "@/components/families/FamilyQuickFilters";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { FamiliesMoreMenu } from "@/components/families/FamiliesMoreMenu";
 import { ExportButton } from "@/components/export/ExportButton";
 import { CleanupEmptyFamilies } from "@/components/families/CleanupEmptyFamilies";
 import { buttonClass } from "@/components/ui/button-class";
-import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { FamilyToolsGrid } from "@/components/families/FamilyToolsGrid";
 import { Pager } from "@/components/common/Pager";
 import { healthBandClasses } from "@/lib/investors/health";
 import { StatusChips, type StatusChip } from "@/components/common/StatusChips";
-import { wealthBand, WEALTH_BAND_META, bandBounds, bandCaseSql, WEALTH_BANDS, type WealthBand } from "@/lib/families/wealth-band";
+import { wealthBand, WEALTH_BAND_META, bandCaseSql, WEALTH_BANDS } from "@/lib/families/wealth-band";
 import { familyScopeSql, requireFamilyView, canEditFamilies } from "@/lib/families/access";
 import { LIVE_MEMBER_JOIN } from "@/lib/families/live";
 import { investorScopeSql } from "@/lib/investors/access";
 import { aliveClient } from "@/lib/metrics/scope";
-import { needsNomineeSql } from "@/lib/investors/type-rules";
+import { buildFamilyListFilter, FAMILY_CATEGORIES, parseFamilyListParams } from "@/lib/families/list-filter";
+import { FamiliesTable, type FamilyTableRow } from "@/components/families/FamiliesTable";
+import type { MassUpdateOptions } from "@/components/investors/MassUpdateDialog";
 
 export const dynamic = "force-dynamic";
-
-const CATEGORIES = ["HNI", "Affluent", "Retail", "NRI", "Corporate"] as const;
 
 export default async function FamiliesPage({
   searchParams,
@@ -47,78 +43,22 @@ export default async function FamiliesPage({
   const hasClientView =
     can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "investor.view.assigned", session.permissions);
   const sp = await searchParams;
-  const q = (sp.q ?? "").trim();
   const userId = session.userId;
-  const band = (WEALTH_BANDS as readonly string[]).includes(sp.band ?? "") ? (sp.band as WealthBand) : "";
-  const categories = (sp.category ?? "").split(",").filter((c) => (CATEGORIES as readonly string[]).includes(c));
-
-  // Sort: "aum" (default, largest books first) or "health" (worst-first triage).
-  const sortKey = sp.sort === "health" ? "health" : "aum";
+  const parsed = parseFamilyListParams(sp);
+  const { q, band, categories, sortKey, narrowed } = parsed;
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const qf = {
-    mine: sp.mine === "1",
-    no_primary: sp.no_primary === "1",
-    no_rm: sp.no_rm === "1",
-    review_due: sp.review_due === "1",
-    nominee_gap: sp.nominee_gap === "1",
-    has_minor: sp.has_minor === "1",
-    hni: sp.hni === "1",
-    single: sp.single === "1",
-    large: sp.large === "1",
-    red_health: sp.red_health === "1",
-  };
-  const narrowed = !!q || categories.length > 0 || Object.values(qf).some(Boolean);
-
-  const { rows, total, bandCounts, memberlessCount, quickFilterOptions, coverage } = await withTenant(session.tenantId, async (tx) => {
+  const { rows, total, bandCounts, memberlessCount, quickFilterOptions, coverage, bulkOptions } = await withTenant(session.tenantId, async (tx) => {
     const scope = await familyScopeSql(tx, session, "f");
     const quickFilterOptions = await familyQuickFilterOptions(tx, { userId, scope });
 
-    const where: any[] = [sql`f.tenant_id = ${session.tenantId}::uuid`, scope];
-    if (q) {
-      const digits = q.replace(/\D/g, "");
-      where.push(sql`(
-        f.head_name ILIKE ${`%${q}%`}
-        OR f.family_name ILIKE ${`%${q}%`}
-        OR f.family_code ILIKE ${`%${q}%`}
-        OR EXISTS (
-          SELECT 1 FROM investors mi WHERE mi.family_id = f.id AND mi.deleted_at IS NULL AND mi.merged_into_id IS NULL
-            AND (mi.name ILIKE ${`%${q}%`} OR mi.pan ILIKE ${`%${q.toUpperCase()}%`}
-                 ${digits.length >= 6 ? sql`OR regexp_replace(COALESCE(mi.phone, ''), '\\D', '', 'g') LIKE ${`%${digits}%`}` : sql``})
-        )
-      )`);
-    }
-    if (categories.length) where.push(sql`f.family_category IN (${sql.join(categories.map((c) => sql`${c}`), sql`, `)})`);
-    if (qf.mine) where.push(sql`f.rm_id = ${userId}::uuid`);
-    if (qf.no_primary) where.push(sql`f.primary_investor_id IS NULL`);
-    if (qf.no_rm) where.push(sql`f.rm_id IS NULL`);
-    if (qf.review_due) where.push(sql`(f.next_review_at IS NULL OR f.next_review_at <= now())`);
-    if (qf.red_health) where.push(sql`f.health_band = 'red'`);
-
-    // Member-level conditions go in HAVING via boolean aggregates over LIVE members.
-    const having: any[] = [];
-    if (qf.nominee_gap) having.push(sql`BOOL_OR(i.id IS NOT NULL AND ${needsNomineeSql("i")}) = true`);
-    if (qf.has_minor) having.push(sql`BOOL_OR(i.is_minor = true) = true`);
-    if (qf.hni) having.push(sql`BOOL_OR(i.segment_tag = 'HNI') = true`);
-    if (qf.single) having.push(sql`COUNT(i.id) = 1`);
-    if (qf.large) having.push(sql`COUNT(i.id) >= 5`);
-    const aumExpr = sql.raw(`COALESCE(SUM(i.aum::numeric), 0)`);
-    // The band chips count with every filter EXCEPT the band itself.
-    const havingNoBand = [...having];
-    if (band) {
-      const b = bandBounds(band);
-      having.push(b.max == null ? sql`${aumExpr} >= ${b.min}` : sql`${aumExpr} >= ${b.min} AND ${aumExpr} < ${b.max}`);
-    } else if (!q) {
-      // Families with no AUM are hidden by default: on most books they are the
-      // majority, and a list that is 85% "₹0" buries the households to work
-      // on. A search still finds them, and ?band=empty lists them.
-      having.push(sql`${aumExpr} >= 1`);
-    }
-
-    const whereSql = sql`WHERE ${sql.join(where, sql` AND `)}`;
-    const havingSql = having.length ? sql`HAVING ${sql.join(having, sql` AND `)}` : sql``;
-    const havingNoBandSql = havingNoBand.length ? sql`HAVING ${sql.join(havingNoBand, sql` AND `)}` : sql``;
+    const { whereSql, havingSql, havingNoBandSql } = buildFamilyListFilter({
+      tenantId: session.tenantId,
+      userId,
+      scope,
+      parsed,
+    });
 
     const orderSql =
       sortKey === "health" ? sql`f.health_score ASC, family_aum DESC NULLS LAST` : sql`family_aum DESC NULLS LAST`;
@@ -236,6 +176,26 @@ export default async function FamiliesPage({
       scored.push({ ...f, _health: h });
     }
 
+    // Choices for "Update a field" (branches and the people who can hold a book)
+    // — only for people who may edit families.
+    let bulkOptions: MassUpdateOptions | undefined;
+    if (canCreate) {
+      const br = (await tx.execute(sql`
+        SELECT id, name FROM branches WHERE tenant_id = ${session.tenantId}::uuid ORDER BY name ASC
+      `)).rows as Array<{ id: string; name: string | null }>;
+      const people = (await tx.execute(sql`
+        SELECT id, name FROM users
+         WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+         ORDER BY name ASC
+      `)).rows as Array<{ id: string; name: string | null }>;
+      bulkOptions = {
+        branches: br.map((b) => ({ value: String(b.id), label: b.name ?? "Unnamed branch" })),
+        rms: people.map((u) => ({ value: String(u.id), label: u.name ?? "Unnamed" })),
+        occupations: [],
+        incomeRanges: [],
+      };
+    }
+
     return {
       rows: scored,
       total: Number((c.rows[0] as any)?.c ?? 0),
@@ -243,6 +203,7 @@ export default async function FamiliesPage({
       memberlessCount: Number((memberless.rows[0] as { c?: number } | undefined)?.c ?? 0),
       quickFilterOptions,
       coverage,
+      bulkOptions,
     };
   });
 
@@ -268,6 +229,36 @@ export default async function FamiliesPage({
     return `/dashboard/families${qs ? `?${qs}` : ""}`;
   };
   const now = new Date();
+
+  // The rows the table draws — plain values, so the client table holds no
+  // server-only logic (the overdue test uses the server's clock, not the browser's).
+  const tableRows: FamilyTableRow[] = rows.map((f) => {
+    const wb = wealthBand(Number(f.family_aum ?? 0));
+    const next = f.next_review_at ? new Date(f.next_review_at as string) : null;
+    const reasons = f._health.factors.map((x: { label: string }) => x.label);
+    return {
+      id: String(f.id),
+      name: ((f.family_name as string) || (f.head_name as string)) ?? "",
+      sub: [f.family_code, f.family_category].filter(Boolean).join(" · ") || null,
+      bandLabel: wb !== "empty" ? WEALTH_BAND_META[wb].label : null,
+      head: (f.head_member_name as string | null) ?? null,
+      rm: (f.rm_name as string | null) ?? null,
+      members: Number(f.member_count),
+      aum: Number(f.family_aum ?? 0),
+      sip: Number(f.family_sip ?? 0),
+      nextReviewAt: next ? next.toISOString() : null,
+      overdue: !!next && next < now,
+      healthOk: f._health.band === "green",
+      healthChip: healthBandClasses(f._health.band).chip,
+      healthTip: reasons.length ? `Health ${f._health.score}/100. ${reasons.join(" · ")}` : `Health ${f._health.score}/100. Nothing to fix.`,
+    };
+  });
+  // The list's own filters (no page, no sort) — what "Select all N matching" asks the server for.
+  const filterQuery = (() => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== "page" && k !== "sort") params.set(k, v);
+    return params.toString();
+  })();
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -330,7 +321,7 @@ export default async function FamiliesPage({
             type: "multi",
             key: "category",
             label: "Family category",
-            options: CATEGORIES.map((c) => ({ value: c, label: c })),
+            options: FAMILY_CATEGORIES.map((c) => ({ value: c, label: c })),
           },
         ]}
       />
@@ -365,98 +356,14 @@ export default async function FamiliesPage({
             </div>
           )
         ) : (
-          <div className="table-scroll">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 z-10 border-b bg-card text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium">Family</th>
-                  <th className="py-2 text-left font-medium">Head</th>
-                  <th className="py-2 text-left font-medium">RM</th>
-                  <th className="py-2 text-right font-medium">Members</th>
-                  <th className="py-2 text-right font-medium">
-                    <Link href={hrefWith({ sort: null })} className={`hover:underline ${sortKey === "aum" ? "text-foreground" : ""}`}>
-                      Combined AUM {sortKey === "aum" ? "↓" : ""}
-                    </Link>
-                  </th>
-                  <th className="py-2 text-right font-medium">SIP / month</th>
-                  <th className="py-2 pl-4 text-left font-medium">Next review</th>
-                  <th className="py-2 pl-4 text-left font-medium">
-                    <Link href={hrefWith({ sort: "health" })} className={`hover:underline ${sortKey === "health" ? "text-foreground" : ""}`}>
-                      Health {sortKey === "health" ? "↑" : ""}
-                    </Link>
-                  </th>
-                  {canDelete && <th className="px-4 py-2"><span className="sr-only">Actions</span></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((f) => {
-                  const name = (f.family_name as string) || (f.head_name as string);
-                  const wb = wealthBand(Number(f.family_aum ?? 0));
-                  const next = f.next_review_at ? new Date(f.next_review_at as any) : null;
-                  const overdue = !!next && next < now;
-                  const ok = f._health.band === "green";
-                  const reasons = f._health.factors.map((x: { label: string }) => x.label);
-                  return (
-                    <tr key={f.id} className="border-b last:border-0 hover:bg-accent/40">
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link href={`/dashboard/families/${f.id}`} className="font-medium hover:underline">
-                            {name}
-                          </Link>
-                          {wb !== "empty" && <Badge raw>{WEALTH_BAND_META[wb].label}</Badge>}
-                        </div>
-                        {(f.family_code || f.family_category) && (
-                          <div className="mt-0.5 text-xs text-muted-foreground">
-                            {[f.family_code, f.family_category].filter(Boolean).join(" · ")}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3 text-sm">
-                        {f.head_member_name ?? <span className="text-xs text-muted-foreground">Not set</span>}
-                      </td>
-                      <td className="py-3 text-sm">
-                        {f.rm_name ?? <span className="text-xs text-muted-foreground">Not assigned</span>}
-                      </td>
-                      <td className="py-3 text-right tabular-nums">{Number(f.member_count)}</td>
-                      <td className="py-3 text-right tabular-nums">{formatINR(Number(f.family_aum ?? 0))}</td>
-                      <td className="py-3 text-right tabular-nums text-muted-foreground">
-                        {Number(f.family_sip ?? 0) > 0 ? formatINR(Number(f.family_sip)) : "—"}
-                      </td>
-                      <td className={`py-3 pl-4 text-sm ${overdue ? "text-destructive" : ""}`}>
-                        {next ? <>{formatDate(next)}{overdue ? " · overdue" : ""}</> : <span className="text-xs text-muted-foreground">Not scheduled</span>}
-                      </td>
-                      <td className="py-3 pl-4">
-                        {/* ONE badge: OK or At risk; the score and reasons on hover. */}
-                        <span
-                          className={`w-fit rounded-full border px-1.5 py-0.5 text-2xs font-medium ${
-                            ok ? "border-border bg-secondary text-muted-foreground" : healthBandClasses(f._health.band).chip
-                          }`}
-                          title={reasons.length ? `Health ${f._health.score}/100. ${reasons.join(" · ")}` : `Health ${f._health.score}/100. Nothing to fix.`}
-                        >
-                          {ok ? "OK" : "At risk"}
-                        </span>
-                      </td>
-                      {canDelete && (
-                        <td className="px-4 py-3 text-right">
-                          {/* Only an empty family can be deleted (the API refuses one with members). */}
-                          {Number(f.member_count) === 0 && (
-                            <RowActions
-                              deleteUrl={`/api/families/${f.id}`}
-                              itemLabel="family"
-                              itemName={name}
-                              verb="Delete"
-                              permanent
-                              inline
-                            />
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <FamiliesTable
+            rows={tableRows}
+            sortKey={sortKey}
+            aumHref={hrefWith({ sort: null })}
+            healthHref={hrefWith({ sort: "health" })}
+            canDelete={canDelete}
+            bulk={bulkOptions ? { options: bulkOptions, query: filterQuery, total } : undefined}
+          />
         )}
         {rows.length > 0 && (
           <div className="px-4 pb-3">

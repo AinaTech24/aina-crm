@@ -141,6 +141,10 @@ const REPORT_TITLES: Array<[RegExp, RtaFileKind, string]> = [
  * keyword patterns against a body would mis-file reports. In text mode we
  * therefore trust ONLY explicit registrar report codes.
  */
+/** File names (lower-cased) a SIP register goes by when it carries no report code. */
+const SIP_REGISTER_NAME =
+  /systematic[_\-\s]*(?:transaction[_\-\s]*)?regist|sip[_\-\s]*stp[_\-\s]*(?:procured|report|regist)|sip[_\-\s]*regist|sip[_\-\s]*(?:cease|cancel)/;
+
 function detectKind(haystack: string, codesOnly: boolean): { kind: RtaFileKind; label: string } | null {
   const n = haystack.toLowerCase();
 
@@ -203,8 +207,15 @@ function detectKind(haystack: string, codesOnly: boolean): { kind: RtaFileKind; 
   if (/brok|commission|\bcomm[_\- ]|brmth|\bbr[_\- ]/.test(n)) {
     return { kind: "monthly_brokerage", label: "Monthly brokerage statement" };
   }
-  if (/(sip.*(reject|bounce|return|fail|dishon))|(reject.*(sip|nach))|nach.*(reject|return|dishon)/.test(n)) {
+  if (/(sip.*(reject|rej\b|rej[_\-\s]|bounce|return|fail|dishon|unsuccess))|(reject.*(sip|nach))|(unsuccess.*sip)|((nach|ecs).*(reject|return|dishon|fail))/.test(n)) {
     return { kind: "sip_rejection_report", label: "SIP rejection report" };
+  }
+  // A SIP register named in WORDS, not by report code: "Systematic_Registration_Status_P_….xls" (the
+  // name CAMS ships it under), "Systematic Transaction Registration", "SIP_STP_Procured", "SIP Registration
+  // Report", "SIPSTP_Report", "SIP Cease Report". Each used to be quarantined as "unrecognised" (or,
+  // with "transaction" in the name, read as a transaction feed) so its SIPs never reached the book.
+  if (SIP_REGISTER_NAME.test(n) && !/mandate|umrn|nach/.test(n)) {
+    return { kind: "monthly_sip_book", label: "SIP register" };
   }
   if (/mandate|umrn|nach.*(status|regist)/.test(n)) {
     return { kind: "nach_mandate_status", label: "NACH mandate status" };
@@ -228,6 +239,11 @@ function detectKind(haystack: string, codesOnly: boolean): { kind: RtaFileKind; 
  */
 export function isSipRejectionFileName(fileName: string): boolean {
   return detectKind(fileName, false)?.kind === "sip_rejection_report";
+}
+
+/** Is this file name, taken ALONE, a SIP register (CAMS WBR49 / KFintech MFSD230 / 243 / 313, or a name in words)? */
+export function isSipRegisterFileName(fileName: string): boolean {
+  return detectKind(fileName, false)?.kind === "monthly_sip_book";
 }
 
 export function classifyMailback(
