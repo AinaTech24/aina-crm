@@ -86,6 +86,9 @@ const RECORD_PAGE: Record<string, { col: string; path: string }> = {
 };
 /** The column each row carries its record id in (never shown or exported). */
 export const LINK_KEY = "__link";
+/** The row's OWN id (the subject table's id) — what a report's "update" panel
+ *  edits (components/reports/RecordPanel.tsx). Never shown or exported. */
+export const ID_KEY = "__id";
 
 export interface DetailedColumn {
   key: string;
@@ -311,9 +314,10 @@ export async function runDetailed(
   const colSql = [
     ...colDefs.map((d) => `${d.sql} AS "${d.key}"`),
     ...(page ? [`${q.cat.alias}.${page.col} AS "${LINK_KEY}"`] : []),
+    `${q.cat.alias}.id AS "${ID_KEY}"`,
   ].join(", ");
 
-  let text = `SELECT ${colSql} FROM ${q.from} WHERE ${q.where}`;
+  let text =`SELECT ${colSql} FROM ${q.from} WHERE ${q.where}`;
   if (opts.sort?.field) {
     const sd = getField(opts.subject, opts.sort.field);
     text += ` ORDER BY ${sd.sql} ${opts.sort.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`;
@@ -531,6 +535,7 @@ export async function runSummary(
     const colSql = [
       ...colDefs.map((d) => `${d.sql} AS "${d.key}"`),
       ...(page ? [`${q.cat.alias}.${page.col} AS "${LINK_KEY}"`] : []),
+      `${q.cat.alias}.id AS "${ID_KEY}"`,
     ].join(", ");
     let dtext = `SELECT ${pathSel}, ${colSql} FROM ${q.from}
       WHERE ${q.where}

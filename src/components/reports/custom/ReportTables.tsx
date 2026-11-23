@@ -12,6 +12,7 @@
 import Link from "next/link";
 import { ArrowDown, ArrowUp, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
+import { useRecordPanel } from "@/components/reports/RecordPanel";
 
 export type DetailedColumn = { key: string; label: string; type: string };
 export type Detailed = { kind: "detailed"; columns: DetailedColumn[]; rows: Record<string, unknown>[]; total: number; linkBase: string | null };
@@ -62,7 +63,21 @@ function hrefOf(linkBase: string | null, row: Record<string, unknown>): string |
   return linkBase && id ? `${linkBase}${String(id)}` : null;
 }
 
-/** A record row: the first cell links to the record. */
+/** A record row: the first cell links to the record; a click anywhere else opens
+ *  the update panel when the page provides one (RecordPanel.tsx). */
+function RecordRow({ row, columns, linkBase, className }: { row: Record<string, unknown>; columns: DetailedColumn[]; linkBase: string | null; className?: string }) {
+  const panel = useRecordPanel();
+  return (
+    <tr
+      className={`${className ?? ""} ${panel ? "cursor-pointer hover:bg-secondary/30" : ""}`}
+      onClick={panel ? () => panel.open(row, columns) : undefined}
+      title={panel ? "Open to update" : undefined}
+    >
+      <RecordCells row={row} columns={columns} linkBase={linkBase} />
+    </tr>
+  );
+}
+
 function RecordCells({ row, columns, linkBase }: { row: Record<string, unknown>; columns: DetailedColumn[]; linkBase: string | null }) {
   const href = hrefOf(linkBase, row);
   return (
@@ -70,7 +85,7 @@ function RecordCells({ row, columns, linkBase }: { row: Record<string, unknown>;
       {columns.map((c, i) => (
         <td key={c.key} className={`px-3 py-2 whitespace-nowrap ${NUMERIC.has(c.type) ? "text-right tabular-nums" : ""}`}>
           {i === 0 && href ? (
-            <Link href={href} className="font-medium text-primary hover:underline">
+            <Link href={href} className="font-medium text-primary hover:underline" onClick={(e) => e.stopPropagation()}>
               {fmt(row[c.key], c.type)}
             </Link>
           ) : (
@@ -117,9 +132,7 @@ export function DetailedTable({
         </thead>
         <tbody>
           {r.rows.map((row, i) => (
-            <tr key={i}>
-              <RecordCells row={row} columns={r.columns} linkBase={r.linkBase} />
-            </tr>
+            <RecordRow key={i} row={row} columns={r.columns} linkBase={r.linkBase} />
           ))}
         </tbody>
       </table>
@@ -226,9 +239,7 @@ export function SummaryTable({ r, showDetails, onDrill }: { r: Summary; showDeta
                 </thead>
                 <tbody>
                   {node.rows!.map((row, ri) => (
-                    <tr key={ri} className="hover:bg-secondary/30">
-                      <RecordCells row={row} columns={r.detailColumns} linkBase={r.linkBase} />
-                    </tr>
+                    <RecordRow key={ri} row={row} columns={r.detailColumns} linkBase={r.linkBase} className="hover:bg-secondary/30" />
                   ))}
                 </tbody>
               </table>

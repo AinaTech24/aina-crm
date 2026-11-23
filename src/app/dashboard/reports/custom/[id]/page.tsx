@@ -29,6 +29,7 @@ import { DrillSheet } from "@/components/reports/custom/DrillSheet";
 import { CATALOGS } from "@/lib/filter/catalog";
 import { ReportFilterBar, reportFilterQuery, type ReportFilter } from "@/components/reports/ReportFilterBar";
 import { GroupedSummaryTable } from "@/components/reports/GroupedSummaryTable";
+import { RecordPanelProvider } from "@/components/reports/RecordPanel";
 
 // Recharts is heavy + not tree-shakeable; load it only when a report actually
 // has a chart, not on every report view.
@@ -270,6 +271,14 @@ export default function ReportViewPage() {
         </div>
       )}
 
+      <RecordPanelProvider
+        subject={meta?.subject ?? ""}
+        linkBase={result && "linkBase" in result ? result.linkBase : null}
+        onSaved={() => {
+          void run();
+          setDrill((d) => (d ? [...d] : d));
+        }}
+      >
       <div className={`card-surface overflow-hidden ${loading && result ? "opacity-60" : ""}`}>
         {loading && !result ? (
           <div className="p-12 grid place-items-center text-muted-foreground">
@@ -306,6 +315,7 @@ export default function ReportViewPage() {
       )}
 
       <DrillSheet reportId={id} drill={drill} filter={applied} query={zQuery} onClose={() => setDrill(null)} />
+      </RecordPanelProvider>
     </div>
   );
 }

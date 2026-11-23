@@ -11,6 +11,7 @@
 
 import { Fragment } from "react";
 import { formatGrowth } from "@/lib/reports/growth";
+import { useRecordPanel } from "./RecordPanel";
 
 type Node = { key: string; label?: string; count: number; aggregates: number[]; children?: Node[]; rows?: Record<string, unknown>[]; growth?: number | null };
 export type GroupedSummary = {
@@ -43,6 +44,7 @@ function cell(v: unknown, type?: string): string {
 type Line = { groups: Array<string | null>; node: Node; depth: number; kind: "leaf" | "subtotal" };
 
 export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
+  const panel = useRecordPanel();
   if (r.tree.length === 0) return <div className="p-12 text-center text-sm text-muted-foreground">No records for this filter.</div>;
   const levels = r.groupLabels.length;
   const onlyCount = r.aggregateDefs.length === 1 && r.aggregateDefs[0].fn === "count";
@@ -116,7 +118,12 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
                           </thead>
                           <tbody>
                             {ln.node.rows.map((row, ri) => (
-                              <tr key={ri} className="border-t border-border/60 hover:bg-secondary/30">
+                              <tr
+                                key={ri}
+                                className={`border-t border-border/60 hover:bg-secondary/30 ${panel ? "cursor-pointer" : ""}`}
+                                onClick={panel ? () => panel.open(row, r.detailColumns) : undefined}
+                                title={panel ? "Open to update" : undefined}
+                              >
                                 {r.detailColumns.map((c) => (
                                   <td key={c.key} className={`px-2 py-1.5 align-top ${c.key === "description" ? "min-w-64 whitespace-pre-line" : "whitespace-nowrap"}`}>{cell(row[c.key], c.type)}</td>
                                 ))}
