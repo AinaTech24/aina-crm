@@ -46,7 +46,7 @@ function cell(v: unknown, type?: string): string {
   return humanCode(s);
 }
 
-type Line = { groups: Array<string | null>; node: Node; depth: number; kind: "leaf" | "subtotal" };
+type Line = { groups: Array<string | null>; node: Node; depth: number; kind: "leaf" | "subtotal"; growthOf?: Node | null };
 
 /** A group's name as people read it: months, dates and stored codes made plain. */
 const groupLabel = (n: Node) => humanCode(periodLabel(n.label ?? n.key));
@@ -83,21 +83,25 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
   // Growth sits on a top-level group's own row: the leaf row when there is one level, its subtotal row otherwise.
   const growthCell = (n: Node | null, bold = false) =>
     growth ? (
-      <td className={`px-4 py-2 text-right tabular-nums ${bold ? "font-semibold" : ""} ${n?.growth != null && n.growth < 0 ? "text-destructive" : ""}`}>{n ? formatGrowth(n.growth) : ""}</td>
+      <td className={`px-3 py-2 text-right tabular-nums ${bold ? "font-semibold" : ""} ${n?.growth != null && n.growth < 0 ? "text-destructive" : ""}`}>{n ? formatGrowth(n.growth) : ""}</td>
     ) : null;
 
   // Flatten: a row per leaf; each group's name only on its first leaf row.
+  // A top-level group with a single row gets no "… total" row (it would repeat that row);
+  // its growth then sits on the row itself.
   const lines: Line[] = [];
-  const walk = (node: Node, depth: number, prefix: Array<string | null>, first: boolean[]) => {
+  const leaves = (n: Node): number => (n.children?.length ? n.children.reduce((s, c) => s + leaves(c), 0) : 1);
+  const walk = (node: Node, depth: number, prefix: Array<string | null>, first: boolean[], root: Node | null) => {
     if (!node.children?.length) {
       const groups = [...prefix, groupLabel(node)];
-      lines.push({ groups: groups.map((g, i) => (first[i] ? g : null)), node, depth, kind: "leaf" });
+      lines.push({ groups: groups.map((g, i) => (first[i] ? g : null)), node, depth, kind: "leaf", growthOf: levels === 1 ? node : root });
       return;
     }
-    node.children.forEach((c, i) => walk(c, depth + 1, [...prefix, groupLabel(node)], [...first.map((f) => f && i === 0), true]));
-    if (depth === 0 && levels > 1) lines.push({ groups: [], node, depth, kind: "subtotal" });
+    const single = depth === 0 && leaves(node) === 1;
+    node.children.forEach((c, i) => walk(c, depth + 1, [...prefix, groupLabel(node)], [...first.map((f) => f && i === 0), true], single ? node : root));
+    if (depth === 0 && levels > 1 && !single) lines.push({ groups: [], node, depth, kind: "subtotal" });
   };
-  r.tree.forEach((root) => walk(root, 0, [], [true]));
+  r.tree.forEach((root) => walk(root, 0, [], [true], null));
 
   return (
     <div className="overflow-x-auto">
@@ -105,21 +109,21 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
         <thead>
           <tr className="border-b bg-secondary/50 text-xs font-medium text-muted-foreground">
             {r.groupLabels.map((l) => (
-              <th key={l} className="text-left px-4 py-3 font-medium whitespace-nowrap">{l}</th>
+              <th key={l} className="text-left px-3 py-3 font-medium whitespace-nowrap align-bottom">{l}</th>
             ))}
             {numCols.map((c) => (
-              <th key={c.key} className="text-right px-4 py-3 font-medium whitespace-nowrap">{c.label}</th>
+              <th key={c.key} className="text-right px-3 py-3 font-medium text-balance align-bottom">{c.label}</th>
             ))}
-            {growth && <th className="text-right px-4 py-3 font-medium whitespace-nowrap">{r.growthLabel}</th>}
+            {growth && <th className="text-right px-3 py-3 font-medium text-balance align-bottom">{r.growthLabel}</th>}
           </tr>
         </thead>
         <tbody>
           {lines.map((ln, i) =>
             ln.kind === "subtotal" ? (
               <tr key={`s${i}`} className="border-b bg-secondary/30">
-                <td colSpan={levels} className="px-4 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">{groupLabel(ln.node)} total</td>
+                <td colSpan={levels} className="px-3 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">{groupLabel(ln.node)} total</td>
                 {values(ln.node).map((v, j) => (
-                  <td key={j} className="px-4 py-2 text-right tabular-nums font-semibold">{num(v)}</td>
+                  <td key={j} className="px-3 py-2 text-right tabular-nums font-semibold">{num(v)}</td>
                 ))}
                 {growthCell(ln.node, true)}
               </tr>
@@ -127,12 +131,12 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
               <Fragment key={`l${i}`}>
                 <tr className={`border-b hover:bg-secondary/20 ${ln.groups[0] && i > 0 ? "border-t border-border" : ""}`}>
                   {Array.from({ length: levels }, (_, g) => (
-                    <td key={g} className={`px-4 py-2.5 align-top whitespace-nowrap ${g === 0 ? "font-semibold" : ""}`}>{ln.groups[g] ?? ""}</td>
+                    <td key={g} className={`px-3 py-2.5 align-top whitespace-nowrap ${g === 0 ? "font-semibold" : ""}`}>{ln.groups[g] ?? ""}</td>
                   ))}
                   {values(ln.node).map((v, j) => (
-                    <td key={j} className="px-4 py-2.5 text-right tabular-nums">{num(v)}</td>
+                    <td key={j} className="px-3 py-2.5 text-right tabular-nums">{num(v)}</td>
                   ))}
-                  {growthCell(levels === 1 ? ln.node : null)}
+                  {growthCell(ln.growthOf ?? null)}
                 </tr>
                 {r.showDetailRows && ln.node.rows?.length ? (
                   <tr className="border-b">
@@ -194,7 +198,7 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
           <tr className="border-t-2 bg-primary/5 font-bold">
             <td colSpan={levels} className="px-4 py-2.5">Grand total</td>
             {values({ ...r.grand, key: "", children: [] } as Node).map((v, j) => (
-              <td key={j} className="px-4 py-2.5 text-right tabular-nums">{num(v)}</td>
+              <td key={j} className="px-3 py-2.5 text-right tabular-nums">{num(v)}</td>
             ))}
             {growthCell(null)}
           </tr>
