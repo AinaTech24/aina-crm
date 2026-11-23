@@ -171,8 +171,8 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
 
   // Column layout
   const colScheme = margin;
-  const colUnits = margin + 250;
-  const colNav = margin + 330;
+  const colUnits = margin + 292;
+  const colNav = margin + 366;
   const colVal = W - margin;
   const drawColHeaders = () => {
     const header = (t: string, x: number, right = false) => {
@@ -192,14 +192,25 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
   // silently dropping rows (a 20-folio client gets a complete statement).
   const priced = v.holdings.filter((h) => h.priced && (h.currentValue ?? 0) > 0);
   const rows = priced.length ? priced : v.holdings;
+  // The scheme name may only use the room LEFT of the widest Units figure: the
+  // figures are right-aligned, so a big holding ("1,00,000.000") reaches far left
+  // and a name cut at a fixed width ran straight into it. A name that does not fit
+  // goes on a second line (the third is cut with "...") rather than being lost.
+  const unitsText = (h: (typeof rows)[number]) => num(h.netUnits, 3);
+  const widestUnits = rows.reduce((m, h) => Math.max(m, helv.widthOfTextAtSize(unitsText(h), 8.5)), 0);
+  const nameMaxW = colUnits - widestUnits - 14 - colScheme;
+  const NAME_SIZE = 9;
+  const NAME_LEADING = 11;
   for (const h of rows) {
-    if (y - 16 < BOTTOM) { newPage(); drawColHeaders(); }
     const name = san(h.schemeName ?? h.schemeCode ?? "—");
-    page.drawText(truncate(name, helv, 9, colUnits - colScheme - 12), { x: colScheme, y, size: 9, font: helv, color: INK });
-    drawRight(page, helv, num(h.netUnits, 3), colUnits, y, 8.5, SLATE);
+    const lines = wrapName(name, helv, NAME_SIZE, nameMaxW, 2);
+    const rowH = 5 + lines.length * NAME_LEADING;
+    if (y - rowH < BOTTOM) { newPage(); drawColHeaders(); }
+    lines.forEach((ln, i) => page.drawText(ln, { x: colScheme, y: y - i * NAME_LEADING, size: NAME_SIZE, font: helv, color: INK }));
+    drawRight(page, helv, unitsText(h), colUnits, y, 8.5, SLATE);
     drawRight(page, helv, h.latestNav != null ? num(h.latestNav, 2) : "—", colNav, y, 8.5, SLATE);
     drawRight(page, bold, h.currentValue != null ? san(money(h.currentValue)) : "—", colVal, y, 9, INK);
-    y -= 16;
+    y -= rowH + 5;
   }
 
   if (v.unpricedSchemes > 0) {
@@ -334,6 +345,29 @@ function truncate(text: string, font: PDFFont, size: number, maxWidth: number): 
   let t = text;
   while (t.length > 1 && font.widthOfTextAtSize(`${t}...`, size) > maxWidth) t = t.slice(0, -1);
   return `${t}...`;
+}
+/** Wrap a scheme name to at most `maxLines` lines of `maxWidth`; the last line is cut with "..." if it still overflows. A single word wider than a line is cut too. */
+export function wrapName(text: string, font: PDFFont, size: number, maxWidth: number, maxLines: number): string[] {
+  const words = (text || "").split(/\s+/).filter(Boolean);
+  if (!words.length) return [""];
+  const out: string[] = [];
+  let cur = "";
+  let i = 0;
+  while (i < words.length) {
+    const w = words[i];
+    const trial = cur ? `${cur} ${w}` : w;
+    if (font.widthOfTextAtSize(trial, size) <= maxWidth) { cur = trial; i++; continue; }
+    if (!cur) { cur = truncate(w, font, size, maxWidth); i++; }   // one word wider than a line
+    if (out.length === maxLines - 1) break;                         // last line: cut what is left
+    out.push(cur);
+    cur = "";
+  }
+  if (out.length === maxLines - 1 && i < words.length) {
+    // The rest of the name does not fit on the last line.
+    cur = truncate([cur, ...words.slice(i)].filter(Boolean).join(" "), font, size, maxWidth);
+  }
+  if (cur) out.push(cur);
+  return out.length ? out : [""];
 }
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const words = (text || "").split(/\s+/).filter(Boolean);
