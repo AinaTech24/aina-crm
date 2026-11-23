@@ -1104,6 +1104,17 @@ registry). Code: `lib/families/bulk-fields.ts` (registry shared by dialog and se
 - At most 2,000 families per request (`FAMILY_BULK_MAX`); the table says when "all matching"
   was cut. Scope is `familyScopeSql`: a family outside the viewer's book is "not in your book".
 
+## A ticked "View all clients" beats the branch lock (2026-11-23)
+
+A branch head is locked to their branch's clients, but a branch head's role defaults give only
+`investor.view.assigned` — so when the owner ticks **View all clients** for them in Customize Access
+Permissions that is a deliberate step up, and the lock must not undo it. `isClientBranchScoped` /
+`isLeadBranchScoped` (`lib/leads/access.ts`) are `isBranchScoped` minus an explicitly ticked
+`investor.view.all` / `lead.view.all` (`hasExplicitGrant`); every client / lead scope (client list,
+families, merge, reports, AI) uses them. The dashboards' own lock still follows
+`dashboard.view.all_branches`. Found at Shah Financial: Branch Head + Back Office with View all clients
+ticked saw one client. A new client scope must use `isClientBranchScoped`, not `isBranchScoped`.
+
 ## Creating a family
 
 The New family form (`/dashboard/families/new`, `NewFamilyForm`) asks for the

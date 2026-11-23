@@ -13,7 +13,7 @@ import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { getCatalog } from "@/lib/filter/catalog";
 import { clientScopeNarrows, dataWallApplies, investorScopeSql, isDataScopeRestricted } from "@/lib/investors/access";
-import { isBranchScoped, leadScopeSql } from "@/lib/leads/access";
+import { isBranchScoped, isClientBranchScoped, leadScopeSql } from "@/lib/leads/access";
 import { taskScopeSql } from "@/lib/tasks/scope";
 import { serviceRequestScopeSql } from "@/lib/service-requests/access";
 import { meetingScopeSql, meetingSubjectVisibleSql } from "@/lib/review-meetings/scope";
@@ -62,14 +62,14 @@ export async function reportSubjectScope(tx: any, session: SessionUser, subject:
     case "business_entry": {
       // Own entries, entries for a visible client, and — for firm-wide client
       // viewers — entries keyed without a client record.
-      const firm = cap("investor.view.all") && !isBranchScoped(session);
+      const firm = cap("investor.view.all") && !isClientBranchScoped(session);
       return sql`(${sql.raw(`${a}.rm_id`)} = ${session.userId}::uuid
         OR ${await clientOf("investor_id")}
         OR (${sql.raw(`${a}.investor_id`)} IS NULL AND ${firm ? sql`TRUE` : sql`FALSE`}))`;
     }
     case "business_line": {
       // A line follows its entry: the business_entry rule over the parent row.
-      const firm = cap("investor.view.all") && !isBranchScoped(session);
+      const firm = cap("investor.view.all") && !isClientBranchScoped(session);
       if (!invAllowed) return sql`EXISTS (SELECT 1 FROM business_entries rsc_e WHERE rsc_e.id = ${sql.raw(`${a}.entry_id`)} AND rsc_e.rm_id = ${session.userId}::uuid)`;
       const clientScope = clientsFree ? sql`TRUE` : await investorScopeSql(tx, session, "rsc_i");
       return sql`EXISTS (SELECT 1 FROM business_entries rsc_e WHERE rsc_e.id = ${sql.raw(`${a}.entry_id`)} AND (

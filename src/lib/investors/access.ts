@@ -33,7 +33,7 @@ import type { SessionUser } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 // Session-level helper — its canonical home is the leads access module (its
 // first caller). Branch scoping is identical for clients and leads.
-import { isBranchScoped } from "@/lib/leads/access";
+import { isClientBranchScoped } from "@/lib/leads/access";
 import { loadTenantLicense } from "@/lib/auth/license";
 
 /**
@@ -141,7 +141,7 @@ export async function clientScopeNarrows(tx: any, session: SessionUser): Promise
   if (!can(session.roles, "investor.view.all", session.permissions) && !can(session.roles, "investor.view.assigned", session.permissions)) return true;
   if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))
     && (session.roles.includes("branch_head") || session.roles.includes("rm"))) return true;
-  if (isBranchScoped(session)) return true;
+  if (isClientBranchScoped(session)) return true;
   return !canViewAllInvestors(session);
 }
 
@@ -158,7 +158,7 @@ export async function investorScopeCondition(tx: any, session: SessionUser) {
     if (session.roles.includes("rm")) return ownBookSql(tx, session, "investors");
   }
   if (!(await isDataScopeRestricted(tx, session.tenantId, session))) return undefined;
-  if (isBranchScoped(session)) return eq(investors.branchId, session.branchId!);
+  if (isClientBranchScoped(session)) return eq(investors.branchId, session.branchId!);
   if (canViewAllInvestors(session)) return undefined;
   return ownBookSql(tx, session, "investors");
 }
@@ -175,7 +175,7 @@ export async function investorScopeSql(tx: any, session: SessionUser, alias = "i
     if (session.roles.includes("rm")) return ownBookSql(tx, session, alias);
   }
   if (!(await isDataScopeRestricted(tx, session.tenantId, session))) return sql`TRUE`;
-  if (isBranchScoped(session)) {
+  if (isClientBranchScoped(session)) {
     return sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid`;
   }
   if (canViewAllInvestors(session)) return sql`TRUE`;

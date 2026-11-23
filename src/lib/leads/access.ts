@@ -38,10 +38,31 @@ export function isBranchScoped(session: SessionUser): boolean {
   );
 }
 
+/**
+ * Did the owner TICK this capability for this person ("Customize access permissions")?
+ * A branch head's role defaults give only "view assigned", so a ticked "View all
+ * clients / leads" is a deliberate step up — it must not be undone by the branch lock
+ * that every branch head otherwise gets (Shah Financial, 2026-11-23: a team member
+ * with Branch Head + Back Office and View all clients ticked saw almost no clients).
+ */
+export function hasExplicitGrant(session: SessionUser, cap: "investor.view.all" | "lead.view.all"): boolean {
+  return !session.roles.includes("owner") && (session.permissions?.length ?? 0) > 0 && !!session.permissions?.includes(cap);
+}
+
+/** The branch lock as it applies to CLIENT lists: lifted by an explicitly ticked "View all clients". */
+export function isClientBranchScoped(session: SessionUser): boolean {
+  return isBranchScoped(session) && !hasExplicitGrant(session, "investor.view.all");
+}
+
+/** The branch lock as it applies to LEAD lists: lifted by an explicitly ticked "View all leads". */
+export function isLeadBranchScoped(session: SessionUser): boolean {
+  return isBranchScoped(session) && !hasExplicitGrant(session, "lead.view.all");
+}
+
 export function leadScopeCondition(session: SessionUser) {
   requireLeadView(session);
   if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r)) && session.roles.includes("branch_head") && !session.branchId) return sql`FALSE`;
-  if (isBranchScoped(session)) return eq(leads.branchId, session.branchId!);
+  if (isLeadBranchScoped(session)) return eq(leads.branchId, session.branchId!);
   if (canViewAllLeads(session)) return undefined;
   return eq(leads.ownerId, session.userId);
 }
@@ -49,7 +70,7 @@ export function leadScopeCondition(session: SessionUser) {
 export function leadScopeSql(session: SessionUser, alias = "leads") {
   requireLeadView(session);
   if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r)) && session.roles.includes("branch_head") && !session.branchId) return sql`FALSE`;
-  if (isBranchScoped(session)) return sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid`;
+  if (isLeadBranchScoped(session)) return sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid`;
   if (canViewAllLeads(session)) return sql`TRUE`;
   return sql`${sql.raw(`${alias}.owner_id`)} = ${session.userId}::uuid`;
 }
