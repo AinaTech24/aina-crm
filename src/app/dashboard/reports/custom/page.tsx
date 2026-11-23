@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { confirmDialog } from "@/components/ui/ConfirmProvider";
 import { formatDate } from "@/lib/format";
+import { reportDisplayName } from "@/lib/reports/display";
 
 type Report = {
   id: string;
@@ -61,6 +62,18 @@ const TYPE_META: Record<string, { label: string; icon: typeof Table2 }> = {
 };
 const SHARING: Record<string, string> = { private: "Only me", team: "Team", tenant: "Everyone" };
 
+/** We Care's simpler list (2026-11-23): reports grouped by the area of work they answer. */
+const AREAS: Array<{ label: string; subjects: string[] }> = [
+  { label: "Business", subjects: ["business_line", "business_entry", "transaction"] },
+  { label: "SIP", subjects: ["sip", "sip_rejection"] },
+  { label: "Equity", subjects: ["equity_brokerage", "equity_dmat"] },
+  { label: "Clients", subjects: ["investor", "new_client", "client_gap", "goal"] },
+  { label: "Leads & meetings", subjects: ["lead", "review_meeting"] },
+  { label: "Back office", subjects: ["task", "service_request"] },
+  { label: "Insurance", subjects: ["insurance", "claim"] },
+];
+const areaOf = (subject: string) => AREAS.findIndex((a) => a.subjects.includes(subject));
+
 const ALL = "__all__";
 const FAV = "__fav__";
 const RECENT = "__recent__";
@@ -76,6 +89,11 @@ export default function CustomReportsPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [activeFolder, setActiveFolder] = useState<string>(ALL);
+  // The simpler list, for a firm with the Zoho import flag (We Care).
+  const [simple, setSimple] = useState(false);
+  useEffect(() => {
+    fetch("/api/imports/zoho/contacts").then((r) => r.json()).then((j) => setSimple(!!j?.enabled)).catch(() => {});
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -183,11 +201,13 @@ export default function CustomReportsPage() {
 
   return (
     <div className="space-y-4">
-      <Link href="/dashboard/reports" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 print:hidden">
-        <ChevronLeft className="size-4" /> Back to reports
-      </Link>
+      {!simple && (
+        <Link href="/dashboard/reports" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 print:hidden">
+          <ChevronLeft className="size-4" /> Back to reports
+        </Link>
+      )}
 
-      <PageHeaderCard title={<><BarChart3 className="size-6 text-muted-foreground" /> Custom Reports</>} actions={<><Link href="/dashboard/reports/custom/new" className="btn-primary">
+      <PageHeaderCard title={simple ? "Reports" : <><BarChart3 className="size-6 text-muted-foreground" /> Custom Reports</>} actions={<><Link href="/dashboard/reports/custom/new" className="btn-primary">
           <Plus className="size-4" /> New report
         </Link></>} />
 
@@ -227,6 +247,18 @@ export default function CustomReportsPage() {
                   </Link>
                 )}
               </div>
+            ) : simple ? (
+              <SimpleList
+                rows={filtered}
+                grouped={activeFolder === ALL && !q}
+                isBin={isBin}
+                when={isBin ? "Deleted" : activeFolder === RECENT ? "Last viewed" : null}
+                onStar={toggleStar}
+                onClone={clone}
+                onDelete={del}
+                onRestore={restoreReport}
+                onErase={erase}
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -303,6 +335,111 @@ export default function CustomReportsPage() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * We Care's report list (2026-11-23): the report's name and what it answers,
+ * grouped by area of work, the whole row opening the report. Module, type,
+ * folder, creator and sharing columns — the same on nearly every row — are left out.
+ */
+function SimpleList({
+  rows,
+  grouped,
+  isBin,
+  when,
+  onStar,
+  onClone,
+  onDelete,
+  onRestore,
+  onErase,
+}: {
+  rows: Report[];
+  grouped: boolean;
+  isBin: boolean;
+  when: "Deleted" | "Last viewed" | null;
+  onStar: (id: string, starred: boolean) => void;
+  onClone: (id: string) => void;
+  onDelete: (r: Report) => void;
+  onRestore: (r: Report) => void;
+  onErase: (r: Report) => void;
+}) {
+  const router = useRouter();
+  const sections: Array<{ label: string | null; rows: Report[] }> = grouped
+    ? [...AREAS.map((a) => a.label), "Other"]
+        .map((label, i) => ({
+          label,
+          rows: rows
+            .filter((r) => (areaOf(r.subject) === -1 ? i === AREAS.length : areaOf(r.subject) === i))
+            .sort((a, b) => reportDisplayName(a.name).localeCompare(reportDisplayName(b.name))),
+        }))
+        .filter((s) => s.rows.length)
+    : [{ label: null, rows }];
+
+  return (
+    <div className="divide-y divide-border">
+      {sections.map((s) => (
+        <section key={s.label ?? "all"}>
+          {s.label && <h2 className="bg-secondary/40 px-4 py-2 text-xs font-semibold text-muted-foreground">{s.label}</h2>}
+          <ul className="divide-y divide-border/60">
+            {s.rows.map((r) => (
+              <li
+                key={r.id}
+                className={`group flex items-center gap-3 px-4 py-3 ${isBin ? "" : "cursor-pointer hover:bg-secondary/30"}`}
+                onClick={isBin ? undefined : () => router.push(`/dashboard/reports/custom/${r.id}`)}
+              >
+                {!isBin && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStar(r.id, r.starred);
+                    }}
+                    aria-label={r.starred ? "Remove from favourites" : "Add to favourites"}
+                    aria-pressed={r.starred}
+                    className="btn-icon shrink-0 text-muted-foreground hover:text-warning"
+                  >
+                    <Star className={`size-4 ${r.starred ? "fill-warning text-warning" : ""}`} />
+                  </button>
+                )}
+                <div className="min-w-0 flex-1">
+                  {isBin ? (
+                    <div className="font-medium">{reportDisplayName(r.name)}</div>
+                  ) : (
+                    <Link href={`/dashboard/reports/custom/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-medium hover:underline">
+                      {reportDisplayName(r.name)}
+                    </Link>
+                  )}
+                  {r.description && <div className="text-xs text-muted-foreground line-clamp-1">{r.description}</div>}
+                </div>
+                {when && (
+                  <div className="shrink-0 text-xs text-muted-foreground">
+                    {when} {formatDate(when === "Deleted" ? r.deletedAt : r.viewedAt)}
+                  </div>
+                )}
+                <div className="flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                  {isBin ? (
+                    <>
+                      <button onClick={() => onRestore(r)} className="btn-icon" aria-label="Restore" title="Restore"><RotateCcw className="size-3.5" /></button>
+                      <button onClick={() => onErase(r)} className="btn-icon hover:text-destructive" aria-label="Delete forever" title="Delete forever"><Trash2 className="size-3.5" /></button>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100">
+                      <button onClick={() => onClone(r.id)} className="btn-icon" aria-label="Make a copy" title="Make a copy"><Copy className="size-3.5" /></button>
+                      {r.isMine && (
+                        <Link href={`/dashboard/reports/custom/new?edit=${r.id}`} className="btn-icon" aria-label="Edit" title="Edit"><Pencil className="size-3.5" /></Link>
+                      )}
+                      {r.isMine && (
+                        <button onClick={() => onDelete(r)} className="btn-icon hover:text-destructive" aria-label="Delete" title="Delete"><Trash2 className="size-3.5" /></button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
     </div>
   );
 }

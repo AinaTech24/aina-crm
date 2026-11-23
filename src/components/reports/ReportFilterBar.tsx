@@ -83,7 +83,7 @@ export function ReportFilterBar({
         : "All time";
 
   return (
-    <div className="card-surface p-4 space-y-3 print:hidden">
+    <div className="card-surface px-4 py-3 print:hidden">
       <div className="flex flex-wrap items-end gap-3">
         {dateFields.length > 1 && (
           <label className="text-sm min-w-44">
@@ -132,32 +132,32 @@ export function ReportFilterBar({
             </button>
           </>
         )}
-        {showDetailsSwitch && (
-          <label className="ml-auto flex items-center gap-2 text-sm pb-1.5 cursor-pointer select-none">
-            <input type="checkbox" checked={draft.details} onChange={(e) => set({ details: e.target.checked }, true)} />
-            Show details
-          </label>
-        )}
-      </div>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <CalendarRange className="size-3.5" />
-        <span>
-          Showing: <span className="text-foreground font-medium">{shown}</span>
-          {value.branch ? <span className="text-foreground font-medium"> · {value.branch.replace(/^desk:/, "")}</span> : null}
-        </span>
-        {value.period && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 hover:bg-secondary"
-            onClick={() => {
-              const next = { ...draft, period: "", from: "", to: "" };
-              setDraft(next);
-              onApply(next);
-            }}
-          >
-            <X className="size-3" /> Clear
-          </button>
-        )}
+        <div className="ml-auto flex flex-wrap items-center gap-3 pb-1.5 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <CalendarRange className="size-3.5" />
+            <span className="text-foreground font-medium">{shown}</span>
+            {value.branch ? <span className="text-foreground font-medium">· {value.branch.replace(/^desk:/, "")}</span> : null}
+          </span>
+          {(value.period || value.branch) && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 hover:bg-secondary"
+              onClick={() => {
+                const next = { ...draft, period: "", from: "", to: "", branch: "" };
+                setDraft(next);
+                onApply(next);
+              }}
+            >
+              <X className="size-3" /> Clear
+            </button>
+          )}
+          {showDetailsSwitch && (
+            <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer select-none">
+              <input type="checkbox" checked={draft.details} onChange={(e) => set({ details: e.target.checked }, true)} />
+              Show details
+            </label>
+          )}
+        </div>
       </div>
     </div>
   );

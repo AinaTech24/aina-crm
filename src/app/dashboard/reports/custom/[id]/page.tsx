@@ -30,6 +30,7 @@ import { CATALOGS } from "@/lib/filter/catalog";
 import { ReportFilterBar, reportFilterQuery, type ReportFilter } from "@/components/reports/ReportFilterBar";
 import { GroupedSummaryTable } from "@/components/reports/GroupedSummaryTable";
 import { RecordPanelProvider } from "@/components/reports/RecordPanel";
+import { isMonthKeys, periodLabel, reportDisplayName } from "@/lib/reports/display";
 
 // Recharts is heavy + not tree-shakeable; load it only when a report actually
 // has a chart, not on every report view.
@@ -176,24 +177,35 @@ export default function ReportViewPage() {
   const chart = useMemo(() => {
     if (!result || !meta?.chartType || meta.chartType === "none") return null;
     if (result.kind === "matrix") return result;
-    if (result.kind === "summary") return summaryAsChart(result);
+    if (result.kind === "summary") {
+      const c = summaryAsChart(result);
+      if (!zohoParity) return c;
+      // We Care: months read "Nov 2026", and with no period picked the chart shows the
+      // last 12 months — all time since 2017 squeezed the months that matter.
+      const months = isMonthKeys(c.rows.map((r) => r.key));
+      const rows = months && !zFilter?.period ? c.rows.slice(-12) : c.rows;
+      return { ...c, rows: rows.map((r) => ({ ...r, label: periodLabel(r.label) })) };
+    }
     return null;
-  }, [result, meta?.chartType]);
+  }, [result, meta?.chartType, zohoParity, zFilter?.period]);
 
   const sortForTable = sort === undefined ? null : sort;
 
   return (
     <div className="space-y-4 max-w-6xl print:max-w-none">
-      <div className="print:hidden">
-        <Link href="/dashboard/reports/custom" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
-          <ChevronLeft className="size-4" /> Back to custom reports
-        </Link>
-      </div>
+      {!zohoParity && (
+        <div className="print:hidden">
+          <Link href="/dashboard/reports/custom" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
+            <ChevronLeft className="size-4" /> Back to custom reports
+          </Link>
+        </div>
+      )}
 
       <PageHeaderCard
         title={
           <>
-            <BarChart3 className="size-6 text-muted-foreground print:hidden" /> {meta?.name ?? "Report"}
+            {!zohoParity && <BarChart3 className="size-6 text-muted-foreground print:hidden" />}{" "}
+            {meta ? (zohoParity ? reportDisplayName(meta.name) : meta.name) : "Report"}
             {meta && (
               <button type="button" onClick={toggleStar} className="btn-icon print:hidden" aria-label={meta.starred ? "Remove from favourites" : "Add to favourites"} aria-pressed={!!meta.starred}>
                 <Star className={`size-4 ${meta.starred ? "fill-warning text-warning" : "text-muted-foreground"}`} />
@@ -202,6 +214,15 @@ export default function ReportViewPage() {
           </>
         }
         actions={
+          zohoParity ? (
+            <div className="flex flex-wrap gap-2 print:hidden">
+              <Button size="sm" variant="secondary" icon={<Filter className="size-3.5" />} onClick={() => setShowFilters((s) => !s)}>
+                Filters{filterCount ? ` (${filterCount})` : ""}
+              </Button>
+              <MoreMenu id={id} canEdit={!!meta?.isMine} onClone={clone} />
+              <ExportMenu id={id} query={exportQuery} />
+            </div>
+          ) : (
           <div className="flex flex-wrap gap-2 print:hidden">
             <Button size="sm" variant={filterCount ? "primary" : "secondary"} icon={<Filter className="size-3.5" />} onClick={() => setShowFilters((s) => !s)}>
               Filters{filterCount ? ` (${filterCount})` : ""}
@@ -217,6 +238,7 @@ export default function ReportViewPage() {
             <SendMenu id={id} />
             <ExportMenu id={id} query={exportQuery} />
           </div>
+          )
         }
       >
         {meta?.description && <p className="page-subtitle">{meta.description}</p>}
@@ -291,7 +313,14 @@ export default function ReportViewPage() {
         ) : result?.kind === "detailed" ? (
           <DetailedTable r={result} sort={sortForTable} onSort={sortBy} />
         ) : result?.kind === "matrix" ? (
-          <MatrixTable r={result} onDrill={setDrill} />
+          <MatrixTable
+            r={
+              zohoParity
+                ? { ...result, colLabels: result.colLabels.map(periodLabel), rows: result.rows.map((row) => ({ ...row, label: periodLabel(row.label) })) }
+                : result
+            }
+            onDrill={setDrill}
+          />
         ) : result?.kind === "summary" ? (
           zohoParity ? <GroupedSummaryTable r={result} /> : <SummaryTable r={result} showDetails={showDetails} onDrill={setDrill} />
         ) : null}
@@ -310,7 +339,7 @@ export default function ReportViewPage() {
           </Button>
         </div>
       )}
-      {(result?.kind === "summary" || result?.kind === "matrix") && (
+      {!zohoParity && (result?.kind === "summary" || result?.kind === "matrix") && (
         <p className="text-xs text-muted-foreground print:hidden">Click a group or a number to see the records behind it.</p>
       )}
 
@@ -360,6 +389,84 @@ function ExportMenu({ id, query }: { id: string; query: string }) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** We Care's simpler header (2026-11-23): Edit, Clone and Email folded into one menu. */
+function MoreMenu({ id, canEdit, onClone }: { id: string; canEdit: boolean; onClone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [emailing, setEmailing] = useState(false);
+  const ref = useClickAway(open, () => {
+    setOpen(false);
+    setEmailing(false);
+  });
+  const item = "w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-secondary/50";
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen((o) => !o)} className="btn-secondary text-xs" aria-expanded={open}>
+        More <ChevronDown className="size-3.5" />
+      </button>
+      {open && (
+        <div className={`absolute right-0 mt-1 rounded-lg border border-border bg-card shadow-lg z-20 text-sm ${emailing ? "w-80 p-3" : "w-44 py-1"}`}>
+          {emailing ? (
+            <SendForm id={id} />
+          ) : (
+            <>
+              {canEdit && (
+                <Link href={`/dashboard/reports/custom/new?edit=${id}`} className={item}>
+                  <Pencil className="size-4 text-muted-foreground" /> Edit report
+                </Link>
+              )}
+              <button onClick={() => { setOpen(false); onClone(); }} className={item}>
+                <Copy className="size-4 text-muted-foreground" /> Make a copy
+              </button>
+              <button onClick={() => setEmailing(true)} className={item}>
+                <Mail className="size-4 text-muted-foreground" /> Email this report
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SendForm({ id }: { id: string }) {
+  const [userIds, setUserIds] = useState<string[]>([]);
+  const [emails, setEmails] = useState("");
+  const [attach, setAttach] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function send() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const list = emails.split(",").map((s) => s.trim()).filter(Boolean);
+      const picked = list.length || userIds.length;
+      const r = await fetch(`/api/reports/saved/${id}/send`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...(picked ? { emails: list, userIds } : {}), attach }),
+      });
+      const j = await r.json();
+      setMsg(r.ok ? `Sent to ${j.sent} recipient${j.sent === 1 ? "" : "s"}.` : (j.error ?? "Send failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <div className="text-xs text-muted-foreground">Email this report now. With nobody picked it goes to the schedule's recipients.</div>
+      <TeamMultiSelect value={userIds} onChange={setUserIds} max={50} placeholder="+ Add a team member" />
+      <input value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="Other emails, comma separated" aria-label="Other emails" className="input-base text-xs" />
+      <label className="flex items-center gap-2 text-xs">
+        <input type="checkbox" checked={attach} onChange={(e) => setAttach(e.target.checked)} /> Attach as Excel
+      </label>
+      <Button size="sm" variant="primary" className="w-full justify-center" loading={busy} icon={<Send className="size-3.5" />} onClick={send}>
+        Send now
+      </Button>
+      {msg && <div className="text-xs text-muted-foreground">{msg}</div>}
     </div>
   );
 }

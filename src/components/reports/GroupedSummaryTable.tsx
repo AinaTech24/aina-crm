@@ -9,8 +9,9 @@
  * under it.
  */
 
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { formatGrowth } from "@/lib/reports/growth";
+import { humanCode, periodLabel } from "@/lib/reports/display";
 import { useRecordPanel } from "./RecordPanel";
 
 type Node = { key: string; label?: string; count: number; aggregates: number[]; children?: Node[]; rows?: Record<string, unknown>[]; growth?: number | null };
@@ -27,29 +28,54 @@ export type GroupedSummary = {
 
 const num = (v: number) => Number(v ?? 0).toLocaleString("en-IN");
 
+const NUMERIC = new Set(["currency", "number", "integer"]);
+const DETAIL_PAGE = 50;
+
 function cell(v: unknown, type?: string): string {
   if (v == null || v === "") return "—";
-  if (type === "currency" || type === "number" || type === "integer") {
+  if (type && NUMERIC.has(type)) {
     const n = Number(v);
     if (Number.isFinite(n)) return n.toLocaleString("en-IN");
   }
   const s = String(v);
   if (/^\d{4}-\d{2}-\d{2}T/.test(s) || v instanceof Date) {
     const d = new Date(s);
-    return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+    return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" });
   }
+  if (/^\d{4}-\d{2}(-\d{2})?$/.test(s)) return periodLabel(s);
+  if (type === "enum") return humanCode(s);
   return s;
 }
 
 type Line = { groups: Array<string | null>; node: Node; depth: number; kind: "leaf" | "subtotal" };
 
+/** Every node of the tree, for checks across the whole report. */
+function allNodes(tree: Node[]): Node[] {
+  const out: Node[] = [];
+  const walk = (n: Node) => {
+    out.push(n);
+    n.children?.forEach(walk);
+  };
+  tree.forEach(walk);
+  return out;
+}
+
 export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
   const panel = useRecordPanel();
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   if (r.tree.length === 0) return <div className="p-12 text-center text-sm text-muted-foreground">No records for this filter.</div>;
   const levels = r.groupLabels.length;
   const onlyCount = r.aggregateDefs.length === 1 && r.aggregateDefs[0].fn === "count";
-  const numCols = onlyCount ? [{ key: "count", label: "Count" }] : [{ key: "records", label: "Records" }, ...r.aggregateDefs.map((a) => ({ key: a.key, label: a.label }))];
-  const values = (n: Node) => (onlyCount ? [n.count] : [n.count, ...n.aggregates]);
+  // "Records" says nothing when another column already counts the same thing (Rejection no. = Records).
+  const nodes = allNodes(r.tree);
+  const recordsRepeated =
+    !onlyCount &&
+    r.aggregateDefs.some((_, j) => nodes.every((n) => Number(n.aggregates[j]) === n.count) && Number(r.grand.aggregates[j]) === r.grand.count);
+  const showRecords = !onlyCount && !recordsRepeated;
+  const numCols = onlyCount
+    ? [{ key: "count", label: "Count" }]
+    : [...(showRecords ? [{ key: "records", label: "Records" }] : []), ...r.aggregateDefs.map((a) => ({ key: a.key, label: a.label }))];
+  const values = (n: Node) => (onlyCount ? [n.count] : [...(showRecords ? [n.count] : []), ...n.aggregates]);
   const growth = !!r.growthLabel;
   const span = levels + numCols.length + (growth ? 1 : 0);
   // Growth sits on a top-level group's own row: the leaf row when there is one level, its subtotal row otherwise.
@@ -62,11 +88,11 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
   const lines: Line[] = [];
   const walk = (node: Node, depth: number, prefix: Array<string | null>, first: boolean[]) => {
     if (!node.children?.length) {
-      const groups = [...prefix, node.key];
+      const groups = [...prefix, periodLabel(node.label ?? node.key)];
       lines.push({ groups: groups.map((g, i) => (first[i] ? g : null)), node, depth, kind: "leaf" });
       return;
     }
-    node.children.forEach((c, i) => walk(c, depth + 1, [...prefix, node.key], [...first.map((f) => f && i === 0), true]));
+    node.children.forEach((c, i) => walk(c, depth + 1, [...prefix, periodLabel(node.label ?? node.key)], [...first.map((f) => f && i === 0), true]));
     if (depth === 0 && levels > 1) lines.push({ groups: [], node, depth, kind: "subtotal" });
   };
   r.tree.forEach((root) => walk(root, 0, [], [true]));
@@ -75,21 +101,21 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm table-raw">
         <thead>
-          <tr className="border-b bg-secondary/50 text-xs uppercase tracking-wide text-muted-foreground">
+          <tr className="border-b bg-secondary/50 text-xs font-medium text-muted-foreground">
             {r.groupLabels.map((l) => (
-              <th key={l} className="text-left px-4 py-2.5 font-semibold">{l}</th>
+              <th key={l} className="text-left px-4 py-3 font-medium whitespace-nowrap">{l}</th>
             ))}
             {numCols.map((c) => (
-              <th key={c.key} className="text-right px-4 py-2.5 font-semibold w-32">{c.label}</th>
+              <th key={c.key} className="text-right px-4 py-3 font-medium whitespace-nowrap">{c.label}</th>
             ))}
-            {growth && <th className="text-right px-4 py-2.5 font-semibold w-32">{r.growthLabel}</th>}
+            {growth && <th className="text-right px-4 py-3 font-medium whitespace-nowrap">{r.growthLabel}</th>}
           </tr>
         </thead>
         <tbody>
           {lines.map((ln, i) =>
             ln.kind === "subtotal" ? (
-              <tr key={`s${i}`} className="border-b bg-secondary/40">
-                <td colSpan={levels} className="px-4 py-2 text-xs text-muted-foreground">Total · {ln.node.label ?? ln.node.key}</td>
+              <tr key={`s${i}`} className="border-b bg-secondary/30">
+                <td colSpan={levels} className="px-4 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">{periodLabel(ln.node.label ?? ln.node.key)} total</td>
                 {values(ln.node).map((v, j) => (
                   <td key={j} className="px-4 py-2 text-right tabular-nums font-semibold">{num(v)}</td>
                 ))}
@@ -97,27 +123,29 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
               </tr>
             ) : (
               <Fragment key={`l${i}`}>
-                <tr className={`border-b hover:bg-secondary/20 ${ln.groups[0] ? "border-t border-border" : ""}`}>
+                <tr className={`border-b hover:bg-secondary/20 ${ln.groups[0] && i > 0 ? "border-t border-border" : ""}`}>
                   {Array.from({ length: levels }, (_, g) => (
-                    <td key={g} className={`px-4 py-2 align-top ${g === 0 ? "font-semibold" : ""}`}>{ln.groups[g] ?? ""}</td>
+                    <td key={g} className={`px-4 py-2.5 align-top whitespace-nowrap ${g === 0 ? "font-semibold" : ""}`}>{ln.groups[g] ?? ""}</td>
                   ))}
                   {values(ln.node).map((v, j) => (
-                    <td key={j} className="px-4 py-2 text-right tabular-nums text-primary">{num(v)}</td>
+                    <td key={j} className="px-4 py-2.5 text-right tabular-nums">{num(v)}</td>
                   ))}
                   {growthCell(levels === 1 ? ln.node : null)}
                 </tr>
                 {r.showDetailRows && ln.node.rows?.length ? (
                   <tr className="border-b">
                     <td colSpan={span} className="p-0">
-                      <div className="overflow-x-auto bg-card px-4 py-2">
+                      <div className="overflow-x-auto bg-secondary/10 px-4 py-2">
                         <table className="w-full text-xs table-raw">
                           <thead>
                             <tr className="text-muted-foreground">
-                              {r.detailColumns.map((c) => <th key={c.key} className="text-left px-2 py-1.5 font-medium whitespace-nowrap">{c.label}</th>)}
+                              {r.detailColumns.map((c) => (
+                                <th key={c.key} className={`px-2 py-1.5 font-medium whitespace-nowrap ${NUMERIC.has(c.type) ? "text-right" : "text-left"}`}>{c.label}</th>
+                              ))}
                             </tr>
                           </thead>
                           <tbody>
-                            {ln.node.rows.map((row, ri) => (
+                            {(expanded.has(String(i)) ? ln.node.rows : ln.node.rows.slice(0, DETAIL_PAGE)).map((row, ri) => (
                               <tr
                                 key={ri}
                                 className={`border-t border-border/60 hover:bg-secondary/30 ${panel ? "cursor-pointer" : ""}`}
@@ -125,12 +153,33 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
                                 title={panel ? "Open to update" : undefined}
                               >
                                 {r.detailColumns.map((c) => (
-                                  <td key={c.key} className={`px-2 py-1.5 align-top ${c.key === "description" ? "min-w-64 whitespace-pre-line" : "whitespace-nowrap"}`}>{cell(row[c.key], c.type)}</td>
+                                  <td
+                                    key={c.key}
+                                    className={`px-2 py-1.5 align-top ${c.key === "description" || c.key === "remarks" ? "min-w-64 whitespace-pre-line" : "whitespace-nowrap"} ${NUMERIC.has(c.type) ? "text-right tabular-nums" : ""}`}
+                                  >
+                                    {cell(row[c.key], c.type)}
+                                  </td>
                                 ))}
                               </tr>
                             ))}
                           </tbody>
                         </table>
+                        {ln.node.rows.length > DETAIL_PAGE && (
+                          <button
+                            type="button"
+                            className="mt-1 px-2 py-1 text-xs font-medium text-primary hover:underline"
+                            onClick={() =>
+                              setExpanded((s) => {
+                                const next = new Set(s);
+                                if (next.has(String(i))) next.delete(String(i));
+                                else next.add(String(i));
+                                return next;
+                              })
+                            }
+                          >
+                            {expanded.has(String(i)) ? "Show fewer" : `Show all ${ln.node.rows.length.toLocaleString("en-IN")} records`}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
