@@ -16,6 +16,9 @@ describe("report display labels", () => {
     expect(humanCode("client_contacted")).toBe("Client contacted");
     expect(humanCode("pending")).toBe("Pending");
     expect(humanCode("Nikhil Thakkar")).toBe("Nikhil Thakkar");
+    expect(humanCode("pms")).toBe("PMS");
+    expect(humanCode("mutual_fund")).toBe("Mutual fund");
+    expect(humanCode("MFT12584")).toBe("MFT12584");
   });
   it("knows a month axis", () => {
     expect(isMonthKeys(["2026-10", "2026-11"])).toBe(true);

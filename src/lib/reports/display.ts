@@ -20,9 +20,16 @@ export function periodLabel(v: unknown): string {
   return s;
 }
 
-/** A stored code as words: "client_contacted" → "Client contacted". */
+/** Codes that are acronyms, not words. */
+const ACRONYM: Record<string, string> = {
+  pms: "PMS", aif: "AIF", sif: "SIF", nps: "NPS", fd: "FD", ncd: "NCD", sip: "SIP", stp: "STP", swp: "SWP", mf: "MF",
+  mutual_fund: "Mutual fund", direct_equity: "Direct equity", fd_bonds_ncd: "FD / Bonds / NCD",
+};
+
+/** A stored code as words: "client_contacted" → "Client contacted", "pms" → "PMS". */
 export function humanCode(v: unknown): string {
   const s = v == null ? "" : String(v);
+  if (ACRONYM[s]) return ACRONYM[s];
   if (!/^[a-z0-9]+(_[a-z0-9]+)*$/.test(s)) return s;
   const t = s.replace(/_/g, " ");
   return t.charAt(0).toUpperCase() + t.slice(1);

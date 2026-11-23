@@ -90,7 +90,12 @@ export default function ReportViewPage() {
   );
   // The bar starts on the module's first date field, all time.
   useEffect(() => {
-    if (zohoParity && meta && !zFilter && dateFields.length) setZFilter({ field: dateFields[0].key, period: "", from: "", to: "", details: false });
+    if (zohoParity && meta && !zFilter) {
+      // The first run must follow the bar too: details off until "Show details" is ticked.
+      const initial: ReportFilter = { field: dateFields[0]?.key ?? "", period: "", from: "", to: "", details: false };
+      setZFilter(initial);
+      setZQuery(reportFilterQuery(initial));
+    }
   }, [zohoParity, meta, zFilter, dateFields]);
   function applyZFilter(f: ReportFilter) {
     setZFilter(f);
@@ -192,7 +197,7 @@ export default function ReportViewPage() {
   const sortForTable = sort === undefined ? null : sort;
 
   return (
-    <div className="space-y-4 max-w-6xl print:max-w-none">
+    <div className={`space-y-4 print:max-w-none ${zohoParity ? "" : "max-w-6xl"}`}>
       {!zohoParity && (
         <div className="print:hidden">
           <Link href="/dashboard/reports/custom" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">

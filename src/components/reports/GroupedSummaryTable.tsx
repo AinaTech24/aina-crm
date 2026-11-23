@@ -43,11 +43,13 @@ function cell(v: unknown, type?: string): string {
     return d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" });
   }
   if (/^\d{4}-\d{2}(-\d{2})?$/.test(s)) return periodLabel(s);
-  if (type === "enum") return humanCode(s);
-  return s;
+  return humanCode(s);
 }
 
 type Line = { groups: Array<string | null>; node: Node; depth: number; kind: "leaf" | "subtotal" };
+
+/** A group's name as people read it: months, dates and stored codes made plain. */
+const groupLabel = (n: Node) => humanCode(periodLabel(n.label ?? n.key));
 
 /** Every node of the tree, for checks across the whole report. */
 function allNodes(tree: Node[]): Node[] {
@@ -88,11 +90,11 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
   const lines: Line[] = [];
   const walk = (node: Node, depth: number, prefix: Array<string | null>, first: boolean[]) => {
     if (!node.children?.length) {
-      const groups = [...prefix, periodLabel(node.label ?? node.key)];
+      const groups = [...prefix, groupLabel(node)];
       lines.push({ groups: groups.map((g, i) => (first[i] ? g : null)), node, depth, kind: "leaf" });
       return;
     }
-    node.children.forEach((c, i) => walk(c, depth + 1, [...prefix, periodLabel(node.label ?? node.key)], [...first.map((f) => f && i === 0), true]));
+    node.children.forEach((c, i) => walk(c, depth + 1, [...prefix, groupLabel(node)], [...first.map((f) => f && i === 0), true]));
     if (depth === 0 && levels > 1) lines.push({ groups: [], node, depth, kind: "subtotal" });
   };
   r.tree.forEach((root) => walk(root, 0, [], [true]));
@@ -115,7 +117,7 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
           {lines.map((ln, i) =>
             ln.kind === "subtotal" ? (
               <tr key={`s${i}`} className="border-b bg-secondary/30">
-                <td colSpan={levels} className="px-4 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">{periodLabel(ln.node.label ?? ln.node.key)} total</td>
+                <td colSpan={levels} className="px-4 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">{groupLabel(ln.node)} total</td>
                 {values(ln.node).map((v, j) => (
                   <td key={j} className="px-4 py-2 text-right tabular-nums font-semibold">{num(v)}</td>
                 ))}
@@ -135,7 +137,9 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
                 {r.showDetailRows && ln.node.rows?.length ? (
                   <tr className="border-b">
                     <td colSpan={span} className="p-0">
-                      <div className="overflow-x-auto bg-secondary/10 px-4 py-2">
+                      {/* w-0 + min-w-full: the records scroll inside their own box instead of
+                          widening the whole table and pushing the totals off-screen. */}
+                      <div className="w-0 min-w-full overflow-x-auto bg-secondary/10 px-4 py-2">
                         <table className="w-full text-xs table-raw">
                           <thead>
                             <tr className="text-muted-foreground">
