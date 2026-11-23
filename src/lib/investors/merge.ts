@@ -29,7 +29,7 @@ import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { investorScopeSql } from "@/lib/investors/access";
-import { isBranchScoped } from "@/lib/leads/access";
+import { isClientBranchScoped } from "@/lib/leads/access";
 import { recordAudit } from "@/lib/audit";
 import { recomputeInvestorAum } from "@/lib/finance/aum-persist";
 import { recomputeInvestorHealth } from "@/lib/investors/health-persist";
@@ -44,7 +44,7 @@ export type MergeSource = "manual" | "system" | "import";
  */
 export async function mergeScopeSql(tx: Tx, session: SessionUser, alias = "i"): Promise<SQL> {
   const scope = await investorScopeSql(tx, session, alias);
-  if (!isBranchScoped(session)) return scope;
+  if (!isClientBranchScoped(session)) return scope;
   return sql`(${scope} AND ${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid)`;
 }
 

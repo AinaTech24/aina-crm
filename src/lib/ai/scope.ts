@@ -14,7 +14,7 @@ import { sql, type SQL } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { investorScopeSql, canViewAllInvestors } from "@/lib/investors/access";
-import { isBranchScoped, leadScopeSql } from "@/lib/leads/access";
+import { isClientBranchScoped, leadScopeSql } from "@/lib/leads/access";
 import { taskScopeSql } from "@/lib/tasks/scope";
 import { meetingScopeSql } from "@/lib/review-meetings/scope";
 
@@ -62,6 +62,6 @@ export async function buildAiScope(tx: any, session?: SessionUser): Promise<AiSc
     leads,
     task: (a) => taskAlias[a],
     meeting: (a) => meetingAlias[a],
-    firmWide: invAllowed && canViewAllInvestors(session) && !isBranchScoped(session) && !session.mobile,
+    firmWide: invAllowed && canViewAllInvestors(session) && !isClientBranchScoped(session) && !session.mobile,
   };
 }
