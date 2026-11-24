@@ -639,6 +639,19 @@ when (India time), by whom — grouped by day, with a filter by field.
   predate 0284 show their creation from the task row and a note that earlier edits are not
   itemised. `/api/audit?entityType=task` does NOT check task access — do not build on it.
 
+## Personal targets — Settings → Targets & quota (2026-11-24)
+
+Each team member's FY targets are set in **Settings → Targets & quota** and are exactly the seven cards of the
+dashboard's **My target tracker**: SIP book, Net new SIP, Net business, New clients, Meetings, Review meetings,
+Insurance business (`lib/targets/personal-targets.ts`). One ANNUAL figure each, stored in `kra_targets` — the table
+the tracker, the RM desk and the branch view's per-person figures read (`loadBookTargets`, `PERSON_KEY` in
+`my/window.ts`) — which the tracker phases into a week or month. A blank (or 0) deletes the row: "Not set", never a
+target of zero. `PUT /api/targets { userId, fyTargets }` writes it (managers any member, others only themselves);
+`tests/personal-targets.test.ts` fails if a field's key or label stops matching the tracker. The Team scorecard's
+targets page still edits the same table (it also offers metrics the tracker does not use), but the tracker's
+"Set targets" links point to Settings. The old users-row fields (`annual_target`, `sip_monthly_target`, …) are
+still accepted by the API for the mobile app but are no longer asked for, and nothing copies them across.
+
 ## Excel import — Tasks, Meetings, Service requests (2026-11-24)
 
 An **Import** button on each of the three lists (owner / `task.edit.all`, `review_meeting.manage.all`,

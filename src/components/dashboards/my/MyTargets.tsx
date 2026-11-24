@@ -22,14 +22,14 @@ export function MyTargets({ meters, fyLabel }: { meters: TargetMeter[]; fyLabel:
       title="My targets"
       subtitle={`Where I stand against my own ${fyLabel} numbers.`}
       icon={<Target className="size-4" />}
-      action={<SectionLink href="/dashboard/team/scorecard/targets">Set targets</SectionLink>}
+      action={<SectionLink href="/dashboard/settings/targets">Set targets</SectionLink>}
       note={`The notch on each bar marks how far through ${fyLabel} we are — ${(pace * 100).toFixed(0)}% elapsed. Half a target in September is on pace; half in February is not.`}
     >
       {!anyTarget ? (
         <Unavailable>
           No annual targets have been set against your name for {fyLabel}, so there is nothing to
-          measure against. Actuals are still shown below. Targets are set per person on the
-          Team scorecard.
+          measure against. Actuals are still shown below. Targets are set per person in
+          Settings → Targets &amp; quota.
         </Unavailable>
       ) : null}
 
