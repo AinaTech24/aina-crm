@@ -92,6 +92,7 @@ import { ClientSummaryStrip } from "@/components/investors/ClientSummaryStrip";
 import { ClientReadinessStrip } from "@/components/investors/ClientReadinessStrip";
 import { PanReveal } from "@/components/investors/PanReveal";
 import { HoldingsTable } from "@/components/investors/HoldingsTable";
+import { computeHoldingsTotals } from "@/lib/finance/holdings-totals";
 import { SuitabilityCard } from "@/components/investors/SuitabilityCard";
 import { KycDataViewer } from "@/components/investors/KycDataViewer";
 import { Stat } from "@/components/dashboards/DashboardShared";
@@ -459,6 +460,11 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const holdingsCount = data.valuation?.holdings?.length ?? 0;
   const hasPortfolio = holdingsCount > 0 || data.txCount > 0 || data.folios.length > 0;
   const v = data.valuation;
+  // When some holding's cost is unknown the book-wide Invested / Gain / XIRR are blank. The cards then show
+  // the same partial totals as the holdings table's Total row: the schemes with a cost on record, marked "≈".
+  const openHoldings = (v?.holdings ?? []).filter((h) => h.netUnits > 0.0005 || (h.currentValue ?? 0) > 0);
+  const part = computeHoldingsTotals(openHoldings);
+  const partNote = `Covers ${part.costRows} of ${part.rows} schemes whose cost is on record`;
 
   // A tap on Call / Email / WhatsApp asks "how did it go?" (ActivityLauncher).
   const logAttrs = contactLogAttrs({ type: "investor", id: inv.id, name: inv.name });
@@ -668,8 +674,8 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                   <Stat
                     icon={Wallet}
                     label="Invested"
-                    value={v.investedNet != null ? formatMoney(v.investedNet) : v.investedEstimate != null ? `≈ ${formatMoney(v.investedEstimate)}` : "—"}
-                    sub={v.investedNet != null ? undefined : v.investedEstimate != null ? "Estimated — some redemptions are missing from the RTA history" : "Cost unknown for some holdings"}
+                    value={v.investedNet != null ? formatMoney(v.investedNet) : part.invested != null ? `≈ ${formatMoney(part.invested)}` : "—"}
+                    sub={v.investedNet != null ? undefined : part.invested != null ? partNote : "Cost unknown for these holdings"}
                     tone="muted"
                   />
                   <Stat
@@ -682,15 +688,19 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                   <Stat
                     icon={TrendingUp}
                     label="Gain"
-                    value={v.gain != null ? formatMoney(v.gain) : "—"}
-                    sub={v.absoluteReturn != null ? formatPercent(v.absoluteReturn * 100) : v.gain == null ? "Needs every holding priced" : undefined}
-                    tone={v.gain == null ? "muted" : v.gain > 0 ? "emerald" : v.gain < 0 ? "rose" : "muted"}
+                    value={v.gain != null ? formatMoney(v.gain) : part.gain != null ? `≈ ${formatMoney(part.gain)}` : "—"}
+                    sub={
+                      v.absoluteReturn != null ? formatPercent(v.absoluteReturn * 100)
+                      : part.gain != null ? `${part.absRet != null ? `≈ ${formatPercent(part.absRet)} · ` : ""}${partNote}`
+                      : "Needs a cost and a price for at least one holding"
+                    }
+                    tone={(v.gain ?? part.gain) == null ? "muted" : (v.gain ?? part.gain)! > 0 ? "emerald" : (v.gain ?? part.gain)! < 0 ? "rose" : "muted"}
                   />
                   <Stat
                     icon={Percent}
                     label="XIRR"
-                    value={v.xirr != null ? formatPercent(v.xirr * 100) : "—"}
-                    sub={v.xirr == null ? "Needs the full transaction history" : "Annualised"}
+                    value={v.xirr != null ? formatPercent(v.xirr * 100) : v.xirrPartial != null ? `≈ ${formatPercent(v.xirrPartial * 100)}` : "—"}
+                    sub={v.xirr != null ? "Annualised" : v.xirrPartial != null ? "Annualised · schemes with a complete history" : "Needs the transaction history"}
                     tone="muted"
                   />
                 </div>
