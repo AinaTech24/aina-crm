@@ -2,7 +2,9 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  *   GET    /api/business-entries/[id]   — header + scheme sub-form lines
  *   PATCH  /api/business-entries/[id]   — update header + (optionally) replace lines
- *   DELETE /api/business-entries/[id]   — delete (cascades lines)
+ *   DELETE /api/business-entries/[id]?mode=cancel|delete
+ *                                       — cancel (default): mark cancelled, keep the record
+ *                                       — delete: remove it for good (cascades lines)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -214,6 +216,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const session = await requireSession();
     if (!canManage(session.roles)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     const meta = clientMetaFromHeaders(req.headers);
+    // ?mode=delete removes the entry for good; ?mode=cancel (also the default,
+    // so an older screen that sends neither never deletes by accident) marks it cancelled.
+    const mode = new URL(req.url).searchParams.get("mode") === "delete" ? "delete" : "cancel";
     const outcome = await withTenant(session.tenantId, async (tx) => {
       const [before] = await tx
         .select({ id: businessEntries.id, clientName: businessEntries.clientName, rmId: businessEntries.rmId, status: businessEntries.status, investorId: businessEntries.investorId })
@@ -221,13 +226,34 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
         .limit(1);
       if (!before) return "not_found" as const;
-      // RMs may only cancel their own bookings.
+      // RMs may only cancel or delete their own bookings.
       if (!seesAllEntries(session) && before.rmId !== session.userId) return "forbidden" as const;
       // Viewer scope: their own booking, or one on a client they may see.
       if (before.rmId !== session.userId && !(await isClientVisible(tx, session, before.investorId))) return "not_found" as const;
-      // Soft delete: business entries are revenue/AUM records that feed the FY/MTD
-      // book, scorecards and reconciliation — void them (status='cancelled')
-      // rather than hard-deleting the row + its audit trail.
+      if (mode === "delete") {
+        // Really delete: the entry, its scheme lines and their RTA matches go
+        // (ON DELETE CASCADE). What was removed stays in the audit trail.
+        const lines = await tx
+          .select({ id: businessEntryLines.id })
+          .from(businessEntryLines)
+          .where(eq(businessEntryLines.entryId, id));
+        await tx
+          .delete(businessEntries)
+          .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)));
+        await recordAudit(tx, {
+          tenantId: session.tenantId,
+          actorUserId: session.userId,
+          action: "business_entry.delete",
+          entityType: "business_entry",
+          entityId: id,
+          before: { clientName: before.clientName, status: before.status, lines: lines.length } as any,
+          ...meta,
+        });
+        return "ok" as const;
+      }
+      // Mark cancelled: business entries are revenue/AUM records that feed the FY/MTD
+      // book, scorecards and reconciliation — void them (status='cancelled') and
+      // keep the row + its audit trail.
       await tx
         .update(businessEntries)
         .set({ status: "cancelled", updatedAt: new Date() } as any)
@@ -244,8 +270,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return "ok" as const;
     });
     if (outcome === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
-    if (outcome === "forbidden") return NextResponse.json({ error: "you can only cancel entries you booked" }, { status: 403 });
-    return NextResponse.json({ ok: true });
+    if (outcome === "forbidden") return NextResponse.json({ error: `you can only ${mode === "delete" ? "delete" : "cancel"} entries you booked` }, { status: 403 });
+    return NextResponse.json({ ok: true, mode });
   } catch (err: any) {
     return handleApiError(err);
   }

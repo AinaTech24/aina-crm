@@ -35,12 +35,19 @@ export function BusinessEntryActions({ id, status, hasEmail }: { id: string; sta
     } finally { setBusy(null); }
   }
 
-  async function doDelete() {
+  /** mode "cancel": mark cancelled and stay on the record; "delete": remove it for good and go back to the list. */
+  async function remove(mode: "cancel" | "delete") {
     setBusy("delete");
     try {
-      const res = await fetch(`/api/business-entries/${id}`, { method: "DELETE" });
-      if (res.ok) { toast.success("Entry cancelled — it stays on record"); router.push("/dashboard/business-entries"); router.refresh(); }
-      else { const j = await res.json().catch(() => ({})); toast.error(j.error ?? "Could not delete", "Delete failed"); }
+      const res = await fetch(`/api/business-entries/${id}?mode=${mode}`, { method: "DELETE" });
+      if (res.ok) {
+        if (mode === "delete") { toast.success("Entry deleted"); router.push("/dashboard/business-entries"); }
+        else toast.success("Entry marked cancelled — it stays on record");
+        router.refresh();
+      } else {
+        const j = await res.json().catch(() => ({}));
+        toast.error(j.error ?? (mode === "delete" ? "Could not delete" : "Could not cancel"), mode === "delete" ? "Delete failed" : "Cancel failed");
+      }
     } finally { setBusy(null); setConfirmDel(false); }
   }
 
@@ -66,11 +73,16 @@ export function BusinessEntryActions({ id, status, hasEmail }: { id: string; sta
       <ConfirmDialog
         open={confirmDel}
         title="Delete business entry?"
-        message="The entry is cancelled: it stops counting as business but stays on record with its scheme lines."
+        message={
+          status === "cancelled"
+            ? "This entry is already cancelled. Delete removes it and its scheme lines for good and cannot be undone."
+            : "Mark cancelled keeps the entry on record but it stops counting as business. Delete removes it and its scheme lines for good and cannot be undone."
+        }
         confirmLabel="Delete"
         tone="danger"
         busy={busy === "delete"}
-        onConfirm={doDelete}
+        secondary={status === "cancelled" ? undefined : { label: "Mark cancelled", onClick: () => remove("cancel") }}
+        onConfirm={() => remove("delete")}
         onCancel={() => setConfirmDel(false)}
       />
     </div>

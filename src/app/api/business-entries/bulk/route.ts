@@ -5,8 +5,10 @@ import { handleApiError } from "@/lib/api/error-handler";
  * Body: { ids: string[], action, value? }
  *   action = "status"   value = draft|confirmed|emailed|cancelled
  *          = "assign"   value = userId (uuid) — reassigns the RM
- *          = "delete"   (no value) → SOFT-cancel (status='cancelled'); the
+ *          = "cancel"   (no value) → mark cancelled (status='cancelled'); the
  *                        revenue row + its audit trail are preserved
+ *          = "delete"   (no value) → remove the entries for good (lines cascade);
+ *                        until 2026-11-24 this cancelled instead — use "cancel"
  *
  * RBAC: same manage roles as the single-entry route; RMs are scoped to the
  * entries they booked. Tenant-scoped via RLS.
@@ -35,7 +37,7 @@ const seesAllEntries = (s: { roles: string[]; permissions?: string[] | null }) =
 
 const Body = z.object({
   ids: z.array(z.string().uuid()).min(1).max(500),
-  action: z.enum(["status", "assign", "delete"]),
+  action: z.enum(["status", "assign", "cancel", "delete"]),
   value: z.string().nullable().optional(),
 });
 
@@ -59,9 +61,34 @@ export async function POST(req: NextRequest) {
       conds.push(await visibleClientOrOwnSql(tx, session, businessEntries.investorId, businessEntries.rmId));
       const where = and(...conds);
 
-      const patch: Record<string, any> = { updatedAt: new Date() };
       if (action === "delete") {
-        // Soft-cancel — void the booking but keep the revenue row + audit trail.
+        // Really delete: the entries, their scheme lines and RTA matches go (ON DELETE
+        // CASCADE). What was removed stays in the audit trail.
+        const gone = await tx
+          .delete(businessEntries)
+          .where(where)
+          .returning({
+            id: businessEntries.id,
+            clientName: businessEntries.clientName,
+            status: businessEntries.status,
+            totalAmount: businessEntries.totalAmount,
+          });
+        await recordAudit(tx, {
+          tenantId: session.tenantId,
+          actorUserId: session.userId,
+          action: "business_entry.bulk_delete",
+          entityType: "business_entry",
+          entityId: ids[0],
+          before: { entries: gone } as any,
+          after: { ids, count: gone.length } as any,
+          ...meta,
+        }).catch(() => {});
+        return gone.length;
+      }
+
+      const patch: Record<string, any> = { updatedAt: new Date() };
+      if (action === "cancel") {
+        // Mark cancelled — void the booking but keep the revenue row + audit trail.
         patch.status = "cancelled";
       } else if (action === "status") {
         if (!value || !(BUSINESS_ENTRY_STATUSES as readonly string[]).includes(value)) {
@@ -85,7 +112,7 @@ export async function POST(req: NextRequest) {
       // react to (e.g. draft → confirmed fires the client confirmation). Emit
       // business_entry.updated per affected row, matching the single PATCH. An
       // assign doesn't touch a field the rules key on, so skip it there.
-      if ((action === "status" || action === "delete") && n > 0) {
+      if ((action === "status" || action === "cancel") && n > 0) {
         const affectedIds = upd.map((u) => u.id);
         const snaps = await tx
           .select({

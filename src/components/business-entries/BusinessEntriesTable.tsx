@@ -100,7 +100,16 @@ export function BusinessEntriesTable({ rows, rmOptions }: { rows: Row[]; rmOptio
   const actions: BulkAction[] = [
     { kind: "status", label: "Set status", options: BUSINESS_ENTRY_STATUSES.map((s) => [s, s[0].toUpperCase() + s.slice(1)] as [string, string]) },
     ...(rmOptions.length ? [{ kind: "assign", label: "Reassign RM", options: rmOptions } as BulkAction] : []),
-    { kind: "delete", label: "Delete" },
+    {
+      kind: "delete",
+      label: "Delete",
+      alternative: {
+        action: "cancel",
+        label: "Mark cancelled",
+        message: "Mark cancelled keeps the records but they stop counting as business.",
+        done: "Cancelled",
+      },
+    },
   ];
 
   return <BulkTable rows={rows} columns={columns} endpoint="/api/business-entries/bulk" actions={actions} itemLabel="entry" rowHref={(e) => `/dashboard/business-entries/${e.id}`} />;

@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Trash2, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import { plural } from "@/lib/plural";
 
 export type BulkColumn<T> = {
   key: string;
@@ -29,7 +30,16 @@ export type BulkColumn<T> = {
 };
 
 export type BulkAction =
-  | { kind: "delete"; label?: string }
+  | {
+      kind: "delete";
+      label?: string;
+      /**
+       * Offer a second, gentler way out in the Delete dialog: runs `action` on the
+       * endpoint (e.g. "cancel") instead of removing the records. Business entries
+       * use it for "Mark cancelled" — the record stays, it just stops counting.
+       */
+      alternative?: { action: string; label: string; message: string; done: string };
+    }
   | { kind: "status"; label: string; options: [value: string, label: string][] }
   | { kind: "assign"; label: string; options: { value: string; label: string }[] };
 
@@ -79,7 +89,7 @@ export function BulkTable<T extends { id: string }>({
       return n;
     });
 
-  async function apply(action: string, value?: string | null) {
+  async function apply(action: string, value?: string | null, done?: string) {
     setBusy(true);
     try {
       const res = await fetch(endpoint, {
@@ -92,7 +102,7 @@ export function BulkTable<T extends { id: string }>({
         toast.error(j.error ?? `Request failed (HTTP ${res.status})`, "Bulk action failed");
         return;
       }
-      toast.success(`Updated ${selected.size} ${itemLabel}${selected.size === 1 ? "" : "s"}`);
+      toast.success(`${done ?? "Updated"} ${selected.size} ${plural(itemLabel, selected.size)}`);
       setSelected(new Set());
       setPicker(null);
       setPickVal("");
@@ -206,12 +216,21 @@ export function BulkTable<T extends { id: string }>({
 
       <ConfirmDialog
         open={confirmDelete}
-        title={`Delete ${selected.size} ${itemLabel}${selected.size === 1 ? "" : "s"}?`}
-        message="This removes the selected records. This cannot be undone."
+        title={`Delete ${selected.size} ${plural(itemLabel, selected.size)}?`}
+        message={
+          deleteAction?.alternative
+            ? `${deleteAction.alternative.message} Delete removes the selected records for good and cannot be undone.`
+            : "This removes the selected records. This cannot be undone."
+        }
         confirmLabel="Delete"
         tone="danger"
         busy={busy}
-        onConfirm={() => apply("delete")}
+        secondary={
+          deleteAction?.alternative
+            ? { label: deleteAction.alternative.label, onClick: () => apply(deleteAction.alternative!.action, null, deleteAction.alternative!.done) }
+            : undefined
+        }
+        onConfirm={() => apply("delete", null, "Deleted")}
         onCancel={() => setConfirmDelete(false)}
       />
     </div>

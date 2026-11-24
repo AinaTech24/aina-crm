@@ -24,6 +24,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   tone = "default",
   busy = false,
+  secondary,
   onConfirm,
   onCancel,
 }: {
@@ -34,13 +35,15 @@ export function ConfirmDialog({
   cancelLabel?: string;
   tone?: "default" | "danger";
   busy?: boolean;
+  /** A second way forward between Cancel and the main button (e.g. "Mark cancelled" beside "Delete"). */
+  secondary?: { label: string; onClick: () => void };
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const danger = tone === "danger";
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next && !busy) onCancel(); }}>
-      <DialogContent role="alertdialog" className="max-w-sm" showClose={false} onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }} onPointerDownOutside={(event) => { if (busy) event.preventDefault(); }}>
+      <DialogContent role="alertdialog" className={secondary ? "max-w-md" : "max-w-sm"} showClose={false} onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }} onPointerDownOutside={(event) => { if (busy) event.preventDefault(); }}>
         <div className="flex items-start gap-3">
           <div
             className={`size-10 rounded-lg grid place-items-center shrink-0 ${
@@ -65,6 +68,16 @@ export function ConfirmDialog({
           >
             {cancelLabel}
           </button>
+          {secondary && (
+            <button
+              type="button"
+              onClick={secondary.onClick}
+              disabled={busy}
+              className="btn-secondary text-sm disabled:opacity-50"
+            >
+              {secondary.label}
+            </button>
+          )}
           <button
             type="button"
             onClick={onConfirm}
