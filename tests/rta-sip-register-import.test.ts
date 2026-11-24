@@ -137,6 +137,21 @@ describe.skipIf(!TEST_DB)("importing a SIP register", () => {
     expect(await bookFor()).toBe(5000);
   });
 
+  it("a SIP the registrar marks Terminated / Expired stops, and a re-import of the same register corrects an active one", async () => {
+    await reset();
+    await load(register(liveNew));
+    expect(await bookFor()).toBe(5000);
+    // KFintech MFSD243 layout: the Status column says Terminated, with no cease date.
+    const kfin = (status: string) =>
+      [
+        "Folio|SchCode|SchDesc|InvName|PAN|TrType|Freq|STARTDATE|ENDDATE|AMOUNT|Status",
+        `1111|1746|Scheme X|A|ABCDE1234F|SIP|Monthly|01/05/2024|01/05/2040|5000|${status}`,
+      ].join("\n");
+    const kf = (text: string) => withSystem((tx) => processRtaFile(tx, { tenantId: tenant, source: "kfintech", kind: "monthly_sip_book", text }));
+    await kf(kfin("Terminated by Investor"));
+    expect(await bookFor()).toBe(0);
+  });
+
   it("a register that is entirely cancelled leaves nothing live", async () => {
     await reset();
     await load(register(liveNew));

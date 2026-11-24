@@ -1499,6 +1499,16 @@ and `tests/rta-sip-register-import.test.ts`:
   200 rows; the real registrar vocabulary beyond what is listed is unverified without a sample.
   A completed file is kept 14 days — re-upload it, or use Re-import on its row, to apply the fixes.
 
+### The SIP book counted SIPs the registrar had terminated (2026-11-24, Ahpal)
+
+The book read Rs 4.22 Cr against the client's Rs 3.8 Cr. The 9 Oct 2026 rule recorded the registrar's status
+(KFintech's Status column: Terminated, Terminated by Investor, Expired, Cancelled, Process / Bank Rejection) as a label
+and only a CAMS cease date stopped a SIP — so a SIP the registrar had terminated stayed `active`, and importing the
+register again (even twice in a day) could not correct it. `processSipBook` now stops a SIP on an explicit terminal
+registrar status as well (`stopped`; Expired / matured → `completed`); "Live" and a register with no status change nothing.
+Re-import the register (RTA File Imports → Re-import) to correct existing rows. Not done: a SIP the CRM holds that a later
+register simply no longer LISTS is left as it is — a register can be partial (per ARN), so absence is not a cancellation.
+
 ### Why an upload "did not go through", and the SIP rejection report (2026-10-30)
 
 Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:

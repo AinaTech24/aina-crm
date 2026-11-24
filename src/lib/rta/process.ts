@@ -1223,12 +1223,20 @@ async function processSipBook(
       leaveOut(notASipLabel(regType, !!r.targetScheme));
       continue;
     }
-    // What the registrar says (KFintech's Status column, a CAMS cease date and
-    // remark) is recorded as a LABEL the SIP book shows — never acted on: the
-    // firm's decision of 9 Oct 2026 (Attitude Financial). Only a CAMS cease
-    // date stops a SIP, as before (lib/rta/sip-registrar-status).
+    // What the registrar says about the registration. A CAMS cease date stops a SIP, and so does an
+    // explicit terminal status from the register (KFintech's Status column: Terminated, Terminated by
+    // Investor, Expired, Cancelled, Process / Bank Rejection) — Ahpal, 24 Nov 2026: the book read
+    // Rs 4.22 Cr against the client's Rs 3.8 Cr because SIPs the registrar had terminated stayed
+    // "active" (the 9 Oct 2026 rule recorded the status as a label and never acted on it), and a
+    // re-import could not correct them. Expired / matured reads "completed"; the rest "stopped".
+    // "Live" and no status at all leave a SIP as it was (lib/rta/sip-registrar-status).
     const reg = registrarSipState(r, args.source, todayIst);
-    const sipStatus: "active" | "stopped" = r.ceaseDate && r.ceaseDate <= todayIst ? "stopped" : "active";
+    const sipStatus: "active" | "stopped" | "completed" =
+      r.ceaseDate && r.ceaseDate <= todayIst
+        ? "stopped"
+        : !reg.explicitLive && reg.status !== "active"
+          ? reg.status === "completed" ? "completed" : "stopped"
+          : "active";
 
     // The folio + scheme are what actually key a SIP. PAN is NOT required:
     // KFintech leaves the PAN column blank on a real minority of rows (minor
