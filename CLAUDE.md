@@ -1517,6 +1517,10 @@ the end date passed and no remarks = `completed` ("CAMS: SIP term ended …"); r
 Anything not active is excluded from the SIP book (`status = 'active'` only) and shown in the SIP Book page's
 **Stopped SIPs** tile (stopped / rejected / completed / expired). Re-import the register to apply.
 
+**Existing rows are corrected by migration 0287** (no re-import needed): active SIPs whose remarks hold the registrar's
+terminal words become stopped / completed, active SIPs whose end date has passed become completed, and
+`investors.active_sip_amount` is recomputed. Same rules as a fresh import.
+
 ### Why an upload "did not go through", and the SIP rejection report (2026-10-30)
 
 Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
