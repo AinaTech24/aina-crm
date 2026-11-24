@@ -71,6 +71,55 @@ export async function materialiseSipRejectionRows(
     ON CONFLICT (tenant_id, transaction_id) WHERE transaction_id IS NOT NULL DO NOTHING
     RETURNING 1
   `);
+  return res.rows.length + (await materialiseRegisterRejections(tx));
+}
+
+/**
+ * A SIP the registrar's own register marks rejected (KFintech Status "Process Rejection" / "Bank Rejection",
+ * CAMS remarks like "Three consecutive reversals") is a rejection too, whether or not the transaction feed ever
+ * carried a bounced instalment — Ahpal, 24 Nov 2026: the SIP Rejections page held one row although the registers
+ * were full of them. The SIP import keeps the registrar's words in `sips.remarks` ("KFintech: Bank Rejection ·
+ * ceased 12 Mar 2026"); this gives each such SIP one tracker row, dated by the cease date in those words (else the
+ * day it was stopped), keyed `sip:<id>` so a re-import never adds a second. Old ones are stamped escalated so
+ * catching up sends no "overdue" alerts.
+ */
+export async function materialiseRegisterRejections(tx: Executor): Promise<number> {
+  const res = await tx.execute(sql`
+    WITH src AS (
+      SELECT s.*, COALESCE(
+               to_date(substring(s.remarks from 'ceased ([0-9]{1,2} [A-Za-z]{3} [0-9]{4})'), 'DD Mon YYYY'),
+               s.updated_at::date) AS rej_date
+        FROM sips s
+       WHERE s.status <> 'active' AND s.investor_id IS NOT NULL
+         AND s.remarks ~ '^(CAMS|KFintech|Registrar): '
+         AND s.remarks ~* 'reject|revers|mandate incomplete'
+         AND s.updated_at >= now() - interval '90 days'
+    )
+    INSERT INTO sip_rejections (
+      tenant_id, investor_id, rejection_date, rejection_amount, rejection_reason, scheme_name,
+      folio_number, amc_name, assigned_rm_id, follow_up_date, recovery_status, reason_category, dedup_key, escalated_at
+    )
+    SELECT src.tenant_id, src.investor_id, src.rej_date, COALESCE(src.amount, 0),
+      regexp_replace(src.remarks, '^(CAMS|KFintech|Registrar): ', ''), src.scheme_name,
+      src.folio_number, src.amc_name, i.rm_id, src.rej_date + 2, 'pending',
+      CASE
+        WHEN lower(src.remarks) ~ 'insufficient|balance|funds|nsf|inqufd' THEN 'insufficient_balance'
+        WHEN lower(src.remarks) ~ 'mandate|expired|umrn|nach|debit not|not registered|bank' THEN 'mandate_expired'
+        ELSE 'technical'
+      END,
+      'sip:' || src.id::text,
+      CASE WHEN src.rej_date < current_date - 3 THEN now() ELSE NULL END
+    FROM src JOIN investors i ON i.id = src.investor_id
+    WHERE NOT EXISTS (
+      SELECT 1 FROM sip_rejections sr
+       WHERE sr.tenant_id = src.tenant_id
+         AND (sr.dedup_key = 'sip:' || src.id::text
+              OR (sr.investor_id = src.investor_id AND sr.rejection_date = src.rej_date
+                  AND sr.rejection_amount = COALESCE(src.amount, 0)))
+    )
+    ON CONFLICT (tenant_id, dedup_key) DO NOTHING
+    RETURNING 1
+  `);
   return res.rows.length;
 }
 

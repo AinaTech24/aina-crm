@@ -1227,6 +1227,21 @@ lists the registrar's own status words on the firm's SIP rows (`raw_feed_row ->>
 so a bounce worded in a way `normaliseFeedStatus` does not know shows up as a word to add. Rows stored before that
 carry no word until their file is re-imported (Re-import on the RTA File Imports row).
 
+**A SIP the register marks rejected is a rejection too** (2026-11-24, Ahpal: one row on the page while the registers were
+full of them). `materialiseRegisterRejections` (`lib/rta/sip-rejection-rows.ts`, run with the feed pass after every RTA import
+and nightly) gives each non-active SIP whose remarks hold the registrar's words "reject / reversal / mandate incomplete"
+("KFintech: Bank Rejection · ceased 12 Mar 2026", CAMS "Three consecutive reversals") one tracker row, dated by the cease date
+in those words, keyed `sip:<id>` so it is never added twice; old ones are stamped escalated (no overdue alerts). A plain
+Terminated / Cancelled / Expired SIP is NOT a rejection.
+
+**The register import itself lists the rejections** (2026-11-24): WBR49 and MFSD243 are imported as the SIP register, never as a
+rejection report, and a rejected registration the CRM never held is left out of the book — so nothing reached SIP Rejections.
+`processSipBook` now writes the tracker row at import time for every row `registrarSipState` reads as `rejected` (KFintech Status
+"Process / Bank Rejection", CAMS remarks "… reversals" / "mandate incomplete"): one per registration, keyed
+`sipreg:<md5 of folio|scheme|start|amount>`, dated by the cease / terminate date, to the client's RM; old ones are stamped escalated.
+A Terminated / Cancelled / Expired registration is stopped but is NOT a rejection. `materialiseRegisterRejections` covers SIPs
+already stored (their remarks carry the registrar's words).
+
 ## Creating a family
 
 The New family form (`/dashboard/families/new`, `NewFamilyForm`) asks for the

@@ -62,7 +62,7 @@ describe.skipIf(!TEST_DB)("importing a SIP register", () => {
 
   afterAll(async () => {
     if (!withSystem) return;
-    for (const t of ["sips", "folios", "investors"]) await q(sql`DELETE FROM ${sql.raw(t)} WHERE tenant_id = ${tenant}::uuid`).catch(() => {});
+    for (const t of ["sip_rejections", "sips", "folios", "investors"]) await q(sql`DELETE FROM ${sql.raw(t)} WHERE tenant_id = ${tenant}::uuid`).catch(() => {});
     await q(sql`DELETE FROM tenants WHERE id = ${tenant}::uuid`).catch(() => {});
   });
 
@@ -149,6 +149,28 @@ describe.skipIf(!TEST_DB)("importing a SIP register", () => {
       ].join("\n");
     const kf = (text: string) => withSystem((tx) => processRtaFile(tx, { tenantId: tenant, source: "kfintech", kind: "monthly_sip_book", text }));
     await kf(kfin("Terminated by Investor"));
+    expect(await bookFor()).toBe(0);
+  });
+
+
+  it("a registration the register marks rejected becomes a SIP Rejections row — even one the CRM never held — once", async () => {
+    await reset();
+    await q(sql`DELETE FROM sip_rejections WHERE tenant_id = ${tenant}::uuid`);
+    const kfin = [
+      "Folio|SchCode|SchDesc|InvName|PAN|TrType|Freq|STARTDATE|ENDDATE|AMOUNT|TERMINATEDATE|Status",
+      "3333|1746|Scheme X|R|ABCDE1234F|SIP|Monthly|01/03/2026|01/03/2040|4000|12/03/2026|Bank Rejection",
+      "3333|1746|Scheme X|R|ABCDE1234F|SIP|Monthly|01/04/2026|01/04/2040|2500|20/04/2026|Terminated by Investor",
+    ].join("\n");
+    const kf = () => withSystem((tx) => processRtaFile(tx, { tenantId: tenant, source: "kfintech", kind: "monthly_sip_book", text: kfin }));
+    await kf();
+    await kf();
+    const rows = await q<{ rejection_reason: string; rejection_date: string; rejection_amount: string }>(
+      sql`SELECT rejection_reason, rejection_date::text, rejection_amount::text FROM sip_rejections WHERE tenant_id = ${tenant}::uuid`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rejection_reason).toMatch(/Bank Rejection/);
+    expect(rows[0].rejection_date).toBe("2026-03-12");
+    expect(Number(rows[0].rejection_amount)).toBe(4000);
     expect(await bookFor()).toBe(0);
   });
 
