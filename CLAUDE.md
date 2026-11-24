@@ -625,6 +625,16 @@ when (India time), by whom — grouped by day, with a filter by field.
   dates, names for ids, one sentence per action point that changed. To track another column,
   add it to the trigger's list in a NEW migration (never edit 0284) and to `FIELD_LABELS` /
   the field sets there.
+- **Comments are on the Timeline too** (migration 0286): a trigger on `task_comments` writes
+  `comment_added` / `comment_edited` / `comment_deleted` rows (the text in `changes.comment`),
+  credited to the author, or to `app.user_id` for an edit or delete — the comment routes call
+  `actAs`. The "Need information" question and answer are comments, so they appear. A comment
+  deleted before 0286 is not added (nobody can say who removed it). Due and SLA dates are shown
+  as the day they were picked (`formatDue`), not as "5:30 am".
+- **Attachments too** (migration 0287): a trigger on `task_attachments` writes `attachment_added` /
+  `attachment_removed` rows (`changes.attachment` = { from, to }, one side `{ name, size, type }`),
+  credited to the uploader, or to `app.user_id` for a removal (the attachment routes call `actAs`).
+  A file removed before 0287 is not added.
 - `GET /api/tasks/[id]/history` follows the same access as opening the task. Tasks that
   predate 0284 show their creation from the task row and a note that earlier edits are not
   itemised. `/api/audit?entityType=task` does NOT check task access — do not build on it.

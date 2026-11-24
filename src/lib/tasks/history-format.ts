@@ -24,10 +24,12 @@ export type ChangeLine = {
   from: string | null;
   /** The new value as text; null = now blank. */
   to: string | null;
-  /** "set": plain field; "event": a whole-task event (Trash); "lines": a list diff (action points). */
-  kind: "set" | "event" | "lines";
+  /** "set": plain field; "event": a whole-task event (Trash); "lines": a list diff (action points); "comment": a comment added / edited / deleted. */
+  kind: "set" | "event" | "lines" | "comment" | "attachment";
   /** Action points: one sentence per item that changed. */
   lines?: string[];
+  /** Comments: what happened to it. `from` / `to` carry the text before / after. Attachments: "added" / "removed", the file in `to` / `from`. */
+  action?: "added" | "edited" | "deleted" | "removed";
 };
 
 const TZ = "Asia/Kolkata";
@@ -108,6 +110,19 @@ export function formatInstant(v: unknown): string | null {
   return `${day}, ${get("hour")}:${get("minute")} ${get("dayPeriod").toLowerCase()}`;
 }
 
+/**
+ * A due date is picked as a DAY, and the screen stores it at midnight UTC (or, from
+ * an older client, midnight India time). Read as an India instant that is "5:30 am",
+ * which the task screen never shows — so a day-only value is shown as the day.
+ */
+export function formatDue(v: unknown): string | null {
+  if (typeof v !== "string" && !(v instanceof Date)) return null;
+  const d = new Date(v as string);
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) return formatDay(d.toISOString());
+  return formatInstant(d);
+}
+
 function humanise(v: string): string {
   const s = v.replace(/[_-]+/g, " ").trim();
   return s ? s[0].toUpperCase() + s.slice(1) : s;
@@ -133,6 +148,7 @@ export function formatValue(field: string, v: unknown, lookups: TimelineLookups)
   if (USER_FIELDS.has(field)) return lookups.users.get(String(v)) ?? "a removed user";
   if (RECORD_FIELDS.has(field)) return lookups.records.get(String(v)) ?? "a record that is no longer available";
   if (DATE_FIELDS.has(field)) return formatDay(v) ?? String(v);
+  if (field === "due_at" || field === "sla_due_at") return formatDue(v) ?? String(v);
   if (DATETIME_FIELDS.has(field)) return formatInstant(v) ?? String(v);
   if (field === "requires_approval") return v ? "Yes" : "No";
   if (field === "estimate_minutes") return typeof v === "number" ? minutesText(v) : String(v);
@@ -176,6 +192,47 @@ export function describeChecklist(from: unknown, to: unknown, lookups: TimelineL
   }
   for (const [id, i] of before) if (!after.has(id)) out.push(`Removed ${q(i.text)}`);
   return out;
+}
+
+/** A comment event (migration 0286): `changes.comment` = { from, to } text. */
+export function describeComment(
+  event: "comment_added" | "comment_edited" | "comment_deleted",
+  changes: Record<string, RawChange> | null | undefined,
+): ChangeLine[] {
+  const c = changes?.comment ?? { from: null, to: null };
+  const text = (v: unknown) => (blank(v) ? null : clip(String(v), 400));
+  const action = event === "comment_added" ? "added" : event === "comment_edited" ? "edited" : "deleted";
+  return [{ field: "comment", label: "Comment", from: text(c.from), to: text(c.to), kind: "comment", action }];
+}
+
+/** 245760 → "240 KB". */
+export function formatBytes(n: unknown): string | null {
+  const b = typeof n === "number" ? n : typeof n === "string" ? Number(n) : NaN;
+  if (!Number.isFinite(b) || b < 0) return null;
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${Math.round(b / 1024)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1).replace(/\.0$/, "")} MB`;
+}
+
+/** An attachment event (migration 0287): `changes.attachment` = { from, to }, one side { name, size, type }. */
+export function describeAttachment(
+  event: "attachment_added" | "attachment_removed",
+  changes: Record<string, RawChange> | null | undefined,
+): ChangeLine[] {
+  const c = changes?.attachment ?? { from: null, to: null };
+  const file = (v: unknown): string | null => {
+    if (!v || typeof v !== "object") return null;
+    const f = v as { name?: unknown; size?: unknown };
+    const name = typeof f.name === "string" && f.name.trim() ? clip(f.name, 200) : "a file";
+    const size = formatBytes(f.size);
+    return size ? `${name} (${size})` : name;
+  };
+  const added = event === "attachment_added";
+  return [{
+    field: "attachment", label: "Attachment",
+    from: added ? null : file(c.from), to: added ? file(c.to) : null,
+    kind: "attachment", action: added ? "added" : "removed",
+  }];
 }
 
 /** Every tracked change of one edit, in a fixed, readable order. */

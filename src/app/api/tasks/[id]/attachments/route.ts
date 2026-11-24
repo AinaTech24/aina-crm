@@ -19,6 +19,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { tasks, taskAttachments, users } from "@/db/schema";
 import { putObject } from "@/lib/storage/s3";
 import { taskInScope } from "@/lib/tasks/scope";
+import { actAs } from "@/lib/tasks/history";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -78,6 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const storageKey = `tenants/${session.tenantId}/tasks/${id}/${rand}-${safeName}`;
 
     const outcome = await withTenant(session.tenantId, async (tx) => {
+      await actAs(tx, session.userId); // the task timeline credits this person
       const [t] = await tx
         .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById })
         .from(tasks)

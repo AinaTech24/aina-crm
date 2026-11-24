@@ -13,11 +13,11 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import { History, ListFilter, Loader2, Pencil, ClipboardCheck, Check } from "lucide-react";
+import { History, ListFilter, Loader2, Pencil, ClipboardCheck, Check, MessageSquare, Paperclip } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import type { ChangeLine } from "@/lib/tasks/history-format";
 
-type Entry = { id: string; at: string; actorName: string | null; event: "created" | "updated"; changes: ChangeLine[] };
+type Entry = { id: string; at: string; actorName: string | null; event: string; changes: ChangeLine[] };
 type Timeline = { entries: Entry[]; earlierEditsNotItemised: boolean };
 
 type Item = {
@@ -46,7 +46,9 @@ function flatten(t: Timeline): Item[] {
       out.push({ key: e.id, at: e.at, actor, topic: "Created", created: true });
       continue;
     }
-    for (const c of e.changes) out.push({ key: `${e.id}:${c.field}`, at: e.at, actor, topic: c.label, created: false, change: c });
+    for (const c of e.changes) {
+      out.push({ key: `${e.id}:${c.field}`, at: e.at, actor, topic: c.kind === "comment" ? "Comments" : c.kind === "attachment" ? "Attachments" : c.label, created: false, change: c });
+    }
   }
   return out;
 }
@@ -54,6 +56,32 @@ function flatten(t: Timeline): Item[] {
 function Sentence({ item }: { item: Item }) {
   if (item.created) return <span className="font-medium text-foreground">Task Created</span>;
   const c = item.change!;
+  if (c.kind === "comment") {
+    const quote = (t: string | null) => <span>“{t ?? ""}”</span>;
+    return (
+      <div>
+        <b className="font-semibold text-foreground">Comment</b> {c.action === "edited" ? "was updated" : c.action}
+        {c.action === "edited" ? (
+          <div className="mt-1 space-y-1 border-l-2 pl-3 text-muted-foreground">
+            <div><span className="text-xs uppercase tracking-wide">From</span> {quote(c.from)}</div>
+            <div><span className="text-xs uppercase tracking-wide">To</span> {quote(c.to)}</div>
+          </div>
+        ) : (
+          <div className="mt-1 whitespace-pre-wrap break-words border-l-2 pl-3 text-muted-foreground">
+            {quote(c.action === "deleted" ? c.from : c.to)}
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (c.kind === "attachment") {
+    return (
+      <div>
+        <b className="font-semibold text-foreground">Attachment</b> {c.action}
+        <div className="mt-1 break-words border-l-2 pl-3 font-medium text-foreground/80">{c.action === "removed" ? c.from : c.to}</div>
+      </div>
+    );
+  }
   if (c.kind === "event") return <span><b className="font-semibold text-foreground">{c.label}</b> {c.to?.replace(/^./, (x) => x.toLowerCase())}</span>;
   if (c.kind === "lines") {
     return (
@@ -177,7 +205,7 @@ export function TaskTimelineButton({ taskId }: { taskId: string }) {
                           <div className="w-16 shrink-0 pt-1.5 text-right text-xs text-muted-foreground tabular-nums">{fmtTime(i.at)}</div>
                           <div className="relative flex shrink-0 flex-col items-center">
                             <span className="z-[1] grid size-8 place-items-center rounded-full border bg-card text-muted-foreground">
-                              {i.created ? <ClipboardCheck className="size-4" /> : <Pencil className="size-3.5" />}
+                              {i.created ? <ClipboardCheck className="size-4" /> : i.change?.kind === "comment" ? <MessageSquare className="size-3.5" /> : i.change?.kind === "attachment" ? <Paperclip className="size-3.5" /> : <Pencil className="size-3.5" />}
                             </span>
                             {idx < g.items.length - 1 && <span className="absolute top-8 -bottom-5 w-px bg-border" aria-hidden />}
                           </div>

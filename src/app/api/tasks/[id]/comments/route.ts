@@ -21,6 +21,7 @@ import { tasks, taskComments, users } from "@/db/schema";
 import { notifyWatchers } from "@/lib/tasks/watchers";
 import { taskInScope } from "@/lib/tasks/scope";
 import { escalatedTo } from "@/lib/tasks/escalation-ladder";
+import { actAs } from "@/lib/tasks/history";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const outcome = await withTenant(session.tenantId, async (tx) => {
+      await actAs(tx, session.userId); // the task timeline credits this person
       const [task] = await tx
         .select({ title: tasks.title, assigneeId: tasks.assigneeId, createdById: tasks.createdById, meta: tasks.meta })
         .from(tasks)

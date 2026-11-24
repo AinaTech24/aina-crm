@@ -6,7 +6,7 @@
  */
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { describeChanges, type ChangeLine, type RawChange, type TimelineLookups } from "./history-format";
+import { describeAttachment, describeChanges, describeComment, type ChangeLine, type RawChange, type TimelineLookups } from "./history-format";
 
 export type TimelineEntry = {
   id: string;
@@ -14,9 +14,14 @@ export type TimelineEntry = {
   at: string;
   /** Null = a system change (a workflow, a scanner). */
   actorName: string | null;
-  event: "created" | "updated";
+  event: HistoryEvent;
   changes: ChangeLine[];
 };
+
+export type HistoryEvent =
+  | "created" | "updated"
+  | "comment_added" | "comment_edited" | "comment_deleted"
+  | "attachment_added" | "attachment_removed";
 
 export type TaskTimeline = {
   entries: TimelineEntry[];
@@ -40,7 +45,7 @@ export async function actAs(tx: Tx, userId: string | null | undefined): Promise<
   await tx.execute(sql`SELECT set_config('app.user_id', ${userId}, true)`);
 }
 
-type Row = { id: string; actor_user_id: string | null; event: "created" | "updated"; changes: Record<string, RawChange> | null; at: string | Date };
+type Row = { id: string; actor_user_id: string | null; event: HistoryEvent; changes: Record<string, RawChange> | null; at: string | Date };
 
 const asIso = (v: string | Date) => (v instanceof Date ? v : new Date(v)).toISOString();
 
@@ -107,7 +112,11 @@ export async function loadTaskTimeline(tx: Tx, tenantId: string, taskId: string)
     at: asIso(r.at),
     actorName: r.actor_user_id ? lookups.users.get(r.actor_user_id) ?? "A removed user" : null,
     event: r.event,
-    changes: r.event === "created" ? [] : describeChanges(r.changes, lookups),
+    changes:
+      r.event === "created" ? []
+      : r.event === "updated" ? describeChanges(r.changes, lookups)
+      : r.event === "attachment_added" || r.event === "attachment_removed" ? describeAttachment(r.event, r.changes)
+      : describeComment(r.event, r.changes),
   }))
     // An edit whose every change reads the same (two instants in one minute) says nothing.
     .filter((e) => e.event === "created" || e.changes.length > 0);
