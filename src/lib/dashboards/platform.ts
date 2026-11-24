@@ -49,6 +49,11 @@ import {
 import { sanitizeLayoutItems, migrateLegacyLayout, type LayoutItem } from "./system/catalog";
 import { sanitizeFilterConfig, type FilterConfig, type FilterState, sanitizeFilterState } from "./system/filters";
 import { inOrder } from "@/lib/metrics/in-order";
+import { randomUUID } from "node:crypto";
+import {
+  applySavedFilterOp, readBook, emptyBook, LEGACY_NAME,
+  type OpResult, type SavedFilterBook, type SavedFilterOp,
+} from "./system/saved-filters";
 
 export type ShareType = "all" | "user" | "role" | "branch" | "team";
 export type ShareRow = { shareType: ShareType; shareRef: string; includeSubordinates: boolean };
@@ -424,8 +429,32 @@ export async function touchOpened(tx: Tx, s: SessionUser, id: string) {
   await upsertPref(tx, s, id, { lastOpenedAt: new Date() });
 }
 
+/** The viewer's saved filters for this dashboard, as stored (see system/saved-filters.ts). */
+async function readSavedBook(tx: Tx, s: SessionUser, id: string): Promise<SavedFilterBook> {
+  const [p] = await tx.select({ f: dashboardUserPrefs.savedFilters }).from(dashboardUserPrefs)
+    .where(and(eq(dashboardUserPrefs.userId, s.userId), eq(dashboardUserPrefs.dashboardId, id))).limit(1);
+  return readBook(p?.f);
+}
+
+/** Create, overwrite, rename, delete or default one saved filter. Nothing is written when it is refused. */
+export async function changeSavedFilters(tx: Tx, s: SessionUser, id: string, op: SavedFilterOp): Promise<OpResult> {
+  const result = applySavedFilterOp(await readSavedBook(tx, s, id), op, randomUUID);
+  if (result.ok) await upsertPref(tx, s, id, { savedFilters: result.book as never });
+  return result;
+}
+
+/**
+ * The old "Save filter" body — one filter per dashboard. A screen opened before the
+ * list existed still sends it: it overwrites the filter that opens by default, or
+ * makes the first one. null clears them all.
+ */
 export async function saveFilters(tx: Tx, s: SessionUser, id: string, state: FilterState | null) {
-  await upsertPref(tx, s, id, { savedFilters: state as never });
+  if (!state) { await upsertPref(tx, s, id, { savedFilters: emptyBook() as never }); return; }
+  const book = await readSavedBook(tx, s, id);
+  const target = book.defaultId ?? book.items[0]?.id;
+  await changeSavedFilters(tx, s, id, target
+    ? { op: "update", id: target, state }
+    : { op: "create", name: LEGACY_NAME, state, setDefault: true });
 }
 
 export async function setCardFilter(tx: Tx, s: SessionUser, id: string, instanceId: string, state: FilterState | null) {
@@ -438,7 +467,11 @@ export async function setCardFilter(tx: Tx, s: SessionUser, id: string, instance
 }
 
 export async function loadPrefs(tx: Tx, s: SessionUser, id: string): Promise<{
-  saved: FilterState | null; cards: Record<string, FilterState>; isFavourite: boolean; isDefault: boolean;
+  /** The filter this dashboard opens with (the default saved filter's state). */
+  saved: FilterState | null;
+  /** Every saved filter the viewer keeps for it. */
+  book: SavedFilterBook;
+  cards: Record<string, FilterState>; isFavourite: boolean; isDefault: boolean;
 }> {
   const [p] = await tx.select().from(dashboardUserPrefs)
     .where(and(eq(dashboardUserPrefs.userId, s.userId), eq(dashboardUserPrefs.dashboardId, id))).limit(1);
@@ -447,8 +480,10 @@ export async function loadPrefs(tx: Tx, s: SessionUser, id: string): Promise<{
     const st = sanitizeFilterState(raw);
     if (st) cards[k] = st;
   }
+  const book = readBook(p?.savedFilters);
   return {
-    saved: sanitizeFilterState(p?.savedFilters),
+    saved: book.items.find((i) => i.id === book.defaultId)?.state ?? null,
+    book,
     cards,
     isFavourite: !!p?.isFavourite,
     isDefault: !!p?.isDefault,

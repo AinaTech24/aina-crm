@@ -3,7 +3,7 @@
  * what the popup shows — India-time dates, names for ids, and one sentence per action point that changed.
  */
 import { describe, expect, it } from "vitest";
-import { describeChanges, describeChecklist, formatInstant, formatDay, type TimelineLookups } from "@/lib/tasks/history-format";
+import { describeAttachment, describeChanges, describeChecklist, describeComment, formatBytes, formatDue, formatInstant, formatDay, type TimelineLookups } from "@/lib/tasks/history-format";
 
 const lookups: TimelineLookups = {
   users: new Map([["u1", "Hardip Saha"], ["u2", "Urmi Finserve"]]),
@@ -24,6 +24,76 @@ describe("dates are read in India time", () => {
   it("garbage reads as nothing, not as a crash", () => {
     expect(formatInstant("not a date")).toBeNull();
     expect(formatInstant(42)).toBeNull();
+  });
+});
+
+describe("a due date is a day, not 5:30 am", () => {
+  it("midnight UTC (how the task screen stores a picked day) shows as that day", () => {
+    expect(formatDue("2026-06-16T00:00:00+00:00")).toBe("16 Jun 2026");
+    expect(formatDue("2026-11-30T00:00:00.000Z")).toBe("30 Nov 2026");
+  });
+  it("midnight India time still shows as its day", () => {
+    expect(formatDue("2026-10-07T18:30:00+00:00")).toBe("8 Oct 2026");
+  });
+  it("a real time of day keeps its time", () => {
+    expect(formatDue("2026-12-10T10:00:00+00:00")).toBe("10 Dec 2026, 3:30 pm");
+  });
+  it("is what the Due Date and SLA lines use", () => {
+    const out = describeChanges({
+      due_at: { from: "2026-06-16T00:00:00+00:00", to: "2026-11-30T00:00:00+00:00" },
+      sla_due_at: { from: null, to: "2026-06-16T00:00:00+00:00" },
+    }, lookups);
+    expect(out.map((c) => [c.label, c.from, c.to])).toEqual([
+      ["Due Date", "16 Jun 2026", "30 Nov 2026"],
+      ["SLA Due Date", null, "16 Jun 2026"],
+    ]);
+  });
+});
+
+describe("describeComment", () => {
+  it("an added comment carries its text", () => {
+    expect(describeComment("comment_added", { comment: { from: null, to: "test" } })).toEqual([
+      { field: "comment", label: "Comment", from: null, to: "test", kind: "comment", action: "added" },
+    ]);
+  });
+  it("an edited comment carries the old and the new text", () => {
+    const [c] = describeComment("comment_edited", { comment: { from: "teh client", to: "the client" } });
+    expect([c.action, c.from, c.to]).toEqual(["edited", "teh client", "the client"]);
+  });
+  it("a deleted comment keeps the text that was removed", () => {
+    const [c] = describeComment("comment_deleted", { comment: { from: "call back", to: null } });
+    expect([c.action, c.from, c.to]).toEqual(["deleted", "call back", null]);
+  });
+  it("clips a very long comment and survives a missing payload", () => {
+    const [c] = describeComment("comment_added", { comment: { from: null, to: "y".repeat(900) } });
+    expect(c.to!.length).toBeLessThanOrEqual(400);
+    expect(describeComment("comment_added", null)[0]).toMatchObject({ from: null, to: null, action: "added" });
+  });
+});
+
+describe("describeAttachment", () => {
+  const file = { name: "mandate-form.pdf", size: 245760, type: "application/pdf" };
+  it("an added file reads name and size", () => {
+    expect(describeAttachment("attachment_added", { attachment: { from: null, to: file } })).toEqual([
+      { field: "attachment", label: "Attachment", from: null, to: "mandate-form.pdf (240 KB)", kind: "attachment", action: "added" },
+    ]);
+  });
+  it("a removed file keeps the name that was removed", () => {
+    const [c] = describeAttachment("attachment_removed", { attachment: { from: file, to: null } });
+    expect([c.action, c.from, c.to]).toEqual(["removed", "mandate-form.pdf (240 KB)", null]);
+  });
+  it("copes with no size, no name and no payload", () => {
+    expect(describeAttachment("attachment_added", { attachment: { from: null, to: { name: "a.png" } } })[0].to).toBe("a.png");
+    expect(describeAttachment("attachment_added", { attachment: { from: null, to: { size: 10 } } })[0].to).toBe("a file (10 B)");
+    expect(describeAttachment("attachment_removed", null)[0]).toMatchObject({ from: null, to: null, action: "removed" });
+  });
+  it("sizes read in B, KB and MB", () => {
+    expect(formatBytes(900)).toBe("900 B");
+    expect(formatBytes(2048)).toBe("2 KB");
+    expect(formatBytes(1048576)).toBe("1 MB");
+    expect(formatBytes(1572864)).toBe("1.5 MB");
+    expect(formatBytes(null)).toBeNull();
+    expect(formatBytes(-5)).toBeNull();
   });
 });
 

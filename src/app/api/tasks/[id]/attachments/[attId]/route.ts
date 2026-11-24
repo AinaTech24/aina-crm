@@ -13,6 +13,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { taskAttachments } from "@/db/schema";
 import { deleteObject } from "@/lib/storage/s3";
 import { taskInScope } from "@/lib/tasks/scope";
+import { actAs } from "@/lib/tasks/history";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const outcome = await withTenant(session.tenantId, async (tx) => {
+      await actAs(tx, session.userId); // the task timeline credits this person
       const [a] = await tx
         .select()
         .from(taskAttachments)

@@ -35,6 +35,7 @@ import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { DashboardFilterBar } from "@/components/dashboards/system/DashboardFilterBar";
+import type { SavedFilterList } from "@/lib/dashboards/system/saved-filters";
 import { EmbeddedWidgets } from "@/components/dashboards/system/EmbeddedWidgets";
 import { formatMoney } from "@/lib/format";
 import { loadDashboardThresholds } from "@/lib/dashboard/thresholds";
@@ -92,7 +93,8 @@ const TAB_OF: Record<string, OpsTab> = {
 };
 
 /** Params that choose a view inside a tab, not a filter. Carried from tab to tab. */
-const VIEW_PARAMS = ["hv", "nu", "eod", "vh", "review"] as const;
+// "sf" is the saved filter showing (lib/dashboards/system/saved-filters): a link inside the page keeps it.
+const VIEW_PARAMS = ["hv", "nu", "eod", "vh", "review", "sf"] as const;
 /** Params the filter bar owns. */
 const FILTER_PARAMS = new Set<string>(["period", "from", "to", ...Object.values(FILTER_FIELDS).map((f) => f.param)]);
 
@@ -138,7 +140,7 @@ const HV_LABEL: Record<number, string> = { 100000: "₹1 L+", 500000: "₹5 L+",
 const NU_PRESETS = [1, 2, 3, 5];
 
 export async function OperationsControlTower({
-  session, basePath, sp, state, defaults, explicit, usingSaved, dashboardId,
+  session, basePath, sp, state, defaults, explicit, usingSaved, savedList, dashboardId,
 }: {
   session: SessionUser;
   /** Where this dashboard lives (/dashboard/<id>) — every link it builds back to itself starts here. */
@@ -151,6 +153,8 @@ export async function OperationsControlTower({
   /** The URL set the filters (so links carry them); otherwise links leave them out and the page resolves them again. */
   explicit: boolean;
   usingSaved: boolean;
+  /** The viewer's saved filters for this dashboard, and which one is showing. */
+  savedList: SavedFilterList;
   /** This dashboard's id — where "Save filter" stores this viewer's filter. */
   dashboardId: string;
 }) {
@@ -374,6 +378,7 @@ export async function OperationsControlTower({
         options={options}
         bar={bar}
         usingSaved={usingSaved}
+        saved={savedList}
       />
 
       {/* Quick actions first in reading order (and on a phone); tabs on the left from lg. */}

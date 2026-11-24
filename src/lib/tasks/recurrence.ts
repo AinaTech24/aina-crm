@@ -13,7 +13,7 @@ import { tasks, type Task } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
 
 /** Internal SLA window by priority (hours) — mirrors the create route. */
-const SLA_HOURS_BY_PRIORITY: Record<string, number> = { urgent: 4, high: 24, normal: 72, low: 168 };
+export const SLA_HOURS_BY_PRIORITY: Record<string, number> = { urgent: 4, high: 24, normal: 72, low: 168 };
 
 /** Advance a date by one recurrence cadence. */
 export function advanceDue(base: Date, freq: string): Date {

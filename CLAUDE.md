@@ -625,9 +625,66 @@ when (India time), by whom — grouped by day, with a filter by field.
   dates, names for ids, one sentence per action point that changed. To track another column,
   add it to the trigger's list in a NEW migration (never edit 0284) and to `FIELD_LABELS` /
   the field sets there.
+- **Comments are on the Timeline too** (migration 0286): a trigger on `task_comments` writes
+  `comment_added` / `comment_edited` / `comment_deleted` rows (the text in `changes.comment`),
+  credited to the author, or to `app.user_id` for an edit or delete — the comment routes call
+  `actAs`. The "Need information" question and answer are comments, so they appear. A comment
+  deleted before 0286 is not added (nobody can say who removed it). Due and SLA dates are shown
+  as the day they were picked (`formatDue`), not as "5:30 am".
+- **Attachments too** (migration 0287): a trigger on `task_attachments` writes `attachment_added` /
+  `attachment_removed` rows (`changes.attachment` = { from, to }, one side `{ name, size, type }`),
+  credited to the uploader, or to `app.user_id` for a removal (the attachment routes call `actAs`).
+  A file removed before 0287 is not added.
 - `GET /api/tasks/[id]/history` follows the same access as opening the task. Tasks that
   predate 0284 show their creation from the task row and a note that earlier edits are not
   itemised. `/api/audit?entityType=task` does NOT check task access — do not build on it.
+
+## Excel import — Tasks, Meetings, Service requests (2026-11-24)
+
+An **Import** button on each of the three lists (owner / `task.edit.all`, `review_meeting.manage.all`,
+`service_request.manage`) opens `/dashboard/<module>/import`: download the **sample sheet**, fill its Data
+sheet, upload. Code `src/lib/imports/sheet/` (one flow for all three), screen
+`components/imports/SheetImport.tsx`, routes `/api/{tasks,review-meetings,service-requests}/import[?mode=check|import]`
+and `…/import/sample`.
+
+- **A module is a SPEC (pure data) plus a few functions.** `specs/<module>.ts` lists the columns — heading,
+  required, kind, what to enter, allowed values, aliases — and example rows. The sample workbook, its
+  Instructions sheet, the page's column list and the header matching all come from it, so they cannot drift;
+  `tests/sheet-import.test.ts` fails when an example uses a column that does not exist or a value the importer
+  would refuse. `<module>.ts` is `ImportModule`: `prepare` (look everything up ONCE), `parse` (one row; report
+  problems on `row.fail`), `commit` (a savepoint per row, so one refused row never undoes the rest).
+- **Check first, then import.** The page sends the same file twice: `?mode=check` reads and checks EVERY row
+  (nothing saved: how many are ready, and each problem with its sheet row and column), `?mode=import` saves the
+  rows that passed and lists the rest. Nothing is held between the two. Max 2,000 rows, 5 MB.
+- **An import is a RECORD, not a new event.** Nothing a client would see or an automation would react to is
+  produced: no `events_outbox` row, no client acknowledgement (service requests), no confirmation / reminder
+  workflow and no journey advance (meetings), no per-task alert (tasks: ONE notification per assignee with a
+  count). Kept from the normal create paths: the service-request ticket series and SLA clocks (from the Created
+  Date), the meeting double-booking guard for meetings still to happen (against the firm's live meetings AND the
+  file's earlier rows) and the RM's reminder task for a meeting more than a day away, and a task's default SLA.
+  `app.user_id` is the importer, so a task's Timeline credits them.
+- **Who a row means is looked up, never guessed.** `lookups.ts`: team members by email or exact full name,
+  clients by PAN (a PAN that matches nobody is an error, never a fall-back to the name) or exact unique name,
+  leads by mobile (last 10 digits) or exact unique name. Clients and leads are found only among those the
+  importer may see (`investorScopeSql` / `leadScopeSql`). An ambiguous name is a problem on the row.
+- **Cells are read as text** (`cell.ts`, pure): a number in a date FORMAT becomes ISO text with no time-zone
+  arithmetic; numeric dates are DAY FIRST (24/11/2026); a due date with no time is stored at midnight UTC as the
+  task screen does, anything with a time is India time. The importer reads the sheet called "Data", else the first.
+  A **.csv** is read by our own reader (`csv.ts`: UTF-8 with or without BOM, else Windows-1252; `,` `;` or tab; quoted
+  fields; Excel's `="9876543210"`), never by the spreadsheet library, which would turn 05/06/2026 into a US date —
+  dates stay as typed and are read day first. The kind of file is decided by its first bytes (`isWorkbook`), not its name.
+- **A new module** needs: a spec, a module, two route files that name their own capability inline (`check:rbac`
+  looks for it), a page, and an Import button. Complaint-only fields on a non-complaint row are refused, not
+  silently dropped. A Closed Date on an imported Completed task is written on insert (the closed-date trigger
+  keeps a value it is given) — the one place application code sets `completed_at`.
+- **The sample workbook is written by our own small writer** (`xlsx-writer.ts`, node:zlib + a hand-written zip),
+  not SheetJS Community, which cannot write the heading colours, the frozen heading row or the dropdowns that make
+  the sheet easy to fill. SheetJS is only used to READ uploads. It has **Data** and **Example** (shown) and a
+  **Lists** sheet that is HIDDEN — the dropdowns read it, since Excel's inline lists stop at 255 characters and
+  there are 38 task types. There is no Instructions sheet (removed at the firm's request): what each column takes
+  is on the import page (`allowedText`, the spec's notes). `tests/sheet-import-writer.test.ts` reads the workbook
+  back (central directory, CRC of every part, headings, dropdown ranges); open a regenerated sample in Excel
+  after any change to the writer.
 
 ## Daily habits — the cues that bring people back (2026-10-08)
 
@@ -1149,7 +1206,7 @@ information has reached us" — and the KYC filter listed people with crores inv
 (AUM > 0, a valued folio, or a processed purchase / SIP) goes `pending → registered` (a fund house takes no
 investment without KYC), with the reason in `kyc_status_remark` and `kyc_check_source = 'registrar_holdings'`;
 `kyc_checked_at` stays empty because it is NOT a KRA check. Hold / rejected / expired / re-KYC / validated / verified
-are never touched, and the NSE KRA check still writes the exact status over it. Migration 0286 backfilled every firm.
+are never touched, and the NSE KRA check still writes the exact status over it. Migration 0289 backfilled every firm.
 
 **Reading the KYC cell from the registrar file** (2026-11-24, Attitude Financial): `registrarKycOk`
 (`lib/rta/kyc-flag.ts`) is the ONE reader — "KYC OK", "Y", "Yes", "Verified", "Validated", "KRA Verified",
@@ -1517,7 +1574,7 @@ the end date passed and no remarks = `completed` ("CAMS: SIP term ended …"); r
 Anything not active is excluded from the SIP book (`status = 'active'` only) and shown in the SIP Book page's
 **Stopped SIPs** tile (stopped / rejected / completed / expired). Re-import the register to apply.
 
-**Existing rows are corrected by migration 0287** (no re-import needed): active SIPs whose remarks hold the registrar's
+**Existing rows are corrected by migration 0288** (no re-import needed): active SIPs whose remarks hold the registrar's
 terminal words become stopped / completed, active SIPs whose end date has passed become completed, and
 `investors.active_sip_amount` is recomputed. Same rules as a fresh import.
 
@@ -2063,6 +2120,16 @@ dashboard filters, each only narrowing). Client facts follow
   A custom range is read the way it was meant (`resolvePeriod`): dates
   picked backwards are swapped, the end stops at today, and a range that has
   not started falls back to the default period.
+- **Saved filters are a named list** (2026-11-24, `lib/dashboards/system/saved-filters.ts`, pure and
+  tested): the bar's **Saved filters** dropdown lists the viewer's saved filters for that dashboard —
+  pick one to apply it, star one to make the dashboard OPEN with it, rename, delete. **Save filter**
+  asks for a name, or — while a saved filter is showing — whether to **overwrite** it or **save as new**.
+  Stored in the same `dashboard_user_prefs.saved_filters` column, no migration: `{ items, defaultId }`,
+  and the old bare filter state reads as one saved filter that opens by default (the first write converts
+  it). `?sf=<id>` in the URL says which is showing; a URL that sets filters still beats whatever opens by
+  default. Changes go through `POST /api/dashboards/[id]/prefs` `{ savedFilter: { op: create|update|delete|default } }`
+  (`changeSavedFilters`); a name is unique per viewer and dashboard, at most 20. Every dashboard that
+  mounts the bar must pass `saved` (widget dashboards: `p.savedList`; Operations: `p.book` via `savedBase`).
 - **A filter change must show it is working.** It re-renders the dashboard on
   the server and React keeps the old page up meanwhile — seconds on a busy dev
   server, which read as "the filter does nothing". Every control that changes

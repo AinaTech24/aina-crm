@@ -96,7 +96,7 @@ describe.skipIf(!TEST_DB)("KYC from holdings", () => {
 
   it("the backfill migration does the same across firms", async () => {
     await q(sql`UPDATE investors SET kyc_status = 'pending', kyc_status_remark = NULL, kyc_check_source = NULL WHERE id = ${ids.aum_holder}::uuid`);
-    const mig = readFileSync(join(__dirname, "../drizzle/migrations/0286_kyc_registered_for_holders.sql"), "utf8");
+    const mig = readFileSync(join(__dirname, "../drizzle/migrations/0289_kyc_registered_for_holders.sql"), "utf8");
     await withSystem(async (tx) => { await tx.execute(sql.raw(mig)); });
     expect((await status("aum_holder")).kyc_status).toBe("registered");
     expect((await status("other_firm")).kyc_status).toBe("registered"); // holds AUM at another firm: same rule
