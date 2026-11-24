@@ -1151,6 +1151,15 @@ investment without KYC), with the reason in `kyc_status_remark` and `kyc_check_s
 `kyc_checked_at` stays empty because it is NOT a KRA check. Hold / rejected / expired / re-KYC / validated / verified
 are never touched, and the NSE KRA check still writes the exact status over it. Migration 0286 backfilled every firm.
 
+**Reading the KYC cell from the registrar file** (2026-11-24, Attitude Financial): `registrarKycOk`
+(`lib/rta/kyc-flag.ts`) is the ONE reader — "KYC OK", "Y", "Yes", "Verified", "Validated", "KRA Verified",
+"Compliant", "Registered"; whole-cell match, so "KYC NOT OK" / "N" / "Pending" / "Failed" never verify, and an
+unknown word reads as not verified. CAMS looks in `fh_kyc` / `fh_kyc_status` / `kyc_status` / `kyc`, KFintech in
+`Kyc1Flag` / `KYC Flag` / `KYC1 Flag` / `KYC Status` (they matched one name and one spelling each). And
+`importRtaFolios` now makes KYC the CLIENT's, not the first folio's: verified when ANY of their folio records says
+so (the first record used to decide, so a client whose first folio row had no flag imported "pending" although a
+later folio said KYC OK). Existing wrongly-pending clients are put right by Re-import of the master file.
+
 ## SIP Rejections empty for a firm — read the page's note first
 
 A firm gets rows from (a) its transaction feed, when the registrar marks a SIP instalment rejected / failed

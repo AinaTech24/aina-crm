@@ -160,7 +160,15 @@ export async function importRtaFolios(
       continue;
     }
     if (noPan) noPanKeys.add(key);
-    if (!clientByKey.has(key)) clientByKey.set(key, { inv: r.investor, isMinor, nominees: r.nominees, bank: r.bank });
+    if (!clientByKey.has(key)) clientByKey.set(key, { inv: { ...r.investor }, isMinor, nominees: r.nominees, bank: r.bank });
+    else {
+      // A client's folios are separate records and the FIRST one decided the KYC status, so a client
+      // whose first folio row carried no flag (another AMC, a blank cell) was imported "pending" although
+      // a later folio said KYC OK. KYC is the client's: verified if ANY of their records says so.
+      const have = clientByKey.get(key)!.inv;
+      if (r.investor.kycVerified && !have.kycVerified) have.kycVerified = true;
+      if (!have.ckycNumber && r.investor.ckycNumber) have.ckycNumber = r.investor.ckycNumber;
+    }
     if (isMinor && guardianPan) {
       minorGuardianPan.set(key, guardianPan);
       if (r.investor.guardianName && !guardianNames.get(guardianPan)) guardianNames.set(guardianPan, r.investor.guardianName);
