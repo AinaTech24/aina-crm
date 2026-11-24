@@ -40,6 +40,11 @@ export type InvestorValuation = {
   investedEstimate: number | null;
   /** Lifetime account gain, including fully redeemed holdings. */
   gain: number | null; absoluteReturn: number | null; xirr: number | null;
+  /**
+   * XIRR over the holdings whose history is complete and which are priced, for a book whose own XIRR is
+   * not known (some holding has an unknown cost). Null when the book's XIRR is known, or none qualifies.
+   */
+  xirrPartial: number | null;
   asOf: string | null; holdings: SchemeHolding[]; unpricedSchemes: number;
   dataQuality: {
     pricedHoldings: number; openHoldings: number; unknownCostHoldings: number;
@@ -447,6 +452,7 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
   const quality: InvestorValuation["dataQuality"] = { pricedHoldings: 0, openHoldings: 0, unknownCostHoldings: 0,
     unknownCostValue: 0, incompleteHistoryHoldings: 0, undatedPrices: 0, oldestNavDate: null,
     unmatchedRedemptionUnits: 0, closedPositions: 0 };
+  let knownValue = 0; // current value of the holdings whose history is complete and priced
   let currentValue = 0, unpricedSchemes = 0, unpricedInvested = 0, net = 0, pricedNet = 0, bought = 0, latest: string | null = null;
   let complete = true;
   // Cost of today's holdings, exact or estimated (see investedEstimate).
@@ -510,7 +516,7 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
     if (known && p) {
       net += p.net;
       if (h.currentValue != null) {
-        pricedNet += p.net; bought += p.bought; flows.push(...p.flows);
+        pricedNet += p.net; bought += p.bought; flows.push(...p.flows); knownValue += h.currentValue;
         h.xirr = xirr([...p.flows, ...(h.currentValue > 0 ? [{ date: now, amount: h.currentValue }] : [])]);
       }
     }
@@ -526,6 +532,7 @@ export function computeInvestorValuation(rows: ValuationTransaction[], snapshots
     unpricedInvested, investedEstimate: !complete && costHeldKnown && costHeldEstimated ? costHeld : null,
     gain, absoluteReturn: gain != null && bought > 0 ? gain / bought : null,
     xirr: complete ? xirr([...flows, ...(currentValue > 0 ? [{ date: now, amount: currentValue }] : [])]) : null,
+    xirrPartial: complete || flows.length === 0 ? null : xirr([...flows, ...(knownValue > 0 ? [{ date: now, amount: knownValue }] : [])]),
     asOf: latest, holdings: holdings.sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0)), unpricedSchemes, dataQuality: quality };
 }
 const valuationCache = new Map<string, { at: number; data: InvestorValuation }>();
