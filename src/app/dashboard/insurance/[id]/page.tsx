@@ -269,9 +269,10 @@ export default async function InsuranceDetailPage({
                 key={l.label}
                 label={l.label}
                 value={
-                  l.type === "date" && /^\d{4}-\d{2}-\d{2}/.test(l.value)
+                  // A date or a ₹ figure reads as one, whichever block the key came from.
+                  /^\d{4}-\d{2}-\d{2}$/.test(l.value)
                     ? formatDate(l.value)
-                    : l.type === "number" && /₹/.test(l.label) && Number.isFinite(Number(l.value))
+                    : /₹/.test(l.label) && l.value.trim() !== "" && Number.isFinite(Number(l.value))
                       ? formatINR(Number(l.value))
                       : l.value
                 }
@@ -304,7 +305,11 @@ export default async function InsuranceDetailPage({
                       const v = cellText(r[c.key]);
                       return (
                         <td key={c.key} className={/₹/.test(c.label) ? "tabular-nums" : undefined}>
-                          {/₹/.test(c.label) && v !== "" && Number.isFinite(Number(v)) ? formatINR(Number(v)) : v || "—"}
+                          {/₹/.test(c.label) && v !== "" && Number.isFinite(Number(v))
+                            ? formatINR(Number(v))
+                            : /^\d{4}-\d{2}-\d{2}$/.test(v)
+                              ? formatDate(v)
+                              : v || "—"}
                         </td>
                       );
                     })}
