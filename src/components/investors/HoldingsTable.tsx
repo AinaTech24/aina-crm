@@ -23,6 +23,7 @@
 import { useMemo, useState } from "react";
 import { Layers, AlertTriangle, ListFilter } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import { computeHoldingsTotals, type HoldingsTotals } from "@/lib/finance/holdings-totals";
 
 export type Holding = {
   schemeName: string | null;
@@ -68,6 +69,16 @@ function fmtMoney(n: number | null | undefined): string {
 }
 const dash = <span className="text-muted-foreground">—</span>;
 
+/** A total that does not cover every scheme (or uses an estimate): "≈", with the reason on hover. */
+function ApproxTotal({ approx, children }: { approx: boolean; children: React.ReactNode }) {
+  if (!approx) return <>{children}</>;
+  return (
+    <span title="Not every scheme has a cost on record, or a cost is estimated — see the note under the table.">
+      ≈ {children}
+    </span>
+  );
+}
+
 /** Signed ₹ with colour (green up / red down). */
 function Money({ v }: { v: number | null | undefined }) {
   if (v == null || !Number.isFinite(v)) return dash;
@@ -86,7 +97,7 @@ function Pct({ v, digits = 2 }: { v: number | null | undefined; digits?: number 
 }
 
 type Row = { h: Holding; i: number; avgNav: number | null; weight: number | null; absRet: number | null };
-type Totals = { invested: number | null; investedApprox: number | null; current: number; unrealised: number | null; realised: number; dividend: number; units: number; absRet: number | null };
+type Totals = HoldingsTotals;
 type Col = {
   key: string;
   label: string;
@@ -147,22 +158,16 @@ export function HoldingsTable({
   const toggleAll = () =>
     setSelected((prev) => (prev.size === shown.length ? new Set() : new Set(shown.map((r) => r.i))));
 
-  // Totals (over the currently-visible rows; priced only for value/gain).
-  const t = useMemo<Totals>(() => {
-    const src = visibleRows.map((r) => r.h);
-    const priced = src.filter((h) => h.priced);
-    const sum = (f: (h: Holding) => number | null | undefined) => src.reduce((s, h) => s + (Number(f(h)) || 0), 0);
-    const invested = src.some((h) => !h.hasTxns || h.investedNet == null) ? null : sum((h) => h.investedNet);
-    // Exact where known, estimated where the history is short — but only when
-    // every row has one or the other.
-    const investedApprox = invested == null && src.every((h) => (h.hasTxns && h.investedNet != null) || h.investedEstimate != null)
-      ? sum((h) => (h.hasTxns && h.investedNet != null ? h.investedNet : h.investedEstimate))
+  // Totals over the currently-visible rows. Invested / Gain / Return cover the
+  // schemes that have a cost on record (see lib/finance/holdings-totals) — one
+  // scheme with an unknown cost no longer blanks them for the whole client.
+  const t = useMemo<Totals>(() => computeHoldingsTotals(visibleRows.map((r) => r.h)), [visibleRows]);
+  const partialNote =
+    t.invested != null && t.approx
+      ? t.costRows < t.rows
+        ? `Invested, Gain and Return cover the ${t.costRows} of ${t.rows} scheme${t.rows === 1 ? "" : "s"} whose cost is on record. The RTA history is incomplete for the rest, so their cost can't be known.`
+        : "Some costs are estimated (the RTA history is missing redemptions), so Invested, Gain and Return are approximate."
       : null;
-    const current = priced.reduce((s, h) => s + (h.currentValue || 0), 0);
-    const unrealised = priced.some((h) => !h.hasTxns || h.gain == null) ? null : priced.reduce((s, h) => s + (h.gain || 0), 0);
-    const absRet = invested != null && invested > 0 && unrealised != null ? (unrealised / invested) * 100 : null;
-    return { invested, investedApprox, current, unrealised, realised: sum((h) => h.realisedGain), dividend: sum((h) => h.dividend), units: sum((h) => h.netUnits), absRet };
-  }, [visibleRows]);
 
   const cols: Col[] = [
     {
@@ -192,7 +197,7 @@ export function HoldingsTable({
         ) : (
           dash
         ),
-      total: (x) => (x.invested ? fmtMoney(x.invested) : x.investedApprox ? `≈ ${fmtMoney(x.investedApprox)}` : "—"),
+      total: (x) => (x.invested != null ? <ApproxTotal approx={x.approx}>{fmtMoney(x.invested)}</ApproxTotal> : "—"),
     },
     { key: "dividend", label: "Dividend", align: "right", has: (r) => !!r.h.dividend, cell: ({ h }) => (h.dividend ? fmtMoney(h.dividend) : dash), total: (x) => (x.dividend ? fmtMoney(x.dividend) : "—") },
     {
@@ -217,9 +222,12 @@ export function HoldingsTable({
     {
       key: "gain", label: "Gain", align: "right", has: (r) => !!r.h.hasTxns && r.h.gain != null,
       cell: ({ h }) => (h.hasTxns ? <Money v={h.gain} /> : dash),
-      total: (x) => (x.unrealised != null ? (x.unrealised >= 0 ? "+" : "−") + "₹" + Math.round(Math.abs(x.unrealised)).toLocaleString("en-IN") : "—"),
+      total: (x) => (x.gain != null ? <ApproxTotal approx={x.approx}>{(x.gain >= 0 ? "+" : "−") + "₹" + Math.round(Math.abs(x.gain)).toLocaleString("en-IN")}</ApproxTotal> : "—"),
     },
-    { key: "absRet", label: "Return", align: "right", has: (r) => r.absRet != null, cell: (r) => <Pct v={r.absRet} />, total: (x) => (x.absRet != null ? (x.absRet >= 0 ? "+" : "") + x.absRet.toFixed(2) + "%" : "—") },
+    {
+      key: "absRet", label: "Return", align: "right", has: (r) => r.absRet != null, cell: (r) => <Pct v={r.absRet} />,
+      total: (x) => (x.absRet != null ? <ApproxTotal approx={x.approx}>{(x.absRet >= 0 ? "+" : "") + x.absRet.toFixed(2) + "%"}</ApproxTotal> : "—"),
+    },
     { key: "xirr", label: "XIRR", align: "right", has: (r) => !!r.h.hasTxns && r.h.xirr != null, cell: ({ h }) => (h.hasTxns && h.xirr != null ? <Pct v={h.xirr * 100} /> : dash) },
     {
       key: "realised", label: "Realised", align: "right", has: (r) => !!r.h.realisedGain,
@@ -336,6 +344,8 @@ export function HoldingsTable({
           </table>
         </div>
       )}
+
+      {partialNote && shown.length > 0 && <p className="mt-3 text-2xs text-muted-foreground">{partialNote}</p>}
 
       {txnColsHidden && shown.length > 0 && (
         <p className="mt-3 text-2xs text-muted-foreground">Cost, gain and XIRR appear once the RTA transaction feed is imported.</p>
