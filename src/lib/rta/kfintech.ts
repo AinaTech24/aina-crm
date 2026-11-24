@@ -11,6 +11,7 @@
  */
 
 import type { RtaFolioRecord, RtaInvestor, RtaNominee, InvestorCategory, Residency } from "./types";
+import { registrarKycOk } from "./kyc-flag";
 import { clientTypeFromTaxStatus } from "@/lib/investors/client-types";
 
 /** Columns that uniquely identify an MFSD211 folio-master file. */
@@ -163,7 +164,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
     modeOfHolding: col("Mode of Holding Description"),
     categoryDesc: col("CategoryDesc"),
     statusDesc: col("StatusDesc"),
-    kyc1: col("Kyc1Flag"),
+    kyc1: col("Kyc1Flag", "KYC1 Flag", "Kyc Flag", "KYC1", "Kyc Status", "KYC Status"),
     lastUpdated: col("LastUpdatedDate"),
     ckyc: col("CKYC NO"),
     nominee: col("Nominee"),
@@ -225,7 +226,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
         isMinor: cat === "minor",
         guardianPan: get(C.guardPan).toUpperCase() || null,
         guardianName: get(C.guardName) || null,
-        kycVerified: get(C.kyc1).toUpperCase() === "Y",
+        kycVerified: registrarKycOk(get(C.kyc1)),
         ckycNumber: get(C.ckyc) || null,
         taxStatus: get(C.taxStatus) || null,
         modeOfHolding: get(C.modeOfHolding) || null,

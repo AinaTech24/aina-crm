@@ -68,3 +68,17 @@ describe("other header spellings and the reason a bounce carries", () => {
     expect(one("ALLOTTED", "").reasonDescription ?? "").toBe("");
   });
 });
+
+describe("the registrar's own words are kept on the row", () => {
+  const H = "PAN|FOLIO_NO|AMC_CODE|PRODUCT_CODE|SCHEME_NAME|TRXN_TYPE|TRXN_DATE|AMOUNT|UNITS|NAV|STATUS|REJECTION_REASON";
+  it("stores the status and reason text, so an unrecognised bounce word can be found later", () => {
+    const [t] = parseReverseFeed([H, "ABCDE1234F|1234567|C|PC1|Some Fund|SIP|17/11/2026|5000|50.0|100.0|Bnk Rjctd|BNKREJ: Balance Insufficient"].join("\n"), "t");
+    expect(t.raw?.status).toBe("Bnk Rjctd");
+    expect(t.raw?.reason).toBe("BNKREJ: Balance Insufficient");
+  });
+  it("leaves them out when the file has none", () => {
+    const [t] = parseReverseFeed(["PAN|FOLIO_NO|AMC_CODE|SCHEME_NAME|TRXN_TYPE|TRXN_DATE|AMOUNT|UNITS|NAV", "ABCDE1234F|1234567|C|Some Fund|SIP|17/11/2026|5000|50.0|100.0"].join("\n"), "t");
+    expect(t.raw?.status).toBeUndefined();
+    expect(t.raw?.reason).toBeUndefined();
+  });
+});

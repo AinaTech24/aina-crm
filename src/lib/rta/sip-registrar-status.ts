@@ -62,6 +62,10 @@ export function registrarSipState(
   } else if (byStatus) {
     return { status: byStatus, reason: words(status), explicitLive: false };
   }
+  if (ceased && !row.ceaseDate && !remark && !status) {
+    // No cease date, no words: the registration's own term (CAMS TO_DATE) has simply run out.
+    return { status: "completed", reason: `${who}: SIP term ended ${day(ceased)}`, explicitLive: false };
+  }
   if (ceased) {
     const said = remark || status || "ceased";
     const s = classify(said);

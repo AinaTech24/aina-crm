@@ -10,6 +10,7 @@
  */
 
 import type { RtaFolioRecord, RtaNominee, InvestorCategory, Residency } from "./types";
+import { registrarKycOk } from "./kyc-flag";
 import { clientTypeFromTaxStatus } from "@/lib/investors/client-types";
 import { num, amcNameFromDescription, canonicalizeAmcNames, maskAccount, pct, dmyToIso } from "./kfintech";
 
@@ -176,7 +177,7 @@ export function parseCamsFile(rows: string[][]): {
     mobile: col("mobile_no"),
     occupation: col("occupation"),
     ckyc: col("fh_ckyc_no"),
-    fhKyc: col("fh_kyc"),
+    fhKyc: colAny("fh_kyc", "fh_kyc_status", "kyc_status", "kyc"),
     amcCode: col("amc_code"),
     isin: col("isin"),
     repDate: col("rep_date"),
@@ -246,7 +247,7 @@ export function parseCamsFile(rows: string[][]): {
           guardianPan: get(C.guardPan).toUpperCase() || null,
           guardianName: get(C.guardName) || null,
           // R9C carries the KRA verdict itself ("KYC OK", "KYC Pending", "KYC Failed" …).
-          kycVerified: !!get(C.ckyc) || get(C.fhKyc).toUpperCase() === "KYC OK",
+          kycVerified: !!get(C.ckyc) || registrarKycOk(get(C.fhKyc)),
           ckycNumber: get(C.ckyc) || null,
           taxStatus: tax || null,
           modeOfHolding: HOLD_MODE[get(C.holdNature).toUpperCase()] ?? (get(C.holdNature) || null),
