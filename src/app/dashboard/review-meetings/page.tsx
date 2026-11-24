@@ -4,7 +4,9 @@ import { sql } from "drizzle-orm";
 import { attendeeIsAnyUser } from "@/lib/review-meetings/attendees";
 import { meetingScopeSql } from "@/lib/review-meetings/scope";
 import { dataWallApplies } from "@/lib/investors/access";
-import { Calendar, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
+import { Calendar, CheckCircle2, Clock, AlertTriangle, FileUp } from "lucide-react";
+import { buttonClass } from "@/components/ui/button-class";
+import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { Avatar } from "@/components/ui/Avatar";
@@ -248,6 +250,11 @@ export default async function ReviewMeetingsPage({
             </Link>
           </div>
           <ExportButton module="meetings" />
+          {can(session.roles, "review_meeting.manage.all", session.permissions) && (
+            <Link href="/dashboard/review-meetings/import" className={buttonClass("secondary")}>
+              <FileUp className="size-4" /> Import
+            </Link>
+          )}
           <AddMeetingButton />
         </div></>} />
 

@@ -1,7 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { and, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { Plus, ListChecks } from "lucide-react";
+import { FileUp, Plus, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { withTenant } from "@/db/client";
@@ -309,6 +309,11 @@ export default async function TasksPage({
         actions={
           <div className="flex flex-wrap gap-2">
             <Link href="/dashboard/tasks/qa" className={buttonClass("secondary")}>QA queue</Link>
+            {can(session.roles, "task.edit.all", session.permissions) && (
+              <Link href="/dashboard/tasks/import" className={buttonClass("secondary")}>
+                <FileUp className="size-4" /> Import
+              </Link>
+            )}
             <Link href="/dashboard/tasks/new" className={buttonClass("primary")}>
               <Plus className="size-4" /> New task
             </Link>

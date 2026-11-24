@@ -639,6 +639,53 @@ when (India time), by whom — grouped by day, with a filter by field.
   predate 0284 show their creation from the task row and a note that earlier edits are not
   itemised. `/api/audit?entityType=task` does NOT check task access — do not build on it.
 
+## Excel import — Tasks, Meetings, Service requests (2026-11-24)
+
+An **Import** button on each of the three lists (owner / `task.edit.all`, `review_meeting.manage.all`,
+`service_request.manage`) opens `/dashboard/<module>/import`: download the **sample sheet**, fill its Data
+sheet, upload. Code `src/lib/imports/sheet/` (one flow for all three), screen
+`components/imports/SheetImport.tsx`, routes `/api/{tasks,review-meetings,service-requests}/import[?mode=check|import]`
+and `…/import/sample`.
+
+- **A module is a SPEC (pure data) plus a few functions.** `specs/<module>.ts` lists the columns — heading,
+  required, kind, what to enter, allowed values, aliases — and example rows. The sample workbook, its
+  Instructions sheet, the page's column list and the header matching all come from it, so they cannot drift;
+  `tests/sheet-import.test.ts` fails when an example uses a column that does not exist or a value the importer
+  would refuse. `<module>.ts` is `ImportModule`: `prepare` (look everything up ONCE), `parse` (one row; report
+  problems on `row.fail`), `commit` (a savepoint per row, so one refused row never undoes the rest).
+- **Check first, then import.** The page sends the same file twice: `?mode=check` reads and checks EVERY row
+  (nothing saved: how many are ready, and each problem with its sheet row and column), `?mode=import` saves the
+  rows that passed and lists the rest. Nothing is held between the two. Max 2,000 rows, 5 MB.
+- **An import is a RECORD, not a new event.** Nothing a client would see or an automation would react to is
+  produced: no `events_outbox` row, no client acknowledgement (service requests), no confirmation / reminder
+  workflow and no journey advance (meetings), no per-task alert (tasks: ONE notification per assignee with a
+  count). Kept from the normal create paths: the service-request ticket series and SLA clocks (from the Created
+  Date), the meeting double-booking guard for meetings still to happen (against the firm's live meetings AND the
+  file's earlier rows) and the RM's reminder task for a meeting more than a day away, and a task's default SLA.
+  `app.user_id` is the importer, so a task's Timeline credits them.
+- **Who a row means is looked up, never guessed.** `lookups.ts`: team members by email or exact full name,
+  clients by PAN (a PAN that matches nobody is an error, never a fall-back to the name) or exact unique name,
+  leads by mobile (last 10 digits) or exact unique name. Clients and leads are found only among those the
+  importer may see (`investorScopeSql` / `leadScopeSql`). An ambiguous name is a problem on the row.
+- **Cells are read as text** (`cell.ts`, pure): a number in a date FORMAT becomes ISO text with no time-zone
+  arithmetic; numeric dates are DAY FIRST (24/11/2026); a due date with no time is stored at midnight UTC as the
+  task screen does, anything with a time is India time. The importer reads the sheet called "Data", else the first.
+  A **.csv** is read by our own reader (`csv.ts`: UTF-8 with or without BOM, else Windows-1252; `,` `;` or tab; quoted
+  fields; Excel's `="9876543210"`), never by the spreadsheet library, which would turn 05/06/2026 into a US date —
+  dates stay as typed and are read day first. The kind of file is decided by its first bytes (`isWorkbook`), not its name.
+- **A new module** needs: a spec, a module, two route files that name their own capability inline (`check:rbac`
+  looks for it), a page, and an Import button. Complaint-only fields on a non-complaint row are refused, not
+  silently dropped. A Closed Date on an imported Completed task is written on insert (the closed-date trigger
+  keeps a value it is given) — the one place application code sets `completed_at`.
+- **The sample workbook is written by our own small writer** (`xlsx-writer.ts`, node:zlib + a hand-written zip),
+  not SheetJS Community, which cannot write the heading colours, the frozen heading row or the dropdowns that make
+  the sheet easy to fill. SheetJS is only used to READ uploads. It has **Data** and **Example** (shown) and a
+  **Lists** sheet that is HIDDEN — the dropdowns read it, since Excel's inline lists stop at 255 characters and
+  there are 38 task types. There is no Instructions sheet (removed at the firm's request): what each column takes
+  is on the import page (`allowedText`, the spec's notes). `tests/sheet-import-writer.test.ts` reads the workbook
+  back (central directory, CRC of every part, headings, dropdown ranges); open a regenerated sample in Excel
+  after any change to the writer.
+
 ## Daily habits — the cues that bring people back (2026-10-08)
 
 Built from an Atomic Habits review of adoption: make the cue obvious, the

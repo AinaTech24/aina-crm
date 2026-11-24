@@ -1,7 +1,7 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Plus, LifeBuoy } from "lucide-react";
+import { FileUp, Plus, LifeBuoy } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
@@ -243,6 +243,11 @@ export default async function ServiceRequestsPage({
           {canManageRequests && <CloseEmailRequestsButton />}
           {canSeeServiceForm && <ServiceFormShareButton />}
           <ExportButton module="service-requests" />
+          {canManageRequests && (
+            <Link href="/dashboard/service-requests/import" className={buttonClass("secondary")}>
+              <FileUp className="size-4" /> Import
+            </Link>
+          )}
           <Link href="/dashboard/service-requests/new" className={buttonClass("primary")}>
             <Plus className="size-4" /> New request
           </Link>
