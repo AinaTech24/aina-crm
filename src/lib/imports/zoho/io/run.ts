@@ -27,10 +27,14 @@ import { importZohoModule } from "../run-modules";
 import { importZohoMeetings } from "../run-meetings";
 import type { ZohoRecord } from "../modules";
 import { IO_CUSTOM_FIELDS, ioContactRow, mapIoContact } from "./contacts";
+import { nameMatchKey } from "@/lib/rta/client-match";
+import { groupWmRows, mapWmPolicy, policyKey, wmStatus, type WmRow } from "./wealthmaker";
 import { ioLeadRecord, ioMeetingRow, ioUsers, mapIoAssignment, mapIoClaim, mapIoNote, mapIoPolicy, mapIoTask } from "./modules";
 
 export const IO_MODULES = [
   "IO_Contacts", "IO_Leads", "IO_Calls", "IO_Tasks", "IO_Task_Assignment", "IO_Meetings", "IO_Insurance", "IO_Claims", "IO_Notes",
+  // WealthMaker's insurance export (Floater / Individual / Motor / Other sheets) — wealthmaker.ts.
+  "IO_WM_Insurance",
 ] as const;
 export type IoModule = (typeof IO_MODULES)[number];
 
@@ -44,6 +48,8 @@ export type IoResult = {
   skippedByReason: Array<{ reason: string; count: number }>;
   breakdown: Array<{ label: string; count: number }>;
   notes: string[];
+  /** IO_WM_Insurance: every policy left out, for the firm's list to fix. */
+  skippedRows?: Array<{ sheet: string; policyNumber: string; holder: string; insurer: string; product: string; start: string | null; expiry: string | null; reason: string }>;
 };
 
 /** `refill`: policies and claims already brought in take what Zoho holds that they lack (2026-11-24). */
@@ -71,6 +77,7 @@ export async function importIoModule(actor: ImportActor, module: IoModule, recor
     case "IO_Insurance":
     case "IO_Claims":
     case "IO_Notes":
+    case "IO_WM_Insurance":
       return runOwn(actor, module, records, opts);
   }
 }
@@ -84,7 +91,7 @@ class Rollback extends Error {
 const DAY = 864e5;
 const istToday = (now: Date) => new Date(now.getTime() + 5.5 * 3_600_000).toISOString().slice(0, 10);
 
-async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" | "IO_Notes", records: ZohoRecord[], opts: Opts): Promise<IoResult> {
+async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" | "IO_Notes" | "IO_WM_Insurance", records: ZohoRecord[], opts: Opts): Promise<IoResult> {
   const now = opts.now ?? new Date();
   const run = async (tx: Tx): Promise<IoResult> => {
     const result: IoResult = { dryRun: opts.dryRun, module, totalRows: records.length, created: 0, updated: 0, already: 0, skippedByReason: [], breakdown: [], notes: [] };
@@ -322,6 +329,131 @@ async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" |
         result.created++;
       }
       for (let i = 0; i < rows.length; i += 500) await tx.insert(activities).values(rows.slice(i, i + 500));
+    }
+
+    if (module === "IO_WM_Insurance") {
+      const today = istToday(now);
+      // Every live client, by name key (the export has no PAN or mobile).
+      const all = (await tx.execute(sql`
+        SELECT id, name, branch_id, rm_id FROM investors
+         WHERE tenant_id = ${actor.tenantId}::uuid AND deleted_at IS NULL AND merged_into_id IS NULL
+      `)).rows as Array<{ id: string; name: string; branch_id: string | null; rm_id: string | null }>;
+      const byName = new Map<string, Array<(typeof all)[number]>>();
+      for (const c of all) {
+        const k = nameMatchKey(c.name);
+        if (k.split(" ").length < 2) continue;
+        const list = byName.get(k);
+        if (list) list.push(c);
+        else byName.set(k, [c]);
+      }
+      const existing = (await tx.execute(sql`
+        SELECT id, policy_number, investor_id, policy_type, details, sum_assured::text AS sum,
+               policy_start_date::text AS start, next_premium_due_date::text AS due
+          FROM insurance_policies
+         WHERE tenant_id = ${actor.tenantId}::uuid AND policy_number IS NOT NULL
+      `)).rows as Array<{ id: string; policy_number: string; investor_id: string; policy_type: string; details: Record<string, unknown> | null; sum: string | null; start: string | null; due: string | null }>;
+      const existingByNo = new Map(existing.map((e) => [policyKey(e.policy_number), e]));
+      const skippedRows: NonNullable<IoResult["skippedRows"]> = [];
+      const left = (p: ReturnType<typeof mapWmPolicy>, reason: string) => {
+        skip(reason);
+        skippedRows.push({ sheet: p.sheet, policyNumber: p.policyNumber, holder: p.holder, insurer: p.insurer, product: p.planName, start: p.startDate, expiry: p.expiryDate, reason });
+      };
+
+      // 1. Map, drop what is already here (filling its blanks), match the holder.
+      const seen = new Set<string>();
+      const take: Array<{ p: ReturnType<typeof mapWmPolicy>; client: (typeof all)[number] }> = [];
+      for (const group of groupWmRows(records as WmRow[])) {
+        const p = mapWmPolicy(group);
+        const no = policyKey(p.policyNumber);
+        if (seen.has(no)) { left(p, "Same policy number twice in the files"); continue; }
+        seen.add(no);
+        const have = existingByNo.get(no);
+        if (have) {
+          // Already in the CRM (Zoho): fill only what it lacks.
+          const d = { ...(have.details ?? {}) };
+          let filled = false;
+          for (const [k, v] of Object.entries(p.details)) {
+            if (k === "source" || k === "wmSheet") continue;
+            if (d[k] == null || d[k] === "" || (Array.isArray(d[k]) && !(d[k] as unknown[]).length)) { d[k] = v; filled = true; }
+          }
+          const sum = !have.sum || Number(have.sum) === 0 ? (p.sumAssured != null ? String(p.sumAssured) : null) : null;
+          const start = !have.start ? p.startDate : null;
+          const due = !have.due ? p.expiryDate : null;
+          if (filled || sum || start || due) {
+            await tx.execute(sql`
+              UPDATE insurance_policies SET details = ${JSON.stringify(d)}::jsonb,
+                     sum_assured = COALESCE(sum_assured, ${sum}::numeric),
+                     policy_start_date = COALESCE(policy_start_date, ${start}::date),
+                     next_premium_due_date = COALESCE(next_premium_due_date, ${due}::date)
+               WHERE id = ${have.id}::uuid AND tenant_id = ${actor.tenantId}::uuid
+            `);
+            count("Already in the CRM — blanks filled from WealthMaker");
+            result.updated++;
+          } else result.already++;
+          continue;
+        }
+        const k = nameMatchKey(p.holder);
+        if (k.split(" ").length < 2) { left(p, "Holder name too short to match"); continue; }
+        const matches = byName.get(k) ?? [];
+        if (matches.length === 0) { left(p, "Holder not in the CRM"); continue; }
+        if (matches.length > 1) { left(p, "Holder name matches 2+ clients"); continue; }
+        take.push({ p, client: matches[0] });
+      }
+
+      // 2. Status from the client's other policies (renewed → matured, not renewed → lapsed).
+      const byClient = new Map<string, Array<{ policyType: string; startDate: string | null; policyNumber: string }>>();
+      const addOther = (id: string, o: { policyType: string; startDate: string | null; policyNumber: string }) => {
+        const l = byClient.get(id);
+        if (l) l.push(o);
+        else byClient.set(id, [o]);
+      };
+      for (const e of existing) addOther(e.investor_id, { policyType: e.policy_type, startDate: e.start, policyNumber: e.policy_number });
+      for (const { p, client } of take) addOther(client.id, { policyType: p.policyType, startDate: p.startDate, policyNumber: p.policyNumber });
+
+      const rows: Array<typeof insurancePolicies.$inferInsert> = [];
+      for (const { p, client } of take) {
+        const others = (byClient.get(client.id) ?? []).filter((o) => o.policyNumber !== p.policyNumber);
+        const st = wmStatus(p, others, today);
+        count(`${p.policyType.replace(/_/g, " ")} · ${st.status === "matured" ? "renewed (history)" : st.status}`);
+        const seller = userOf(p.agencyEmail);
+        rows.push({
+          tenantId: actor.tenantId,
+          branchId: client.branch_id,
+          investorId: client.id,
+          policyNumber: p.policyNumber,
+          insurer: p.insurer || "Not recorded",
+          planName: p.planName,
+          policyType: p.policyType,
+          sumAssured: p.sumAssured != null ? String(p.sumAssured) : null,
+          ...(p.livesCovered ? { livesCovered: p.livesCovered } : {}),
+          annualPremium: p.premium != null ? String(p.premium) : null,
+          premiumFrequency: "annual",
+          policyStartDate: p.startDate,
+          riskCoverStartDate: p.startDate,
+          maturityDate: p.expiryDate,
+          nextPremiumDueDate: p.expiryDate,
+          details: p.details,
+          remarks: [
+            `Imported from WealthMaker (${p.sheet}).`,
+            st.renewedBy ? `Renewed: next policy ${st.renewedBy}.` : "",
+          ].filter(Boolean).join(" "),
+          status: st.status,
+          lapseReason: st.status === "lapsed" ? `Policy period ended ${p.expiryDate} (WealthMaker); no renewal recorded for this client` : null,
+          soldByUserId: seller?.id ?? client.rm_id ?? null,
+          soldAt: p.startDate ? new Date(`${p.startDate}T10:00:00+05:30`) : null,
+          // Nothing alerts at import: history is history.
+          lapseAlertedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+        result.created++;
+      }
+      for (let i = 0; i < rows.length; i += 500) await tx.insert(insurancePolicies).values(rows.slice(i, i + 500));
+      result.skippedRows = skippedRows;
+      result.notes.push(
+        "Linked by the holder's name only (the export has no PAN or mobile): a name matching no client or two or more clients is skipped and listed.",
+        "A policy whose period ended is 'matured' when the client has a later policy of the same type (renewed), else 'lapsed'.",
+      );
     }
 
     result.skippedByReason = [...skipped.entries()].map(([reason, c]) => ({ reason, count: c })).sort((a, b) => b.count - a.count);
