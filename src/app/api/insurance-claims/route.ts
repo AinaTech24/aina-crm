@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { z } from "zod";
+import { cleanClaimDetails } from "@/lib/insurance/extra-fields";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
@@ -52,6 +53,8 @@ const ClaimBody = z.object({
     size: z.number().optional(),
     uploadedAt: z.string().optional(),
   })).max(50).optional(),
+  /** The firm's extra claim fields (insuranceExtraFields) — lib/insurance/extra-fields.ts. */
+  details: z.record(z.any()).optional(),
 });
 
 export async function GET() {
@@ -153,6 +156,7 @@ export async function POST(req: NextRequest) {
         settledAmount: b.settledAmount != null ? String(b.settledAmount) : "0",
         rmId: b.rmId ?? session.userId,
         comments: b.comments ?? null,
+        details: b.details ? cleanClaimDetails(b.details) : {},
         documents: b.documents ?? [],
       } as any);
 

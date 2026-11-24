@@ -22,6 +22,8 @@ import { loadViewablePolicy } from "@/lib/insurance/register-access";
 import { formatDate, formatINR } from "@/lib/utils";
 import { eachPeriod, installmentOf } from "@/lib/insurance/premium";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
+import { cellText, policyDetailLines, policyDetailTables } from "@/lib/insurance/extra-fields";
+import { insuranceExtraFieldsOn } from "@/lib/insurance/extra-fields-server";
 
 const TYPE_LABEL: Record<string, string> = {
   term: "Term Life",
@@ -77,6 +79,22 @@ export default async function InsuranceDetailPage({
   });
   if (!data) notFound();
   const { p, inv, fam } = data;
+  // The firm's extra per-line fields (insuranceExtraFields): the policy's details, readable here.
+  const extra = await insuranceExtraFieldsOn(session.tenantId, session.roles);
+  const pd = (p.details ?? {}) as Record<string, unknown>;
+  const detailLines = extra ? policyDetailLines(p.policyType, pd) : [];
+  const detailTables = extra
+    ? policyDetailTables(p.policyType)
+        .map((t) => {
+          const rows = (Array.isArray(pd[t.key]) ? (pd[t.key] as Record<string, unknown>[]) : []).filter((r) =>
+            t.columns.some((c) => cellText(r?.[c.key]).trim() !== ""),
+          );
+          // Only the columns some row fills.
+          const columns = t.columns.filter((c) => rows.some((r) => cellText(r[c.key]).trim() !== ""));
+          return { ...t, rows, columns };
+        })
+        .filter((t) => t.rows.length > 0)
+    : [];
   let familyLink = false;
   try { requireFamilyView(session); familyLink = true; } catch { /* no access to the Families pages: show the name only */ }
   const familyName = fam ? (fam.name || (fam.head ? `${fam.head} Family` : "Family")) : null;
@@ -237,6 +255,66 @@ export default async function InsuranceDetailPage({
           <KV label="Grace period" value={`${p.gracePeriodDays ?? 30} days`} />
         </div>
       </div>
+
+      {/* Cover details — the policy's own fields per line (insuranceExtraFields) */}
+      {detailLines.length > 0 && (
+        <div className="card-surface p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Shield className="size-4 text-muted-foreground" />
+            <h2 className="section-title">Cover details</h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            {detailLines.map((l) => (
+              <KV
+                key={l.label}
+                label={l.label}
+                value={
+                  l.type === "date" && /^\d{4}-\d{2}-\d{2}/.test(l.value)
+                    ? formatDate(l.value)
+                    : l.type === "number" && /₹/.test(l.label) && Number.isFinite(Number(l.value))
+                      ? formatINR(Number(l.value))
+                      : l.value
+                }
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {detailTables.map((t) => (
+        <div key={t.key} className="card-surface p-5">
+          <h2 className="section-title mb-3">
+            {t.label} ({t.rows.length})
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr>
+                  {t.columns.map((c) => (
+                    <th key={c.key} className="text-left">
+                      {c.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {t.rows.map((r, i) => (
+                  <tr key={i}>
+                    {t.columns.map((c) => {
+                      const v = cellText(r[c.key]);
+                      return (
+                        <td key={c.key} className={/₹/.test(c.label) ? "tabular-nums" : undefined}>
+                          {/₹/.test(c.label) && v !== "" && Number.isFinite(Number(v)) ? formatINR(Number(v)) : v || "—"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
 
       {/* Nominee */}
       {(p.nomineeName || p.nomineeRelation) && (

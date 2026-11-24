@@ -99,6 +99,8 @@ export function policyTypeOf(product: string, module?: string): PolicyType {
     case "Personal_Accident_Policy": return "personal_accident";
     case "Marine_Insurance": return "marine";
     case "Fire_Insurance": return "fire";
+    // Cyber has no type of its own: general, with the product name kept.
+    case "Cyber_Insurance": return "general_other";
   }
   // "Bharat Griha Raksha" is a home policy — fire-and-allied in the firm's MIS, but the CRM has "home".
   if (/griha raksha|home insurance/i.test(product)) return "home";
@@ -156,6 +158,11 @@ function startFromExpiry(expiry: string): string {
   d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
+function expiryFromDays(start: string, days: number): string {
+  const d = new Date(`${start}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days - 1);
+  return d.toISOString().slice(0, 10);
+}
 function expiryFromStart(start: string, months = 12): string {
   const d = new Date(`${start}T00:00:00Z`);
   d.setUTCMonth(d.getUTCMonth() + months);
@@ -175,6 +182,8 @@ export type MappedPolicy = {
   planName: string;
   policyType: PolicyType;
   sumAssured: number | null;
+  /** Employees / members covered, when Zoho says. */
+  livesCovered: number | null;
   premium: number | null;
   frequency: "single" | "annual" | "semi_annual" | "quarterly" | "monthly";
   startDate: string | null;
@@ -190,6 +199,59 @@ export type MappedPolicy = {
   test: boolean;
 };
 
+/** A Zoho subform value → its rows. */
+function rowsOf(v: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(v) ? (v.filter((x) => x && typeof x === "object") as Array<Record<string, unknown>>) : [];
+}
+
+/** Drop undefined keys (a details blob holds only what Zoho had). */
+function prune(o: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== ""));
+}
+
+/** Every line's member subform → the form's insuredMembers rows (name, relation, dob, gender, age, premium / sum insured). */
+function membersOf(r: ZohoRecord): Array<Record<string, string>> | undefined {
+  const out: Array<Record<string, string>> = [];
+  const add = (x: Record<string, unknown>, premiumIs: "premium" | "sumInsured") => {
+    const row: Record<string, string> = {};
+    const name = x.Name1 && typeof x.Name1 === "object" ? ref(x.Name1).name : na(x.Name1);
+    if (name) row.name = name;
+    if (na(x.Relation)) row.relation = na(x.Relation);
+    const dob = isoDate(na(x.DOB));
+    if (dob) row.dob = dob;
+    if (na(x.Gender)) row.gender = na(x.Gender);
+    if (num(x.Age)) row.age = String(Math.round(num(x.Age)));
+    if (na(x.Premium) !== "") row[premiumIs] = String(num(x.Premium));
+    if (Object.keys(row).length) out.push(row);
+  };
+  for (const x of rowsOf(r.Member_Covered)) add(x, "premium");
+  for (const x of rowsOf(r.Members_Covered)) add(x, "premium");
+  for (const x of rowsOf(r.Member_Details)) add(x, "premium");
+  for (const x of rowsOf(r.Members_Covered_Details)) add(x, "premium");
+  // The PA subform's "Premium" field is labelled Sum Assured in Zoho.
+  for (const x of rowsOf(r.Members_Details)) add(x, "sumInsured");
+  return out.length ? out : undefined;
+}
+
+/** Zoho's vehicle policy type → the form's cover type. */
+function motorCover(v: string): string | undefined {
+  if (!v) return undefined;
+  if (/third|liabil|\btp\b/i.test(v) && !/comp|package/i.test(v)) return "third_party";
+  if (/own damage|\bod\b|stand ?alone/i.test(v)) return "od_only";
+  if (/comp|package/i.test(v)) return "comprehensive";
+  return v;
+}
+
+function fuelOf(v: string): string | undefined {
+  if (!v) return undefined;
+  if (/petrol/i.test(v)) return "petrol";
+  if (/diesel/i.test(v)) return "diesel";
+  if (/cng|lpg/i.test(v)) return "cng";
+  if (/electric|\bev\b/i.test(v)) return "electric";
+  if (/hybrid/i.test(v)) return "hybrid";
+  return v;
+}
+
 const looksLikeTest = (policyNo: string) => /^(test|demo|dd|\d)$/i.test(policyNo.trim());
 
 /** One record of the Insurance register or a line module (`_module` set on line-module records). */
@@ -201,9 +263,14 @@ export function mapIoPolicy(raw: ZohoRecord): MappedPolicy {
   const product = na(register ? r.Policy : r.Product) || na(r.Plan_Name1) || na(r.Plan_Name);
   const plan = na(r.Plan_Name1) || na(r.Plan_Name) || product;
   const policyType = policyTypeOf(product || zModule, register ? undefined : zModule);
-  let start = isoDate(na(r.DOC) || na(r.Commencement_Date) || na(r.Policy_Start_Date)) ?? null;
-  let renewal = isoDate(na(r.FUP) || na(r.Renewal_Expiry_Date) || na(r.Date_7)) ?? null;
+  // Each line module names its dates differently (Marine / WC / Fire / Cyber: Start_Date;
+  // Renewal_Due_Date, Expiry_Renewal_Date, Travel's Expiry_Date).
+  let start = isoDate(na(r.DOC) || na(r.Commencement_Date) || na(r.Policy_Start_Date) || na(r.Start_Date)) ?? null;
+  let renewal = isoDate(na(r.FUP) || na(r.Renewal_Expiry_Date) || na(r.Date_7) || na(r.Renewal_Due_Date) || na(r.Expiry_Renewal_Date) || na(r.Expiry_Date)) ?? null;
   const termMonths = num(r.Policy_Term_in_months);
+  const tripDays = num(r.Policy_Term_in_days);
+  // A trip runs its days, not a year.
+  if (start && !renewal && tripDays > 0 && tripDays <= 366) renewal = expiryFromDays(start, tripDays);
   let startDerived = false;
   // General insurance runs a year: a policy with one of the two dates gets the other.
   const life = policyType === "term" || policyType === "ulip" || policyType === "life_other";
@@ -211,37 +278,86 @@ export function mapIoPolicy(raw: ZohoRecord): MappedPolicy {
     if (!start && renewal) { start = startFromExpiry(renewal); startDerived = true; }
     if (start && !renewal) renewal = expiryFromStart(start, termMonths > 0 && termMonths <= 36 ? termMonths : 12);
   }
-  const type = key(na(r.Type));
+  const type = key(na(r.Type) || (zModule === "Cyber_Insurance" ? na(r.Policy_Type) : ""));
   const businessType = /renew/.test(type) ? "renewal" : /new/.test(type) ? "new" : /port|migrat|rollover/.test(type) ? "portability" : null;
   const nomineeName = na(r.Nominee_Name);
-  const details: Record<string, unknown> = {
+  const yes = (v: unknown) => /^(yes|true|y)$/i.test(na(v));
+  const amount = (v: unknown) => (num(v) ? num(v) : undefined);
+  const text = (v: unknown) => na(v) || undefined;
+  const ownDamage = rowsOf(r.Own_Damage).concat(rowsOf(r.Own_Damage_Premium));
+  const odRow = (re: RegExp) => ownDamage.find((x) => re.test(na(x.Description)));
+  const members = membersOf(r);
+  // The keys are the policy form's (lib/insurance/extra-fields.ts + insurance/new): what is
+  // written here is what the form and page show.
+  const details: Record<string, unknown> = prune({
     zohoId: zohoId(r.id),
     zohoModule: zModule,
-    ...(product ? { zohoProduct: product } : {}),
-    ...(businessType ? { businessType } : {}),
-    ...(na(r.Type) ? { zohoType: na(r.Type) } : {}),
-    ...(num(r.Bacic_Premium) || num(r.Basic_Premium) ? { basicPremium: num(r.Bacic_Premium) || num(r.Basic_Premium) } : {}),
-    ...(na(r.Payment_Mode) ? { paymentMode: na(r.Payment_Mode) } : {}),
-    ...(na(r.Payment_Date) ? { paymentDate: na(r.Payment_Date) } : {}),
-    ...(na(r.Agency) || na(r.Agent_Code) ? { agency: na(r.Agency) || na(r.Agent_Code) } : {}),
-    ...(na(r.Previous_Policy_No) ? { previousPolicyNo: na(r.Previous_Policy_No) } : {}),
-    ...(na(r.Family_Floter) || na(r.Family_Floater) ? { familyFloater: na(r.Family_Floter) || na(r.Family_Floater) } : {}),
-    ...(na(r.Login_Date) ? { issueDate: na(r.Login_Date) } : {}),
+    zohoProduct: product || undefined,
+    businessType: businessType ?? undefined,
+    zohoType: text(r.Type),
+    basicPremium: amount(r.Bacic_Premium) ?? amount(r.Basic_Premium),
+    paymentMode: text(r.Payment_Mode),
+    paymentDate: isoDate(na(r.Payment_Date)) ?? undefined,
+    agencyName: text(r.Agency),
+    agencyCode: text(r.Agent_Code),
+    previousPolicyNo: text(r.Previous_Policy_No),
+    familyFloater: na(r.Family_Floter) || na(r.Family_Floater) ? yes(r.Family_Floter) || yes(r.Family_Floater) : undefined,
+    policyIssueDate: isoDate(na(r.Policy_Issue_Date) || na(r.Login_Date)) ?? undefined,
     // Motor
-    ...(na(r.Vehicle_No) ? { vehicleRegNo: na(r.Vehicle_No) } : {}),
-    ...(na(r.Vehicle_Make) || na(r.Vehicle_Model) ? { makeModel: [na(r.Vehicle_Make), na(r.Vehicle_Model)].filter(Boolean).join(" ") } : {}),
-    ...(na(r.Vehicle_Type) ? { vehicleType: na(r.Vehicle_Type) } : {}),
-    ...(na(r.Vehicle_Policy_Type) ? { coverType: na(r.Vehicle_Policy_Type) } : {}),
-    ...(na(r.Fuel_Type) ? { fuelType: na(r.Fuel_Type) } : {}),
-    ...(num(r.Year_of_Manufacturer) ? { yearOfManufacture: num(r.Year_of_Manufacturer) } : {}),
-    ...(num(r.IDV) ? { idv: num(r.IDV) } : {}),
-    ...(num(r.NCB) ? { ncbPercent: num(r.NCB) } : {}),
-    ...(num(r.Basic_Third_Party_Premium_TP) ? { tpPremium: num(r.Basic_Third_Party_Premium_TP) } : {}),
-    ...(na(r.Chassis_Number) ? { chassisNumber: na(r.Chassis_Number) } : {}),
-    ...(na(r.Engine_Number) ? { engineNumber: na(r.Engine_Number) } : {}),
-    ...(Array.isArray(r.Add_ons) && r.Add_ons.length ? { addOns: r.Add_ons } : {}),
-    ...(startDerived ? { startDateFrom: "renewal date" } : {}),
-  };
+    vehicleRegNo: text(r.Vehicle_No),
+    makeModel: [na(r.Vehicle_Make), na(r.Vehicle_Model)].filter(Boolean).join(" ") || undefined,
+    vehicleType: text(r.Vehicle_Type),
+    coverType: motorCover(na(r.Vehicle_Policy_Type)),
+    fuelType: fuelOf(na(r.Fuel_Type)),
+    manufacturingYear: amount(r.Year_of_Manufacturer),
+    ncbPercent: amount(r.NCB) ?? (odRow(/no claim/i) ? amount(odRow(/no claim/i)!.Percent) : undefined),
+    tpPremium: amount(r.Basic_Third_Party_Premium_TP) ?? amount(r.Basic_Third_Party_Premium),
+    odPremium: odRow(/total own damage/i) ? amount(odRow(/total own damage/i)!.Amount) : undefined,
+    chassisNo: text(r.Chassis_Number),
+    engineNo: text(r.Engine_Number),
+    addOns: Array.isArray(r.Add_ons) && r.Add_ons.length ? r.Add_ons : undefined,
+    paOwnerDriver: num(r.Owner_Driver) > 0 ? true : undefined,
+    paOwnerDriverPremium: amount(r.Owner_Driver),
+    llPaidDriverPremium: amount(r.LL_to_Paid_Drive),
+    cngKitPremium: amount(r.LPG_CNG_Kit),
+    odTpTerm: text(r.New_Policy_Term),
+    ownedBy: na(r.Vehicle_Owned_By) ? (/compan|firm|corporate/i.test(na(r.Vehicle_Owned_By)) ? "company" : "individual") : undefined,
+    premiumBreakdown: ownDamage.length
+      ? ownDamage.map((x) => ({
+          description: [na(x.Description) || "Own damage", num(x.Percent) ? `(${num(x.Percent)}%)` : ""].filter(Boolean).join(" "),
+          amount: na(x.Amount) !== "" ? String(num(x.Amount)) : "",
+        }))
+      : undefined,
+    // Personal accident
+    adSumInsured: amount(r.Accidental_Death_Sum_Insured),
+    adCb: text(r.Accidental_Death_Cumulative_Bonus),
+    ptdSumInsured: amount(r.Permanent_Total_Disability_Sum_Insured),
+    ptdCb: text(r.Permanent_Total_Disability_Cumulative_Bonus),
+    ppdSumInsured: amount(r.Permanent_Partial_Disability),
+    ppdCb: text(r.Permanent_Partial_Disability_Cumulative_Bonus),
+    coverList: rowsOf(r.Optional_Cover_Details).length
+      ? rowsOf(r.Optional_Cover_Details).map((x) => ({ cover: na(x.Cover_Type), sumInsured: na(x.Sum_Insured) !== "" ? String(num(x.Sum_Insured)) : "" }))
+      : undefined,
+    // WC · marine · fire · travel
+    medicalExpenseLimit: amount(r.Medical_Expense),
+    transitMode: na(r.Transit_Type) ? na(r.Transit_Type).toLowerCase() : undefined,
+    fireCategory: zModule === "Fire_Insurance" ? text(r.Category) : undefined,
+    insuredAs: zModule === "Fire_Insurance" && na(r.Policy_Type) ? (/institut|compan|firm/i.test(na(r.Policy_Type)) ? "institution" : "individual") : undefined,
+    propertyDescription: text(r.Property_Type),
+    financier: na(r.Hypothication) || na(r.Bank_Name) ? [na(r.Hypothication), na(r.Bank_Name)].filter(Boolean).join(" · ") : undefined,
+    itemCovers: rowsOf(r.Item_Wise_Covers).length
+      ? rowsOf(r.Item_Wise_Covers).map((x) => ({ item: na(x.Item), description: na(x.Item_Description), sumInsured: na(x.Sum_Insured_INR) !== "" ? String(num(x.Sum_Insured_INR)) : "" }))
+      : undefined,
+    addOnCovers: rowsOf(r.Add_on_Cover_Details).length
+      ? rowsOf(r.Add_on_Cover_Details).map((x) => ({ name: na(x.Addon_Cover_Description), uin: na(x.UIN), sumInsured: na(x.Sum_Insured_INR) !== "" ? String(num(x.Sum_Insured_INR)) : "" }))
+      : undefined,
+    tripDays: tripDays > 0 ? tripDays : undefined,
+    tripStart: zModule === "Travel_Insurance" ? start ?? undefined : undefined,
+    tripEnd: zModule === "Travel_Insurance" ? renewal ?? undefined : undefined,
+    // The people covered — every line's member subform, one shape.
+    insuredMembers: members,
+    startDateFrom: startDerived ? "renewal date" : undefined,
+  });
   const agent = na(r.Agency) || na(r.Agent_Code);
   return {
     zohoId: zohoId(r.id),
@@ -254,7 +370,9 @@ export function mapIoPolicy(raw: ZohoRecord): MappedPolicy {
     insurer: insurerName(cell(r.Insurance_Company)),
     planName: (plan || product || "Policy").slice(0, 300),
     policyType,
-    sumAssured: num(r.Sum_Assured) || num(r.Sum_Insured) || null,
+    // Motor's IDV is its sum insured; marine and fire keep the total in their own fields.
+    sumAssured: num(r.Sum_Assured) || num(r.Sum_Insured) || num(r.Total_Insurance) || num(r.Total_Sum_Insured_INR) || num(r.IDV) || null,
+    livesCovered: num(r.Total_No_of_Members) > 0 ? Math.round(num(r.Total_No_of_Members)) : members?.length || null,
     premium: num(r.Total_Premium) || num(r.Bacic_Premium) || num(r.Basic_Premium) || null,
     frequency: FREQ[key(na(r.Mode))] ?? "annual",
     startDate: start,
@@ -315,6 +433,13 @@ export function claimStatusOf(r: ZohoRecord): MappedClaim["status"] {
   return "claim_intimated";
 }
 
+/** A picklist person ("Rajeshwair", "Direct") as the claim shows it: Zoho's misspellings mended. */
+function staffName(v: string): string | undefined {
+  if (!v) return undefined;
+  if (/^rajeshw/i.test(v)) return "Rajeshwari";
+  return v;
+}
+
 export function mapIoClaim(raw: ZohoRecord): MappedClaim {
   const r = ioUsers(raw);
   const holder = ref(r.Policy_Holder_Name);
@@ -355,13 +480,26 @@ export function mapIoClaim(raw: ZohoRecord): MappedClaim {
     settled: num(r.Settled_Amount) || (/settled/i.test(`${na(r.Status)} ${na(r.Recent_Claim_Status)}`) ? num(r.Settlement_Amount) : 0),
     comments: lines.join("\n").slice(0, 4000) || null,
     policyDetails: [na(r.Product_Name), na(r.Policy_Type), na(r.Policy_Period_From_Date) && na(r.Policy_Period_To_Date) ? `${na(r.Policy_Period_From_Date)} to ${na(r.Policy_Period_To_Date)}` : "", num(r.Sum_Insured) ? `Sum insured ₹${num(r.Sum_Insured)}` : ""].filter(Boolean).join(" · ") || null,
-    details: {
+    // The claim form's keys (lib/insurance/extra-fields.ts CLAIM_EXTRA_FIELDS) + the Zoho id.
+    details: prune({
       zohoId: zohoId(r.id),
+      job: na(r.Job_Transaction_Type) || undefined,
       claimNo: na(r.Claim_No) || undefined,
       intimationNo: na(r.Claim_Intimation_No) || undefined,
-      intimationBy: na(r.Intimation_By) || undefined,
-      job: na(r.Job_Transaction_Type) || undefined,
-    },
+      patientName: na(r.Patient_Name) || undefined,
+      hospitalName: na(r.Hospital_Name) || undefined,
+      doctorName: na(r.Doctor_Name) && na(r.Doctor_Name).toLowerCase() !== "doctor" ? na(r.Doctor_Name) : undefined,
+      diagnosis: na(r.Diagnosis_Loss_Details) || undefined,
+      dischargeDate: isoDate(na(r.Discharge_date)) ?? undefined,
+      processDate: isoDate(na(r.Process_Date)) ?? undefined,
+      paymentReceivedOn: isoDate(na(r.ECS_Done_Date)) ?? undefined,
+      deductionAmount: num(r.Deduction) || undefined,
+      intimatedBy: staffName(na(r.Intimation_By)),
+      submittedBy: staffName(na(r.Submitted_Uploaded_By)),
+      hospitalVisitBy: staffName(na(r.Hospital_Visit_Done_By)),
+      followupCallBy: staffName(na(r.Pre_Post_Claim_Call_By)),
+      followupCallOn: isoDate(na(r.Pre_Post_Claim_Call_Date)) ?? undefined,
+    }),
   };
 }
 

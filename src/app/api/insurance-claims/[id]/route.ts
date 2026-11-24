@@ -8,6 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
+import { mergeClaimDetails } from "@/lib/insurance/extra-fields";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
@@ -55,6 +56,8 @@ const Patch = z
     rmId: z.string().uuid().nullable().optional(),
     comments: z.string().max(2000).nullable().optional(),
     documents: z.array(ClaimDoc).max(50).optional(),
+    /** The firm's extra claim fields (insuranceExtraFields) — lib/insurance/extra-fields.ts. */
+    details: z.record(z.any()).optional(),
   })
   .strict();
 
@@ -113,6 +116,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (!pol) throw Object.assign(new Error("Policy not found"), { status: 404 });
       }
       const patch: any = { ...parse.data, updatedAt: new Date() };
+      // The form owns the extra fields it shows; any other key (the Zoho id) stays.
+      if (d.details) patch.details = mergeClaimDetails(before.details, d.details);
       for (const k of ["claimedAmount", "settledAmount"] as const) {
         if (patch[k] != null) patch[k] = String(patch[k]);
       }

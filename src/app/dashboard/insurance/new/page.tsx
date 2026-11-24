@@ -38,6 +38,13 @@ import { ageFromDob } from "@/lib/insurance/family-panel";
 import { expiryFromTerm } from "@/lib/insurance/term";
 import type { FamilyMemberLite } from "@/lib/families/lookup";
 import { SelectField } from "@/components/ui/SelectField";
+import {
+  INSURANCE_EXTRA_FIELDS_FLAG,
+  MEMBER_PREMIUM_COLUMN,
+  PAYMENT_BLOCK,
+  extraBlockFor,
+  type ExtraBlock,
+} from "@/lib/insurance/extra-fields";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { ExtractionTimeline } from "@/components/insurance/ExtractionTimeline";
 import { OptionalCoversMatrix } from "@/components/insurance/OptionalCoversMatrix";
@@ -185,6 +192,20 @@ function NewInsuranceForm() {
   const [details, setDetails] = useState<Record<string, any>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  /** The firm's insuranceExtraFields flag: the per-line fields Zoho kept (lib/insurance/extra-fields.ts). */
+  const [extraFields, setExtraFields] = useState(false);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/me");
+        if (!r.ok) return;
+        const j = await r.json();
+        setExtraFields(j?.license?.featureFlags?.[INSURANCE_EXTRA_FIELDS_FLAG] === true);
+      } catch {
+        /* the flag is optional — the ordinary form still works */
+      }
+    })();
+  }, []);
 
   // ── AI auto-fill state ──────────────────────────────────────────────────
   const fileRef = useRef<HTMLInputElement>(null);
@@ -921,6 +942,7 @@ function NewInsuranceForm() {
                       { key: "firstInceptionDate", label: "First policy inception", width: "w-32" },
                       { key: "insuredAddress", label: "Insured address", width: "w-44", type: "textarea" },
                       { key: "nominee", label: "Nominee & relation" },
+                      ...(extraFields ? [MEMBER_PREMIUM_COLUMN] : []),
                     ]
           }
           rows={rowsOf("insuredMembers")}
@@ -1080,6 +1102,18 @@ function NewInsuranceForm() {
         </Section>
       )}
 
+      {/* The firm's extra per-line fields (insuranceExtraFields) — what Zoho kept. */}
+      {extraFields && extraBlockFor(form.policyType) && (
+        <ExtraBlockSection
+          block={extraBlockFor(form.policyType)!}
+          d={d}
+          setD={setD}
+          rowsOf={rowsOf}
+          livesCovered={String(form.livesCovered)}
+          setLivesCovered={(v) => set("livesCovered", Number(v) || 1)}
+        />
+      )}
+
       {(kind === "general" || kind === "travel" || kind === "property" || kind === "accident") && (
         <Section title={kind === "general" || kind === "accident" ? `${nType}. Coverage details` : "Coverage notes"}>
           <label className="block">
@@ -1226,6 +1260,10 @@ function NewInsuranceForm() {
         </div>
       </Section>
 
+      {extraFields && (
+        <ExtraBlockSection block={PAYMENT_BLOCK} d={d} setD={setD} rowsOf={rowsOf} livesCovered="" setLivesCovered={() => {}} />
+      )}
+
       {/* Receipt, payment & tax */}
       <Section title="Receipt, payment & tax">
         <div className="grid grid-cols-3 gap-3">
@@ -1272,6 +1310,63 @@ function NewInsuranceForm() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** One block of the firm's extra fields: a grid of fields, then its tables. */
+function ExtraBlockSection({
+  block,
+  d,
+  setD,
+  rowsOf,
+  livesCovered,
+  setLivesCovered,
+}: {
+  block: ExtraBlock;
+  d: (k: string) => string;
+  setD: (k: string, v: any) => void;
+  rowsOf: (k: string) => Record<string, any>[];
+  livesCovered: string;
+  setLivesCovered: (v: string) => void;
+}) {
+  return (
+    <Section title={block.title}>
+      {block.fields.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {block.fields.map((f) => {
+            const value = f.formKey === "livesCovered" ? livesCovered : d(f.key);
+            const setValue = f.formKey === "livesCovered" ? setLivesCovered : (v: string) => setD(f.key, v);
+            const cell =
+              f.type === "date" ? (
+                <DateField label={f.label} value={value} setValue={setValue} />
+              ) : f.type === "select" ? (
+                <Select label={f.label} value={value} setValue={setValue}>
+                  <option value="">Select…</option>
+                  {f.options?.map(([k, l]) => (
+                    <option key={k} value={k}>
+                      {l}
+                    </option>
+                  ))}
+                  {value && !f.options?.some(([k]) => k === value) && <option value={value}>{value}</option>}
+                </Select>
+              ) : (
+                <Field label={f.label} type={f.type === "number" ? "number" : "text"} placeholder={f.placeholder} value={value} setValue={setValue} />
+              );
+            return (
+              <div key={f.key} className={f.wide ? "sm:col-span-3" : undefined}>
+                {cell}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {block.tables?.map((t) => (
+        <div key={t.key}>
+          {block.fields.length > 0 && <div className="text-xs font-medium mb-1.5">{t.label}</div>}
+          <TableEditor columns={t.columns} rows={rowsOf(t.key)} onChange={(r) => setD(t.key, r)} />
+        </div>
+      ))}
+    </Section>
   );
 }
 

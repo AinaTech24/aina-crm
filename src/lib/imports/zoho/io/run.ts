@@ -8,6 +8,12 @@
  * Nothing is sent and nothing fires at import time: no event, no notification.
  * Every row keeps its Zoho id, so a second run (the cut-over re-sync) adds only
  * what is new.
+ *
+ * Refill (policies and claims, 2026-11-24): with `refill`, a policy or claim
+ * already brought in is brought up to what Zoho holds — the per-line fields,
+ * member / cover sub-tables and dates the first import missed. A row nobody has
+ * edited since its import (updated_at = created_at) takes Zoho's values; an
+ * edited one only has its blanks filled, so a person's change is never undone.
  */
 
 import { sql } from "drizzle-orm";
@@ -40,7 +46,8 @@ export type IoResult = {
   notes: string[];
 };
 
-type Opts = { dryRun: boolean; unmatchedToMe: boolean; now?: Date; tx?: Tx };
+/** `refill`: policies and claims already brought in take what Zoho holds that they lack (2026-11-24). */
+type Opts = { dryRun: boolean; unmatchedToMe: boolean; refill?: boolean; now?: Date; tx?: Tx };
 
 export async function importIoModule(actor: ImportActor, module: IoModule, records: ZohoRecord[], opts: Opts): Promise<unknown> {
   switch (module) {
@@ -106,9 +113,16 @@ async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" |
 
     if (module === "IO_Insurance") {
       const done = (await tx.execute(sql`
-        SELECT details->>'zohoId' AS z, investor_id, policy_number FROM insurance_policies
+        SELECT id, details->>'zohoId' AS z, investor_id, policy_number, details, status,
+               policy_start_date::text AS start, next_premium_due_date::text AS due, sum_assured::text AS sum,
+               lives_covered, (updated_at = created_at) AS untouched
+          FROM insurance_policies
          WHERE tenant_id = ${actor.tenantId}::uuid AND details ? 'zohoId'
-      `)).rows as Array<{ z: string; investor_id: string; policy_number: string | null }>;
+      `)).rows as Array<{
+        id: string; z: string; investor_id: string; policy_number: string | null; details: Record<string, unknown> | null; status: string;
+        start: string | null; due: string | null; sum: string | null; lives_covered: number | null; untouched: boolean;
+      }>;
+      const doneById = new Map(done.map((d) => [d.z, d]));
       const doneIds = new Set(done.map((d) => d.z));
       const doneNumbers = new Set(done.filter((d) => d.policy_number).map((d) => `${d.investor_id}|${d.policy_number!.toUpperCase()}`));
       const today = istToday(now);
@@ -117,7 +131,28 @@ async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" |
       const rows: Array<typeof insurancePolicies.$inferInsert> = [];
       for (const m of mapped) {
         if (m.test) { skip("Test record in Zoho"); continue; }
-        if (doneIds.has(m.zohoId)) { result.already++; continue; }
+        if (doneIds.has(m.zohoId)) {
+          const have = doneById.get(m.zohoId);
+          if (!opts.refill || !have) { result.already++; continue; }
+          const change = refillPolicy(have, m, today);
+          if (!change) { result.already++; continue; }
+          for (const l of change.labels) count(`Refill: ${l}`);
+          await tx.execute(sql`
+            UPDATE insurance_policies SET
+              details = ${JSON.stringify(change.details)}::jsonb,
+              policy_start_date = COALESCE(${change.start}::date, policy_start_date),
+              risk_cover_start_date = COALESCE(risk_cover_start_date, ${change.start}::date),
+              next_premium_due_date = COALESCE(${change.due}::date, next_premium_due_date),
+              sum_assured = COALESCE(${change.sum}::numeric, sum_assured),
+              lives_covered = COALESCE(${change.lives}::int, lives_covered),
+              status = COALESCE(${change.status}, status),
+              lapse_reason = COALESCE(${change.lapseReason}, lapse_reason),
+              updated_at = CASE WHEN updated_at = created_at THEN created_at ELSE updated_at END
+             WHERE id = ${have.id}::uuid AND tenant_id = ${actor.tenantId}::uuid
+          `);
+          result.updated++;
+          continue;
+        }
         const client = clientOf.get(m.clientZohoId);
         if (!client) { skip(m.clientZohoId ? "Policy holder not in the CRM" : "No policy holder in Zoho"); continue; }
         const numKey = m.policyNumber ? `${client.id}|${m.policyNumber.toUpperCase()}` : "";
@@ -138,6 +173,7 @@ async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" |
           planName: m.planName,
           policyType: m.policyType,
           sumAssured: m.sumAssured != null ? String(m.sumAssured) : null,
+          ...(m.livesCovered ? { livesCovered: m.livesCovered } : {}),
           annualPremium: m.premium != null ? String(m.premium) : null,
           premiumFrequency: m.frequency,
           premiumPayingTermYears: m.payingTermYears,
@@ -168,10 +204,13 @@ async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" |
     }
 
     if (module === "IO_Claims") {
-      const done = new Set(((await tx.execute(sql`
-        SELECT substring(comments from 'Zoho claim ([0-9]+)') AS z FROM insurance_claims
+      const doneRows = (await tx.execute(sql`
+        SELECT id, substring(comments from 'Zoho claim ([0-9]+)') AS z, details, (updated_at = created_at) AS untouched
+          FROM insurance_claims
          WHERE tenant_id = ${actor.tenantId}::uuid AND comments LIKE '%Zoho claim %'
-      `)).rows as Array<{ z: string }>).map((r) => r.z));
+      `)).rows as Array<{ id: string; z: string; details: Record<string, unknown> | null; untouched: boolean }>;
+      const done = new Set(doneRows.map((r) => r.z));
+      const claimById = new Map(doneRows.map((r) => [r.z, r]));
       const policies = (await tx.execute(sql`
         SELECT id, investor_id, upper(policy_number) AS no FROM insurance_policies
          WHERE tenant_id = ${actor.tenantId}::uuid AND policy_number IS NOT NULL
@@ -179,7 +218,19 @@ async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" |
       const policyByNo = new Map(policies.map((p) => [p.no, p]));
       for (const raw of records) {
         const m = mapIoClaim(raw);
-        if (done.has(m.zohoId)) { result.already++; continue; }
+        if (done.has(m.zohoId)) {
+          const have = claimById.get(m.zohoId);
+          if (!opts.refill || !have) { result.already++; continue; }
+          const next = mergeDetails(have.details ?? {}, m.details, have.untouched);
+          if (JSON.stringify(next) === JSON.stringify(have.details ?? {})) { result.already++; continue; }
+          count("Refill: claim details");
+          await tx.execute(sql`
+            UPDATE insurance_claims SET details = ${JSON.stringify(next)}::jsonb
+             WHERE id = ${have.id}::uuid AND tenant_id = ${actor.tenantId}::uuid
+          `);
+          result.updated++;
+          continue;
+        }
         const client = clientOf.get(m.clientZohoId);
         if (!client) { skip("Policy holder not in the CRM"); continue; }
         const policy = m.policyNumber ? policyByNo.get(m.policyNumber.toUpperCase()) : undefined;
@@ -208,6 +259,7 @@ async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" |
           settledAmount: String(m.settled || 0),
           rmId: rm?.id ?? client.rm_id,
           comments: [`${m.title} · Zoho claim ${m.zohoId}`, m.details.claimNo ? `Claim no. ${m.details.claimNo}` : "", m.comments].filter(Boolean).join("\n"),
+          details: m.details,
           createdAt: now,
           updatedAt: now,
         });
@@ -292,4 +344,79 @@ async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" |
     if (err instanceof Rollback) return err.result;
     throw err;
   }
+}
+
+
+// ── Refill ────────────────────────────────────────────────────────────────
+
+/** Keys the first import (2026-11-20) wrote under another spelling than the form's. */
+const OLD_KEYS: Record<string, string> = {
+  chassisNumber: "chassisNo",
+  engineNumber: "engineNo",
+  yearOfManufacture: "manufacturingYear",
+  issueDate: "policyIssueDate",
+  agency: "agencyName",
+  idv: "sumAssured",
+};
+
+const blank = (v: unknown) => v == null || v === "" || (Array.isArray(v) && v.length === 0);
+
+/**
+ * Stored details + Zoho's. An untouched row takes Zoho's value for every key
+ * Zoho has; an edited row only gains the keys it lacks. Keys under the first
+ * import's old spelling move to the form's (dropped where the new one holds a value).
+ */
+export function mergeDetails(have: Record<string, unknown>, zoho: Record<string, unknown>, untouched: boolean): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...have };
+  for (const [oldKey, newKey] of Object.entries(OLD_KEYS)) {
+    if (!(oldKey in out)) continue;
+    if (newKey !== "sumAssured" && blank(out[newKey])) out[newKey] = out[oldKey];
+    delete out[oldKey];
+  }
+  // A "Yes" / "No" floater from the first import is the form's checkbox.
+  if (typeof out.familyFloater === "string") out.familyFloater = /^(yes|true|y)$/i.test(out.familyFloater);
+  for (const [k, v] of Object.entries(zoho)) {
+    if (blank(v)) continue;
+    if (untouched || blank(out[k])) out[k] = v;
+  }
+  return out;
+}
+
+type HeldPolicy = {
+  details: Record<string, unknown> | null; status: string; start: string | null; due: string | null;
+  sum: string | null; lives_covered: number | null; untouched: boolean;
+};
+
+/** What a refill changes on one policy, or null when nothing would. */
+export function refillPolicy(have: HeldPolicy, m: ReturnType<typeof mapIoPolicy>, today: string): {
+  details: Record<string, unknown>; start: string | null; due: string | null; sum: string | null; lives: number | null;
+  status: "lapsed" | null; lapseReason: string | null; labels: string[];
+} | null {
+  const labels: string[] = [];
+  const details = mergeDetails(have.details ?? {}, m.details, have.untouched);
+  if (JSON.stringify(details) !== JSON.stringify(have.details ?? {})) labels.push(`${m.module.replace(/_/g, " ")} details`);
+  const take = (held: string | null, zoho: string | null) => (zoho && zoho !== held && (have.untouched || !held) ? zoho : null);
+  // A start "worked out from the renewal date" is replaced by Zoho's real one.
+  const start = take(have.start, m.startDerived ? null : m.startDate);
+  const due = take(have.due, m.renewalDate);
+  const zSum = m.sumAssured != null ? String(m.sumAssured) : null;
+  const sum = zSum && (have.untouched || !have.sum || Number(have.sum) === 0) && Number(have.sum ?? 0) !== Number(zSum) ? zSum : null;
+  const lives = m.livesCovered && m.livesCovered !== have.lives_covered && (have.untouched || (have.lives_covered ?? 1) <= 1) ? m.livesCovered : null;
+  if (start) labels.push("start date");
+  if (due) labels.push("renewal date");
+  if (sum) labels.push("sum insured");
+  if (lives) labels.push("lives covered");
+  // A renewal date now known and over (30 days' grace) on an active, untouched policy → lapsed, as at import.
+  let status: "lapsed" | null = null;
+  let lapseReason: string | null = null;
+  if (due && have.status === "active" && have.untouched) {
+    const over = new Date(`${due}T00:00:00+05:30`).getTime() + 30 * DAY < new Date(`${today}T00:00:00+05:30`).getTime();
+    if (over) {
+      status = "lapsed";
+      lapseReason = `Policy period ended ${due} (Zoho); no renewal recorded on this policy`;
+      labels.push("lapsed (period over)");
+    }
+  }
+  if (!labels.length) return null;
+  return { details, start, due, sum, lives, status, lapseReason, labels };
 }

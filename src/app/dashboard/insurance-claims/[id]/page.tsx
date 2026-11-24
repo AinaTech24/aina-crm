@@ -22,6 +22,8 @@ import { loadViewableClaim } from "@/lib/insurance/register-access";
 import { formatDate, formatINR } from "@/lib/utils";
 import { claimTatDays, claimAgeDays, OPEN_CLAIM_STATUSES } from "@/lib/insurance/claim-status";
 import { ClaimDocuments } from "@/components/insurance/ClaimDocuments";
+import { claimDetailLines } from "@/lib/insurance/extra-fields";
+import { insuranceExtraFieldsOn } from "@/lib/insurance/extra-fields-server";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +75,10 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
   if (!data) notFound();
   const { c, inv, policy, rmName } = data;
   const meta = STATUS_META[c.claimStatus] ?? STATUS_META.empty;
+  // The firm's extra claim fields (insuranceExtraFields): claim no., hospital, diagnosis…
+  const extraLines = (await insuranceExtraFieldsOn(session.tenantId, session.roles))
+    ? claimDetailLines(c.details as Record<string, unknown>)
+    : [];
 
   const isOpen = OPEN.includes(c.claimStatus);
   const tat = claimTatDays(c.intimationDate, c.settlementDate);
@@ -247,6 +253,19 @@ export default async function ClaimDetailPage({ params }: { params: Promise<{ id
           <KV label="Email" value={c.email ?? "—"} />
           <KV label="Phone" value={c.phone ?? "—"} />
           <KV label="Claimant" value={inv?.name ?? "—"} />
+          {extraLines.map((l) => (
+            <KV
+              key={l.label}
+              label={l.label}
+              value={
+                l.type === "date" && /^\d{4}-\d{2}-\d{2}/.test(l.value)
+                  ? formatDate(l.value)
+                  : l.type === "number" && Number.isFinite(Number(l.value))
+                    ? formatINR(Number(l.value))
+                    : l.value
+              }
+            />
+          ))}
         </div>
 
         {policy && (

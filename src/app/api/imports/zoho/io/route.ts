@@ -2,7 +2,8 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/imports/zoho/io — Investment Options' Zoho import (2026-11-20).
  * multipart: file (a JSON file { module, records } of records read through
- * Zoho's API), dryRun ("1" = preview, nothing saved), unmatchedToMe ("1" =
+ * Zoho's API), dryRun ("1" = preview, nothing saved), refill ("1" = policies
+ * and claims already imported take what Zoho holds that they lack), unmatchedToMe ("1" =
  * records of a Zoho user with no CRM user go to the person importing). Only for
  * a firm with the "Zoho CRM import" flag. See lib/imports/zoho/io/run.ts.
  */
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
       { tenantId: session.tenantId, userId: session.userId, branchId: session.branchId ?? null, roles: session.roles },
       zohoModule,
       body.records as Record<string, unknown>[],
-      { dryRun: form.get("dryRun") === "1", unmatchedToMe: form.get("unmatchedToMe") === "1" }
+      { dryRun: form.get("dryRun") === "1", unmatchedToMe: form.get("unmatchedToMe") === "1", refill: form.get("refill") === "1" }
     );
     return NextResponse.json(result);
   } catch (err) {

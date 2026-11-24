@@ -9,6 +9,7 @@ import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { CLAIM_EXTRA_FIELDS, INSURANCE_EXTRA_FIELDS_FLAG } from "@/lib/insurance/extra-fields";
 
 const CLAIM_STATUSES: [string, string][] = [
   ["empty", "Empty"], ["claim_intimated", "Claim Intimated"], ["file_awaited", "File Awaited"], ["file_received", "File Received"],
@@ -44,6 +45,14 @@ function ClaimForm() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const set = (k: keyof typeof form, v: string) => setForm((s) => ({ ...s, [k]: v }));
+  /** The firm's extra claim fields (insuranceExtraFields flag): claim no., hospital, diagnosis… */
+  const [extraOn, setExtraOn] = useState(false);
+  const [extra, setExtra] = useState<Record<string, string>>({});
+  const setX = (k: string, v: string) => setExtra((s) => ({ ...s, [k]: v }));
+
+  useEffect(() => {
+    fetch("/api/me").then((r) => (r.ok ? r.json() : null)).then((j) => setExtraOn(j?.license?.featureFlags?.[INSURANCE_EXTRA_FIELDS_FLAG] === true)).catch(() => { });
+  }, []);
 
   useEffect(() => {
     fetch("/api/insurance").then((r) => r.json()).then((j) => setPolicies(j.policies ?? [])).catch(() => { });
@@ -63,6 +72,9 @@ function ClaimForm() {
         claimedAmount: d.claimedAmount != null ? String(Number(d.claimedAmount)) : "", settledAmount: d.settledAmount != null ? String(Number(d.settledAmount)) : "",
         comments: d.comments ?? "",
       });
+      if (d.details && typeof d.details === "object") {
+        setExtra(Object.fromEntries(CLAIM_EXTRA_FIELDS.filter((f) => d.details[f.key] != null).map((f) => [f.key, String(d.details[f.key]).slice(0, f.type === "date" ? 10 : undefined)])));
+      }
       if (d.investorId) setInvestor({ id: d.investorId, name: d.investorName ?? "Client" });
       if (d.rmId) setRmId(d.rmId);
     });
@@ -106,6 +118,7 @@ function ClaimForm() {
         settledAmount: form.settledAmount ? Number(form.settledAmount) : undefined,
         rmId: rmId || undefined,
         comments: form.comments || undefined,
+        ...(extraOn ? { details: extra } : {}),
       };
       const res = await fetch(editId ? `/api/insurance-claims/${editId}` : "/api/insurance-claims", {
         method: editId ? "PATCH" : "POST",
@@ -171,6 +184,21 @@ function ClaimForm() {
           <Field label="Settlement date"><DateField value={form.settlementDate} onChange={(e) => set("settlementDate", e.target.value)} /></Field>
           <Field label="Relationship manager"><RmSelector value={rmId} onChange={(id) => setRmId(id ?? null)} role="rm" placeholder="Assign RM…" /></Field>
         </div>
+        {extraOn && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-3 border-t border-border">
+            {CLAIM_EXTRA_FIELDS.map((f) => (
+              <div key={f.key} className={f.wide ? "col-span-2 md:col-span-3" : undefined}>
+                <Field label={f.label}>
+                  {f.type === "date" ? (
+                    <DateField value={extra[f.key] ?? ""} onChange={(e) => setX(f.key, e.target.value)} />
+                  ) : (
+                    <input type={f.type === "number" ? "number" : "text"} value={extra[f.key] ?? ""} onChange={(e) => setX(f.key, e.target.value)} className="input-base" />
+                  )}
+                </Field>
+              </div>
+            ))}
+          </div>
+        )}
         <Field label="Comments">
           <textarea value={form.comments} onChange={(e) => set("comments", e.target.value)} rows={2} placeholder="Status notes, follow-up, settlement remarks…" className="input-base" />
         </Field>
