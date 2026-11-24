@@ -84,7 +84,7 @@ export const insuranceClaims = pgTable(
 
     /** Claim facts with no column of their own (claim no., hospital, diagnosis,
      *  discharge date, who intimated…) — keys in lib/insurance/extra-fields.ts.
-     *  Migration 0284; shown when the firm has the insuranceExtraFields flag. */
+     *  Migration 0285; shown when the firm has the insuranceExtraFields flag. */
     details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}),
 
     ...timestamps,

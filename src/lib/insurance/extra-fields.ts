@@ -3,7 +3,7 @@
  * 2026-11-24). Behind the per-firm flag `insuranceExtraFields`.
  *
  * A policy's extras live in `insurance_policies.details` and a claim's in
- * `insurance_claims.details` (migration 0284) — no new columns, so a firm
+ * `insurance_claims.details` (migration 0285) — no new columns, so a firm
  * without the flag never sees or stores them. One list here drives the policy
  * form, the policy page, the claim form, the claim page and the Zoho importer,
  * so a key can never be written under one spelling and read under another
