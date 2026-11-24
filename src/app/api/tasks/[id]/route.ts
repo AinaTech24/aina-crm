@@ -24,6 +24,7 @@ import { loadViewableLead } from "@/lib/leads/access";
 import { spawnNextOccurrence } from "@/lib/tasks/recurrence";
 import { notifyWatchers } from "@/lib/tasks/watchers";
 import { taskInScope } from "@/lib/tasks/scope";
+import { actAs } from "@/lib/tasks/history";
 import { sopsForTask } from "@/lib/practice/sop-links";
 import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
 import { tasks, users, taskChecklist } from "@/db/schema";
@@ -459,6 +460,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     // permanently removed. (Cancelling a task is a separate status change.)
     const permanent = req.nextUrl.searchParams.get("permanent") === "1";
     const outcome = await withTenant(session.tenantId, async (tx) => {
+      await actAs(tx, session.userId); // the task timeline credits this person
       const before = (await tx
         .select()
         .from(tasks)

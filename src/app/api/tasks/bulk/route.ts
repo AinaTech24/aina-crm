@@ -27,6 +27,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { actAs } from "@/lib/tasks/history";
 import { spawnNextOccurrence } from "@/lib/tasks/recurrence";
 import { createNotification } from "@/lib/notifications/create";
 import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await withTenant(session.tenantId, async (tx) => {
+      await actAs(tx, session.userId); // the task timeline credits this person
       // A reassignment target must be a user in THIS tenant.
       if (action === "assign") {
         const [u] = await tx

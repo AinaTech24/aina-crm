@@ -12,6 +12,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { actAs } from "@/lib/tasks/history";
 import { tasks } from "@/db/schema";
 import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
 import { taskInScope } from "@/lib/tasks/scope";
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const meta = clientMetaFromHeaders(req.headers);
 
     const outcome = await withTenant(session.tenantId, async (tx) => {
+      await actAs(tx, session.userId); // the task timeline credits this person
       const [before] = await tx
         .select()
         .from(tasks)

@@ -11,6 +11,7 @@ import { taskChecklist, subTaskStatus, type Task, type TaskChecklistItem, type S
 import Link from "next/link";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { TaskComments } from "./TaskComments";
+import { TaskTimelineButton } from "./TaskTimeline";
 import { TaskInfoRequest } from "./TaskInfoRequest";
 import { TaskAttachments } from "./TaskAttachments";
 import { TaskWatchersDeps } from "./TaskWatchersDeps";
@@ -426,12 +427,16 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             onChanged={onUpdate}
           />
 
-          <RecordProvenance
-            entityType="task"
-            entityId={task.id}
-            createdAt={task.createdAt}
-            updatedAt={task.updatedAt}
-          />
+          <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+            <RecordProvenance
+              entityType="task"
+              entityId={task.id}
+              createdAt={task.createdAt}
+              updatedAt={task.updatedAt}
+              className="min-w-0 flex-1"
+            />
+            <TaskTimelineButton taskId={task.id} />
+          </div>
 
           {/* Title and Description */}
           <div className="space-y-3">

@@ -26,6 +26,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
 import { tasks, taskComments, users } from "@/db/schema";
 import { openInfoRequest, type InfoRequest, type InfoRequestRecord } from "@/lib/tasks/info-request";
+import { actAs } from "@/lib/tasks/history";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const out = await withTenant(session.tenantId, async (tx) => {
+      await actAs(tx, session.userId); // the task timeline credits this person
       const [task] = await tx
         .select({ title: tasks.title, status: tasks.status, meta: tasks.meta, assigneeId: tasks.assigneeId, createdById: tasks.createdById })
         .from(tasks)

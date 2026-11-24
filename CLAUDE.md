@@ -604,6 +604,31 @@ so the opportunity journey, bulk actions and workflows all get it. The task page
 shows Entry Date, and Closed Date once completed. Do not set `completed_at` from
 application code.
 
+## Tasks — the Timeline (2026-11-24)
+
+The task screen's **View Timeline** button (`TaskTimeline.tsx`) opens a popup: when
+the task was created and by whom, then every edit as its own line — field, from → to,
+when (India time), by whom — grouped by day, with a filter by field.
+
+- **The history is written by the database, not by routes.** Migration 0284: the
+  `tasks_record_history` trigger writes one `task_history` row per creation and per edit,
+  holding every TRACKED column that changed with its old and new value (the list is in
+  the trigger; `meta` counts only its action-point `checklist`). A task is changed from
+  many places (form, bulk, opportunity journey, workflows, the escalation ladder) and any
+  app-side log would miss some. A history failure is a WARNING, never a failed save.
+  Never write `task_history` from application code.
+- **Who** is the transaction's `app.user_id`: `withIdempotentMutation` / `withTenant(…, {userId})`
+  set it, and a task route that opens a plain `withTenant` calls `actAs(tx, session.userId)`
+  (`lib/tasks/history.ts`) first. No user (a workflow, a scanner) reads as "System". A new
+  task route that changes tasks must do the same, or its edits are credited to System.
+- **Wording** is `lib/tasks/history-format.ts` (pure, tested): labels, enum words, India-time
+  dates, names for ids, one sentence per action point that changed. To track another column,
+  add it to the trigger's list in a NEW migration (never edit 0284) and to `FIELD_LABELS` /
+  the field sets there.
+- `GET /api/tasks/[id]/history` follows the same access as opening the task. Tasks that
+  predate 0284 show their creation from the task row and a note that earlier edits are not
+  itemised. `/api/audit?entityType=task` does NOT check task access — do not build on it.
+
 ## Daily habits — the cues that bring people back (2026-10-08)
 
 Built from an Atomic Habits review of adoption: make the cue obvious, the
