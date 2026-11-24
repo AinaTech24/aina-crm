@@ -1206,7 +1206,7 @@ information has reached us" — and the KYC filter listed people with crores inv
 (AUM > 0, a valued folio, or a processed purchase / SIP) goes `pending → registered` (a fund house takes no
 investment without KYC), with the reason in `kyc_status_remark` and `kyc_check_source = 'registrar_holdings'`;
 `kyc_checked_at` stays empty because it is NOT a KRA check. Hold / rejected / expired / re-KYC / validated / verified
-are never touched, and the NSE KRA check still writes the exact status over it. Migration 0286 backfilled every firm.
+are never touched, and the NSE KRA check still writes the exact status over it. Migration 0289 backfilled every firm.
 
 **Reading the KYC cell from the registrar file** (2026-11-24, Attitude Financial): `registrarKycOk`
 (`lib/rta/kyc-flag.ts`) is the ONE reader — "KYC OK", "Y", "Yes", "Verified", "Validated", "KRA Verified",
@@ -1573,6 +1573,10 @@ KFintech's register says Live / Terminated; CAMS WBR49 does not. `processSipBook
 the end date passed and no remarks = `completed` ("CAMS: SIP term ended …"); remarks still classify the reason.
 Anything not active is excluded from the SIP book (`status = 'active'` only) and shown in the SIP Book page's
 **Stopped SIPs** tile (stopped / rejected / completed / expired). Re-import the register to apply.
+
+**Existing rows are corrected by migration 0288** (no re-import needed): active SIPs whose remarks hold the registrar's
+terminal words become stopped / completed, active SIPs whose end date has passed become completed, and
+`investors.active_sip_amount` is recomputed. Same rules as a fresh import.
 
 ### Why an upload "did not go through", and the SIP rejection report (2026-10-30)
 
