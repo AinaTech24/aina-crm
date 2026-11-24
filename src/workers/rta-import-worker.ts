@@ -1228,7 +1228,7 @@ export async function sweepKeptCompletedFiles(): Promise<number> {
   return removed;
 }
 
-export type RtaRerunJob = { mode: "rerun"; tenantId: string };
+export type RtaRerunJob = { mode: "rerun"; tenantId: string; reapplySip?: boolean };
 
 const RERUN_MAX_FILES = 40;
 /**
@@ -1241,7 +1241,7 @@ const SNAPSHOT_KINDS = ["monthly_sip_book", "monthly_aum_statement", "nach_manda
 
 export async function runRerunJob(job: RtaRerunJob): Promise<{ requeued: number }> {
   const cfg = await withTenant(job.tenantId, async (tx) => getMailbackPasswords(tx, job.tenantId));
-  const rows = await withTenant(job.tenantId, async (tx) => {
+  const rows = job.reapplySip ? await sipRegistersToReapply(job.tenantId) : await withTenant(job.tenantId, async (tx) => {
     const r = await tx.execute(sql`
       SELECT f.id, f.source, f.kind, f.file_name, f.file_key
         FROM rta_file_imports f
@@ -1296,6 +1296,46 @@ export async function runRerunJob(job: RtaRerunJob): Promise<{ requeued: number 
   }
   if (requeued) console.log(`[rta-import] re-run ${job.tenantId}: ${requeued} file(s) re-queued`);
   return { requeued };
+}
+
+/**
+ * SIP registers that already COMPLETED and whose file is still kept (14 days), newest ten per firm. Re-applying
+ * them gives every stored SIP the status the registrar's own file says (terminated / expired / cancelled, a past
+ * cease or end date) without anyone re-uploading: the import used to ignore that, so the book kept counting
+ * ended SIPs. Safe to repeat — the register upsert is idempotent and the newest file is applied last.
+ */
+async function sipRegistersToReapply(tenantId: string) {
+  return withTenant(tenantId, async (tx) => {
+    const r = await tx.execute(sql`
+      SELECT f.id, f.source, f.kind, f.file_name, f.file_key
+        FROM rta_file_imports f
+       WHERE f.tenant_id = ${tenantId}::uuid AND f.deleted_at IS NULL AND f.file_key IS NOT NULL AND f.file_key <> ''
+         AND f.kind = 'monthly_sip_book' AND f.status = 'completed'
+         AND f.created_at > now() - interval '14 days'
+         AND COALESCE(f.file_size_bytes, 0) < ${RERUN_MAX_BYTES}
+       ORDER BY f.created_at DESC
+       LIMIT 10`);
+    return r.rows as Array<{ id: string; source: RtaSource; kind: RtaFileKind; file_name: string; file_key: string }>;
+  });
+}
+
+/** Once (boot marker in workers/index.ts): queue the re-apply for every firm that has such a register. */
+export async function enqueueSipReapplyForAllFirms(): Promise<{ firms: number }> {
+  const tenants = await withSystem(async (tx) => {
+    const r = await tx.execute(sql`
+      SELECT DISTINCT tenant_id FROM rta_file_imports
+       WHERE deleted_at IS NULL AND file_key IS NOT NULL AND file_key <> '' AND kind = 'monthly_sip_book'
+         AND status = 'completed' AND created_at > now() - interval '14 days'`);
+    return (r.rows as Array<{ tenant_id: string }>).map((x) => String(x.tenant_id));
+  });
+  for (const t of tenants) {
+    await Q.rtaImport().add(
+      "rerun",
+      { mode: "rerun", tenantId: t, reapplySip: true } satisfies RtaRerunJob,
+      { jobId: `rta-sip-reapply-${t}`, attempts: 1, removeOnComplete: true, removeOnFail: true, priority: RTA_BACKGROUND_PRIORITY },
+    );
+  }
+  return { firms: tenants.length };
 }
 
 /**

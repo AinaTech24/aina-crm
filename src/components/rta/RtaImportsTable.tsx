@@ -58,6 +58,8 @@ function StatusBadge({ status }: { status: string }) {
  * time. A completed import purges its own file, so there is nothing to re-read.
  */
 function canReimport(r: Row): boolean {
+  // A completed SIP register can be re-applied while its file is kept: that is how stored SIPs pick up the registrar's status.
+  if (r.status === "completed" && r.kind === "monthly_sip_book" && r.has_file) return true;
   if (r.status === "completed" || r.status === "uploaded" || r.status === "parsing") return false;
   return (
     (r.rows_skipped ?? 0) > 0 ||

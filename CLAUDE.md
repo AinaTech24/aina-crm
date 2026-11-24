@@ -1578,6 +1578,13 @@ Anything not active is excluded from the SIP book (`status = 'active'` only) and
 terminal words become stopped / completed, active SIPs whose end date has passed become completed, and
 `investors.active_sip_amount` is recomputed. Same rules as a fresh import.
 
+**Stored SIPs are re-applied from the kept registers, automatically** (2026-11-24, Ahpal still read Rs 4.22 Cr after 0288:
+a stored SIP carries no registrar status, so a SQL backfill only catches rows with a label or a past end date, and the
+Re-import route used to refuse a COMPLETED import). Now `enqueueSipReapplyForAllFirms` (boot marker
+`rta-reapply-sip-status-2026-11-24`, `workers/index.ts`) re-runs each firm's completed SIP registers that are still kept
+(14 days, newest ten, oldest first) through `processSipBook`, and a completed SIP register shows Re-import (the route
+accepts it). A register older than the keep window must be uploaded again.
+
 ### Why an upload "did not go through", and the SIP rejection report (2026-10-30)
 
 Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
