@@ -51,7 +51,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
   // A completed import purges its own file by design — there is nothing to read.
-  if (row.status === "completed") {
+  // (A SIP register is the exception: re-applying it is how stored SIPs pick up the registrar's status.)
+  if (row.status === "completed" && row.kind !== "monthly_sip_book") {
     return NextResponse.json({ error: "This import already completed; there is nothing to re-run." }, { status: 409 });
   }
 
@@ -70,6 +71,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (savePassword && !passwordsToTry(cfg, row.source).includes(typed)) {
     await withTenant(session.tenantId, async (tx) => {
       await appendMailbackPassword(tx, session.tenantId, row.source, { label: "Added from RTA imports", password: typed });
+    });
+  }
+
+  if (row.status === "completed") {
+    await withTenant(session.tenantId, async (tx) => {
+      await tx.execute(sql`UPDATE rta_file_imports SET status = 'uploaded', parsed_at = NULL,
+        remarks = 'Re-applied — stored SIPs take the registrar''s status from this file' WHERE id = ${row.id}::uuid`);
     });
   }
 

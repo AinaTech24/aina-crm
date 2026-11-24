@@ -23,7 +23,7 @@ import { startCampaignDispatcherWorker } from "./campaign-dispatcher";
 import { startImapPollerWorker } from "./imap-poller";
 import { startRtaInboxPollerWorker } from "./rta-inbox-poller";
 import { startZohoSyncWorker } from "./zoho-sync";
-import { startRtaImportWorker, enqueueRerunsForAllFirms, enqueueRescansForAllFirms } from "./rta-import-worker";
+import { startRtaImportWorker, enqueueRerunsForAllFirms, enqueueRescansForAllFirms, enqueueSipReapplyForAllFirms } from "./rta-import-worker";
 import { startDailyBriefingWorker } from "./daily-briefing";
 import { startWeeklyDigestWorker } from "./weekly-digest";
 import { runDailyOpsScan } from "./daily-ops-scanner";
@@ -171,6 +171,19 @@ if (groups.includes("rta")) {
       await recordRun(job, "ok", `${r.firms} firm(s)`);
     } catch (err) {
       captureError("[rta-rescan] one-off rescan failed to queue", err);
+    }
+  })();
+  // Once after SIP registers began acting on the registrar's own status (2026-11-24): re-apply each firm's
+  // kept SIP registers so SIPs already stored as active get their ended status, with no re-upload.
+  void (async () => {
+    const job = "rta-reapply-sip-status-2026-11-24";
+    if (await getLastRun(job)) return;
+    try {
+      const r = await enqueueSipReapplyForAllFirms();
+      console.log(`[rta-reapply] queued a SIP register re-apply for ${r.firms} firm(s)`);
+      await recordRun(job, "ok", `${r.firms} firm(s)`);
+    } catch (err) {
+      captureError("[rta-reapply] one-off SIP re-apply failed to queue", err);
     }
   })();
   // FP mailback import shares the "rta" worker group (same import surface).
