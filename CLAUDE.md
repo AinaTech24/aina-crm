@@ -2021,6 +2021,16 @@ dashboard filters, each only narrowing). Client facts follow
   A custom range is read the way it was meant (`resolvePeriod`): dates
   picked backwards are swapped, the end stops at today, and a range that has
   not started falls back to the default period.
+- **Saved filters are a named list** (2026-11-24, `lib/dashboards/system/saved-filters.ts`, pure and
+  tested): the bar's **Saved filters** dropdown lists the viewer's saved filters for that dashboard —
+  pick one to apply it, star one to make the dashboard OPEN with it, rename, delete. **Save filter**
+  asks for a name, or — while a saved filter is showing — whether to **overwrite** it or **save as new**.
+  Stored in the same `dashboard_user_prefs.saved_filters` column, no migration: `{ items, defaultId }`,
+  and the old bare filter state reads as one saved filter that opens by default (the first write converts
+  it). `?sf=<id>` in the URL says which is showing; a URL that sets filters still beats whatever opens by
+  default. Changes go through `POST /api/dashboards/[id]/prefs` `{ savedFilter: { op: create|update|delete|default } }`
+  (`changeSavedFilters`); a name is unique per viewer and dashboard, at most 20. Every dashboard that
+  mounts the bar must pass `saved` (widget dashboards: `p.savedList`; Operations: `p.book` via `savedBase`).
 - **A filter change must show it is working.** It re-renders the dashboard on
   the server and React keeps the old page up meanwhile — seconds on a busy dev
   server, which read as "the filter does nothing". Every control that changes

@@ -44,6 +44,7 @@ import { claimsAccess } from "@/lib/dashboard/claims/access";
 import { systemDashboardId, viewerFacts } from "@/lib/dashboards/platform";
 import { reportsOf, resolveDataAccess } from "@/lib/dashboards/team";
 import { hasFilterParams, parseFilterState, type FilterState } from "@/lib/dashboards/system/filters";
+import { activeSavedId, savedBase, SAVED_FILTER_PARAM } from "@/lib/dashboards/system/saved-filters";
 import type { PeriodKey } from "@/lib/dashboards/system/period";
 import { AutoRefresh } from "@/components/common/AutoRefresh";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -285,9 +286,12 @@ async function Operations({ session, sp, basePath, head, p }: CentreProps & { p:
     period: p.filterConfig.defaults?.period ?? "today",
     values: p.filterConfig.defaults?.values ?? {},
   };
-  // URL first; else the viewer's saved filter; else the defaults.
+  // URL first; else the saved filter the URL names (sf) or the one that opens by default; else the defaults.
   const explicit = hasFilterParams(sp);
-  let state = parseFilterState(sp, explicit ? { period: defaults.period, values: {} } : p.saved ?? defaults);
+  const sfRaw = sp[SAVED_FILTER_PARAM];
+  const sf = Array.isArray(sfRaw) ? sfRaw[0] : sfRaw;
+  const opening = savedBase(p.book, sf, explicit);
+  let state = parseFilterState(sp, explicit ? { period: defaults.period, values: {} } : opening?.state ?? defaults);
   // A custom range needs its start date — without one the bar and the tower's
   // resolver would each guess a different range — so it falls back to the
   // default period. An end before the start means "to today".
@@ -317,7 +321,8 @@ async function Operations({ session, sp, basePath, head, p }: CentreProps & { p:
             state={state}
             defaults={defaults}
             explicit={explicit}
-            usingSaved={!explicit && !!p.saved}
+            usingSaved={!explicit && !!opening}
+            savedList={{ items: p.book.items, defaultId: p.book.defaultId, activeId: activeSavedId(p.book, sf, explicit) }}
             dashboardId={p.id}
           />
         </Suspense>

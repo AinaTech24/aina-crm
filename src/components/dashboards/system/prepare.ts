@@ -33,6 +33,7 @@ import { loadFilterOptions, realBranches } from "@/lib/dashboards/load-options";
 import { loadDashboardThresholds, type DashboardThresholds } from "@/lib/dashboard/thresholds";
 import type { WidgetCtx } from "./types";
 import { inOrder } from "@/lib/metrics/in-order";
+import { activeSavedId, savedBase, SAVED_FILTER_PARAM, type SavedFilterBook, type SavedFilterList } from "@/lib/dashboards/system/saved-filters";
 
 export type PreparedDashboard = {
   id: string;
@@ -49,6 +50,8 @@ export type PreparedDashboard = {
   saved: FilterState | null;
   /** The saved filter is what is showing (the URL set nothing). */
   usingSaved: boolean;
+  /** Every saved filter the viewer keeps for this dashboard, and which one is showing. */
+  savedList: SavedFilterList;
   /** The firm has the "dashboardAllTime" flag: the Period menu offers "All time". */
   allTime: boolean;
   period: ResolvedPeriod;
@@ -78,8 +81,10 @@ export type PreparedCentre = {
   description: string | null;
   systemKey: string;
   filterConfig: FilterConfig;
-  /** The viewer's saved filter (the Operations Dashboard's filter bar keeps one). */
+  /** The viewer's saved filter that opens by default (the Operations Dashboard's filter bar). */
   saved: FilterState | null;
+  /** All the viewer's saved filters for this dashboard. */
+  book: SavedFilterBook;
   isFavourite: boolean;
   isDefault: boolean;
   canManage: boolean;
@@ -113,6 +118,7 @@ export async function prepareDashboard(
         systemKey: sys.key,
         filterConfig: sys.filters,
         saved: prefs.saved,
+        book: prefs.book,
         isFavourite: prefs.isFavourite,
         isDefault: prefs.isDefault,
         canManage: canManageDashboards(session),
@@ -126,8 +132,11 @@ export async function prepareDashboard(
     const prefs = await loadPrefs(tx, session, d.id);
     const explicit = hasFilterParams(sp);
     const defaults: Partial<FilterState> = { period: fc.defaults?.period ?? "fy", values: fc.defaults?.values ?? {} };
-    // URL first; else the viewer's saved filter; else the dashboard's defaults.
-    const base = explicit ? { period: defaults.period, values: {} } : prefs.saved ?? defaults;
+    // URL first; else the saved filter the URL names (sf) or the one that opens by default; else the dashboard's defaults.
+    const sfRaw = sp[SAVED_FILTER_PARAM];
+    const sf = Array.isArray(sfRaw) ? sfRaw[0] : sfRaw;
+    const opening = savedBase(prefs.book, sf, explicit);
+    const base = explicit ? { period: defaults.period, values: {} } : opening?.state ?? defaults;
     let state = parseFilterState(sp, base);
     // "All time" is a per-firm option; anyone else gets the default period.
     if (state.period === ALL_TIME && !allTime) state = { ...state, period: defaults.period ?? "fy", from: undefined, to: undefined };
@@ -167,7 +176,8 @@ export async function prepareDashboard(
       filterConfig: fc,
       state,
       saved: prefs.saved,
-      usingSaved: !explicit && !!prefs.saved,
+      usingSaved: !explicit && !!opening,
+      savedList: { items: prefs.book.items, defaultId: prefs.book.defaultId, activeId: activeSavedId(prefs.book, sf, explicit) },
       allTime,
       period,
       access,

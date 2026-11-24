@@ -3,13 +3,17 @@
 /**
  * The dashboard filter bar (D9), Zoho-style:
  *
- *   [Period ▾] [RM ▾] [Branch ▾] [+ Filter]   chips ×   Clear all   Apply · Save filter
+ *   [Period ▾] [RM ▾] [Branch ▾] [+ Filter]   chips ×   Clear all   Apply · Saved filters ▾ · Save filter
  *
  * Period is always there and shows its resolved range. RM and Branch appear
  * only when they can narrow anything for this viewer. "+ Filter" adds up to
  * three more from the dashboard's list. Editing changes a draft; "Apply" puts
  * it in the URL (this session only, and shareable as a link); "Save filter"
- * also stores it as this viewer's filter for this dashboard.
+ * stores it under a name, and "Saved filters" lists the viewer's saved ones for
+ * this dashboard: pick one to apply it, star one to open the dashboard with it,
+ * rename or delete one. Saving while a saved filter is showing asks whether to
+ * overwrite it or keep it and save the filters as a new one
+ * (lib/dashboards/system/saved-filters.ts).
  *
  * While the dashboard reloads with the new filter the button says
  * "Applying…" and the dashboard dims (DashboardNav) — without that, a reload
@@ -18,9 +22,11 @@
  * bar never shows one filter while the cards count another.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Bookmark, ChevronDown, ChevronLeft, ChevronRight, Pencil, Plus, Star, Trash2, X } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { confirmDialog, promptDialog } from "@/components/ui/ConfirmProvider";
 import { MultiSelectField } from "@/components/ui/MultiSelectField";
 import { buttonClass } from "@/components/ui/button-class";
 import { notify } from "@/components/ui/Toast";
@@ -32,6 +38,7 @@ import type { FilterOptions } from "@/lib/dashboards/system/options";
 import { DateRangeField } from "@/components/ui/DateRangeField";
 import { formatDateLabel } from "@/lib/dates/typed-date";
 import { useDashboardNav } from "./DashboardNav";
+import { MAX_SAVED_FILTERS, MAX_SAVED_NAME, SAVED_FILTER_PARAM, type SavedFilter, type SavedFilterList } from "@/lib/dashboards/system/saved-filters";
 
 const same = (a: FilterState, b: FilterState) =>
   filterStateToParams(a).toString() === filterStateToParams(b).toString();
@@ -51,12 +58,22 @@ function tidyRange(s: FilterState): FilterState {
   return { ...s, from, to };
 }
 
+/** "This FY · RM, Client category" — what a saved filter holds, in a line. */
+function summarise(st: FilterState): string {
+  const period = st.period === "custom" && st.from
+    ? `${formatDateLabel(st.from)}${st.to ? ` – ${formatDateLabel(st.to)}` : ""}`
+    : PERIOD_NAMES[st.period] ?? "";
+  const fields = (Object.keys(st.values) as FilterKey[]).filter((k) => st.values[k]?.length).map((k) => FILTER_FIELDS[k]?.label ?? k);
+  return [period, fields.join(", ")].filter(Boolean).join(" · ");
+}
+
 export function DashboardFilterBar({
   dashboardId,
   state,
   options,
   bar,
   usingSaved,
+  saved,
   /** The Operations page saves under its own dashboard id but lives at its own path. */
   savePath,
   allTime = false,
@@ -69,13 +86,19 @@ export function DashboardFilterBar({
   options: FilterOptions;
   bar: { rm: boolean; branch: boolean; extras: FilterKey[]; pinned: FilterKey[] };
   usingSaved: boolean;
+  /** The viewer's saved filters for this dashboard, and which one is showing. */
+  saved?: SavedFilterList;
   savePath?: string;
   /** The firm has the "dashboardAllTime" flag: offer "All time" as a period. */
   allTime?: boolean;
 }) {
   const nav = useDashboardNav();
+  const router = useRouter();
   const pathname = usePathname();
   const [draft, setDraft] = useState<FilterState>(state);
+  const [listOpen, setListOpen] = useState(false);
+  const [decideOpen, setDecideOpen] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
   const [periodOpen, setPeriodOpen] = useState(false);
   // The period menu shows either the presets or the custom-range calendar.
   const [customView, setCustomView] = useState(false);
@@ -124,31 +147,116 @@ export function DashboardFilterBar({
   }
 
   // Apply rewrites only the filter params; anything else in the URL (the
-  // Operations page's tab, a view toggle) stays where it was.
-  function push(next: FilterState) {
+  // Operations page's tab, a view toggle) stays where it was. `sf` names the saved
+  // filter showing: undefined leaves it, null clears it, an id sets it.
+  function push(next: FilterState, sf?: string | null) {
     const keep = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
     for (const k of ["period", "from", "to", ...Object.values(FILTER_FIELDS).map((f) => f.param)]) keep.delete(k);
     for (const [k, v] of filterStateToParams(tidyRange(next))) keep.set(k, v);
+    if (sf === null) keep.delete(SAVED_FILTER_PARAM);
+    else if (sf) keep.set(SAVED_FILTER_PARAM, sf);
     nav.go(`${pathname}?${keep.toString()}`);
   }
 
-  async function save() {
-    setBusy(true);
-    try {
-      const res = await fetch(savePath ?? `/api/dashboards/${dashboardId}/prefs`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ savedFilters: tidyRange(draft) }),
-      });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? "Could not save the filter");
-      notify.success("Filter saved");
-      push(draft);
-    } catch (e) {
-      notify.error(e instanceof Error ? e.message : "Could not save the filter");
-    } finally {
-      setBusy(false);
-    }
+  const items = saved?.items ?? [];
+  const active = items.find((i) => i.id === saved?.activeId) ?? null;
+  // The filters on screen differ from the saved one that is showing.
+  const changed = !!active && !same(tidyRange(draft), tidyRange(active.state));
+
+  const prefsUrl = savePath ?? `/api/dashboards/${dashboardId}/prefs`;
+  async function post(body: object): Promise<{ id: string | null }> {
+    const res = await fetch(prefsUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j?.error ?? "Could not save the filter");
+    return j;
   }
+  /** Run a change to the saved list: busy while it runs, a toast if it fails. */
+  async function run(fn: () => Promise<void>) {
+    setBusy(true);
+    try { await fn(); } catch (e) { notify.error(e instanceof Error ? e.message : "Could not save the filter"); } finally { setBusy(false); }
+  }
+
+  /** "Save filter": a saved filter is showing -> ask overwrite or new; otherwise name a new one. */
+  function save() {
+    if (active) setDecideOpen(true);
+    else void saveAsNew();
+  }
+  async function saveAsNew(suggest = "") {
+    const name = await promptDialog({
+      title: "Save this filter",
+      message: "Name it so you can pick it again from Saved filters.",
+      label: "Filter name",
+      defaultValue: suggest,
+      confirmLabel: "Save",
+      maxLength: MAX_SAVED_NAME,
+    });
+    if (name === null) return;
+    await run(async () => {
+      const r = await post({ savedFilter: { op: "create", name, state: tidyRange(draft) } });
+      notify.success(`Saved as \u201c${name}\u201d`);
+      push(draft, r.id);
+      router.refresh();
+    });
+  }
+  async function overwrite() {
+    if (!active) return;
+    setDecideOpen(false);
+    await run(async () => {
+      await post({ savedFilter: { op: "update", id: active.id, state: tidyRange(draft) } });
+      notify.success(`\u201c${active.name}\u201d updated`);
+      push(draft, active.id);
+      router.refresh();
+    });
+  }
+
+  function choose(item: SavedFilter) {
+    setListOpen(false);
+    setDraft(item.state);
+    setPeriodOpen(false);
+    push(item.state, item.id);
+  }
+  async function toggleDefault(item: SavedFilter) {
+    const makeNone = saved?.defaultId === item.id;
+    await run(async () => {
+      await post({ savedFilter: { op: "default", id: makeNone ? null : item.id } });
+      notify.success(makeNone ? "The dashboard will open with its usual filters" : `The dashboard will open with \u201c${item.name}\u201d`);
+      router.refresh();
+    });
+  }
+  async function rename(item: SavedFilter) {
+    const name = await promptDialog({ title: "Rename saved filter", label: "Filter name", defaultValue: item.name, confirmLabel: "Rename", maxLength: MAX_SAVED_NAME });
+    if (name === null || name === item.name) return;
+    await run(async () => {
+      await post({ savedFilter: { op: "update", id: item.id, name } });
+      notify.success("Renamed");
+      router.refresh();
+    });
+  }
+  async function remove(item: SavedFilter) {
+    const yes = await confirmDialog({
+      title: `Delete \u201c${item.name}\u201d?`,
+      message: "This removes the saved filter. The filters you have on screen stay as they are.",
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!yes) return;
+    await run(async () => {
+      await post({ savedFilter: { op: "delete", id: item.id } });
+      notify.success("Saved filter deleted");
+      if (active?.id === item.id) push(draft, null);
+      router.refresh();
+    });
+  }
+
+  // Close the saved-filters list on a click outside it, or Escape.
+  useEffect(() => {
+    if (!listOpen) return;
+    const down = (e: MouseEvent) => { if (listRef.current && !listRef.current.contains(e.target as Node)) setListOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setListOpen(false); };
+    document.addEventListener("mousedown", down);
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("mousedown", down); document.removeEventListener("keydown", key); };
+  }, [listOpen]);
 
   const chipValues = fields.flatMap((k) =>
     (draft.values[k] ?? []).map((v) => ({
@@ -310,6 +418,74 @@ export function DashboardFilterBar({
               {nav.pending ? "Applying…" : "Apply"}
             </button>
           )}
+          <div className="relative" ref={listRef}>
+            <button
+              type="button"
+              className={buttonClass("secondary", "sm")}
+              aria-expanded={listOpen}
+              aria-haspopup="menu"
+              onClick={() => setListOpen((o) => !o)}
+              title="Your saved filters for this dashboard"
+            >
+              <Bookmark className="size-3.5" aria-hidden />
+              <span className="max-w-40 truncate">{active ? active.name : items.length ? `Saved filters (${items.length})` : "Saved filters"}</span>
+              <ChevronDown className="size-3.5" aria-hidden />
+            </button>
+            {listOpen && (
+              <div role="menu" className="absolute right-0 top-full z-40 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-card p-1 shadow-lg">
+                {items.length === 0 ? (
+                  <p className="px-3 py-3 text-sm text-muted-foreground">
+                    No saved filters yet. Set the filters you want, then click <b className="font-semibold text-foreground">Save filter</b> to keep them here.
+                  </p>
+                ) : (
+                  <ul className="max-h-80 overflow-y-auto">
+                    {items.map((i) => (
+                      <li key={i.id} className={`flex items-center gap-0.5 rounded-md ${i.id === active?.id ? "bg-secondary" : "hover:bg-secondary/70"}`}>
+                        <button type="button" role="menuitem" className="min-w-0 flex-1 px-3 py-2 text-left" onClick={() => choose(i)}>
+                          <span className="block truncate text-sm font-medium">{i.name}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{summarise(i.state)}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="grid size-7 shrink-0 place-items-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-50"
+                          disabled={busy}
+                          onClick={() => toggleDefault(i)}
+                          aria-pressed={saved?.defaultId === i.id}
+                          title={saved?.defaultId === i.id ? "Opens with this filter - click to stop" : "Open the dashboard with this filter"}
+                        >
+                          <Star className={`size-3.5 ${saved?.defaultId === i.id ? "fill-amber-400 text-amber-500" : ""}`} aria-hidden />
+                          <span className="sr-only">Open the dashboard with {i.name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="grid size-7 shrink-0 place-items-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-50"
+                          disabled={busy}
+                          onClick={() => rename(i)}
+                          title="Rename"
+                        >
+                          <Pencil className="size-3.5" aria-hidden />
+                          <span className="sr-only">Rename {i.name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="grid size-7 shrink-0 place-items-center rounded text-muted-foreground hover:bg-background hover:text-destructive disabled:opacity-50"
+                          disabled={busy}
+                          onClick={() => remove(i)}
+                          title="Delete"
+                        >
+                          <Trash2 className="size-3.5" aria-hidden />
+                          <span className="sr-only">Delete {i.name}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {items.length >= MAX_SAVED_FILTERS && (
+                  <p className="px-3 pb-2 pt-1 text-xs text-muted-foreground">You have {MAX_SAVED_FILTERS} saved filters, the most you can keep.</p>
+                )}
+              </div>
+            )}
+          </div>
           <button type="button" className={buttonClass("secondary", "sm")} disabled={busy || nav.pending || needsRange} onClick={save}>
             Save filter
           </button>
@@ -320,9 +496,25 @@ export function DashboardFilterBar({
         <div className="flex flex-wrap gap-2 lg:justify-end">{overflow.map(fieldControl)}</div>
       )}
 
-      {(chipValues.length > 0 || usingSaved) && (
+      {(chipValues.length > 0 || usingSaved || active) && (
         <div className="flex flex-wrap items-center gap-1.5 lg:justify-end text-xs">
-          {usingSaved && !dirty && <span className="text-muted-foreground">Saved filter</span>}
+          {active ? (
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              Saved filter: <b className="font-semibold text-foreground">{active.name}</b>
+              {(changed || dirty) && <span>(changed)</span>}
+              <button
+                type="button"
+                className="-my-1 inline-grid size-6 place-items-center rounded-full hover:bg-secondary"
+                aria-label="Stop using this saved filter"
+                title="Stop using this saved filter (the filters stay as they are)"
+                onClick={() => push(draft, null)}
+              >
+                <X className="size-3" aria-hidden />
+              </button>
+            </span>
+          ) : usingSaved && !dirty ? (
+            <span className="text-muted-foreground">Saved filter</span>
+          ) : null}
           {chipValues.map((c) => (
             <span key={`${c.k}:${c.v}`} className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary/60 px-2 py-0.5">
               <span className="text-muted-foreground">{FILTER_FIELDS[c.k].label}:</span> {c.label}
@@ -363,6 +555,16 @@ export function DashboardFilterBar({
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={decideOpen}
+        title={`Save changes to \u201c${active?.name ?? ""}\u201d?`}
+        message="Overwrite it with the filters on screen, or leave it as it is and save these filters as a new saved filter."
+        confirmLabel="Overwrite"
+        busy={busy}
+        secondary={{ label: "Save as new\u2026", onClick: () => { setDecideOpen(false); void saveAsNew(active ? `${active.name} copy` : ""); } }}
+        onConfirm={overwrite}
+        onCancel={() => setDecideOpen(false)}
+      />
     </div>
   );
 }
