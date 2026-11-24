@@ -1305,6 +1305,38 @@ async function processSipBook(
       continue;
     }
 
+    // A registration the registrar's own file marks REJECTED (KFintech MFSD243 Status "Process / Bank Rejection",
+    // CAMS WBR49 remarks "Three consecutive reversals") is a SIP rejection to chase — whether or not the CRM ever
+    // held that SIP. Ahpal, 24 Nov 2026: these files are imported as the SIP register, never as a rejection report,
+    // and a rejected registration the CRM never held is left out of the book, so no rejection was ever listed.
+    // One tracker row per registration, keyed on its folio, scheme, start date and amount, so a re-import adds none.
+    if (reg.status === "rejected") {
+      const rejOn = [r.ceaseDate, r.registrarEndDate, r.startDate].find((d) => d && d <= todayIst) ?? todayIst;
+      const reason = (reg.reason ?? "Rejected by the registrar").replace(/^(CAMS|KFintech|Registrar): /, "").slice(0, 300);
+      const category = /insufficient|balance|funds|nsf|inqufd/i.test(reason) ? "insufficient_balance" : /mandate|expired|umrn|nach|bank|debit not|not registered/i.test(reason) ? "mandate_expired" : "technical";
+      const key = "sipreg:" + createHash("md5").update([r.folioNumber, r.schemeCode, r.startDate ?? "", String(r.amount ?? 0)].join("|")).digest("hex");
+      await tx.execute(sql`SAVEPOINT rta_sip_rej`);
+      try {
+        await tx.execute(sql`
+          INSERT INTO sip_rejections (
+            tenant_id, investor_id, rejection_date, rejection_amount, rejection_reason, scheme_name, folio_number, amc_name,
+            assigned_rm_id, follow_up_date, recovery_status, reason_category, dedup_key, escalated_at
+          )
+          SELECT ${args.tenantId}::uuid, ${investorId}::uuid, ${rejOn}::date, ${r.amount ?? 0}::numeric, ${reason},
+                 ${r.schemeName ?? null}, ${r.folioNumber}, ${amcName}, ${rmId ?? null}::uuid, (${rejOn}::date + 2), 'pending',
+                 ${category}, ${key}, CASE WHEN ${rejOn}::date < current_date - 3 THEN now() ELSE NULL END
+           WHERE NOT EXISTS (
+             SELECT 1 FROM sip_rejections sr
+              WHERE sr.tenant_id = ${args.tenantId}::uuid AND sr.investor_id = ${investorId}::uuid
+                AND sr.rejection_date = ${rejOn}::date AND sr.rejection_amount = ${r.amount ?? 0}::numeric)
+          ON CONFLICT (tenant_id, dedup_key) DO NOTHING
+        `);
+        await tx.execute(sql`RELEASE SAVEPOINT rta_sip_rej`);
+      } catch {
+        await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_sip_rej`);
+      }
+    }
+
     // Resolve mandate (if reference is present)
     let mandateId: string | null = null;
     if (r.mandateRefNo) {
