@@ -1230,7 +1230,12 @@ async function processSipBook(
     // "active" (the 9 Oct 2026 rule recorded the status as a label and never acted on it), and a
     // re-import could not correct them. Expired / matured reads "completed"; the rest "stopped".
     // "Live" and no status at all leave a SIP as it was (lib/rta/sip-registrar-status).
-    const reg = registrarSipState(r, args.source, todayIst);
+    const reg = registrarSipState(
+          // CAMS has no Status column: a SIP end date (TO_DATE) already passed means the registration ended.
+          r.registrarStatus ? r : { ...r, registrarEndDate: r.registrarEndDate ?? r.endDate },
+          args.source,
+          todayIst,
+        );
     const sipStatus: "active" | "stopped" | "completed" =
       r.ceaseDate && r.ceaseDate <= todayIst
         ? "stopped"

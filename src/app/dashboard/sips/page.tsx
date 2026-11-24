@@ -139,6 +139,7 @@ export default async function SipsPage({
         COUNT(*) FILTER (WHERE s.status = 'active')::int AS active_sips,
         COALESCE(SUM(${sipMonthlySql("s")}) FILTER (WHERE s.status = 'active'), 0) AS active_amount,
         COUNT(*) FILTER (WHERE s.status = 'active' AND s.created_at >= date_trunc('month', now()))::int AS added_mtd,
+        COUNT(*) FILTER (WHERE s.status IN ('stopped', 'rejected', 'completed', 'expired'))::int AS stopped_all,
         COUNT(*) FILTER (WHERE s.status IN ('stopped', 'rejected') AND s.updated_at >= date_trunc('month', now()))::int AS lost_mtd,
         COUNT(*) FILTER (WHERE s.status = 'active' AND s.end_date IS NOT NULL
           AND s.end_date >= current_date
@@ -218,6 +219,7 @@ export default async function SipsPage({
       activeAmount: Number(s.active_amount),
       addedMtd: Number(s.added_mtd),
       lostMtd: Number(s.lost_mtd),
+      stoppedAll: Number(s.stopped_all),
       expiringSoon: Number(s.expiring_soon),
       rows,
       filteredTotal: Number(cnt[0]?.c ?? 0),
@@ -254,7 +256,7 @@ export default async function SipsPage({
       <ModuleTabs tabs={SIP_TABS} />
 
       {/* Neutral ink throughout: these are counts, not statuses. */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Stat icon={CheckCircle2} label="Active SIPs" value={data.activeSips.toLocaleString("en-IN")} />
         <Stat
           icon={TrendingUp}
@@ -264,6 +266,7 @@ export default async function SipsPage({
         />
         <Stat icon={Plus} label="Added this month" value={data.addedMtd.toLocaleString("en-IN")} hint="Active SIPs added since the 1st of this month." />
         <Stat icon={AlertTriangle} label="Stopped this month" value={data.lostMtd.toLocaleString("en-IN")} hint="SIPs stopped or rejected since the 1st of this month." />
+        <Stat icon={AlertTriangle} label="Stopped SIPs" value={data.stoppedAll.toLocaleString("en-IN")} hint="Every SIP the registrar shows as stopped, terminated, rejected or ended. They are not in the Active SIPs count or the Monthly SIP book." />
         <Stat icon={Calendar} label="Expiring (90 days)" value={data.expiringSoon.toLocaleString("en-IN")} hint="Active SIPs whose end date falls in the next 90 days." />
       </div>
 

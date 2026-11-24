@@ -70,3 +70,17 @@ describe("CAMS WBR49 cease date + remark", () => {
     expect(registrarSipState({ ceaseDate: "2027-01-01" }, "cams", TODAY).status).toBe("active");
   });
 });
+
+describe("CAMS has no Status column — the SIP's own end date decides", () => {
+  it("a past end date with no cease date and no words is a completed term", () => {
+    const s = registrarSipState({ registrarEndDate: "2026-03-01" }, "cams", TODAY);
+    expect(s.status).toBe("completed");
+    expect(s.reason).toMatch(/term ended/);
+  });
+  it("a future end date stays active", () => {
+    expect(registrarSipState({ registrarEndDate: "2040-12-05" }, "cams", TODAY).status).toBe("active");
+  });
+  it("a cease date still wins and is a stop", () => {
+    expect(registrarSipState({ ceaseDate: "2026-01-05", registrarEndDate: "2040-12-05" }, "cams", TODAY).status).toBe("stopped");
+  });
+});

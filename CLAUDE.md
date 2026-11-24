@@ -1509,6 +1509,14 @@ registrar status as well (`stopped`; Expired / matured → `completed`); "Live" 
 Re-import the register (RTA File Imports → Re-import) to correct existing rows. Not done: a SIP the CRM holds that a later
 register simply no longer LISTS is left as it is — a register can be partial (per ARN), so absence is not a cancellation.
 
+### CAMS has no Status column — derived, and counted as "Stopped SIPs" (2026-11-24)
+
+KFintech's register says Live / Terminated; CAMS WBR49 does not. `processSipBook` now hands CAMS's SIP end date
+(`TO_DATE`) to `registrarSipState` when the row has no Status: a cease date in the past = stopped; no cease date but
+the end date passed and no remarks = `completed` ("CAMS: SIP term ended …"); remarks still classify the reason.
+Anything not active is excluded from the SIP book (`status = 'active'` only) and shown in the SIP Book page's
+**Stopped SIPs** tile (stopped / rejected / completed / expired). Re-import the register to apply.
+
 ### Why an upload "did not go through", and the SIP rejection report (2026-10-30)
 
 Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
