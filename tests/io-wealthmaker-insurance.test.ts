@@ -43,6 +43,7 @@ describe("Investment Options — WealthMaker insurance export", () => {
     expect(wmStatus(p, [{ policyType: "motor", startDate: "2024-04-01", policyNumber: "N2" }], "2026-11-24")).toEqual({ status: "matured", renewedBy: "N2" });
     expect(wmStatus(p, [{ policyType: "health", startDate: "2024-04-01", policyNumber: "H2" }], "2026-11-24")).toEqual({ status: "lapsed" });
     expect(wmStatus({ ...p, expiryDate: "2026-11-10" }, [], "2026-11-24")).toEqual({ status: "active" });
+    expect(wmStatus({ ...p, policyType: "travel" }, [], "2026-11-24")).toEqual({ status: "matured" });
   });
 
   it("compares policy numbers without case or spaces", () => {

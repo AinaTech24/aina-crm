@@ -15,7 +15,7 @@
  * policy of the same type for the same client starting by 60 days after its
  * expiry) is "matured" — its term ran out, it was not lost. One with no such
  * successor is "lapsed" once the 30-day grace is over, as at the Zoho import.
- * Nothing alerts for either.
+ * Nothing alerts for either. A travel policy that ended is matured: the trip is over.
  */
 
 import { cell, isoDate } from "../values";
@@ -217,6 +217,8 @@ export function wmStatus(
   today: string,
 ): { status: "active" | "matured" | "lapsed"; renewedBy?: string } {
   if (!p.expiryDate || t(p.expiryDate) + 30 * DAY >= t(today)) return { status: "active" };
+  // A trip that is over was not lost business: travel cover ends with the trip.
+  if (p.policyType === "travel") return { status: "matured" };
   const next = others.find(
     (o) =>
       o.policyType === p.policyType &&
