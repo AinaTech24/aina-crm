@@ -42,6 +42,7 @@ import { reconcileSipKind } from "@/lib/rta/sip-kind";
 import { appendMailbackPassword, getMailbackPasswords, passwordsToTry } from "@/lib/rta/mailback-config";
 import { matchBookedBusinessAfterImport } from "@/lib/business/rta-match";
 import { materialiseSipRejectionsAfterImport } from "@/lib/rta/sip-rejection-rows";
+import { inferKycFromHoldingsAfterImport } from "@/lib/kyc/holder-inference";
 import { passwordVariants } from "@/lib/rta/password-variants";
 import { retireEmptyPlaceholdersAfterImport } from "@/lib/rta/placeholder-sweep";
 import { restoreTrashedHoldersAfterImport } from "@/lib/investors/holds-money";
@@ -1405,6 +1406,7 @@ export function startRtaImportWorker() {
           if (summary.ok && !(job.data as RichImportJob).dryRun) {
             await matchBookedBusinessAfterImport((job.data as any)?.tenantId);
             await materialiseSipRejectionsAfterImport((job.data as any)?.tenantId);
+            await inferKycFromHoldingsAfterImport((job.data as any)?.tenantId);
             await syncRtaJourneysAfterImport((job.data as any)?.tenantId);
             await retireEmptyPlaceholdersAfterImport((job.data as any)?.tenantId);
             await restoreTrashedHoldersAfterImport((job.data as any)?.tenantId);
@@ -1427,6 +1429,8 @@ export function startRtaImportWorker() {
         await matchBookedBusinessAfterImport((job.data as RtaImportJob).tenantId);
         // …and give every bounced SIP instalment its row on the SIP Rejections page.
         await materialiseSipRejectionsAfterImport((job.data as RtaImportJob).tenantId);
+        // …and a client the registrar shows holding units is at least KYC-registered (lib/kyc/holder-inference.ts).
+        await inferKycFromHoldingsAfterImport((job.data as RtaImportJob).tenantId);
         // …and settle clients whose physical forms are with the RTA (lib/blueprints/rta-route.ts).
         await syncRtaJourneysAfterImport((job.data as RtaImportJob).tenantId);
         // …and retire PAN-less placeholders the import left holding nothing

@@ -1140,6 +1140,27 @@ families, merge, reports, AI) uses them. The dashboards' own lock still follows
 `dashboard.view.all_branches`. Found at Shah Financial: Branch Head + Back Office with View all clients
 ticked saw one client. A new client scope must use `isClientBranchScoped`, not `isBranchScoped`.
 
+## KYC "pending" for a client who holds units (2026-11-24, Akshar Invest)
+
+`investors.kyc_status` was set only from a registrar CLIENT MASTER ("KYC OK" / Kyc1Flag = Y). A client first
+seen in a holdings, AUM or transaction file kept the column default `pending` for ever, so "pending" meant "no KYC
+information has reached us" — and the KYC filter listed people with crores invested. Now
+`lib/kyc/holder-inference.ts`: after every RTA import (worker, both paths) a client the registrar shows holding units
+(AUM > 0, a valued folio, or a processed purchase / SIP) goes `pending → registered` (a fund house takes no
+investment without KYC), with the reason in `kyc_status_remark` and `kyc_check_source = 'registrar_holdings'`;
+`kyc_checked_at` stays empty because it is NOT a KRA check. Hold / rejected / expired / re-KYC / validated / verified
+are never touched, and the NSE KRA check still writes the exact status over it. Migration 0286 backfilled every firm.
+
+## SIP Rejections empty for a firm — read the page's note first
+
+A firm gets rows from (a) its transaction feed, when the registrar marks a SIP instalment rejected / failed
+(`materialiseSipRejectionRows`), and (b) a separate SIP rejection report file. Akshar's KFintech feed carries
+bounces with reasons ("BNKREJ: Balance Insufficient"); a firm whose registrar sends bounces in neither has an empty
+page, and that is the data, not a fault. The empty page says which case it is (`feedNote`), and since 2026-11-24 it also
+lists the registrar's own status words on the firm's SIP rows (`raw_feed_row ->> 'status'`, kept by the feed parser),
+so a bounce worded in a way `normaliseFeedStatus` does not know shows up as a word to add. Rows stored before that
+carry no word until their file is re-imported (Re-import on the RTA File Imports row).
+
 ## Creating a family
 
 The New family form (`/dashboard/families/new`, `NewFamilyForm`) asks for the

@@ -49,7 +49,7 @@ export type CanonicalTransaction = {
   isReversal?: boolean;
   /** What the registrar actually wrote, signs included, kept on the stored
    *  transaction so a questionable row can be traced back to its file. */
-  raw?: { type: string; desc?: string; sub?: string; amount: string; units: string };
+  raw?: { type: string; desc?: string; sub?: string; amount: string; units: string; status?: string; reason?: string };
 };
 
 /**
@@ -418,6 +418,11 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
         sub: val("typeSub").slice(0, 40) || undefined,
         amount: amountRaw.slice(0, 30),
         units: unitsRaw.slice(0, 30),
+        // The registrar's own status and reason words, kept so "why does this firm have no SIP rejections?"
+        // can be answered from the data: a bounce worded in a way we do not recognise is stored as a
+        // processed instalment, and without these words nothing shows it.
+        status: val("status").slice(0, 40) || undefined,
+        reason: val("reasonCode").slice(0, 60) || undefined,
       },
     });
   }

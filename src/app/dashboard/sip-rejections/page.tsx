@@ -226,6 +226,21 @@ export default async function SipRejectionsPage({
              AND created_at >= now() - interval '90 days'
         `))
       ).rows[0] as any;
+      // The registrar's own status words on those SIP rows (kept in raw_feed_row since 2026-11-24):
+      // a bounce worded in a way we do not recognise is stored as processed, and this is where it shows.
+      const words = f && Number(f.sip_total ?? 0) > 0 && Number(f.sip_bounced ?? 0) === 0
+        ? ((await safely("the registrar's status words", { rows: [] as Array<Record<string, unknown>> }, () => tx.execute(sql`
+            SELECT raw_feed_row ->> 'status' AS word, COUNT(*)::int AS n
+              FROM transactions
+             WHERE tenant_id = ${session.tenantId}::uuid AND type = 'sip'
+               AND created_at >= now() - interval '90 days'
+               AND COALESCE(raw_feed_row ->> 'status', '') <> ''
+             GROUP BY 1 ORDER BY 2 DESC LIMIT 6
+          `))).rows as Array<{ word: string; n: number }>)
+        : [];
+      const wordsNote = words.length
+        ? ` The registrar's own status words on them: ${words.map((w) => `"${w.word}" (${Number(w.n).toLocaleString("en-IN")})`).join(", ")}. If one of these means a bounce, tell support the word and it will be added.`
+        : "";
       const total = Number(f?.sip_total ?? 0);
       const bounced = Number(f?.sip_bounced ?? 0);
       const unlinked = Number(f?.bounced_unlinked ?? 0);
@@ -243,7 +258,7 @@ export default async function SipRejectionsPage({
         : total === 0
           ? "No SIP instalment is in the transaction feed imported in the last 90 days. Import the daily transaction feed (RTA File Imports) and bounced SIPs will appear here."
           : bounced === 0
-            ? `The transaction feed imported in the last 90 days holds ${total.toLocaleString("en-IN")} SIP instalment${total === 1 ? "" : "s"}, and the registrar marked none of them rejected or failed${alsoSeen}. If your registrar sends bounces in a separate SIP rejection report, import that report; a bounce is added here only when the registrar reports it.`
+            ? `The transaction feed imported in the last 90 days holds ${total.toLocaleString("en-IN")} SIP instalment${total === 1 ? "" : "s"}, and the registrar marked none of them rejected or failed${alsoSeen}. If your registrar sends bounces in a separate SIP rejection report, import that report; a bounce is added here only when the registrar reports it.${wordsNote}`
             : unlinked > 0
               ? `${bounced.toLocaleString("en-IN")} bounced SIP${bounced === 1 ? "" : "s"} came in the feed, ${unlinked.toLocaleString("en-IN")} of them for a folio whose client is not in the client master. Import the folio master, then they are placed.`
               : `${bounced.toLocaleString("en-IN")} bounced SIP${bounced === 1 ? "" : "s"} came in the feed and are being added; refresh in a minute.`;
