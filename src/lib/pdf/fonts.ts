@@ -32,6 +32,23 @@ export async function embedPdfFonts(doc: PDFDocument): Promise<PdfFonts> {
 }
 
 /**
+ * Inter (the CRM's own sans-serif, SIL OFL — see ./fonts/Inter-OFL.txt) for documents that want a
+ * modern sans look, regular + semibold. It has the rupee sign. Falls back to the DejaVu / Helvetica
+ * set above if the files cannot be read, so a font problem never breaks a download.
+ */
+export async function embedInterFonts(doc: PDFDocument): Promise<PdfFonts> {
+  try {
+    doc.registerFontkit(fontkit);
+    const dir = path.join(process.cwd(), "src/lib/pdf/fonts");
+    const font = await doc.embedFont(fs.readFileSync(path.join(dir, "Inter_400Regular.ttf")), { subset: false });
+    const bold = await doc.embedFont(fs.readFileSync(path.join(dir, "Inter_600SemiBold.ttf")), { subset: false });
+    return { font, bold, rupeeOk: true };
+  } catch {
+    return embedPdfFonts(doc);
+  }
+}
+
+/**
  * Normalise text for PDF drawing. When `keepRupee` (i.e. a Unicode font is
  * embedded) the "₹" glyph is preserved; otherwise it becomes "Rs " and all
  * non-ASCII is stripped so WinAnsi Helvetica never throws on encoding.

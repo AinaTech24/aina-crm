@@ -11,7 +11,7 @@
 
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import { drawContinuationHeader, drawPageNumbers, drawReportHeader } from "@/lib/pdf/report-header";
-import { embedPdfFonts, pdfSanitize } from "@/lib/pdf/fonts";
+import { embedInterFonts, pdfSanitize } from "@/lib/pdf/fonts";
 import { embedLogo, hexToRgb } from "@/lib/finance/valuation-pdf";
 import { OPTIONAL_KEYS, type ClientMasterData, type PdfCell, type PdfKv, type PdfTable } from "./types";
 
@@ -35,7 +35,7 @@ const USABLE = W - 2 * M;
 
 export async function renderClientMasterPdf(d: ClientMasterData): Promise<Buffer> {
   const doc = await PDFDocument.create();
-  const { font, bold, rupeeOk } = await embedPdfFonts(doc);
+  const { font, bold, rupeeOk } = await embedInterFonts(doc);
   // A masked number arrives as bullets ("••••4821"); the PDF's font has them, the sanitiser does not.
   const san = (s: string) => pdfSanitize(String(s ?? "").replace(/•/g, "X"), rupeeOk);
   const primary = hexToRgb(d.brand.primaryColor);
@@ -50,7 +50,12 @@ export async function renderClientMasterPdf(d: ClientMasterData): Promise<Buffer
 
   let page!: PDFPage; // the first startSection() makes the first page
   let y = H;
+  let pageTop = H; // where this page's body starts — a heading there needs no gap above it
   let sectionTitle = "Client Master";
+  const SECTION_GAP = 28; // clear space between one section and the next
+  /** A hairline as a stroked line (a 1pt filled rectangle shows seams in some viewers). */
+  const rule = (x1: number, yy: number, x2: number, thickness: number, color: RGB) =>
+    page.drawLine({ start: { x: x1, y: yy }, end: { x: x2, y: yy }, thickness, color });
 
   /* ───────────── text helpers ───────────── */
 
@@ -111,34 +116,37 @@ export async function renderClientMasterPdf(d: ClientMasterData): Promise<Buffer
       page.drawText(note, { x: W - M - nw + 7, y: y, size: 7.5, font: bold, color: rgb(0.57, 0.25, 0.05) });
     }
     y -= 26;
+    pageTop = y;
   }
   function continuation() {
     page = doc.addPage([W, H]);
     y = drawContinuationHeader({ page, helv: font, bold, pageWidth: W, pageHeight: H, margin: M, firmName: firm, title: sectionTitle, primary });
     y -= 4;
+    pageTop = y;
   }
   const ensure = (need: number) => { if (y - need < BOTTOM) continuation(); };
 
   function group(title: string) {
-    ensure(54);
-    y -= 6;
-    page.drawText(san(title).toUpperCase(), { x: M, y, size: 9, font: bold, color: primary });
-    y -= 5;
-    page.drawRectangle({ x: M, y, width: USABLE, height: 1.2, color: secondary });
-    y -= 15;
+    ensure(SECTION_GAP + 96); // never strand a heading at the foot of a page
+    if (Math.abs(y - pageTop) > 0.5) y -= SECTION_GAP;
+    page.drawText(san(title).toUpperCase(), { x: M, y, size: 10, font: bold, color: primary });
+    y -= 7;
+    rule(M, y, M + USABLE, 1.4, secondary);
+    y -= 16;
   }
   function sublabel(t: string) {
-    ensure(40);
-    page.drawText(san(t), { x: M, y, size: 8.5, font: bold, color: SLATE });
-    y -= 13;
+    ensure(60);
+    y -= 8;
+    page.drawText(san(t), { x: M, y, size: 8.8, font: bold, color: SLATE });
+    y -= 14;
   }
   function paragraph(text: string, size = 9, colour: RGB = SLATE) {
     for (const ln of wrapText(text, font, size, USABLE)) {
       ensure(size + 4);
       page.drawText(ln, { x: M, y, size, font, color: colour });
-      y -= size + 3.5;
+      y -= size + 4;
     }
-    y -= 2;
+    y -= 6;
   }
 
   function kvGrid(items: PdfKv[], cols = 3) {
@@ -162,7 +170,7 @@ export async function renderClientMasterPdf(d: ClientMasterData): Promise<Buffer
         const w = colW * r.span + gap * (r.span - 1);
         return { ...r, w, lines: clamp(wrapText(r.it.value, bold, 9, w), 3, bold, 9, w) };
       });
-      const rowH = 12 + Math.max(...laid.map((l) => l.lines.length)) * 11.5 + 5;
+      const rowH = 12 + Math.max(...laid.map((l) => l.lines.length)) * 11.5 + 9;
       ensure(rowH);
       for (const l of laid) {
         const x = M + l.col * (colW + gap);
@@ -174,61 +182,94 @@ export async function renderClientMasterPdf(d: ClientMasterData): Promise<Buffer
   }
 
   function tiles(items: Array<{ label: string; value: string; tone?: "good" | "bad" }>) {
-    const gap = 8;
+    const gap = 10;
     const w = (USABLE - gap * (items.length - 1)) / items.length;
-    ensure(50);
+    const h = 44;
+    ensure(h + 16);
     items.forEach((t, n) => {
       const x = M + n * (w + gap);
-      page.drawRectangle({ x, y: y - 38, width: w, height: 38, color: TILE_BG, borderColor: LINE, borderWidth: 1 });
-      page.drawText(san(t.label).toUpperCase(), { x: x + 7, y: y - 13, size: 6.4, font: bold, color: MUTED });
-      let size = 12;
+      page.drawRectangle({ x, y: y - h, width: w, height: h, color: TILE_BG, borderColor: LINE, borderWidth: 0.8 });
+      page.drawRectangle({ x, y: y - h, width: 3, height: h, color: secondary });
+      page.drawText(san(t.label).toUpperCase(), { x: x + 12, y: y - 15, size: 6.6, font: bold, color: MUTED });
+      let size = 13;
       const v = san(t.value);
-      while (size > 7.5 && bold.widthOfTextAtSize(v, size) > w - 14) size -= 0.5;
-      page.drawText(v, { x: x + 7, y: y - 29, size, font: bold, color: t.tone ? toneColour(t.tone === "good" ? "good" : "bad") : primary });
+      while (size > 7.5 && bold.widthOfTextAtSize(v, size) > w - 22) size -= 0.5;
+      page.drawText(v, { x: x + 12, y: y - 33, size, font: bold, color: t.tone ? toneColour(t.tone === "good" ? "good" : "bad") : primary });
     });
-    y -= 38 + 14;
+    y -= h + 6;
+  }
+
+  /** "Nothing recorded" — one quiet box, never a table heading over an empty row. */
+  function emptyBox(text: string) {
+    ensure(34);
+    page.drawRectangle({ x: M, y: y - 26, width: USABLE, height: 26, color: TILE_BG, borderColor: LINE, borderWidth: 0.8 });
+    page.drawText(san(text), { x: M + 12, y: y - 17, size: 8.5, font, color: MUTED });
+    y -= 26 + 6;
   }
 
   function table(t: PdfTable) {
+    if (!t.rows.length) { emptyBox(t.empty ?? "Nothing recorded."); return; }
+    const PAD_X = 7; // inside each cell
+    const PAD_Y = 7; // above and below a row's text
+    const size = t.heads.length >= 8 ? 7.6 : 8.2; // a dense table gets a touch smaller type, not cut numbers
+    const lineH = size + 3.2;
+    // Column widths: the table's own shares, widened where a column's longest unbreakable word (a folio, a
+    // number, a date) would otherwise be cut mid-way, the room taken from columns that have some to spare.
+    const px = t.widths.map((wf) => wf * USABLE);
+    const need = t.heads.map((h, c) => {
+      let widest = bold.widthOfTextAtSize(san(h).toUpperCase().split(" ").sort((a, b) => b.length - a.length)[0] ?? "", 6.8);
+      for (const r of t.rows) {
+        const cell = r[c];
+        if (cell == null) continue;
+        const f = cellTone(cell) ? bold : font;
+        for (const word of san(cellText(cell)).split(" ")) widest = Math.max(widest, f.widthOfTextAtSize(word, size));
+      }
+      return widest + 2 * PAD_X + 1;
+    });
+    const deficit = px.reduce((s, w, c) => s + Math.max(0, need[c] - w), 0);
+    if (deficit > 0) {
+      const slack = px.map((w, c) => Math.max(0, w - need[c]));
+      const totalSlack = slack.reduce((s, v) => s + v, 0);
+      const take = totalSlack > 0 ? Math.min(1, deficit / totalSlack) : 0;
+      for (let c = 0; c < px.length; c++) px[c] = px[c] < need[c] ? need[c] : px[c] - slack[c] * take;
+    }
     const xs: number[] = [];
     let acc = M;
-    t.widths.forEach((wf) => { xs.push(acc); acc += wf * USABLE; });
-    const colW = t.widths.map((wf) => wf * USABLE - 8);
-    const size = 8;
+    px.forEach((w) => { xs.push(acc); acc += w; });
+    const colW = px.map((w) => w - 2 * PAD_X);
+    const HEAD_H = 22;
     const drawHead = () => {
-      ensure(30);
-      page.drawRectangle({ x: M, y: y - 6, width: USABLE, height: 16, color: HEAD_BG });
+      ensure(HEAD_H + 40);
+      page.drawRectangle({ x: M, y: y - HEAD_H, width: USABLE, height: HEAD_H, color: HEAD_BG });
       t.heads.forEach((h, c) => {
         const txt = san(h).toUpperCase();
-        const tw = bold.widthOfTextAtSize(txt, 6.6);
+        const tw = bold.widthOfTextAtSize(txt, 6.8);
         const right = t.align?.[c] === "r";
-        page.drawText(txt, { x: right ? xs[c] + colW[c] - tw : xs[c] + 3, y: y - 1, size: 6.6, font: bold, color: SLATE });
+        page.drawText(txt, { x: right ? xs[c] + PAD_X + colW[c] - tw : xs[c] + PAD_X, y: y - 14, size: 6.8, font: bold, color: SLATE });
       });
-      y -= 18;
+      rule(M, y - HEAD_H, M + USABLE, 0.9, rgb(0.78, 0.82, 0.88));
+      y -= HEAD_H;
     };
     drawHead();
-    if (!t.rows.length) {
-      ensure(18);
-      page.drawText(san(t.empty ?? "Nothing recorded."), { x: M + 3, y: y - 2, size: 8.5, font, color: MUTED });
-      y -= 18;
-      return;
-    }
     for (const r of t.rows) {
       const laid = r.map((c, n) => clamp(wrapText(cellText(c), font, size, colW[n]), 3, font, size, colW[n]));
-      const rowH = Math.max(...laid.map((l) => l.length)) * 10 + 7;
+      const lines = Math.max(...laid.map((l) => l.length));
+      // Text block = cap height of the first line + the pitch of the others + the descender, centred by PAD_Y.
+      const rowH = PAD_Y * 2 + (lines - 1) * lineH + size;
       if (y - rowH < BOTTOM) { continuation(); drawHead(); }
-      laid.forEach((lines, n) => {
+      laid.forEach((ls, n) => {
         const right = t.align?.[n] === "r";
-        const colour = toneColour(cellTone(r[n]));
-        lines.forEach((ln, k) => {
-          const tw = font.widthOfTextAtSize(ln, size);
-          page.drawText(ln, { x: right ? xs[n] + colW[n] - tw : xs[n] + 3, y: y - 2 - k * 10, size, font: cellTone(r[n]) ? bold : font, color: cellTone(r[n]) ? colour : INK });
+        const tone = cellTone(r[n]);
+        ls.forEach((ln, k) => {
+          const f = tone ? bold : font;
+          const tw = f.widthOfTextAtSize(ln, size);
+          page.drawText(ln, { x: right ? xs[n] + PAD_X + colW[n] - tw : xs[n] + PAD_X, y: y - PAD_Y - size * 0.78 - k * lineH, size, font: f, color: tone ? toneColour(tone) : INK });
         });
       });
       y -= rowH;
-      page.drawRectangle({ x: M, y: y + 3, width: USABLE, height: 0.6, color: LINE });
+      rule(M, y, M + USABLE, 0.6, LINE); // the row's own bottom edge — never through the next row's text
     }
-    y -= 6;
+    y -= 8;
   }
 
   function allocation(items: Array<{ label: string; pct: number; value: number }>) {
@@ -269,7 +310,12 @@ export async function renderClientMasterPdf(d: ClientMasterData): Promise<Buffer
   group("Profile"); kvGrid(d.master.profile);
   group("Compliance status (KYC)"); kvGrid(d.master.compliance);
   if (d.master.bank) { group("Bank accounts"); table(d.master.bank); }
-  if (d.nominees) { group("Nominees"); paragraph(d.nominees.note, 8.5, MUTED); table(d.nominees.table); }
+  if (d.nominees) {
+    group("Nominees");
+    // An empty list says so once (in the box); a note is only added when there are nominees to explain.
+    if (d.nominees.table.rows.length) { paragraph(d.nominees.note, 8.5, MUTED); table(d.nominees.table); }
+    else emptyBox(d.nominees.note || d.nominees.table.empty || "No nominee recorded.");
+  }
   if (d.master.secondHolder) { group("Joint / second holder"); kvGrid(d.master.secondHolder); }
   group("Lifetime and service"); kvGrid(d.master.lifetime);
   group("Referrals");
@@ -287,26 +333,16 @@ export async function renderClientMasterPdf(d: ClientMasterData): Promise<Buffer
     startSection("Portfolio", "Mutual fund holdings and SIPs");
     tiles(d.portfolio.tiles);
     group("Holdings"); table(d.portfolio.holdings);
-    if (d.portfolio.note) paragraph(d.portfolio.note, 8, MUTED);
+    if (d.portfolio.note) { y -= 2; paragraph(d.portfolio.note, 8, MUTED); }
     group("Asset allocation"); allocation(d.portfolio.allocation);
     group("Systematic investment plans"); table(d.portfolio.sips);
+    y -= 2;
     paragraph(d.portfolio.sipNote, 8.5, SLATE);
   }
 
   /* ───────────── 3 · FIXED DEPOSITS ───────────── */
   startSection("Fixed Deposits", "Deposits placed through the firm");
-  {
-    const gap = 8;
-    const w = (USABLE - gap * (d.fds.tiles.length - 1)) / d.fds.tiles.length;
-    ensure(50);
-    d.fds.tiles.forEach((t, n) => {
-      const x = M + n * (w + gap);
-      page.drawRectangle({ x, y: y - 38, width: w, height: 38, color: TILE_BG, borderColor: LINE, borderWidth: 1 });
-      page.drawText(san(t.label).toUpperCase(), { x: x + 7, y: y - 13, size: 6.4, font: bold, color: MUTED });
-      page.drawText(san(t.value), { x: x + 7, y: y - 29, size: 12, font: bold, color: primary });
-    });
-    y -= 52;
-  }
+  tiles(d.fds.tiles);
   group("Fixed deposits"); table(d.fds.table);
 
   /* ───────────── 4 · CROSS-SELL ───────────── */
@@ -357,14 +393,14 @@ export async function renderClientMasterPdf(d: ClientMasterData): Promise<Buffer
       y -= 11.5;
     }
     page.drawRectangle({ x: M, y: y + 6, width: 2.4, height: chunkTop - (y + 6), color: secondary });
-    y -= 10;
+    y -= 16;
   }
   paragraph(`End of Client Master - ${firm}`, 7.5, MUTED);
 
   /* ───────────── per-page furniture ───────────── */
   const pages = doc.getPages();
   pages.forEach((p) => {
-    p.drawRectangle({ x: M, y: 52, width: USABLE, height: 1, color: LINE });
+    p.drawLine({ start: { x: M, y: 52 }, end: { x: M + USABLE, y: 52 }, thickness: 0.8, color: LINE });
     const left = san(`${firm}  -  ARN-${(d.brand.arn ?? "-").toString().replace(/^ARN-?/i, "")}`);
     p.drawText(left, { x: M, y: 40, size: 8, font: bold, color: SLATE });
     const right = san(`Generated ${fmtLong(d.generatedAt)}, Ref ${d.refId}`);
