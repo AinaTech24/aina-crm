@@ -445,6 +445,12 @@ the client page's Overview tab.
   Each opens `/dashboard/opportunities/[id]`, where the journey runs: the same
   `OpportunityCard` the client page uses, plus history, details (Edit), the
   client and its tasks. "New opportunity" there picks the client.
+- **Delete** (2026-11-25, `lib/opportunities/delete.ts`, `DELETE /api/opportunities/[id]`, `POST /api/opportunities/bulk`):
+  the trash button on the opportunity page and the list's selection bar (Business Entries' pattern). It removes the row for good
+  and tidies what it left: open tasks cancelled, the expected inflow it waited for cancelled, a proposal kept but unlinked
+  (`opportunity_id` NULL), the journey (blueprint instance + history) removed, audited `opportunity.delete`. Who: anyone who can work
+  opportunities, on what they own or opened — a firm-wide viewer (`investor.view.all`) or owner on any they can see. The Cross-sell
+  flag is left as it is. Use `cancelled`/Lost for "did not happen"; delete is for records made by mistake.
 - **Proposal approval, then transaction review** (2026-10-16, migration 0239).
   The step after "Client accepted" is gated on the client having APPROVED the
   proposal (`AFTER_ACCEPTED` in stages.ts); until then the journey waits, and

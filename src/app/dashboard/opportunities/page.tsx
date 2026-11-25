@@ -147,7 +147,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
 
           {view === "board"
             ? <OpportunityBoard columns={boardColumns(filters.status)} rows={rows} />
-            : <section className="card-surface p-2 sm:p-3"><OpportunitiesTable rows={rows} /></section>}
+            : <section className="card-surface p-2 sm:p-3"><OpportunitiesTable rows={rows} canDelete={canWork} /></section>}
           {rows.length >= 500 && (
             <p className="text-xs text-muted-foreground">Showing the first 500 — narrow the filters to see the rest.</p>
           )}

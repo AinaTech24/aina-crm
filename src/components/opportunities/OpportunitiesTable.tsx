@@ -1,10 +1,15 @@
 "use client";
 
-/** The Opportunities list view — the same rows as the board, one per line. */
+/**
+ * The Opportunities list view — the same rows as the board, one per line. Someone who can work
+ * opportunities gets the selection bar (tick rows → Delete), like Business Entries; the server decides
+ * which of them they may actually delete (their own, or any for a firm-wide viewer).
+ */
 
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { DataTable, type Column } from "@/components/ui/DataTable";
+import { BulkTable, type BulkAction, type BulkColumn } from "@/components/common/BulkTable";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { BoardRow } from "@/lib/opportunities/board";
 import { daysInStage, followUpState } from "@/components/opportunities/OpportunityBoard";
@@ -48,15 +53,41 @@ const COLUMNS: Column<BoardRow>[] = [
   { key: "opened", header: "Opened", hideOnMobile: true, cell: (r) => <span className="tabular-nums text-muted-foreground">{formatDate(r.createdAt)}</span> },
 ];
 
-export function OpportunitiesTable({ rows }: { rows: BoardRow[] }) {
+export function OpportunitiesTable({ rows, canDelete = false }: { rows: BoardRow[]; canDelete?: boolean }) {
   const router = useRouter();
+  if (!canDelete) {
+    return (
+      <DataTable
+        rows={rows}
+        columns={COLUMNS}
+        rowKey={(r) => r.id}
+        onRowClick={(r) => router.push(`/dashboard/opportunities/${r.id}`)}
+        empty={<p className="dash-empty">No opportunity matches these filters.</p>}
+      />
+    );
+  }
+  if (!rows.length) return <p className="dash-empty">No opportunity matches these filters.</p>;
+  const showValue = rows.some((r) => r.expectedValue != null);
+  const columns: BulkColumn<BoardRow>[] = COLUMNS.filter((c) => c.key !== "value" || showValue).map((c) => {
+    const right = c.align === "right";
+    const mobile = c.hideOnMobile ? "hidden md:table-cell " : "";
+    return {
+      key: c.key,
+      header: c.header,
+      render: (r) => c.cell(r, 0),
+      thClass: `${mobile}py-2 pr-3 font-medium ${right ? "text-right" : "text-left"}`,
+      tdClass: `${mobile}py-2.5 pr-3 ${right ? "text-right" : ""}`,
+    };
+  });
+  const actions: BulkAction[] = [{ kind: "delete", label: "Delete" }];
   return (
-    <DataTable
+    <BulkTable
       rows={rows}
-      columns={COLUMNS}
-      rowKey={(r) => r.id}
-      onRowClick={(r) => router.push(`/dashboard/opportunities/${r.id}`)}
-      empty={<p className="dash-empty">No opportunity matches these filters.</p>}
+      columns={columns}
+      endpoint="/api/opportunities/bulk"
+      actions={actions}
+      itemLabel="opportunity"
+      rowHref={(r) => `/dashboard/opportunities/${r.id}`}
     />
   );
 }
