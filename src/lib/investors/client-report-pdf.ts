@@ -21,6 +21,7 @@ export type ReportColumn = { h: string; w: number; right?: boolean };
 export type ReportBlock =
   | { t: "h1"; text: string; note?: string }
   | { t: "h2"; text: string }
+  | { t: "h3"; text: string }
   | { t: "stats"; items: { label: string; value: string; sub?: string }[] }
   | { t: "kv"; items: [string, string][]; cols?: number }
   | { t: "table"; cols: ReportColumn[]; rows: string[][]; maxLines?: number }
@@ -157,8 +158,17 @@ export async function renderClientReportPdf(input: ClientReportInput): Promise<B
       case "h2": {
         ensure(50);
         y -= 4;
-        page.drawText(san(b.text), { x: M, y: y - 9, size: 9.5, font: bold, color: INK });
-        y -= 16;
+        for (const [k, l] of wrap(b.text, bold, 9.5, usable).slice(0, 2).entries()) {
+          page.drawText(l, { x: M, y: y - 9 - k * 12, size: 9.5, font: bold, color: INK });
+        }
+        y -= 16 + (wrap(b.text, bold, 9.5, usable).length > 1 ? 12 : 0);
+        break;
+      }
+      case "h3": {
+        ensure(44);
+        y -= 2;
+        page.drawText(san(b.text), { x: M, y: y - 8, size: 8, font: bold, color: SLATE });
+        y -= 13;
         break;
       }
       case "para":

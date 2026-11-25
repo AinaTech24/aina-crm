@@ -30,6 +30,9 @@ export type ClientReportSection = (typeof CLIENT_REPORT_SECTIONS)[number]["key"]
 export const ALL_CLIENT_REPORT_SECTIONS: ClientReportSection[] = CLIENT_REPORT_SECTIONS.map((s) => s.key);
 export const CLIENT_COPY_SECTIONS: ClientReportSection[] = CLIENT_REPORT_SECTIONS.filter((s) => s.client).map((s) => s.key);
 
+/** The family report has no "Family" section: its members table is the summary. */
+export const FAMILY_REPORT_SECTIONS: ClientReportSection[] = ALL_CLIENT_REPORT_SECTIONS.filter((k) => k !== "family");
+
 /** `?sections=a,b` → the known keys, in report order; nothing valid → all. */
 export function parseClientReportSections(raw: string | null | undefined): ClientReportSection[] {
   const asked = new Set(String(raw ?? "").split(",").map((s) => s.trim()).filter(Boolean));
