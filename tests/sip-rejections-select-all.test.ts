@@ -31,13 +31,11 @@ describe("SIP Rejections select-all-matching", () => {
     expect(read("src/app/dashboard/sip-rejections/page.tsx")).toContain("key={`${data.page}|");
   });
 
-  it("scheme and reason are drawn in full, and a row opens its details card", () => {
+  it("a row opens its details card, and a click on a control inside it does not", () => {
     const table = read("src/components/sip-rejections/SipRejectionsTable.tsx");
-    const sip = table.slice(table.indexOf('case "sip":'), table.indexOf('case "amount":'));
-    const reason = table.slice(table.indexOf('case "reason":'), table.indexOf('case "rm":'));
-    expect(sip).not.toContain("truncate");
-    expect(reason).not.toContain("truncate");
-    expect(table).toContain("openFromRowClick(e, r.id)");
+    expect(table).toContain("setDetail(r)");
     expect(table).toContain("<DialogContent");
+    // Links, buttons and fields inside the row keep their own behaviour.
+    expect(table).toMatch(/closest\("a, button, input, select, textarea/);
   });
 });
