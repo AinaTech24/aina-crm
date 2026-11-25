@@ -284,7 +284,7 @@ function absUrl(url: string): string {
 
 /** Fetch + embed the firm logo (PNG/JPG). Returns null on any failure so the
  *  statement still renders (just without the logo). */
-async function embedLogo(doc: PDFDocument, rawUrl?: string | null): Promise<PDFImage | null> {
+export async function embedLogo(doc: PDFDocument, rawUrl?: string | null): Promise<PDFImage | null> {
   if (!rawUrl) return null;
   try {
     const url = absUrl(rawUrl);
@@ -393,7 +393,7 @@ function ascii(s: string): string {
     .replace(/[^\x20-\x7E]/g, "")
     .trim();
 }
-function hexToRgb(hex: string | null | undefined): RGB {
+export function hexToRgb(hex: string | null | undefined): RGB {
   const m = (hex ?? "").replace(/^#/, "").match(/^([0-9a-fA-F]{6})$/);
   if (!m) return DEFAULT_PRIMARY;
   const parts = m[1].match(/.{2}/g)!;

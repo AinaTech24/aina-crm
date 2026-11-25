@@ -6,12 +6,14 @@ import { XOctagon, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
-import { visibleClientExists, visibleClientSql } from "@/lib/transactions/client-scope";
+import { visibleClientExists } from "@/lib/transactions/client-scope";
+import { sipRejectionWhere } from "@/lib/sip-rejections/list-filter";
 import { SipRejectionsTable } from "@/components/sip-rejections/SipRejectionsTable";
 import { NewSipRejectionButton } from "@/components/sip-rejections/NewSipRejectionButton";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
-import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
+import { dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
+import { Pager } from "@/components/common/Pager";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
 import { loadTenantLicense } from "@/lib/auth/license";
@@ -36,6 +38,9 @@ const SIP_REJ_COLUMNS = [
 
 export const dynamic = "force-dynamic";
 
+/** Rows per page. The list used to stop at 200 with no way to see the rest. */
+const PAGE_SIZE = 50;
+
 export default async function SipRejectionsPage({
   searchParams,
 }: {
@@ -44,10 +49,8 @@ export default async function SipRejectionsPage({
   const session = await requireSession();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
-  const recoveryFilter = (sp.recovery ?? "").split(",").filter(Boolean);
   const reasonCat = (sp.reason_cat ?? "").trim();
-  const overdueOnly = sp.overdue === "1";
-  const mtdOnly = sp.mtd === "1";
+  const requestedPage = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const colPrefs = await readColumnPrefs("sip-rejections");
   const license = await loadTenantLicense(session.tenantId, session.roles);
@@ -83,41 +86,24 @@ export default async function SipRejectionsPage({
     }
     // Viewer scope: a rejection is visible only when its client is. The rows
     // join investors as i; the tiles and the per-RM table test it by EXISTS.
-    const filters: any[] = [await visibleClientSql(tx, session, "i")];
     const statScope = await visibleClientExists(tx, session, sql.raw("sip_rejections.investor_id"));
     const byRmScope = await visibleClientExists(tx, session, sql.raw("r.investor_id"));
-    if (q) {
-      filters.push(
-        sql`(i.name ILIKE ${`%${q}%`} OR r.scheme_name ILIKE ${`%${q}%`} OR r.amc_name ILIKE ${`%${q}%`} OR r.folio_number ILIKE ${`%${q}%`} OR r.rejection_reason ILIKE ${`%${q}%`})`
-      );
-    }
-    if (recoveryFilter.length) {
-      filters.push(
-        sql`r.recovery_status IN (${sql.join(recoveryFilter.map((v) => sql`${v}`), sql`, `)})`
-      );
-    }
-    if (reasonCat) {
-      filters.push(sql`r.reason_category = ${reasonCat}`);
-    }
-    if (overdueOnly) {
-      filters.push(
-        sql`((now() - r.status_changed_at) > interval '2 days' AND r.recovery_status IN ('pending','client_contacted','bank_issue','mandate_issue'))`
-      );
-    }
-    if (mtdOnly) {
-      filters.push(sql`r.rejection_date >= date_trunc('month', now())`);
-    }
-    const dr = dateRangeCond(sp, "rej", "r.rejection_date");
-    if (dr) filters.push(dr);
-    // Branch / RM — the branch command centre's "open the exact SIP records".
-    // Both follow the CLIENT (its branch, its RM), which is how the dashboard
-    // counts rejections. Malformed ids are dropped rather than cast.
-    const ids = (v: string | undefined) => (v ?? "").split(",").filter((x) => /^[0-9a-f-]{36}$/i.test(x));
-    const branchIds = ids(sp.branch);
-    const rmIds = ids(sp.rm);
-    if (branchIds.length) filters.push(sql`i.branch_id IN (${sql.join(branchIds.map((v) => sql`${v}::uuid`), sql`, `)})`);
-    if (rmIds.length) filters.push(sql`i.rm_id IN (${sql.join(rmIds.map((v) => sql`${v}::uuid`), sql`, `)})`);
-    const whereSql = filters.length ? sql` WHERE ${sql.join(filters, sql` AND `)}` : sql``;
+    // The list's filters: ONE definition, shared with "Select all N matching" (lib/sip-rejections/list-filter).
+    const whereSql = await sipRejectionWhere(tx, session, sp);
+
+    // How many rows match the filters — the pager's total, and the figure shown beside the search box.
+    const counted = await safely("the rejection count", null as number | null, async () => {
+      const r = await tx.execute(sql`
+        SELECT COUNT(*)::int AS n
+        FROM sip_rejections r
+        LEFT JOIN investors i ON i.id = r.investor_id
+        ${whereSql}
+      `);
+      return Number((r.rows[0] as { n?: number } | undefined)?.n ?? 0);
+    });
+    // A page past the end (a bookmark after rows were closed, a filter that narrowed) shows the last one.
+    const totalPages = counted == null ? 1 : Math.max(1, Math.ceil(counted / PAGE_SIZE));
+    const page = Math.min(requestedPage, totalPages);
 
     const rows = await safely("the rejection list", { rows: [] as Array<Record<string, unknown>> }, () => tx.execute(sql`
       SELECT r.id, r.investor_id, r.rejection_date, r.rejection_amount,
@@ -134,7 +120,7 @@ export default async function SipRejectionsPage({
       LEFT JOIN users u ON u.id = r.assigned_rm_id
       ${whereSql}
       ORDER BY r.rejection_date DESC, r.created_at DESC
-      LIMIT 200
+      LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
     `));
 
     // The fields this person added as columns — only for the rows on screen.
@@ -267,6 +253,8 @@ export default async function SipRejectionsPage({
     return {
       problems,
       feedNote,
+      page,
+      filteredTotal: counted ?? (rows.rows as unknown[]).length,
       total: Number(s.total ?? 0),
       pending: Number(s.pending ?? 0),
       inProgress: Number(s.in_progress ?? 0),
@@ -417,7 +405,7 @@ export default async function SipRejectionsPage({
       </div>
 
       <CompactFilterBar
-        totalCount={data.rows.length}
+        totalCount={data.filteredTotal}
         filters={[
           { type: "search", key: "q", placeholder: "Search by investor, scheme, AMC, reason…" },
           {
@@ -452,7 +440,17 @@ export default async function SipRejectionsPage({
         }
       />
 
-      <SipRejectionsTable rows={data.rows as any} colOrder={colOrder} extraCols={extraCols} emptyNote={data.feedNote} />
+      {/* Keyed by page and filters, so a ticked row never follows you to another page where it is out of sight. */}
+      <SipRejectionsTable
+        key={`${data.page}|${JSON.stringify(sp)}`}
+        rows={data.rows as any}
+        total={data.filteredTotal}
+        query={new URLSearchParams(Object.entries(sp).filter(([k, v]) => k !== "page" && v) as [string, string][]).toString()}
+        colOrder={colOrder}
+        extraCols={extraCols}
+        emptyNote={data.feedNote}
+      />
+      <Pager page={data.page} totalPages={Math.max(1, Math.ceil(data.filteredTotal / PAGE_SIZE))} total={data.filteredTotal} pageSize={PAGE_SIZE} />
     </div>
   );
 }

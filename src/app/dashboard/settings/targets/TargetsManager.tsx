@@ -1,104 +1,39 @@
 "use client";
 
 /**
- * TargetsManager — per-member targets + this-month achievement bars.
+ * TargetsManager — each team member's FY targets, the SAME seven the dashboard's
+ * "My target tracker" shows: SIP book, Net new SIP, Net business, New clients,
+ * Meetings, Review meetings and Insurance business (lib/targets/personal-targets.ts).
  *
- * Business target is entered as an ANNUAL ₹ figure (matches users.annual_target
- * + the dashboard quota ring); the monthly target shown against achievement is
- * annual/12. Meeting targets are monthly counts. Managers can edit every row;
- * everyone else sees only their own (server already scopes the list).
+ * Each is one ANNUAL figure for the financial year; the tracker phases it into a
+ * week or a month itself. They are stored where the tracker reads them (kra_targets),
+ * so what is typed here is what the dashboard measures against. Managers edit every
+ * row; everyone else sees and edits only their own (the server already scopes the list).
  */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, IndianRupee, CalendarPlus, CalendarCheck, Save } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { PERSONAL_TARGET_METRICS, type PersonalTargetMetric } from "@/lib/targets/personal-targets";
 
 export type MemberTarget = {
   id: string;
   name: string;
-  annualTarget: number | null;
-  sipMonthlyTarget: number | null;
-  newMeetingsMonthlyTarget: number | null;
-  renewalMeetingsMonthlyTarget: number | null;
-  achievedBusiness: number;
-  achievedNewMeetings: number;
-  achievedRenewalMeetings: number;
+  /** metric key → the FY target; a metric with none is absent. */
+  targets: Record<string, number>;
 };
 
-function inr(n: number): string {
-  if (!Number.isFinite(n)) return "₹0";
-  if (Math.abs(n) >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
-  if (Math.abs(n) >= 1e5) return `₹${(n / 1e5).toFixed(2)} L`;
-  if (Math.abs(n) >= 1e3) return `₹${(n / 1e3).toFixed(1)}k`;
-  return `₹${Math.round(n)}`;
-}
+const asText = (n: number | undefined) => (n != null && Number.isFinite(n) ? String(n) : "");
 
-function pct(achieved: number, target: number): number {
-  if (!target || target <= 0) return 0;
-  return Math.max(0, Math.min(100, Math.round((achieved / target) * 100)));
-}
-
-function Bar({
-  icon: Icon,
-  label,
-  achievedText,
-  targetText,
-  percent,
-  hasTarget,
-}: {
-  icon: any;
-  label: string;
-  achievedText: string;
-  targetText: string;
-  percent: number;
-  hasTarget: boolean;
-}) {
-  const tone = percent >= 100 ? "bg-emerald-500" : percent >= 60 ? "bg-brand-cyan" : "bg-amber-500";
-  return (
-    <div>
-      <div className="flex items-center justify-between text-xs mb-1">
-        <span className="flex items-center gap-1.5 text-muted-foreground">
-          <Icon className="size-3.5 text-brand-cyan" /> {label}
-        </span>
-        <span className="tabular-nums font-medium">
-          {achievedText}
-          <span className="text-muted-foreground font-normal"> / {hasTarget ? targetText : "—"}</span>
-        </span>
-      </div>
-      <div className="h-2 rounded-full bg-secondary overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${hasTarget ? tone : "bg-muted-foreground/20"}`}
-          style={{ width: `${hasTarget ? percent : 0}%` }}
-        />
-      </div>
-      <div className="text-2xs text-muted-foreground mt-0.5 text-right tabular-nums">
-        {hasTarget ? `${percent}% of target` : "no target set"}
-      </div>
-    </div>
-  );
-}
-
-function MemberCard({
-  m,
-  canEdit,
-  isSelf,
-}: {
-  m: MemberTarget;
-  canEdit: boolean;
-  isSelf: boolean;
-}) {
+function MemberCard({ m, canEdit, isSelf, fiscalYear }: { m: MemberTarget; canEdit: boolean; isSelf: boolean; fiscalYear: string }) {
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const [annual, setAnnual] = useState(m.annualTarget != null ? String(m.annualTarget) : "");
-  const [sip, setSip] = useState(m.sipMonthlyTarget != null ? String(m.sipMonthlyTarget) : "");
-  const [newM, setNewM] = useState(m.newMeetingsMonthlyTarget != null ? String(m.newMeetingsMonthlyTarget) : "");
-  const [renewM, setRenewM] = useState(
-    m.renewalMeetingsMonthlyTarget != null ? String(m.renewalMeetingsMonthlyTarget) : ""
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(PERSONAL_TARGET_METRICS.map((t) => [t.key, asText(m.targets[t.key])])),
   );
-
-  const monthlyBizTarget = m.annualTarget != null ? m.annualTarget / 12 : 0;
+  const set = Object.keys(m.targets).length;
 
   async function save() {
     setBusy(true);
@@ -106,13 +41,8 @@ function MemberCard({
       const res = await fetch("/api/targets", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          userId: m.id,
-          annualTarget: annual.trim() === "" ? null : Number(annual),
-          sipMonthlyTarget: sip.trim() === "" ? null : Number(sip),
-          newMeetingsMonthlyTarget: newM.trim() === "" ? null : Math.round(Number(newM)),
-          renewalMeetingsMonthlyTarget: renewM.trim() === "" ? null : Math.round(Number(renewM)),
-        }),
+        // A blank clears a target: "Not set" on the dashboard, never a target of zero.
+        body: JSON.stringify({ userId: m.id, fyTargets: values }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -129,83 +59,61 @@ function MemberCard({
   }
 
   return (
-    <div className="card-surface p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="font-semibold flex items-center gap-2">
+    <div className="card-surface space-y-4 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 font-semibold">
           {m.name}
-          {isSelf && <span className="chip text-2xs bg-brand-cyan-light text-brand-cyan-deep">You</span>}
+          {isSelf && <span className="chip bg-brand-cyan-light text-2xs text-brand-cyan-deep">You</span>}
         </div>
+        <span className="text-xs text-muted-foreground">
+          {set === 0 ? `No ${fiscalYear} targets set` : `${set} of ${PERSONAL_TARGET_METRICS.length} set for ${fiscalYear}`}
+        </span>
       </div>
 
-      {/* Target vs Achievement (month-to-date) */}
-      <div className="grid sm:grid-cols-3 gap-3">
-        <Bar
-          icon={IndianRupee}
-          label="Business"
-          achievedText={inr(m.achievedBusiness)}
-          targetText={inr(monthlyBizTarget)}
-          percent={pct(m.achievedBusiness, monthlyBizTarget)}
-          hasTarget={!!m.annualTarget}
-        />
-        <Bar
-          icon={CalendarPlus}
-          label="New meetings"
-          achievedText={String(m.achievedNewMeetings)}
-          targetText={String(m.newMeetingsMonthlyTarget ?? 0)}
-          percent={pct(m.achievedNewMeetings, m.newMeetingsMonthlyTarget ?? 0)}
-          hasTarget={!!m.newMeetingsMonthlyTarget}
-        />
-        <Bar
-          icon={CalendarCheck}
-          label="Renewal meetings"
-          achievedText={String(m.achievedRenewalMeetings)}
-          targetText={String(m.renewalMeetingsMonthlyTarget ?? 0)}
-          percent={pct(m.achievedRenewalMeetings, m.renewalMeetingsMonthlyTarget ?? 0)}
-          hasTarget={!!m.renewalMeetingsMonthlyTarget}
-        />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {PERSONAL_TARGET_METRICS.map((t) => (
+          <Field
+            key={t.key}
+            metric={t}
+            value={values[t.key] ?? ""}
+            disabled={!canEdit}
+            onChange={(v) => setValues((cur) => ({ ...cur, [t.key]: v }))}
+          />
+        ))}
       </div>
 
       {canEdit && (
-        <div className="border-t pt-3 grid sm:grid-cols-4 gap-3">
-          <Field label="Annual business (₹)" value={annual} onChange={setAnnual} placeholder="e.g. 12000000" />
-          <Field label="Monthly SIP (₹)" value={sip} onChange={setSip} placeholder="e.g. 200000" />
-          <Field label="New meetings / mo" value={newM} onChange={setNewM} placeholder="e.g. 10" />
-          <Field label="Renewal meetings / mo" value={renewM} onChange={setRenewM} placeholder="e.g. 20" />
-          <div className="sm:col-span-4 flex justify-end">
-            <button onClick={save} disabled={busy} className="btn-primary text-sm inline-flex items-center gap-1.5 disabled:opacity-50">
-              {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-              Save targets
-            </button>
-          </div>
+        <div className="flex justify-end border-t pt-3">
+          <button onClick={save} disabled={busy} className="btn-primary inline-flex items-center gap-1.5 text-sm disabled:opacity-50">
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            Save targets
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
+function Field({ metric, value, disabled, onChange }: { metric: PersonalTargetMetric; value: string; disabled: boolean; onChange: (v: string) => void }) {
   return (
     <label className="block">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground">
+        {metric.label}
+        {metric.unit === "inr" ? " (₹)" : ""}
+      </span>
       <input
         type="number"
         min={0}
+        step={metric.unit === "count" ? 1 : "any"}
         inputMode="numeric"
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="mt-1 w-full h-9 rounded-lg border border-border bg-card px-3 text-sm tabular-nums focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15"
+        placeholder={metric.placeholder}
+        aria-describedby={`hint-${metric.key}`}
+        className="mt-1 h-9 w-full rounded-lg border border-border bg-card px-3 text-sm tabular-nums focus:border-brand-cyan/60 focus:outline-none focus:ring-2 focus:ring-brand-cyan/15 disabled:opacity-60"
       />
+      <span id={`hint-${metric.key}`} className="mt-0.5 block text-2xs text-muted-foreground">{metric.hint}</span>
     </label>
   );
 }
@@ -214,24 +122,24 @@ export function TargetsManager({
   members,
   canEditAll,
   selfId,
-  monthLabel,
+  fiscalYear,
 }: {
   members: MemberTarget[];
   canEditAll: boolean;
   selfId: string;
-  monthLabel: string;
+  fiscalYear: string;
 }) {
   if (members.length === 0) {
-    return (
-      <div className="card-surface p-12 text-center text-sm text-muted-foreground">
-        No team members to show targets for.
-      </div>
-    );
+    return <div className="card-surface p-12 text-center text-sm text-muted-foreground">No team members to show targets for.</div>;
   }
   return (
     <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Each figure is the target for the whole financial year ({fiscalYear}). The dashboard&apos;s <b className="font-medium text-foreground">My target tracker</b> works
+        out the week or the month from it. Leave a box empty for no target.
+      </p>
       {members.map((m) => (
-        <MemberCard key={m.id} m={m} canEdit={canEditAll || m.id === selfId} isSelf={m.id === selfId} />
+        <MemberCard key={m.id} m={m} canEdit={canEditAll || m.id === selfId} isSelf={m.id === selfId} fiscalYear={fiscalYear} />
       ))}
     </div>
   );

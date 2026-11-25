@@ -6,14 +6,15 @@
  * lists come from GET /api/investors/folio-transfer and the move is a POST to
  * the same route. A folio is the unit that moves — a folio belongs to one
  * client — and its schemes are listed so you can see what travels with it.
- * To fold a whole duplicate record away, use Merge Clients (the link below).
+ * To fold a whole duplicate record away, "Merge the whole record instead" opens the
+ * same Compare and merge dialog Find Duplicates uses, with a value choice per field.
  */
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { ArrowRightLeft, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { buttonClass } from "@/components/ui/button-class";
+import { FieldChooser, MergeCompareDialog, type MergePreviewField, type Member } from "@/components/investors/DuplicateMerge";
 import { formatINR } from "@/lib/utils";
 import type { TransferClient } from "@/lib/investors/folio-transfer";
 
@@ -22,13 +23,17 @@ export function FolioTransferDialog({
   onOpenChange,
   ids,
   onDone,
+  onMerged,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Exactly the two selected client ids. */
   ids: string[];
   onDone: (message: string) => void;
+  /** A whole-record merge finished (the dialog has already said so): clear the selection, refresh. */
+  onMerged?: () => void;
 }) {
+  const [mergeOpen, setMergeOpen] = useState(false);
   const [clients, setClients] = useState<TransferClient[] | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [fromIdx, setFromIdx] = useState(0);
@@ -37,6 +42,10 @@ export function FolioTransferDialog({
   const [allowPan, setAllowPan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  /** Every client field with both profiles' values (the same list the whole-record merge shows). */
+  const [fields, setFields] = useState<MergePreviewField[] | null>(null);
+  /** field → the profile whose value the receiving profile ends up with. Absent = the receiver keeps its own. */
+  const [picks, setPicks] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!open || ids.length !== 2) return;
@@ -60,6 +69,38 @@ export function FolioTransferDialog({
   const to = clients?.[1 - fromIdx];
   const panClash = !!from?.pan && !!to?.pan && from.pan !== to.pan;
   const chosen = useMemo(() => from?.folios.filter((f) => picked.has(f.id)) ?? [], [from, picked]);
+
+  // The field values of the two profiles, for the "which value should be kept" table. The receiving
+  // profile is the one "kept", so ask the merge preview with it as the survivor.
+  const fromId = from?.id;
+  const toId = to?.id;
+  useEffect(() => {
+    setPicks({});
+    setFields(null);
+    if (!open || !fromId || !toId) return;
+    let live = true;
+    fetch("/api/investors/merge/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ survivorId: toId, loserIds: [fromId] }),
+    })
+      .then(async (r) => (r.ok ? r.json() : null))
+      .then((j) => { if (live) setFields(j?.fields ?? null); })
+      .catch(() => { if (live) setFields(null); });
+    return () => { live = false; };
+  }, [open, fromId, toId]);
+
+  const hasValue = (f: MergePreviewField, id: string) => !!f.values.find((v) => v.id === id)?.value;
+  /** Without a pick the receiving profile keeps its own value; a blank stays blank unless the other's is picked. */
+  const pickedFor = (f: MergePreviewField) => picks[f.field] ?? (toId && hasValue(f, toId) ? toId : null);
+  const takenFromOther = fields && fromId ? fields.filter((f) => pickedFor(f) === fromId) : [];
+  function selectAllFrom(id: string) {
+    const next: Record<string, string> = {};
+    for (const f of fields ?? []) if (hasValue(f, id)) next[f.field] = id;
+    setPicks(next);
+  }
+  const allFrom = (id: string) =>
+    !!fields && fields.some((f) => hasValue(f, id)) && fields.every((f) => !hasValue(f, id) || pickedFor(f) === id);
   const totals = chosen.reduce(
     (t, f) => ({ aum: t.aum + f.aum, txns: t.txns + f.transactions, sips: t.sips + f.activeSips }),
     { aum: 0, txns: 0, sips: 0 },
@@ -78,7 +119,7 @@ export function FolioTransferDialog({
   }
 
   async function apply() {
-    if (!from || !to || !chosen.length) return;
+    if (!from || !to || (!chosen.length && !takenFromOther.length)) return;
     setBusy(true);
     setErr(null);
     try {
@@ -91,6 +132,7 @@ export function FolioTransferDialog({
           folioIds: chosen.map((f) => f.id),
           moveHistory,
           allowPanMismatch: panClash && allowPan ? true : undefined,
+          fieldPicks: takenFromOther.length ? takenFromOther.map((f) => f.field) : undefined,
         }),
       });
       const j = await res.json();
@@ -99,7 +141,8 @@ export function FolioTransferDialog({
         return;
       }
       onOpenChange(false);
-      onDone(`Moved ${j.folios} folio${j.folios === 1 ? "" : "s"} from ${from.name} to ${to.name}.`);
+      const took = takenFromOther.length ? ` ${takenFromOther.length} field value${takenFromOther.length === 1 ? "" : "s"} taken from ${from.name}.` : "";
+      onDone(j.folios > 0 ? `Moved ${j.folios} folio${j.folios === 1 ? "" : "s"} from ${from.name} to ${to.name}.${took}` : `${to.name} now holds ${takenFromOther.length} field value${takenFromOther.length === 1 ? "" : "s"} taken from ${from.name}.`);
     } catch (e: any) {
       setErr(e?.message ?? "Transfer failed");
     } finally {
@@ -107,7 +150,20 @@ export function FolioTransferDialog({
     }
   }
 
+  // The two clients as the whole-record merge dialog wants them (it draws name, PAN, RM, book size).
+  const mergeMembers: Member[] = (clients ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    pan: c.pan,
+    phone: null,
+    email: null,
+    aum: c.folios.reduce((t, f) => t + f.aum, 0),
+    folios: c.folios.length,
+    rm_name: c.rmName,
+  }));
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -191,6 +247,31 @@ export function FolioTransferDialog({
               </label>
             )}
 
+            {/* Which value each field keeps — the same choice the whole-record merge offers. */}
+            {fields && fields.length > 0 && (
+              <fieldset>
+                <legend className="text-xs font-semibold">Which value should the merged record keep?</legend>
+                <FieldChooser
+                  fields={fields}
+                  cols={[{ id: to.id, name: to.name }, { id: from.id, name: from.name }]}
+                  keptId={to.id}
+                  chosen={pickedFor}
+                  onPick={(field, id) => setPicks((p) => ({ ...p, [field]: id }))}
+                  onSelectAll={selectAllFrom}
+                  allFrom={allFrom}
+                  busy={busy}
+                  maxHeightClass="max-h-72"
+                  colLabel={(m, kept) => `${kept ? "Move to" : "Move from"} · ${(kept ? to.pan : from.pan) ?? "No PAN"}`}
+                  hint={
+                    <>
+                      {to.name} keeps its own value unless you pick {from.name}&apos;s; only the values you pick are copied.
+                      {takenFromOther.length > 0 && <> <strong className="text-foreground">{takenFromOther.length}</strong> field{takenFromOther.length === 1 ? "" : "s"} will take {from.name}&apos;s value.</>}
+                    </>
+                  }
+                />
+              </fieldset>
+            )}
+
             {chosen.length > 0 && (
               <p className="text-xs text-muted-foreground">
                 Moving {chosen.length} folio{chosen.length === 1 ? "" : "s"} worth {formatINR(totals.aum)}
@@ -202,24 +283,42 @@ export function FolioTransferDialog({
         )}
 
         <DialogFooter className="sm:justify-between">
-          <Link href="/dashboard/merge-clients" className="text-xs text-brand-cyan hover:underline self-center">
+          <button
+            type="button"
+            disabled={!clients}
+            onClick={() => { setMergeOpen(true); onOpenChange(false); }}
+            className="text-xs text-brand-cyan hover:underline self-center disabled:opacity-50"
+          >
             Merge the whole record instead
-          </Link>
+          </button>
           <div className="flex gap-2">
             <button type="button" onClick={() => onOpenChange(false)} className={buttonClass("secondary")}>
               Cancel
             </button>
             <button
               type="button"
-              disabled={busy || !chosen.length || (panClash && !allowPan)}
+              disabled={busy || (!chosen.length && !takenFromOther.length) || (panClash && !allowPan)}
               onClick={apply}
               className={buttonClass("primary")}
             >
-              {busy && <Loader2 className="size-4 animate-spin" />} Move {chosen.length || ""} folio{chosen.length === 1 ? "" : "s"}
+              {busy && <Loader2 className="size-4 animate-spin" />}{" "}
+              {chosen.length
+                ? `Move ${chosen.length} folio${chosen.length === 1 ? "" : "s"}${takenFromOther.length ? ` + ${takenFromOther.length} value${takenFromOther.length === 1 ? "" : "s"}` : ""}`
+                : takenFromOther.length
+                  ? `Apply ${takenFromOther.length} field value${takenFromOther.length === 1 ? "" : "s"}`
+                  : "Move folios"}
             </button>
           </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {mergeOpen && mergeMembers.length === 2 && (
+      <MergeCompareDialog
+        members={mergeMembers}
+        onClose={() => setMergeOpen(false)}
+        onMerged={() => { setMergeOpen(false); onMerged?.(); }}
+      />
+    )}
+    </>
   );
 }

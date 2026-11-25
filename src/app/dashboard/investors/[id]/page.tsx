@@ -37,6 +37,7 @@ import { TASK_DEAD } from "@/lib/metrics/tasks";
 import { SR_CLOSED } from "@/lib/metrics/service";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
+import { ClientMasterDownload } from "@/components/investors/ClientMasterDownload";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { RowActions } from "@/components/common/RowActions";
 import { RecordMenu, RecordMenuSeparator } from "@/components/common/RecordMenu";
@@ -88,6 +89,8 @@ import { ReviewCadenceEditor } from "@/components/investors/ReviewCadenceEditor"
 import { PortalAccessButton } from "@/components/investors/PortalAccessButton";
 import { RecordBusinessImpact } from "@/components/investors/RecordBusinessImpact";
 import { ClientActiveToggle } from "@/components/investors/ClientActiveToggle";
+import { ClientReportButton } from "@/components/investors/ClientReportButton";
+import { CLIENT_REPORT_FLAG } from "@/lib/investors/client-report-sections";
 import { ClientSummaryStrip } from "@/components/investors/ClientSummaryStrip";
 import { ClientReadinessStrip } from "@/components/investors/ClientReadinessStrip";
 import { PanReveal } from "@/components/investors/PanReveal";
@@ -533,6 +536,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             {(can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions)) && (
               <ClientActiveToggle investorId={inv.id} name={inv.name} status={inv.status ?? null} />
             )}
+            {license.featureFlags?.[CLIENT_REPORT_FLAG] === true && (
+              <ClientReportButton investorId={inv.id} clientName={inv.name} />
+            )}
             <RecordMenu>
               <Link href={`/dashboard/review-meetings/new?investorId=${inv.id}`} className={MENU_ITEM}>
                 <CalendarPlus className={MENU_ICON} /> Schedule review meeting
@@ -543,6 +549,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               <AiClientBrief investorId={inv.id} name={inv.name} phone={inv.phone} triggerClassName={MENU_ITEM} />
               <PortalAccessButton investorId={inv.id} triggerClassName={MENU_ITEM} />
               <ChangeLogButton entityType="investor" entityId={inv.id} triggerClassName={MENU_ITEM} />
+              <ClientMasterDownload investorId={inv.id} name={inv.name} triggerClassName={MENU_ITEM} />
               <RelatedListsManager moduleKey="investors-detail" sections={INVESTOR_DETAIL_SECTIONS} triggerClassName={MENU_ITEM} />
               <RecordMenuSeparator />
               {(can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions)) && (

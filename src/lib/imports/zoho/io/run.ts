@@ -35,6 +35,8 @@ export const IO_MODULES = [
   "IO_Contacts", "IO_Leads", "IO_Calls", "IO_Tasks", "IO_Task_Assignment", "IO_Meetings", "IO_Insurance", "IO_Claims", "IO_Notes",
   // WealthMaker's insurance export (Floater / Individual / Motor / Other sheets) — wealthmaker.ts.
   "IO_WM_Insurance",
+  // No records: the Zoho import's expired policies the client renewed → matured (2026-11-25).
+  "IO_Policy_Renewals",
 ] as const;
 export type IoModule = (typeof IO_MODULES)[number];
 
@@ -78,6 +80,7 @@ export async function importIoModule(actor: ImportActor, module: IoModule, recor
     case "IO_Claims":
     case "IO_Notes":
     case "IO_WM_Insurance":
+    case "IO_Policy_Renewals":
       return runOwn(actor, module, records, opts);
   }
 }
@@ -91,7 +94,7 @@ class Rollback extends Error {
 const DAY = 864e5;
 const istToday = (now: Date) => new Date(now.getTime() + 5.5 * 3_600_000).toISOString().slice(0, 10);
 
-async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" | "IO_Notes" | "IO_WM_Insurance", records: ZohoRecord[], opts: Opts): Promise<IoResult> {
+async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" | "IO_Notes" | "IO_WM_Insurance" | "IO_Policy_Renewals", records: ZohoRecord[], opts: Opts): Promise<IoResult> {
   const now = opts.now ?? new Date();
   const run = async (tx: Tx): Promise<IoResult> => {
     const result: IoResult = { dryRun: opts.dryRun, module, totalRows: records.length, created: 0, updated: 0, already: 0, skippedByReason: [], breakdown: [], notes: [] };
@@ -329,6 +332,47 @@ async function runOwn(actor: ImportActor, module: "IO_Insurance" | "IO_Claims" |
         result.created++;
       }
       for (let i = 0; i < rows.length; i += 500) await tx.insert(activities).values(rows.slice(i, i + 500));
+    }
+
+    if (module === "IO_Policy_Renewals") {
+      // The Zoho import (2026-11-20) marked every policy whose period had ended
+      // "lapsed" — lost business — even when the client renewed. Only rows still
+      // carrying that import's own lapse reason are looked at, so a status a
+      // person set is never changed.
+      const lapsed = (await tx.execute(sql`
+        SELECT id, investor_id, policy_type, policy_number, policy_start_date::text AS start,
+               next_premium_due_date::text AS due, COALESCE(remarks, '') AS remarks
+          FROM insurance_policies
+         WHERE tenant_id = ${actor.tenantId}::uuid AND status = 'lapsed'
+           AND details ? 'zohoId' AND lapse_reason LIKE '%(Zoho); no renewal recorded on this policy'
+      `)).rows as Array<{ id: string; investor_id: string; policy_type: string; policy_number: string | null; start: string | null; due: string | null; remarks: string }>;
+      const all = (await tx.execute(sql`
+        SELECT investor_id, policy_type, policy_number, policy_start_date::text AS start
+          FROM insurance_policies
+         WHERE tenant_id = ${actor.tenantId}::uuid AND policy_start_date IS NOT NULL
+      `)).rows as Array<{ investor_id: string; policy_type: string; policy_number: string | null; start: string }>;
+      const byClient = new Map<string, Array<{ policyType: string; startDate: string | null; policyNumber: string }>>();
+      for (const a of all) {
+        const l = byClient.get(a.investor_id) ?? [];
+        l.push({ policyType: a.policy_type, startDate: a.start, policyNumber: a.policy_number ?? "" });
+        byClient.set(a.investor_id, l);
+      }
+      const today = istToday(now);
+      for (const p of lapsed) {
+        const others = (byClient.get(p.investor_id) ?? []).filter((o) => o.policyNumber !== (p.policy_number ?? ""));
+        const st = wmStatus({ policyType: p.policy_type, startDate: p.start, expiryDate: p.due }, others, today);
+        if (st.status !== "matured") { result.already++; continue; }
+        const note = st.renewedBy ? `Renewed: next policy ${st.renewedBy}.` : "Trip over.";
+        count(`${p.policy_type.replace(/_/g, " ")} · lapsed → ${st.renewedBy ? "renewed (matured)" : "trip over (matured)"}`);
+        await tx.execute(sql`
+          UPDATE insurance_policies
+             SET status = 'matured', lapse_reason = NULL,
+                 remarks = ${[p.remarks, note].filter(Boolean).join(" ")}
+           WHERE id = ${p.id}::uuid AND tenant_id = ${actor.tenantId}::uuid
+        `);
+        result.updated++;
+      }
+      result.notes.push("Only policies still carrying the Zoho import's own lapse reason were looked at; a lapsed policy the client did not renew stays lapsed.");
     }
 
     if (module === "IO_WM_Insurance") {

@@ -153,6 +153,8 @@ export function CompactFilterBar({
       else params.set(k, String(v));
     }
     params.delete("page");
+    params.delete("upage"); // a screen with two lists (Meetings) pages each on its own
+    params.delete("ppage");
     router.push(`${pathname}?${params.toString()}`);
     setTimeout(() => setBusy(false), 600);
   }

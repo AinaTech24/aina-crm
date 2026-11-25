@@ -537,6 +537,25 @@ branch head, merge scope, a PAN clash needs an explicit tick). The unit is the
 folio — a folio belongs to one client, so schemes inside it travel with it. To
 fold a whole duplicate record away use Merge Clients (`mergeInvestors`).
 
+## Client master PDF (2026-11-25)
+
+Client page → More → **Download client master** (`ClientMasterDownload.tsx`): a popup says what is always in the
+PDF and offers the optional sections (Meetings, Service requests, Tasks, Emails, Gifts) with their record counts
+(`GET /api/investors/[id]/client-master/summary`); **Download PDF** is
+`GET /api/investors/[id]/client-master/pdf?include=meetings,tasks…&download=1`. Code `lib/investors/client-master/`:
+`types.ts` (pure shapes), `load.ts` (data — the ONLY place that reads the database), `render.ts` (pdf-lib layout, same
+fonts / letterhead as the portfolio statement).
+
+- **Page order**: Client Master (KYC & profile, bank, nominees, joint holder, referrals, risk profile — flows over as many
+  pages as it needs) → Portfolio → Fixed deposits → Cross-sell holdings → Review details → each ticked optional section
+  (one section each) → **Notes, always last**. A table repeats its heading row across pages.
+- **The viewer's rights still apply**: fields their licence hides (`isFieldAllowed`: PAN, mobile, bank, nominee, risk …)
+  are left out as on the client page; an optional section their role cannot see (`available`) is never loaded even if the
+  URL asks for it (`want()` in load.ts). Access is `loadViewableInvestor`. Every download is audited
+  (`investor.client_master_downloaded`, `piiAccessed`) because the PDF carries personal data.
+- Add a section: a field on `ClientMasterData` (types.ts), its query in `load.ts`, its page in `render.ts`;
+  `tests/client-master-pdf.test.ts` counts the pages (`BASE`), so update it when the layout gains one.
+
 ## List columns — order and added fields (2026-11-16)
 
 Every list's **Manage columns** menu (`components/common/ColumnManager.tsx`) can move a column up / down and
@@ -638,6 +657,19 @@ when (India time), by whom — grouped by day, with a filter by field.
 - `GET /api/tasks/[id]/history` follows the same access as opening the task. Tasks that
   predate 0284 show their creation from the task row and a note that earlier edits are not
   itemised. `/api/audit?entityType=task` does NOT check task access — do not build on it.
+
+## Personal targets — Settings → Targets & quota (2026-11-24)
+
+Each team member's FY targets are set in **Settings → Targets & quota** and are exactly the seven cards of the
+dashboard's **My target tracker**: SIP book, Net new SIP, Net business, New clients, Meetings, Review meetings,
+Insurance business (`lib/targets/personal-targets.ts`). One ANNUAL figure each, stored in `kra_targets` — the table
+the tracker, the RM desk and the branch view's per-person figures read (`loadBookTargets`, `PERSON_KEY` in
+`my/window.ts`) — which the tracker phases into a week or month. A blank (or 0) deletes the row: "Not set", never a
+target of zero. `PUT /api/targets { userId, fyTargets }` writes it (managers any member, others only themselves);
+`tests/personal-targets.test.ts` fails if a field's key or label stops matching the tracker. The Team scorecard's
+targets page still edits the same table (it also offers metrics the tracker does not use), but the tracker's
+"Set targets" links point to Settings. The old users-row fields (`annual_target`, `sip_monthly_target`, …) are
+still accepted by the API for the mobile app but are no longer asked for, and nothing copies them across.
 
 ## Excel import — Tasks, Meetings, Service requests (2026-11-24)
 
@@ -817,6 +849,11 @@ Reports → "Bottlenecks — Where Work Waits" (`/dashboard/reports/bottlenecks`
   which the API returns so a second save never duplicates. Assignees are
   notified (`task.assigned`), and team attendees newly added get
   `meeting.attendee_added`.
+
+**Upcoming and Past page on their own** (2026-11-25): the page splits them in SQL (upcoming = scheduled / confirmed
+and still to happen), counts each, and reads 25 rows of each (`upage`, `ppage`; `Pager param=`). The old read took 200
+meetings and showed only the first 50 past ones, with no way to see the rest. Today's agenda has its own query (India
+date). A filter change drops both page params, and each table is keyed by its page so a ticked row never follows you.
 
 The meeting page has no notes box and no Outcome card (removed at the firm's
 request), so completing a meeting no longer creates a "write up your notes"
@@ -1567,8 +1604,11 @@ and `tests/rta-sip-register-import.test.ts`:
   reason; the rejection report knows more column names and skips ₹0 rows; the materialiser is
   NULL-amount safe and looks back by the row's last change, not just its import time.
 - Not fixed: dashboards that read `sip_rejections` vs the transactions ledger can differ; a bounce
-  in both the feed and a rejection report can double-count; the SIP Rejections page is capped at
-  200 rows; the real registrar vocabulary beyond what is listed is unverified without a sample.
+  in both the feed and a rejection report can double-count; the real registrar vocabulary beyond
+  what is listed is unverified without a sample. (The SIP Rejections list was capped at 200 rows with no way to see the rest;
+  since 2026-11-25 it pages 50 at a time with a count of the rows matching the filters, the table is keyed by page so a
+  ticked row never follows you to another page, and "Select all N matching" fetches the ids from `GET /api/sip-rejections/ids`
+  — the page and that route share ONE filter, `lib/sip-rejections/list-filter.ts`; at most 1,000 (the bulk route's limit).)
   A completed file is kept 14 days — re-upload it, or use Re-import on its row, to apply the fixes.
 
 ### The SIP book counted SIPs the registrar had terminated (2026-11-24, Ahpal)

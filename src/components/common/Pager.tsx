@@ -17,7 +17,10 @@ export function Pager({
   totalPages,
   total,
   pageSize,
+  param = "page",
 }: {
+  /** The URL param that holds this list's page — a screen with two lists gives each its own. */
+  param?: string;
   page: number;
   totalPages: number;
   total: number;
@@ -31,10 +34,11 @@ export function Pager({
 
   const go = (n: number) => {
     const sp = new URLSearchParams(params.toString());
-    if (n <= 1) sp.delete("page");
-    else sp.set("page", String(n));
+    if (n <= 1) sp.delete(param);
+    else sp.set(param, String(n));
     const qs = sp.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    // A second list on the screen keeps its place; the main list goes back to the top as before.
+    router.push(qs ? `${pathname}?${qs}` : pathname, param === "page" ? undefined : { scroll: false });
   };
 
   // Compact window of page numbers around the current page.

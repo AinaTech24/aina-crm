@@ -43,6 +43,9 @@ const MEETINGS_COLUMNS = [
 
 export const dynamic = "force-dynamic";
 
+/** Rows per page — the Upcoming and Past lists each page on their own (`upage`, `ppage`). */
+const MEETINGS_PAGE_SIZE = 25;
+
 const TYPE_LABEL: Record<string, string> = {
   portfolio_review: "Portfolio Review",
   goal_review: "Goal Review",
@@ -150,8 +153,8 @@ export default async function ReviewMeetingsPage({
     if (dr) filters.push(dr);
     const whereSql = filters.length ? sql` WHERE ${sql.join(filters, sql` AND `)}` : sql``;
 
-    const meetings = await tx.execute(sql`
-      SELECT m.id, m.investor_id, m.lead_id, m.rm_id,
+    const cols = sql`
+      m.id, m.investor_id, m.lead_id, m.rm_id,
              m.category, m.parent_meeting_id,
              m.meeting_type, m.subject, m.meeting_date,
              m.duration_minutes, m.meeting_mode, m.location_or_link, m.status,
@@ -167,15 +170,65 @@ export default async function ReviewMeetingsPage({
              CASE WHEN i.id IS NOT NULL THEN 'investor'
                   WHEN l.id IS NOT NULL THEN 'lead' END AS party_kind,
              i.pan AS investor_pan, i.segment_tag,
-             u.name AS rm_name
+             u.name AS rm_name`;
+    const joins = sql`
       FROM review_meetings m
       LEFT JOIN investors i ON i.id = m.investor_id
       LEFT JOIN leads l ON l.id = m.lead_id
-      LEFT JOIN users u ON u.id = m.rm_id
-      ${whereSql}
-      ORDER BY ${sortKey === "meeting_asc" ? sql`m.meeting_date ASC` : sql`m.meeting_date DESC`}
-      LIMIT 200
-    `);
+      LEFT JOIN users u ON u.id = m.rm_id`;
+    // Upcoming = still to happen; everything else is Past. Split in SQL so each list
+    // can be counted and paged on its own.
+    const isUpcoming = sql`(m.status IN ('scheduled','confirmed') AND m.meeting_date >= now())`;
+    const pastOrder = sortKey === "meeting_asc" ? sql`m.meeting_date ASC, m.id` : sql`m.meeting_date DESC, m.id`;
+
+    const counts = (
+      await tx.execute(sql`
+        SELECT COUNT(*) FILTER (WHERE ${isUpcoming})::int AS upcoming,
+               COUNT(*) FILTER (WHERE NOT ${isUpcoming})::int AS past
+        ${joins} ${whereSql}
+      `)
+    ).rows[0] as { upcoming?: number; past?: number } | undefined;
+    const upcomingTotal = Number(counts?.upcoming ?? 0);
+    const pastTotal = Number(counts?.past ?? 0);
+    const upcomingPages = Math.max(1, Math.ceil(upcomingTotal / MEETINGS_PAGE_SIZE));
+    const pastPages = Math.max(1, Math.ceil(pastTotal / MEETINGS_PAGE_SIZE));
+    const upcomingPage = Math.min(Math.max(1, Math.floor(Number(sp.upage)) || 1), upcomingPages);
+    const pastPage = Math.min(Math.max(1, Math.floor(Number(sp.ppage)) || 1), pastPages);
+
+    // Kanban draws every meeting on one board (capped), the table draws one page of each list.
+    const kanbanRows =
+      view === "kanban"
+        ? (await tx.execute(sql`SELECT ${cols} ${joins} ${whereSql} ORDER BY ${pastOrder} LIMIT 200`)).rows
+        : [];
+    const upcomingRows =
+      view === "kanban"
+        ? []
+        : (
+            await tx.execute(sql`
+              SELECT ${cols} ${joins} ${whereSql} AND ${isUpcoming}
+              ORDER BY m.meeting_date ASC, m.id
+              LIMIT ${MEETINGS_PAGE_SIZE} OFFSET ${(upcomingPage - 1) * MEETINGS_PAGE_SIZE}
+            `)
+          ).rows;
+    const pastRows =
+      view === "kanban"
+        ? []
+        : (
+            await tx.execute(sql`
+              SELECT ${cols} ${joins} ${whereSql} AND NOT ${isUpcoming}
+              ORDER BY ${pastOrder}
+              LIMIT ${MEETINGS_PAGE_SIZE} OFFSET ${(pastPage - 1) * MEETINGS_PAGE_SIZE}
+            `)
+          ).rows;
+    // Today's agenda: meetings still on for today (India date), under the same filters.
+    const todayRows = (
+      await tx.execute(sql`
+        SELECT ${cols} ${joins} ${whereSql}
+          AND m.status IN ('scheduled','confirmed','in_progress')
+          AND (m.meeting_date AT TIME ZONE 'Asia/Kolkata')::date = (now() AT TIME ZONE 'Asia/Kolkata')::date
+        ORDER BY m.meeting_date ASC
+      `)
+    ).rows;
 
     const stats = await tx.execute(sql`
       SELECT
@@ -199,27 +252,25 @@ export default async function ReviewMeetingsPage({
       ORDER BY name ASC
     `);
     // Values of the fields this person added, for the meetings on this page only.
-    const extraValues = view === "kanban" ? {} : await loadMeetingExtra(tx, (meetings.rows as Array<{ id: unknown }>).map((r) => String(r.id)), extraKeys, extraAllowed);
-    return { rows: meetings.rows as unknown as MeetingRow[], stats: s, rms: rmRows.rows as Array<Record<string, any>>, extraValues };
+    const extraValues =
+      view === "kanban"
+        ? {}
+        : await loadMeetingExtra(tx, [...upcomingRows, ...pastRows].map((r) => String((r as { id: unknown }).id)), extraKeys, extraAllowed);
+    return {
+      kanban: kanbanRows as unknown as MeetingRow[],
+      upcoming: upcomingRows as unknown as MeetingRow[],
+      past: pastRows as unknown as MeetingRow[],
+      todays: todayRows as unknown as MeetingRow[],
+      upcomingTotal, pastTotal, upcomingPage, pastPage,
+      stats: s, rms: rmRows.rows as Array<Record<string, any>>, extraValues,
+    };
   });
 
   const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
 
-  const upcoming = data.rows
-    .filter((r) => ["scheduled", "confirmed"].includes(r.status) && new Date(r.meeting_date) >= new Date())
-    // Soonest first — the query orders DESC (right for "past"), but "upcoming"
-    // must lead with the NEXT meeting, not the furthest-out one.
-    .sort((a, b) => new Date(a.meeting_date).getTime() - new Date(b.meeting_date).getTime());
-  const past = data.rows.filter(
-    (r) => !["scheduled", "confirmed"].includes(r.status) || new Date(r.meeting_date) < new Date()
-  );
-  const todays = data.rows
-    .filter(
-      (r) =>
-        ["scheduled", "confirmed", "in_progress"].includes(r.status) &&
-        new Date(r.meeting_date).toDateString() === new Date().toDateString()
-    )
-    .sort((a, b) => new Date(a.meeting_date).getTime() - new Date(b.meeting_date).getTime());
+  const upcoming = data.upcoming;
+  const past = data.past;
+  const todays = data.todays;
 
   // The columns in the person's order: the ones the tables draw, then the fields
   // they added. The date stays first (the cancel / delete slot stays last).
@@ -297,11 +348,16 @@ export default async function ReviewMeetingsPage({
       )}
 
       {view === "kanban" ? (
-        <MeetingsKanban meetings={data.rows} />
+        <MeetingsKanban meetings={data.kanban} />
       ) : (
         <MeetingsBulkTable
           upcoming={upcoming.map(withExtra)}
           past={past.map(withExtra)}
+          upcomingTotal={data.upcomingTotal}
+          pastTotal={data.pastTotal}
+          upcomingPage={data.upcomingPage}
+          pastPage={data.pastPage}
+          pageSize={MEETINGS_PAGE_SIZE}
           rmOptions={rmOptions}
           colOrder={colOrder}
           extraCols={extraCols}

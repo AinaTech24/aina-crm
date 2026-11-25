@@ -47,10 +47,12 @@ export async function GET(req: NextRequest) {
 const Body = z.object({
   fromId: uuid,
   toId: uuid,
-  folioIds: z.array(uuid).min(1).max(500),
+  folioIds: z.array(uuid).max(500),
   moveHistory: z.boolean().default(true),
   allowPanMismatch: z.boolean().optional(),
-});
+  /** Client fields the receiving profile takes from the other (the field-value picks). */
+  fieldPicks: z.array(z.string().max(60)).max(100).optional(),
+}).refine((b) => b.folioIds.length > 0 || (b.fieldPicks?.length ?? 0) > 0, { message: "choose a folio or a field value" });
 
 export async function POST(req: NextRequest) {
   try {

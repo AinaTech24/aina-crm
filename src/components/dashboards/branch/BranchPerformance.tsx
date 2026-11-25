@@ -118,7 +118,7 @@ export function BranchTargets({
       {!anyTarget && (
         <Unavailable>
           No {fyLabel} targets are recorded for {personal ? "you" : oneRm ?? "this branch"}, so there is nothing to measure against.
-          Actuals are still shown. {personal || oneRm ? "Personal targets are set on the Team scorecard." : "Branch targets are set in Settings → Targets & quota."}
+          Actuals are still shown. {personal || oneRm ? "Personal targets are set in Settings → Targets & quota." : "Branch targets are set in Settings → Targets & quota."}
         </Unavailable>
       )}
       <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -296,7 +296,7 @@ export function RmTargetMatrix({
       title="RM target matrix"
       subtitle={`Each RM against each of their ${fyLabel} targets for ${periodLabel}.`}
       icon={<ClipboardCheck className="size-4" />}
-      action={<SectionLink href="/dashboard/team/scorecard/targets">Set targets</SectionLink>}
+      action={<SectionLink href="/dashboard/settings/targets">Set targets</SectionLink>}
       note={`Green: target achieved. Amber: at or above ${formatPercent(near * 100, 0)} of target. Red: below that. The ${formatPercent(near * 100, 0)} band is set by the administrator in Settings → Dashboard thresholds; it is not fixed in code.`}
     >
       <div id="rm-targets" className="scroll-mt-40" />
