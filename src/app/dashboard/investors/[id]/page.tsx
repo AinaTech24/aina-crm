@@ -37,6 +37,7 @@ import { TASK_DEAD } from "@/lib/metrics/tasks";
 import { SR_CLOSED } from "@/lib/metrics/service";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
+import { ClientMasterDownload } from "@/components/investors/ClientMasterDownload";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { RowActions } from "@/components/common/RowActions";
 import { RecordMenu, RecordMenuSeparator } from "@/components/common/RecordMenu";
@@ -548,6 +549,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               <AiClientBrief investorId={inv.id} name={inv.name} phone={inv.phone} triggerClassName={MENU_ITEM} />
               <PortalAccessButton investorId={inv.id} triggerClassName={MENU_ITEM} />
               <ChangeLogButton entityType="investor" entityId={inv.id} triggerClassName={MENU_ITEM} />
+              <ClientMasterDownload investorId={inv.id} name={inv.name} triggerClassName={MENU_ITEM} />
               <RelatedListsManager moduleKey="investors-detail" sections={INVESTOR_DETAIL_SECTIONS} triggerClassName={MENU_ITEM} />
               <RecordMenuSeparator />
               {(can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions)) && (
