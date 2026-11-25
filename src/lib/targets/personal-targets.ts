@@ -10,6 +10,15 @@
  * Pure.
  */
 
+/**
+ * The part of a yearly COUNT target that falls due by now (10 clients x 65.5% of the year), rounded UP to
+ * a whole one: a client or a meeting cannot be 0.452 of one, so 6.548 is 7. A hair is taken off first so an
+ * exact whole (12 x 50% = 6.0000000001) is not pushed to 7. Money targets are not rounded.
+ */
+export function wholePhasedCount(annual: number, phase: number): number {
+  return Math.ceil(annual * phase - 1e-6);
+}
+
 export type PersonalTargetUnit = "inr" | "count";
 
 export type PersonalTargetMetric = {

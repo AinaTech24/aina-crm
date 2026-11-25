@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { PERSONAL_TARGET_KEYS, PERSONAL_TARGET_METRICS, cleanPersonalTargets } from "@/lib/targets/personal-targets";
+import { PERSONAL_TARGET_KEYS, PERSONAL_TARGET_METRICS, cleanPersonalTargets, wholePhasedCount } from "@/lib/targets/personal-targets";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
@@ -62,5 +62,20 @@ describe("cleanPersonalTargets", () => {
 
   it("rounds money to paise", () => {
     expect(cleanPersonalTargets({ sip_book: 100.123456 }).set.sip_book).toBe(100.12);
+  });
+});
+
+describe("wholePhasedCount — a count target falls due in whole ones, rounded up", () => {
+  it("rounds 6.548 clients up to 7 and 32.74 meetings up to 33", () => {
+    expect(wholePhasedCount(10, 0.65479)).toBe(7);
+    expect(wholePhasedCount(50, 0.65479)).toBe(33);
+  });
+  it("leaves an exact whole alone", () => {
+    expect(wholePhasedCount(12, 0.5)).toBe(6);
+    expect(wholePhasedCount(10, 1)).toBe(10);
+    expect(wholePhasedCount(365, 1 / 365)).toBe(1);
+  });
+  it("is a whole day-one target of 1 for any small yearly target", () => {
+    expect(wholePhasedCount(10, 0.0027)).toBe(1);
   });
 });

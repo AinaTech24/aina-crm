@@ -27,6 +27,7 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { formatDate } from "@/lib/format";
+import { wholePhasedCount } from "@/lib/targets/personal-targets";
 
 /** A raw SQL result row. Postgres hands numerics back as strings, so every
  *  field goes through num() / numOrNull() before it is used. */
@@ -481,7 +482,8 @@ export async function loadTargetMeters(
         t = null;
         missing = "Not phased";
       } else {
-        t = annual * horizon.phase;
+        // A count (clients, meetings) falls due in whole ones, rounded up; money is left as it is.
+        t = format === "count" ? wholePhasedCount(annual, horizon.phase) : annual * horizon.phase;
       }
     }
     return {
