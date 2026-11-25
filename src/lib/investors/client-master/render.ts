@@ -11,7 +11,7 @@
 
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import { drawContinuationHeader, drawPageNumbers, drawReportHeader } from "@/lib/pdf/report-header";
-import { embedInterFonts, pdfSanitize } from "@/lib/pdf/fonts";
+import { embedPdfFonts, pdfSanitize } from "@/lib/pdf/fonts";
 import { embedLogo, hexToRgb } from "@/lib/finance/valuation-pdf";
 import { OPTIONAL_KEYS, type ClientMasterData, type PdfCell, type PdfKv, type PdfTable } from "./types";
 
@@ -35,7 +35,7 @@ const USABLE = W - 2 * M;
 
 export async function renderClientMasterPdf(d: ClientMasterData): Promise<Buffer> {
   const doc = await PDFDocument.create();
-  const { font, bold, rupeeOk } = await embedInterFonts(doc);
+  const { font, bold, rupeeOk } = await embedPdfFonts(doc);
   // A masked number arrives as bullets ("••••4821"); the PDF's font has them, the sanitiser does not.
   const san = (s: string) => pdfSanitize(String(s ?? "").replace(/•/g, "X"), rupeeOk);
   const primary = hexToRgb(d.brand.primaryColor);

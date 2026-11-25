@@ -549,8 +549,8 @@ fonts / letterhead as the portfolio statement).
 - **Page order**: Client Master (KYC & profile, bank, nominees, joint holder, referrals, risk profile — flows over as many
   pages as it needs) → Portfolio → Fixed deposits → Cross-sell holdings → Review details → each ticked optional section
   (one section each) → **Notes, always last**. A table repeats its heading row across pages.
-- **Look**: one sans-serif family, Inter (`embedInterFonts`, `lib/pdf/fonts/`, OFL — regular + semibold, embedded WHOLE:
-  fontkit's subsetter dropped glyphs from these files). Sections are `SECTION_GAP` apart; a table has a 22pt heading band and rows
+- **Look**: the shared PDF font (`embedPdfFonts`, DejaVu Sans) — the firm asked for the font NOT to change (a switch to Inter was
+  tried and reverted 2026-11-25; do not retry). Sections are `SECTION_GAP` apart; a table has a 22pt heading band and rows
   with their own padding and a rule at each row's bottom edge (never through the next row's text); an empty table is one quiet box,
   not a heading over an empty row; a column is widened to its longest unbreakable word (`need` in `table()`) so numbers and folios are
   never cut mid-way. Rules are stroked lines, not 1pt rectangles (those show seams in some viewers).
