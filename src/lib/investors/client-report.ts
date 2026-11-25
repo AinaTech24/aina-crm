@@ -80,7 +80,7 @@ export async function buildClientReport(
     if (e?.status === 403) return null;
     throw e;
   });
-  if (!inv || (inv as any).deletedAt) return null;
+  if (!inv || inv.deletedAt) return null;
 
   const allow = (f: string) => isFieldAllowed(license, "investor", f);
   const show = {
@@ -96,7 +96,7 @@ export async function buildClientReport(
   };
   const want = new Set(sections);
   const on = (k: ClientReportSection) => want.has(k);
-  const i = inv as any;
+  const i: Row = inv;
   const tenantId = session.tenantId;
   const blocks: ReportBlock[] = [];
 

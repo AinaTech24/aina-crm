@@ -66,10 +66,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           action: "investor.report_pdf",
           entityType: "investor",
           entityId: id,
-          piiAccessed: report.pii as any,
+          piiAccessed: report.pii,
           reason: `Client report PDF (${clientCopy ? "client copy" : "complete"}): ${sections.join(", ")}`,
-        } as any);
-        return { report, tenant: t as any };
+        });
+        return { report, tenant: t };
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles },
     );
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     const safe = report.clientName.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "").slice(0, 40) || "client";
-    return new NextResponse(pdf as any, {
+    return new NextResponse(new Uint8Array(pdf), {
       status: 200,
       headers: {
         "content-type": "application/pdf",
