@@ -14,7 +14,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
  * queries keep working.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -40,6 +40,18 @@ import { notify } from "@/components/ui/Toast";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { RequestTable, emptyLine, lineNum, type FamilyMember, type LineValues } from "@/components/tasks/RequestTable";
+import {
+  TASK_REQUEST_TABLE_FLAG,
+  channelOfLines,
+  checklistForLines,
+  lineColumns,
+  lineProblem,
+  taskTypeForLines,
+  titleForLines,
+  totalOfLines,
+  type RequestLine,
+} from "@/lib/tasks/request-lines";
 
 type TaskTemplate = {
   id: string;
@@ -100,6 +112,14 @@ export default function NewTaskPage() {
   const [redemptionRoute, setRedemptionRoute] = useState(false);
   /** The firm's `insuranceTasks` flag: the Insurance category. */
   const [insuranceTasks, setInsuranceTasks] = useState(false);
+  /** The firm's `taskRequestTable` flag: requests are rows in a table (any mix, any family member). */
+  const [tableOn, setTableOn] = useState(false);
+  /** Table mode: General, or Client requests (the table). */
+  const [reqMode, setReqMode] = useState(false);
+  const [lines, setLines] = useState<LineValues[]>([]);
+  const [members, setMembers] = useState<FamilyMember[]>([]);
+  /** The title the table last suggested — replaced as rows change, never one the user typed. */
+  const lastAutoTitle = useRef("");
   useEffect(() => {
     (async () => {
       try {
@@ -108,6 +128,8 @@ export default function NewTaskPage() {
         const j = await r.json();
         setRedemptionRoute(j?.license?.featureFlags?.redemptionOnlineOffline === true);
         setInsuranceTasks(j?.license?.featureFlags?.[INSURANCE_TASKS_FLAG] === true);
+        const table = j?.license?.featureFlags?.[TASK_REQUEST_TABLE_FLAG] === true;
+        setTableOn(table);
       } catch {
         /* the flag is optional — the ordinary form still works */
       }
@@ -155,7 +177,11 @@ export default function NewTaskPage() {
     // A template whose type is a financial / non-financial request opens that
     // request in the picker (an old bare "financial" opens the category only).
     const tplCategory = categoryOfType(t.taskType);
-    if (t.taskType && tplCategory !== "general") {
+    if (tableOn && t.taskType && tplCategory !== "general") {
+      // Table mode: the template's request becomes the first row.
+      setReqMode(true);
+      setLines([emptyLine(form.relatedInvestorId, REQUEST_TYPE_BY_KEY[t.taskType] ? t.taskType : "")]);
+    } else if (t.taskType && tplCategory !== "general") {
       setCategory(tplCategory);
       setRequestKey(REQUEST_TYPE_BY_KEY[t.taskType] ? t.taskType : "");
     }
@@ -277,12 +303,117 @@ export default function NewTaskPage() {
   }
 
   function pickClient(id: string, name: string) {
+    if (tableOn) void loadMembers(id, name);
     setForm((s) => ({
       ...s,
       relatedInvestorId: id,
       relatedInvestorName: name,
       title: requestKey && titleIsAuto(s.title, requestKey, s.relatedInvestorName) ? autoTitle(requestKey, name) : s.title,
     }));
+  }
+
+  /** The client and their family, for the table's Member column. Rows for
+   *  someone no longer in the list move to the client. */
+  async function loadMembers(id: string, name: string) {
+    let list: FamilyMember[] = id ? [{ id, name, role: "", isSelf: true }] : [];
+    if (id) {
+      try {
+        const r = await fetch(`/api/investors/${id}/family-members`);
+        if (r.ok) {
+          const j = await r.json();
+          if (Array.isArray(j.members) && j.members.length) list = j.members;
+        }
+      } catch {
+        /* the client alone still works */
+      }
+    }
+    setMembers(list);
+    const ids = new Set(list.map((m) => m.id));
+    setLines((ls) => ls.map((l) => (ids.has(l.investorId) ? l : { ...l, investorId: id })));
+  }
+
+  function changeReqMode(on: boolean) {
+    if (on === reqMode) return;
+    setReqMode(on);
+    if (on && lines.length === 0) setLines([emptyLine(form.relatedInvestorId)]);
+    if (!on) {
+      if (autoChecklistKey) {
+        setChecklist([]);
+        setAutoChecklistKey(null);
+      }
+      if (!titleTouched && form.title === lastAutoTitle.current) set("title", "");
+    }
+  }
+
+  // Table mode starts with one empty row.
+  useEffect(() => {
+    if (tableOn && reqMode && lines.length === 0) setLines([emptyLine(form.relatedInvestorId)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableOn, reqMode]);
+
+  // Table mode: the suggested title and sub-tasks follow the rows — until the
+  // user types a title or edits the list themselves.
+  const lineSig = lines.map((l) => `${l.investorId}:${l.requestKey}:${l.mode}`).join("|");
+  useEffect(() => {
+    if (!tableOn || !reqMode) return;
+    const picked = lines.filter((l) => l.requestKey).map((l) => ({ investorId: l.investorId, requestKey: l.requestKey, mode: l.mode || undefined }));
+    const title = titleForLines(picked, form.relatedInvestorName);
+    setForm((s) => {
+      if (titleTouched || (s.title.trim() && s.title !== lastAutoTitle.current)) return s;
+      lastAutoTitle.current = title;
+      return { ...s, title };
+    });
+    if (checklist.length === 0 || autoChecklistKey) {
+      const items = checklistForLines(picked, { redemptionRoute });
+      setChecklist(items.map((text) => ({ id: crypto.randomUUID(), text, done: false })));
+      setAutoChecklistKey(items.length ? "table" : null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineSig, form.relatedInvestorName, reqMode, tableOn, redemptionRoute]);
+
+  /** The table's rows as the API takes them, or an error to show. */
+  function tableLines(): { lines: RequestLine[] } | { error: string } {
+    if (!form.relatedInvestorId) return { error: "Pick the client these requests are for." };
+    const used = lines.filter((l) => l.requestKey || l.schemeName.trim() || l.amount.trim());
+    if (!used.length) return { error: "Add at least one request." };
+    const out: RequestLine[] = [];
+    for (const [i, l] of used.entries()) {
+      const cols = lineColumns(REQUEST_TYPE_BY_KEY[l.requestKey]);
+      const amount = lineNum(l.amount);
+      const units = lineNum(l.units);
+      if ((cols.has("amount") && l.amount.trim() && amount == null) || (cols.has("units") && !l.allUnits && l.units.trim() && units == null)) {
+        return { error: `Row ${i + 1}: enter amounts and units as numbers.` };
+      }
+      const who = l.investorId || form.relatedInvestorId;
+      const line: RequestLine = {
+        investorId: who,
+        investorName: members.find((m) => m.id === who)?.name ?? form.relatedInvestorName,
+        requestKey: l.requestKey,
+        ...(cols.has("scheme") && l.schemeName.trim()
+          ? {
+              schemeName: l.schemeName.trim(),
+              ...(l.schemeCode ? { schemeCode: l.schemeCode } : {}),
+              ...(l.amcName ? { amcName: l.amcName } : {}),
+              ...(l.assetCategory ? { assetCategory: l.assetCategory } : {}),
+            }
+          : {}),
+        ...(cols.has("fromScheme") && l.fromSchemeName.trim()
+          ? { fromSchemeName: l.fromSchemeName.trim(), ...(l.fromSchemeCode ? { fromSchemeCode: l.fromSchemeCode } : {}) }
+          : {}),
+        ...(cols.has("amount") && amount != null ? { amount } : {}),
+        ...(cols.has("units") && l.allUnits ? { allUnits: true } : {}),
+        ...(cols.has("units") && !l.allUnits && units != null ? { units } : {}),
+        ...(cols.has("folio") && l.folio.trim() ? { folio: l.folio.trim() } : {}),
+        ...(cols.has("sipDay") && l.sipDay ? { sipDay: l.sipDay } : {}),
+        ...(cols.has("frequency") && l.frequency ? { frequency: l.frequency } : {}),
+        ...(cols.has("mode") && l.mode ? { mode: l.mode } : {}),
+        ...(l.note.trim() ? { note: l.note.trim() } : {}),
+      };
+      const problem = lineProblem(line, i);
+      if (problem) return { error: problem };
+      out.push(line);
+    }
+    return { lines: out };
   }
 
   async function save() {
@@ -292,6 +423,11 @@ export default function NewTaskPage() {
     }
     if (form.type === "custom" && !form.customType.trim()) {
       setErr("Enter a name for the custom task type.");
+      return;
+    }
+    const table = tableOn && reqMode ? tableLines() : null;
+    if (table && "error" in table) {
+      setErr(table.error);
       return;
     }
     const req = requestKey ? REQUEST_TYPE_BY_KEY[requestKey] : undefined;
@@ -410,6 +546,15 @@ export default function NewTaskPage() {
             : {}),
         };
       }
+      // The request table: the task's type, total and mode come from its rows.
+      if (table && "lines" in table) {
+        payload.type = taskTypeForLines(table.lines);
+        const total = totalOfLines(table.lines);
+        if (total != null) payload.boValue = total;
+        const channel = channelOfLines(table.lines);
+        if (channel) payload.boChannel = channel;
+        payload.request = { lines: table.lines };
+      }
       if (form.relatedInvestorId) payload.relatedInvestorId = form.relatedInvestorId;
       if (form.relatedLeadId) payload.relatedLeadId = form.relatedLeadId;
       if (form.relatedMeetingId) payload.relatedMeetingId = form.relatedMeetingId;
@@ -425,7 +570,9 @@ export default function NewTaskPage() {
         return;
       }
       // Say what happened to the Business entry a financial request books.
-      if (j.businessEntryId) {
+      if (Array.isArray(j.businessEntryIds) && j.businessEntryIds.length > 1) {
+        notify.success(`Booked ${j.businessEntryIds.length} Business entries as drafts (one per client) — confirmed when the task is completed.`, "Task created");
+      } else if (j.businessEntryId) {
         notify.success("Booked in Business entries as a draft — it is confirmed when the task is completed.", "Task created");
       } else if (j.businessNotBooked === "not_allowed") {
         notify.warning("Task created, but your role cannot book Business entries — ask Operations to add it.", "Not booked");
@@ -438,7 +585,7 @@ export default function NewTaskPage() {
 
   const advancedTouched =
     !!form.description.trim() ||
-    (category === "general" && form.type !== "follow_up") ||
+    (category === "general" && !reqMode && form.type !== "follow_up") ||
     form.reminder !== "none" ||
     form.requiresApproval ||
     !!form.recurrence ||
@@ -462,7 +609,7 @@ export default function NewTaskPage() {
 
   return (
     <div
-      className="space-y-4 max-w-3xl mx-auto"
+      className={`space-y-4 mx-auto ${tableOn && reqMode ? "max-w-6xl" : "max-w-3xl"}`}
       onKeyDown={(e) => {
         // Ctrl/Cmd+Enter saves from anywhere in the form.
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !busy && form.title.trim()) {
@@ -538,7 +685,7 @@ export default function NewTaskPage() {
         <div className="block">
           <div className="text-xs font-medium mb-1">
             For client{" "}
-            {category === "general" ? (
+            {category === "general" && !(tableOn && reqMode) ? (
               <span className="ml-1 text-2xs text-muted-foreground font-normal">· optional</span>
             ) : (
               <span className="text-rose-600">*</span>
@@ -568,6 +715,35 @@ export default function NewTaskPage() {
           />
         </label>
 
+        {tableOn ? (
+          <div className="space-y-3">
+            <div>
+              <div className="mb-1 text-xs font-medium">Type of task</div>
+              <div className="inline-flex gap-0.5 rounded-lg border border-border bg-card p-0.5" role="radiogroup" aria-label="Type of task">
+                {([[false, "General"], [true, "Client requests"]] as const).map(([on, label]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="radio"
+                    aria-checked={reqMode === on}
+                    onClick={() => changeReqMode(on)}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition ${reqMode === on ? "bg-primary text-primary-foreground" : "hover:bg-secondary"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {reqMode && (
+              <RequestTable
+                lines={lines}
+                members={members.length ? members : form.relatedInvestorId ? [{ id: form.relatedInvestorId, name: form.relatedInvestorName, role: "", isSelf: true }] : []}
+                insurance={insuranceTasks}
+                onChange={setLines}
+              />
+            )}
+          </div>
+        ) : (
         <RequestPicker
           category={category}
           requestKey={requestKey}
@@ -579,6 +755,7 @@ export default function NewTaskPage() {
           routeBelow={redemptionRoute}
           insurance={insuranceTasks}
         />
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="block">
@@ -706,7 +883,7 @@ export default function NewTaskPage() {
 
             {/* General tasks only — financial and non-financial requests are
                 chosen at the top of the form, where they bring their own fields. */}
-            {category === "general" && (
+            {category === "general" && !reqMode && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
                 <div className="text-xs font-medium mb-1">Kind of general task</div>

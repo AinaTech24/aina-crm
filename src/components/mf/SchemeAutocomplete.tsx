@@ -51,6 +51,7 @@ export function SchemeAutocomplete({
   allowFreeText = false,
   id,
   "aria-describedby": describedBy,
+  floating = false,
 }: {
   onSelect: (s: SchemePick) => void;
   /** Fires on every keystroke — only meaningful with `allowFreeText`. */
@@ -69,6 +70,8 @@ export function SchemeAutocomplete({
   allowFreeText?: boolean;
   id?: string;
   "aria-describedby"?: string;
+  /** Draw the list in a fixed layer, so a scrolling table cell does not clip it. */
+  floating?: boolean;
 }) {
   const [q, setQ] = useState(defaultValue);
   const [picked, setPicked] = useState(defaultValue);
@@ -152,6 +155,27 @@ export function SchemeAutocomplete({
   const sizes = size === "sm" ? "h-8 text-xs pl-8 pr-2.5" : "h-9 text-sm pl-9 pr-3";
   const showList = open && (q.trim().length >= 2 || (source === "master" && !!amc));
 
+  // Floating: the list follows the input in viewport coordinates.
+  const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);
+  useEffect(() => {
+    if (!floating || !showList) return;
+    const place = () => {
+      const r = ref.current?.getBoundingClientRect();
+      if (!r) return;
+      const width = Math.min(Math.max(r.width, 360), window.innerWidth - 16);
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+      const below = window.innerHeight - r.bottom;
+      setPos(below < 300 && r.top > below ? { left, width, bottom: window.innerHeight - r.top + 4 } : { left, width, top: r.bottom + 4 });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [floating, showList]);
+
   return (
     <div ref={ref} className={`relative ${className}`}>
       <div className="relative">
@@ -178,7 +202,9 @@ export function SchemeAutocomplete({
       </div>
 
       {showList && (
-        <ul className="absolute left-0 right-0 top-full mt-1 z-50 max-h-72 overflow-y-auto scrollbar-thin card-elevated bg-card p-1 animate-scale-in">
+        <ul
+          style={floating && pos ? { position: "fixed", left: pos.left, width: pos.width, top: pos.top ?? "auto", bottom: pos.bottom ?? "auto", right: "auto", marginTop: 0 } : undefined}
+          className="absolute left-0 right-0 top-full mt-1 z-50 max-h-72 overflow-y-auto scrollbar-thin card-elevated bg-card p-1 animate-scale-in">
           {results.length === 0 && !busy && (
             <li className="px-2.5 py-2 text-xs text-muted-foreground">
               {masterEmpty && source === "master" ? (

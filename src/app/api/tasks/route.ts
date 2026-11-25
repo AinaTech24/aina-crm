@@ -13,7 +13,9 @@ import { mobileTaskScope } from "@/lib/mobile/access";
 import { assertAssigneeInBranch, assertMobileAssignee, assertMobileSubjects } from "@/lib/mobile/record-access";
 import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { tasks, users, investors, leads } from "@/db/schema";
-import { bookBusinessFromTask } from "@/lib/tasks/book-business";
+import { bookBusinessFromLines, bookBusinessFromTask } from "@/lib/tasks/book-business";
+import { REQUEST_TYPE_BY_KEY } from "@/lib/tasks/request-types";
+import { investorScopeSql } from "@/lib/investors/access";
 import { subTaskAssignedToSql, taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
 
 export const dynamic = "force-dynamic";
@@ -103,10 +105,37 @@ const Body = z.object({
             units: z.number().min(0).optional(),
             allUnits: z.boolean().optional(),
             folio: z.string().max(60).optional(),
-      /** KYC / KYC update: which KYC the client will do. */
-      kycMode: z.enum(["online", "physical"]).optional(),
             sipDay: z.string().regex(/^([1-9]|[12]\d|2[0-8])$/).optional(),
             frequency: z.enum(["weekly", "monthly", "quarterly", "half_yearly", "yearly"]).optional(),
+          }),
+        )
+        .max(50)
+        .optional(),
+      /** KYC / KYC update: which KYC the client will do. */
+      kycMode: z.enum(["online", "physical"]).optional(),
+      /** The request table (lib/tasks/request-lines, flag taskRequestTable):
+       *  one row per request, each for the task's client or a member of
+       *  their family. */
+      lines: z
+        .array(
+          z.object({
+            investorId: z.string().uuid(),
+            investorName: z.string().max(200),
+            requestKey: z.string().max(60),
+            schemeName: z.string().max(250).optional(),
+            schemeCode: z.string().max(40).optional(),
+            amcName: z.string().max(150).optional(),
+            assetCategory: z.string().max(150).optional(),
+            fromSchemeName: z.string().max(250).optional(),
+            fromSchemeCode: z.string().max(40).optional(),
+            amount: z.number().min(0).max(1e13).optional(),
+            units: z.number().min(0).optional(),
+            allUnits: z.boolean().optional(),
+            folio: z.string().max(60).optional(),
+            sipDay: z.string().regex(/^([1-9]|[12]\d|2[0-8])$/).optional(),
+            frequency: z.enum(["weekly", "monthly", "quarterly", "half_yearly", "yearly"]).optional(),
+            mode: z.enum(["online", "offline", "physical"]).optional(),
+            note: z.string().max(300).optional(),
           }),
         )
         .max(50)
@@ -320,7 +349,40 @@ export async function POST(req: NextRequest) {
       // A financial request with a business mapping books its Business entry
       // (draft, the client's RM) from the same scheme rows — Operations never
       // keys it twice. lib/tasks/book-business.
-      const booking = body.request?.rows?.length
+      // The request table: every row is for the task's client or a member of
+      // that client's family, one the caller can open; names come from the
+      // record, never the browser. Its business is booked per member.
+      const lines = body.request?.lines?.length ? body.request.lines : null;
+      if (lines) {
+        if (!body.relatedInvestorId) throw Object.assign(new Error("pick the client these requests are for"), { status: 400 });
+        if (lines.some((l) => !REQUEST_TYPE_BY_KEY[l.requestKey])) throw Object.assign(new Error("unknown request type"), { status: 400 });
+        const ids = [...new Set([body.relatedInvestorId, ...lines.map((l) => l.investorId)])];
+        const scope = await investorScopeSql(tx, session, "i");
+        const ok = (
+          await tx.execute(sql`
+            SELECT i.id, i.name FROM investors i
+             WHERE i.tenant_id = ${session.tenantId}::uuid
+               AND i.id IN (${sql.join(ids.map((x) => sql`${x}::uuid`), sql`, `)})
+               AND i.deleted_at IS NULL AND i.merged_into_id IS NULL
+               AND ${scope}
+               AND (i.id = ${body.relatedInvestorId}::uuid
+                    OR i.family_id = (SELECT m.family_id FROM investors m WHERE m.id = ${body.relatedInvestorId}::uuid AND m.tenant_id = ${session.tenantId}::uuid))`)
+        ).rows as Array<{ id: string; name: string }>;
+        const names = new Map(ok.map((r) => [r.id, r.name]));
+        if (!names.has(body.relatedInvestorId) || lines.some((l) => !names.has(l.investorId))) {
+          throw Object.assign(new Error("a row is for someone outside this client's family"), { status: 400 });
+        }
+        for (const l of lines) l.investorName = names.get(l.investorId)!;
+      }
+      const lineBooking = lines
+        ? await bookBusinessFromLines(
+            tx,
+            { tenantId: session.tenantId, userId: session.userId, roles: session.roles, clientMeta: meta },
+            { taskId: id, title: body.title, lines },
+          )
+        : null;
+
+      const booking = !lines && body.request?.rows?.length
         ? await bookBusinessFromTask(
             tx,
             { tenantId: session.tenantId, userId: session.userId, roles: session.roles, clientMeta: meta },
@@ -384,6 +446,10 @@ export async function POST(req: NextRequest) {
             if (Object.keys(r).length) m.request = r;
           }
           if (booking?.booked) m.businessEntryId = booking.entryId;
+          if (lineBooking?.entryIds.length) {
+            m.businessEntryId = lineBooking.entryIds[0];
+            m.businessEntryIds = lineBooking.entryIds;
+          }
           if (templateId) m.templateId = templateId;
           return Object.keys(m).length ? m : undefined;
         })(),
@@ -439,6 +505,7 @@ export async function POST(req: NextRequest) {
       return {
         id,
         ...(booking ? { businessEntryId: booking.booked ? booking.entryId : null, businessNotBooked: booking.booked ? undefined : booking.reason } : {}),
+        ...(lineBooking ? { businessEntryIds: lineBooking.entryIds, businessEntryId: lineBooking.entryIds[0] ?? null, ...(lineBooking.reason ? { businessNotBooked: lineBooking.reason } : {}) } : {}),
       };
     });
     return NextResponse.json(result, { status: 201 });

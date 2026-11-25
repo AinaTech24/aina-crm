@@ -162,6 +162,8 @@ const SUBJECT_STAGE_LABEL: Record<BlueprintSubject, string> = {
 
 const BASE_TASK_TYPE_LABEL: Record<string, string> = {
   follow_up: "Follow-up",
+  multi_financial: "Several requests",
+  multi_service: "Several requests",
   review_meeting: "Review meeting",
   collect_document: "Collect document",
   kyc_renewal: "KYC renewal",
