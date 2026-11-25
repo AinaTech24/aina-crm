@@ -1640,6 +1640,16 @@ Re-import route used to refuse a COMPLETED import). Now `enqueueSipReapplyForAll
 (14 days, newest ten, oldest first) through `processSipBook`, and a completed SIP register shows Re-import (the route
 accepts it). A register older than the keep window must be uploaded again.
 
+### Why the SIP book differs from the client's figure — the check on the SIP Book page (2026-11-25, Akshar)
+
+AUM comes from the folio master / holdings and the transaction feed; the SIP BOOK comes only from the registrar's SIP
+registration report (CAMS WBR49 / R49, KFintech MFSD243 / 230 / 313) plus hand-booked SIPs. A firm can import every
+AUM file and still have a stale book (too low: SIPs started since the last register; too high: SIPs stopped since), and
+a register refused for its ZIP password changes nothing. `lib/metrics/sip-reconcile.ts` compares the book with the
+registrar's own SIP debits in the feed (last 45 days) and the SIP Book page shows it to firm-wide viewers ("Check against
+the registrar"): when each registrar's register was last imported, registers refused in 30 days, SIPs debited but not in
+the book, active SIPs with no debit in 60 days. It explains; it never changes a SIP.
+
 ### Why an upload "did not go through", and the SIP rejection report (2026-10-30)
 
 Found for Ahpal, Attitude and Nimesh C Shah, the firms with the biggest files:
