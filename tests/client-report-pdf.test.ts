@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import { PDFDocument } from "pdf-lib";
 import { renderClientReportPdf, type ReportBlock } from "@/lib/investors/client-report-pdf";
-import { CLIENT_COPY_SECTIONS, parseClientReportSections } from "@/lib/investors/client-report-sections";
+import { CLIENT_COPY_SECTIONS, FAMILY_REPORT_SECTIONS, parseClientReportSections } from "@/lib/investors/client-report-sections";
 
 const long = "Discussed the portfolio, rebalancing towards debt and the upcoming health renewal. ".repeat(4);
 
@@ -18,6 +18,9 @@ function sampleBlocks(): ReportBlock[] {
       rows: Array.from({ length: 70 }, (_, k) => [`HDFC Flexi Cap Fund - Regular Plan - Growth Option number ${k}`, `1234567/${k}`, "1,234.567", "₹1,23,456"]),
       maxLines: 3,
     },
+    { t: "h2", text: "Rameshbhai B. Udeshi · Head of family" },
+    { t: "h3", text: "Personal & contact" },
+    { t: "kv", items: [["Mobile", "+91 90000 00000"]] },
     { t: "h1", text: "Meetings" },
     { t: "table", cols: [{ h: "Date", w: 1.6 }, { h: "Notes & action items", w: 5 }], rows: [["25 Nov 2026, 11:00 AM", `${long}\nAction: send the proposal (due 30 Nov 2026)`]], maxLines: 14 },
     { t: "empty", text: "No goals on record." },
@@ -45,6 +48,7 @@ describe("client report PDF", () => {
   it("reads the sections asked for, in report order; nothing valid means all", () => {
     expect(parseClientReportSections("insurance,profile,bogus")).toEqual(["profile", "insurance"]);
     expect(parseClientReportSections("").length).toBeGreaterThan(10);
+    expect(FAMILY_REPORT_SECTIONS).not.toContain("family");
     expect(CLIENT_COPY_SECTIONS).not.toContain("activity");
     expect(CLIENT_COPY_SECTIONS).not.toContain("tasks");
     expect(CLIENT_COPY_SECTIONS).toContain("insurance");

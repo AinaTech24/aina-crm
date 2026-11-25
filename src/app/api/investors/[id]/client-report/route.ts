@@ -21,15 +21,12 @@ import { can } from "@/lib/auth/rbac";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { auditLog, tenants } from "@/db/schema";
 import { buildClientReport } from "@/lib/investors/client-report";
-import { renderClientReportPdf } from "@/lib/investors/client-report-pdf";
+import { reportPdfResponse } from "@/lib/investors/report-response";
 import {
   CLIENT_COPY_SECTIONS,
   CLIENT_REPORT_FLAG,
   parseClientReportSections,
 } from "@/lib/investors/client-report-sections";
-import { fetchBrandLogoBytes } from "@/lib/calculators/share-helpers";
-import { pickLogo } from "@/lib/branding/logo";
-import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -75,38 +72,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     );
     if (!built) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-    const { report, tenant } = built;
-    const proto = req.headers.get("x-forwarded-proto") ?? "https";
-    const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
-    const logoBytes = await fetchBrandLogoBytes(pickLogo(tenant, "full"), host ? `${proto}://${host}` : null);
-    const firmName = tenant?.legalName || tenant?.displayName || "Your firm";
-
-    const pdf = await renderClientReportPdf({
-      brand: {
-        firmName,
-        arn: tenant?.arn ?? null,
-        primaryColor: tenant?.primaryColor ?? null,
-        secondaryColor: tenant?.secondaryColor ?? null,
-        logoBytes,
-      },
+    return await reportPdfResponse(req, built.tenant, built.report, {
       title: clientCopy ? "CLIENT REPORT" : "CLIENT REPORT - COMPLETE RECORD",
-      clientName: report.clientName,
-      subtitles: report.subtitles,
-      footerNote:
-        `Confidential - prepared by ${firmName} for ${report.clientName} on ${formatDate(new Date())}. ` +
-        "Figures are as recorded in the CRM; mutual fund values use the latest NAV available and are indicative. " +
-        "Mutual fund investments are subject to market risks; read all scheme related documents carefully.",
-      blocks: report.blocks,
-    });
-
-    const safe = report.clientName.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "").slice(0, 40) || "client";
-    return new NextResponse(new Uint8Array(pdf), {
-      status: 200,
-      headers: {
-        "content-type": "application/pdf",
-        "content-disposition": `attachment; filename="Client_Report_${safe}_${new Date().toISOString().slice(0, 10)}.pdf"`,
-        "cache-control": "no-store",
-      },
+      filePrefix: "Client_Report",
     });
   } catch (err) {
     return handleApiError(err);

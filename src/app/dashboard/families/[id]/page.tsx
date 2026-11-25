@@ -19,6 +19,9 @@ import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { RowActions } from "@/components/common/RowActions";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { ClientReportButton } from "@/components/investors/ClientReportButton";
+import { CLIENT_REPORT_FLAG } from "@/lib/investors/client-report-sections";
+import { loadTenantLicense } from "@/lib/auth/license";
 import { RelatedListSection, RelatedListsContainer } from "@/components/common/RelatedLists";
 import { InvestorDetailTabs } from "@/components/investors/InvestorDetailTabs";
 import { LogActivityButton } from "@/components/activities/ActivityLogger";
@@ -80,6 +83,7 @@ const PROPOSAL_TONE: Record<string, BadgeTone> = {
 export default async function FamilyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireSession();
+  const reportOn = (await loadTenantLicense(session.tenantId, session.roles)).featureFlags?.[CLIENT_REPORT_FLAG] === true;
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const detail = await loadFamilyDetail(tx, session, id);
@@ -243,6 +247,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
               </a>
             )}
             <LogActivityButton subject={{ type: "family", id, name: familyName }} label="Log call / visit" variant="secondary" />
+            {reportOn && <ClientReportButton familyId={id} clientName={familyName} />}
             <RecordMenu>
               <Link href={`/dashboard/proposals/new?familyId=${id}`} className={MENU_ITEM}>
                 <FileText className={MENU_ICON} /> New proposal for the family
