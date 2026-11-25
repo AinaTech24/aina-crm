@@ -86,6 +86,14 @@ describe("the route and the popup stay wired", () => {
     for (const k of ["meetings", "serviceRequests", "tasks", "emails", "gifts"]) expect(load).toContain(`want("${k}")`);
   });
 
+  it("keeps the shared PDF font (the firm asked for no font change) and draws table rules between rows, not through them", () => {
+    const render = read("src/lib/investors/client-master/render.ts");
+    expect(render).toContain("embedPdfFonts");
+    expect(render).toContain("const SECTION_GAP");
+    // a row's rule is stroked at the row's own bottom edge
+    expect(render).toContain("rule(M, y, M + USABLE, 0.6, LINE)");
+  });
+
   it("the client page's More menu has the download row", () => {
     expect(read("src/app/dashboard/investors/[id]/page.tsx")).toContain("<ClientMasterDownload");
   });

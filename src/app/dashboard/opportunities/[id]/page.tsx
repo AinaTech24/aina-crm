@@ -20,6 +20,7 @@ import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClass } from "@/components/ui/button-class";
 import { OpportunityDetailsCard, OpportunityJourney } from "@/components/opportunities/OpportunityWorkspace";
+import { DeleteOpportunityButton } from "@/components/opportunities/DeleteOpportunityButton";
 import { formatDate, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { contactLogAttrs } from "@/lib/activities/contact-log";
@@ -83,7 +84,12 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
       <PageHeaderCard
         title={<>{o.productLabel} <span className="font-normal text-muted-foreground">— {client.name}</span></>}
         breadcrumb={[{ label: "Opportunities", href: "/dashboard/opportunities" }, { label: `${o.productLabel} — ${client.name}` }]}
-        actions={<Link href={`/dashboard/investors/${client.id}`} className={buttonClass("secondary")}>Open client</Link>}
+        actions={
+          <div className="flex items-center gap-2">
+            <Link href={`/dashboard/investors/${client.id}`} className={buttonClass("secondary")}>Open client</Link>
+            {canWork && <DeleteOpportunityButton id={id} label={`${o.productLabel} — ${client.name}`} />}
+          </div>
+        }
       >
         {o.status === "won" ? <Badge tone="success" raw>Won</Badge>
           : o.status === "lost" ? <Badge tone="neutral" raw>Lost</Badge>

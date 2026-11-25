@@ -18,10 +18,11 @@ import { withTenant } from "@/db/client";
 import { clientOpportunities } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { handleApiError } from "@/lib/api/error-handler";
-import { recordAudit } from "@/lib/audit";
+import { clientMetaFromHeaders, recordAudit } from "@/lib/audit";
 import { loadViewableOpportunity, requireWorkOpportunities } from "@/lib/opportunities/access";
 import { listOpportunities, setFollowUp, syncOpportunity } from "@/lib/opportunities/journey";
 import { assertAssignable, notifyOpportunityOwner } from "@/lib/opportunities/assignees";
+import { deleteOpportunities } from "@/lib/opportunities/delete";
 
 export const dynamic = "force-dynamic";
 
@@ -131,6 +132,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return (await listOpportunities(tx, session.tenantId, { ids: [id] }))[0];
     }, ctx(session));
     return NextResponse.json({ opportunity: view });
+  } catch (err) {
+    return handleApiError(err);
+  }
+}
+
+/**
+ *   DELETE /api/opportunities/[id]   remove it for good (lib/opportunities/delete.ts)
+ * Only what the viewer owns or opened — or anything they may see, for a firm-wide viewer.
+ */
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await requireSession();
+    requireWorkOpportunities(session);
+    const { id } = await params;
+    if (!uuid.safeParse(id).success) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const result = await withTenant(session.tenantId, (tx) => deleteOpportunities(tx, session, [id], clientMetaFromHeaders(req.headers)), ctx(session));
+    if (!result.deleted.length) {
+      return NextResponse.json({ error: "You can only delete opportunities you own or opened." }, { status: 403 });
+    }
+    return NextResponse.json({ ok: true });
   } catch (err) {
     return handleApiError(err);
   }

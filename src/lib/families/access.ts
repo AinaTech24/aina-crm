@@ -26,7 +26,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { SessionUser } from "@/lib/auth/session";
 import { can, requireAny, type Capability } from "@/lib/auth/rbac";
-import { canViewAllInvestors, investorScopeSql, isDataScopeRestricted } from "@/lib/investors/access";
+import { canViewAllInvestors, investorScopeSql, isDataScopeRestricted, mobileOwnBookApplies } from "@/lib/investors/access";
 import { isClientBranchScoped } from "@/lib/leads/access";
 
 const VIEW_CAPS = ["family.view", "family.map.view", "family.map.view_assigned", "investor.view.all", "investor.view.assigned"] as const;
@@ -107,7 +107,7 @@ export async function familyScopeSql(tx: any, session: SessionUser, alias = "f")
   // households only — never the members' book.
   if (!hasInvestorView(session)) return sql`${rm} = ${session.userId}::uuid`;
 
-  if (!session.mobile && !(await isDataScopeRestricted(tx, session.tenantId, session))) return sql`TRUE`;
+  if (!(await mobileOwnBookApplies(session)) && !(await isDataScopeRestricted(tx, session.tenantId, session))) return sql`TRUE`;
 
   const memberScope = await investorScopeSql(tx, session, "fm_scope");
   const branchPart = isClientBranchScoped(session) && session.branchId

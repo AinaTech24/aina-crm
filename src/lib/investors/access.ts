@@ -60,6 +60,21 @@ export async function ownBookRmIds(tx: any, session: SessionUser): Promise<strin
   return [session.userId, ...ids];
 }
 
+/**
+ * One shared client book (Investment Options, 2026-11-25): with the firm's
+ * "sharedClientBook" switch on, the mobile app no longer narrows an RM to
+ * their own clients and a branch head to their branch — they see the whole
+ * book there too, as they do on the web with the data wall off.
+ */
+export const SHARED_CLIENT_BOOK_FLAG = "sharedClientBook";
+
+/** Does the mobile app's own-book / own-branch rule narrow this viewer? */
+export async function mobileOwnBookApplies(session: SessionUser): Promise<boolean> {
+  if (!session.mobile || session.roles.some((r) => ["owner", "ops", "back_office"].includes(r))) return false;
+  const lic = await loadTenantLicense(session.tenantId, session.roles);
+  return lic.featureFlags?.[SHARED_CLIENT_BOOK_FLAG] !== true;
+}
+
 /** `<alias>.rm_id` is in the viewer's own book (see ownBookRmIds). */
 async function ownBookSql(tx: any, session: SessionUser, alias: string) {
   const ids = await ownBookRmIds(tx, session);
@@ -139,8 +154,7 @@ export async function dataWallAppliesFor(session: SessionUser): Promise<boolean>
 export async function clientScopeNarrows(tx: any, session: SessionUser): Promise<boolean> {
   if (!(await dataWallApplies(tx, session))) return false;
   if (!can(session.roles, "investor.view.all", session.permissions) && !can(session.roles, "investor.view.assigned", session.permissions)) return true;
-  if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))
-    && (session.roles.includes("branch_head") || session.roles.includes("rm"))) return true;
+  if ((session.roles.includes("branch_head") || session.roles.includes("rm")) && (await mobileOwnBookApplies(session))) return true;
   if (isClientBranchScoped(session)) return true;
   return !canViewAllInvestors(session);
 }
@@ -153,7 +167,7 @@ export async function clientScopeNarrows(tx: any, session: SessionUser): Promise
  */
 export async function investorScopeCondition(tx: any, session: SessionUser) {
   requireInvestorView(session);
-  if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))) {
+  if (await mobileOwnBookApplies(session)) {
     if (session.roles.includes("branch_head")) return session.branchId ? eq(investors.branchId, session.branchId) : sql`FALSE`;
     if (session.roles.includes("rm")) return ownBookSql(tx, session, "investors");
   }
@@ -170,7 +184,7 @@ export async function investorScopeCondition(tx: any, session: SessionUser) {
  */
 export async function investorScopeSql(tx: any, session: SessionUser, alias = "investors") {
   requireInvestorView(session);
-  if (session.mobile && !session.roles.some(r => ["owner", "ops", "back_office"].includes(r))) {
+  if (await mobileOwnBookApplies(session)) {
     if (session.roles.includes("branch_head")) return session.branchId ? sql`${sql.raw(`${alias}.branch_id`)} = ${session.branchId}::uuid` : sql`FALSE`;
     if (session.roles.includes("rm")) return ownBookSql(tx, session, alias);
   }

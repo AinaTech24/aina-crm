@@ -883,7 +883,7 @@ export async function buildFamilyReport(
   blocks.push(table(
     [
       { h: "Member", w: 3 }, { h: "Relationship", w: 1.6 }, { h: "Type", w: 1.3 }, { h: "PAN", w: 1.6 }, { h: "Status", w: 1.1 },
-      { h: "MF value", w: 1.6, right: true }, { h: "Monthly SIP", w: 1.4, right: true }, { h: "Policies", w: 1, right: true }, { h: "Risk profile", w: 1.5 },
+      { h: "MF value", w: 1.6, right: true }, { h: "Monthly SIP", w: 1.4, right: true }, { h: "Policies", w: 1.3, right: true }, { h: "Risk profile", w: 1.5 },
     ],
     members.map((m) => {
       const v = c.valuations.get(m.id);
