@@ -226,7 +226,8 @@ export function MergeCompareDialog({
   const [previewing, setPreviewing] = useState(false);
   /** field → the record whose value the kept record ends up with. */
   const [picks, setPicks] = useState<Record<string, string>>({});
-  const [showAll, setShowAll] = useState(false);
+  // Every field is listed by default (Zoho-style); "Show conflicts only" narrows it to the ones that differ.
+  const [showAll, setShowAll] = useState(true);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
@@ -295,6 +296,19 @@ export function MergeCompareDialog({
   const changedCount = preview
     ? preview.fields.filter((f) => chosen(f) && chosen(f) !== survivorId && f.values.find((v) => v.id === chosen(f))?.value).length
     : 0;
+
+  /** "Select all" under a record: take ITS value for every field it has one for; the rest keep their default. */
+  function selectAllFrom(id: string) {
+    if (!preview) return;
+    const next: Record<string, string> = {};
+    for (const f of preview.fields) {
+      if (f.values.find((v) => v.id === id)?.value) next[f.field] = id;
+    }
+    setPicks(next);
+  }
+  const allFrom = (id: string) =>
+    !!preview && preview.fields.some((f) => f.values.find((v) => v.id === id)?.value) &&
+    preview.fields.every((f) => !f.values.find((v) => v.id === id)?.value || chosen(f) === id);
 
   const ready = losers.length > 0 && !!preview && !preview.panMismatch && typed.trim().toUpperCase() === CONFIRM_WORD && !busy;
 
@@ -429,19 +443,19 @@ export function MergeCompareDialog({
             <legend className="text-xs font-semibold">2. Which value should the merged record keep?</legend>
             <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-2xs text-muted-foreground">
               <span>
-                Click the value to keep. Blank fields are filled from another record automatically.
+                Click the value to keep for each field, or use Select all under a record. Blank fields are filled from another record automatically.
                 {changedCount > 0 && <> <strong className="text-foreground">{changedCount}</strong> field{changedCount === 1 ? "" : "s"} will take a value from a merged record.</>}
               </span>
               {sameCount > 0 && (
                 <button type="button" onClick={() => setShowAll((v) => !v)} className={buttonClass("ghost", "sm")}>
-                  {showAll ? "Show only fields that differ" : `Show all fields (${sameCount} identical)`}
+                  {showAll ? `Show conflicts only (${differing.length})` : `Show all fields (${sameCount} identical)`}
                 </button>
               )}
             </div>
             {shown.length === 0 ? (
               <p className="mt-2 rounded-lg bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">These records agree on every field — nothing to choose.</p>
             ) : (
-              <div className="mt-2 max-h-[45vh] overflow-auto rounded-lg border border-border">
+              <div className="mt-2 max-h-[50vh] overflow-auto rounded-lg border border-border">
                 <table className="table-raw w-full text-xs">
                   <thead className="sticky top-0 z-10 bg-card">
                     <tr className="border-b border-border">
@@ -450,6 +464,14 @@ export function MergeCompareDialog({
                         <th key={m.id} className={`px-3 py-2 text-left font-medium ${m.id === survivorId ? "bg-secondary" : ""}`}>
                           <span className="block !whitespace-normal">{m.name}</span>
                           <span className="block text-2xs font-normal text-muted-foreground">{m.id === survivorId ? "Primary" : "Merging in"}</span>
+                          <button
+                            type="button"
+                            onClick={() => selectAllFrom(m.id)}
+                            disabled={busy}
+                            className={`mt-0.5 text-2xs font-medium underline-offset-2 hover:underline ${allFrom(m.id) ? "text-muted-foreground" : "text-primary"}`}
+                          >
+                            {allFrom(m.id) ? "All selected" : "Select all"}
+                          </button>
                         </th>
                       ))}
                     </tr>
