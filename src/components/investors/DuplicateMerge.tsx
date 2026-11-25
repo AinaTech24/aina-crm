@@ -229,6 +229,8 @@ export function MergeCompareDialog({
   /** field → the record whose value the kept record ends up with. */
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [typed, setTyped] = useState("");
+  /** The operator's explicit "different PANs, I have checked" acknowledgement. */
+  const [allowPan, setAllowPan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -264,6 +266,7 @@ export function MergeCompareDialog({
   // which records take part — re-ask whenever either changes.
   useEffect(() => {
     setPicks({});
+    setAllowPan(false);
     if (!loserKey) { setPreview(null); return; }
     void loadPreview(survivorId, loserKey.split(","));
   }, [survivorId, loserKey, loadPreview]);
@@ -299,7 +302,9 @@ export function MergeCompareDialog({
     !!preview && preview.fields.some((f) => f.values.find((v) => v.id === id)?.value) &&
     preview.fields.every((f) => !f.values.find((v) => v.id === id)?.value || chosen(f) === id);
 
-  const ready = losers.length > 0 && !!preview && !preview.panMismatch && typed.trim().toUpperCase() === CONFIRM_WORD && !busy;
+  // Different PANs block the merge until the operator acknowledges it (the engine takes allowPanMismatch).
+  const panOk = !!preview && (!preview.panMismatch || allowPan);
+  const ready = losers.length > 0 && !!preview && panOk && typed.trim().toUpperCase() === CONFIRM_WORD && !busy;
 
   async function confirm() {
     if (!ready || !preview) return;
@@ -323,6 +328,7 @@ export function MergeCompareDialog({
             loserId: loser.id,
             reason: "Merged from Find Duplicates after comparing the records",
             fieldOverrides: Object.keys(overrides).length ? overrides : undefined,
+            allowPanMismatch: preview.panMismatch && allowPan ? true : undefined,
           }),
         });
         const j = await res.json().catch(() => ({}));
@@ -400,13 +406,17 @@ export function MergeCompareDialog({
               <span className="inline-flex items-center gap-1.5 text-muted-foreground"><Loader2 className="size-3.5 animate-spin" /> Counting what moves…</span>
             ) : !preview ? (
               <span className="text-muted-foreground">Couldn&apos;t load the preview. Close and try again.</span>
-            ) : preview.panMismatch ? (
-              <div className="flex items-start gap-2 text-destructive">
-                <ShieldAlert className="size-4 shrink-0" aria-hidden />
-                <span>These records have different PANs, so they are different people and can&apos;t be merged. Untick the record with the other PAN.</span>
+            ) : preview.panMismatch && !allowPan ? (
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 text-destructive">
+                  <ShieldAlert className="size-4 shrink-0" aria-hidden />
+                  <span>These records have different PANs, so they are probably different people. Untick the record with the other PAN, or confirm below that they are one person.</span>
+                </div>
+                <PanTick checked={allowPan} onChange={setAllowPan} cols={cols} disabled={busy} />
               </div>
             ) : (
               <>
+                {preview.panMismatch && <div className="mb-2"><PanTick checked={allowPan} onChange={setAllowPan} cols={cols} disabled={busy} /></div>}
                 <div className="font-medium">
                   {preview.totals.moving} record{preview.totals.moving === 1 ? "" : "s"} move to {survivor.name}
                 </div>
@@ -427,7 +437,7 @@ export function MergeCompareDialog({
         )}
 
         {/* 2 · Field by field: which value the merged record keeps */}
-        {preview && !preview.panMismatch && losers.length > 0 && (
+        {preview && panOk && losers.length > 0 && (
           <fieldset className="mt-4">
             <legend className="text-xs font-semibold">2. Which value should the merged record keep?</legend>
             <FieldChooser
@@ -459,7 +469,7 @@ export function MergeCompareDialog({
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void confirm(); }}
-            disabled={busy || !preview || preview.panMismatch || losers.length === 0}
+            disabled={busy || !preview || !panOk || losers.length === 0}
             autoComplete="off"
             className="input-base mt-1 w-full font-mono sm:w-48"
           />
@@ -477,6 +487,25 @@ export function MergeCompareDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** "Different PANs — I have checked" tick; the merge engine refuses a PAN clash unless it is set. */
+function PanTick({ checked, onChange, cols, disabled }: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  cols: Array<{ id: string; name: string; pan?: string | null }>;
+  disabled?: boolean;
+}) {
+  const pans = [...new Set(cols.map((c) => c.pan).filter(Boolean))].join(" and ");
+  return (
+    <label className="flex items-start gap-2 rounded-lg border border-warning/50 bg-warning/5 p-2 text-xs">
+      <input type="checkbox" className="mt-0.5" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <span>
+        These records have different PANs{pans ? ` (${pans})` : ""} — probably different people. I have checked that they are one person and want to merge them into one record anyway.
+        <span className="block text-muted-foreground">The kept record keeps its own PAN; the other record is retired, and you can undo the merge for 7 days.</span>
+      </span>
+    </label>
   );
 }
 
