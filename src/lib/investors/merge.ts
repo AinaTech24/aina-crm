@@ -148,7 +148,7 @@ export const FIELD_LABELS = Object.fromEntries(MERGE_FIELDS.map((f) => [f.key, f
  * by a migration, but a merge must never fail on one that a lagging database
  * lacks — it simply isn't reconciled there.
  */
-async function presentMergeFields(tx: Tx) {
+export async function presentMergeFields(tx: Tx) {
   const r = await tx.execute(sql`
     SELECT column_name FROM information_schema.columns
      WHERE table_schema = 'public' AND table_name = 'investors'
@@ -158,7 +158,7 @@ async function presentMergeFields(tx: Tx) {
 }
 
 /** SQL: is column `col` of row alias `a` blank (null, empty text, empty json)? */
-function blankSql(a: string, f: { key: string; kind: MergeFieldKind }): SQL {
+export function blankSql(a: string, f: { key: string; kind: MergeFieldKind }): SQL {
   const c = sql.raw(`${a}."${f.key}"`);
   if (f.kind === "text") return sql`NULLIF(trim(${c}), '') IS NULL`;
   if (f.kind === "json") return sql`(${c} IS NULL OR ${c} = 'null'::jsonb OR ${c} = '{}'::jsonb OR ${c} = '[]'::jsonb)`;

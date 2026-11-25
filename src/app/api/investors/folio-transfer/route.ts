@@ -50,6 +50,8 @@ const Body = z.object({
   folioIds: z.array(uuid).min(1).max(500),
   moveHistory: z.boolean().default(true),
   allowPanMismatch: z.boolean().optional(),
+  /** Client fields the receiving profile takes from the other (the field-value picks). */
+  fieldPicks: z.array(z.string().max(60)).max(100).optional(),
 });
 
 export async function POST(req: NextRequest) {

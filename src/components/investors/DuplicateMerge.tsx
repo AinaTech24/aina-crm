@@ -192,17 +192,19 @@ function MemberList({ members }: { members: Member[] }) {
 /* ─────────────────────────── Compare & merge ─────────────────────────── */
 
 /** Shape of POST /api/investors/merge/preview — see src/lib/investors/merge.ts. */
+export type MergePreviewField = {
+  field: string;
+  label: string;
+  group: string;
+  values: Array<{ id: string; value: string }>;
+  differs: boolean;
+  defaultId: string | null;
+};
+
 type MergePreview = {
   moves: Array<{ table: string; label: string; count: number }>;
   stays: Array<{ table: string; label: string; count: number }>;
-  fields: Array<{
-    field: string;
-    label: string;
-    group: string;
-    values: Array<{ id: string; value: string }>;
-    differs: boolean;
-    defaultId: string | null;
-  }>;
+  fields: MergePreviewField[];
   panMismatch: boolean;
   totals: { moving: number; staying: number };
 };
@@ -226,8 +228,6 @@ export function MergeCompareDialog({
   const [previewing, setPreviewing] = useState(false);
   /** field → the record whose value the kept record ends up with. */
   const [picks, setPicks] = useState<Record<string, string>>({});
-  // Every field is listed by default (Zoho-style); "Show conflicts only" narrows it to the ones that differ.
-  const [showAll, setShowAll] = useState(true);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
@@ -282,17 +282,6 @@ export function MergeCompareDialog({
   }
 
   const chosen = (f: MergePreview["fields"][number]) => picks[f.field] ?? f.defaultId;
-  const differing = preview?.fields.filter((f) => f.differs) ?? [];
-  const sameCount = (preview?.fields.length ?? 0) - differing.length;
-  const shown = showAll ? preview?.fields ?? [] : differing;
-  const groups = useMemo(() => {
-    const out: Array<{ group: string; fields: MergePreview["fields"] }> = [];
-    for (const f of shown) {
-      const g = out.find((x) => x.group === f.group);
-      if (g) g.fields.push(f); else out.push({ group: f.group, fields: [f] });
-    }
-    return out;
-  }, [shown]);
   const changedCount = preview
     ? preview.fields.filter((f) => chosen(f) && chosen(f) !== survivorId && f.values.find((v) => v.id === chosen(f))?.value).length
     : 0;
@@ -441,82 +430,22 @@ export function MergeCompareDialog({
         {preview && !preview.panMismatch && losers.length > 0 && (
           <fieldset className="mt-4">
             <legend className="text-xs font-semibold">2. Which value should the merged record keep?</legend>
-            <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-2xs text-muted-foreground">
-              <span>
-                Click the value to keep for each field, or use Select all under a record. Blank fields are filled from another record automatically.
-                {changedCount > 0 && <> <strong className="text-foreground">{changedCount}</strong> field{changedCount === 1 ? "" : "s"} will take a value from a merged record.</>}
-              </span>
-              {sameCount > 0 && (
-                <button type="button" onClick={() => setShowAll((v) => !v)} className={buttonClass("ghost", "sm")}>
-                  {showAll ? `Show conflicts only (${differing.length})` : `Show all fields (${sameCount} identical)`}
-                </button>
-              )}
-            </div>
-            {shown.length === 0 ? (
-              <p className="mt-2 rounded-lg bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">These records agree on every field — nothing to choose.</p>
-            ) : (
-              <div className="mt-2 max-h-[50vh] overflow-auto rounded-lg border border-border">
-                <table className="table-raw w-full text-xs">
-                  <thead className="sticky top-0 z-10 bg-card">
-                    <tr className="border-b border-border">
-                      <th className="relative w-36 px-3 py-2 text-left font-medium text-muted-foreground"><span className="sr-only">Field</span></th>
-                      {cols.map((m) => (
-                        <th key={m.id} className={`px-3 py-2 text-left font-medium ${m.id === survivorId ? "bg-secondary" : ""}`}>
-                          <span className="block !whitespace-normal">{m.name}</span>
-                          <span className="block text-2xs font-normal text-muted-foreground">{m.id === survivorId ? "Primary" : "Merging in"}</span>
-                          <button
-                            type="button"
-                            onClick={() => selectAllFrom(m.id)}
-                            disabled={busy}
-                            className={`mt-0.5 text-2xs font-medium underline-offset-2 hover:underline ${allFrom(m.id) ? "text-muted-foreground" : "text-primary"}`}
-                          >
-                            {allFrom(m.id) ? "All selected" : "Select all"}
-                          </button>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  {groups.map((g) => (
-                    <tbody key={g.group}>
-                      <tr>
-                        <th colSpan={cols.length + 1} className="bg-secondary/50 px-3 py-1 text-left text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{g.group}</th>
-                      </tr>
-                      {g.fields.map((f) => (
-                        <tr key={f.field} className="border-t border-border align-top">
-                          <th scope="row" className="px-3 py-2 text-left font-medium text-muted-foreground">
-                            {f.label}
-                            {f.differs && <span className="block text-2xs font-normal text-amber-700">differs</span>}
-                          </th>
-                          {cols.map((m) => {
-                            const v = f.values.find((x) => x.id === m.id)?.value ?? "";
-                            const isChosen = chosen(f) === m.id;
-                            return (
-                              <td key={m.id} className={`px-2 py-1.5 ${m.id === survivorId ? "bg-secondary/60" : ""}`}>
-                                {v ? (
-                                  <label className={`flex cursor-pointer items-start gap-1.5 rounded-md border px-2 py-1 ${isChosen ? "border-primary bg-primary/5" : "border-transparent hover:border-border"}`}>
-                                    <input
-                                      type="radio"
-                                      name={`pick-${f.field}`}
-                                      checked={isChosen}
-                                      disabled={busy}
-                                      onChange={() => setPicks((p) => ({ ...p, [f.field]: m.id }))}
-                                      className="mt-0.5"
-                                    />
-                                    <span className="min-w-0 break-words">{/^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(v) : v}</span>
-                                  </label>
-                                ) : (
-                                  <span className="block px-2 py-1 text-muted-foreground">—</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  ))}
-                </table>
-              </div>
-            )}
+            <FieldChooser
+              fields={preview.fields}
+              cols={cols}
+              keptId={survivorId}
+              chosen={chosen}
+              onPick={(field, id) => setPicks((p) => ({ ...p, [field]: id }))}
+              onSelectAll={selectAllFrom}
+              allFrom={allFrom}
+              busy={busy}
+              hint={
+                <>
+                  Click the value to keep for each field, or use Select all under a record. Blank fields are filled from another record automatically.
+                  {changedCount > 0 && <> <strong className="text-foreground">{changedCount}</strong> field{changedCount === 1 ? "" : "s"} will take a value from a merged record.</>}
+                </>
+              }
+            />
           </fieldset>
         )}
 
@@ -548,6 +477,124 @@ export function MergeCompareDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The field-by-field table: one row per field, one column per record, a radio on
+ * each value, "Select all" under a record and a "conflicts only" toggle. Shared by
+ * the whole-record merge and the folio-transfer dialog. The FIRST column is the
+ * record that keeps its place (merge: the primary; transfer: the profile receiving
+ * the folios); the rest are the records whose values can be taken from.
+ */
+export function FieldChooser({
+  fields, cols, keptId, chosen, onPick, onSelectAll, allFrom, busy, hint, colLabel, maxHeightClass = "max-h-[50vh]",
+}: {
+  fields: MergePreviewField[];
+  cols: Array<{ id: string; name: string }>;
+  keptId: string;
+  chosen: (f: MergePreviewField) => string | null;
+  onPick: (field: string, id: string) => void;
+  onSelectAll: (id: string) => void;
+  allFrom: (id: string) => boolean;
+  busy?: boolean;
+  hint: React.ReactNode;
+  /** The small line under a record's name in the table head. */
+  colLabel?: (m: { id: string; name: string }, kept: boolean) => string;
+  maxHeightClass?: string;
+}) {
+  // Every field is listed by default (Zoho-style); "Show conflicts only" narrows it to the ones that differ.
+  const [showAll, setShowAll] = useState(true);
+  const differing = fields.filter((f) => f.differs);
+  const sameCount = fields.length - differing.length;
+  const shown = showAll ? fields : differing;
+  const groups = useMemo(() => {
+    const out: Array<{ group: string; fields: MergePreviewField[] }> = [];
+    for (const f of shown) {
+      const g = out.find((x) => x.group === f.group);
+      if (g) g.fields.push(f); else out.push({ group: f.group, fields: [f] });
+    }
+    return out;
+  }, [shown]);
+
+  return (
+    <>
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-2xs text-muted-foreground">
+        <span>{hint}</span>
+        {sameCount > 0 && (
+          <button type="button" onClick={() => setShowAll((v) => !v)} className={buttonClass("ghost", "sm")}>
+            {showAll ? `Show conflicts only (${differing.length})` : `Show all fields (${sameCount} identical)`}
+          </button>
+        )}
+      </div>
+      {shown.length === 0 ? (
+        <p className="mt-2 rounded-lg bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">These records agree on every field — nothing to choose.</p>
+      ) : (
+        <div className={`mt-2 ${maxHeightClass} overflow-auto rounded-lg border border-border`}>
+          <table className="table-raw w-full text-xs">
+            <thead className="sticky top-0 z-10 bg-card">
+              <tr className="border-b border-border">
+                <th className="relative w-36 px-3 py-2 text-left font-medium text-muted-foreground"><span className="sr-only">Field</span></th>
+                {cols.map((m) => (
+                  <th key={m.id} className={`px-3 py-2 text-left font-medium ${m.id === keptId ? "bg-secondary" : ""}`}>
+                    <span className="block !whitespace-normal">{m.name}</span>
+                    <span className="block text-2xs font-normal text-muted-foreground">
+                      {colLabel ? colLabel(m, m.id === keptId) : m.id === keptId ? "Primary" : "Merging in"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onSelectAll(m.id)}
+                      disabled={busy}
+                      className={`mt-0.5 text-2xs font-medium underline-offset-2 hover:underline ${allFrom(m.id) ? "text-muted-foreground" : "text-primary"}`}
+                    >
+                      {allFrom(m.id) ? "All selected" : "Select all"}
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            {groups.map((g) => (
+              <tbody key={g.group}>
+                <tr>
+                  <th colSpan={cols.length + 1} className="bg-secondary/50 px-3 py-1 text-left text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{g.group}</th>
+                </tr>
+                {g.fields.map((f) => (
+                  <tr key={f.field} className="border-t border-border align-top">
+                    <th scope="row" className="px-3 py-2 text-left font-medium text-muted-foreground">
+                      {f.label}
+                      {f.differs && <span className="block text-2xs font-normal text-amber-700">differs</span>}
+                    </th>
+                    {cols.map((m) => {
+                      const v = f.values.find((x) => x.id === m.id)?.value ?? "";
+                      const isChosen = chosen(f) === m.id;
+                      return (
+                        <td key={m.id} className={`px-2 py-1.5 ${m.id === keptId ? "bg-secondary/60" : ""}`}>
+                          {v ? (
+                            <label className={`flex cursor-pointer items-start gap-1.5 rounded-md border px-2 py-1 ${isChosen ? "border-primary bg-primary/5" : "border-transparent hover:border-border"}`}>
+                              <input
+                                type="radio"
+                                name={`pick-${f.field}`}
+                                checked={isChosen}
+                                disabled={busy}
+                                onChange={() => onPick(f.field, m.id)}
+                                className="mt-0.5"
+                              />
+                              <span className="min-w-0 break-words">{/^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(v) : v}</span>
+                            </label>
+                          ) : (
+                            <span className="block px-2 py-1 text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            ))}
+          </table>
+        </div>
+      )}
+    </>
   );
 }
 

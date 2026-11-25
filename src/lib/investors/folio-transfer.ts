@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { recordAudit } from "@/lib/audit";
 import { recomputeInvestorsAum } from "@/lib/finance/aum-persist";
+import { MERGEABLE_FIELDS, blankSql, presentMergeFields } from "@/lib/investors/merge";
 
 export type TransferFolio = {
   id: string;
@@ -30,15 +31,19 @@ export type TransferClient = {
   name: string;
   pan: string | null;
   merged: boolean;
+  /** The client's relationship manager, for the whole-record merge dialog. */
+  rmName: string | null;
   folios: TransferFolio[];
 };
 
 export async function loadTransferClients(tx: Tx, tenantId: string, ids: string[]): Promise<TransferClient[]> {
   const list = sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `);
   const people = (await tx.execute(sql`
-    SELECT id::text AS id, name, upper(nullif(trim(pan), '')) AS pan, merged_into_id IS NOT NULL AS merged
-      FROM investors WHERE tenant_id = ${tenantId}::uuid AND id IN (${list}) AND deleted_at IS NULL
-  `)).rows as Array<{ id: string; name: string; pan: string | null; merged: boolean }>;
+    SELECT i.id::text AS id, i.name, upper(nullif(trim(i.pan), '')) AS pan, i.merged_into_id IS NOT NULL AS merged,
+           u.name AS "rmName"
+      FROM investors i LEFT JOIN users u ON u.id = i.rm_id
+     WHERE i.tenant_id = ${tenantId}::uuid AND i.id IN (${list}) AND i.deleted_at IS NULL
+  `)).rows as Array<{ id: string; name: string; pan: string | null; merged: boolean; rmName: string | null }>;
   const folios = (await tx.execute(sql`
     SELECT f.id::text AS id, f.investor_id::text AS investor_id, f.folio_number, f.amc_name,
            COALESCE(f.aum, 0)::float8 AS aum, f.schemes,
@@ -85,6 +90,12 @@ export async function transferFolios(
     folioIds: string[];
     moveHistory: boolean;
     allowPanMismatch?: boolean;
+    /**
+     * Client fields (MERGEABLE_FIELDS keys) whose value the receiving profile takes
+     * from the one the folios leave — the operator's picks in the dialog. Only these
+     * are written, and a blank on the source never blanks the receiver.
+     */
+    fieldPicks?: string[];
     byUserId: string;
   },
 ): Promise<TransferResult> {
@@ -127,6 +138,32 @@ export async function transferFolios(
     `)).rows).length;
   }
 
+  // The operator's per-field picks: the receiving profile takes THESE values from the other one.
+  let fieldsTaken: string[] = [];
+  let fieldsBefore: Record<string, unknown> | null = null;
+  const wanted = new Set((a.fieldPicks ?? []).filter((k) => (MERGEABLE_FIELDS as readonly string[]).includes(k)));
+  if (wanted.size) {
+    const present = (await presentMergeFields(tx)).filter((f) => wanted.has(f.key));
+    if (present.length) {
+      const keyList = sql.join(present.map((f) => sql`${f.key}`), sql`, `);
+      fieldsBefore =
+        ((await tx.execute(sql`
+          SELECT (SELECT jsonb_object_agg(k, v) FROM jsonb_each(to_jsonb(i)) AS e(k, v) WHERE k IN (${keyList})) AS before
+            FROM investors i WHERE i.id = ${toId}::uuid
+        `)).rows[0] as { before: Record<string, unknown> | null } | undefined)?.before ?? null;
+      const assignments = present.map((f) => {
+        const col = sql.raw(`"${f.key}"`);
+        return sql`${col} = CASE WHEN ${blankSql("l", f)} THEN s.${col} ELSE l.${col} END`;
+      });
+      await tx.execute(sql`
+        UPDATE investors s SET ${sql.join(assignments, sql`, `)}, updated_at = now()
+          FROM investors l
+         WHERE s.tenant_id = ${tenantId}::uuid AND s.id = ${toId}::uuid AND l.tenant_id = ${tenantId}::uuid AND l.id = ${fromId}::uuid
+      `);
+      fieldsTaken = present.map((f) => f.key);
+    }
+  }
+
   await recomputeInvestorsAum(tx, [fromId, toId]);
   await recordAudit(tx, {
     tenantId,
@@ -134,7 +171,8 @@ export async function transferFolios(
     action: "investor.folio_transfer",
     entityType: "investor",
     entityId: toId,
-    after: { fromId, toId, folioIds, moveHistory: a.moveHistory, transactions, sips },
+    ...(fieldsBefore ? { before: { fieldsBefore } } : {}),
+    after: { fromId, toId, folioIds, moveHistory: a.moveHistory, transactions, sips, ...(fieldsTaken.length ? { fieldsTaken } : {}) },
   } as any);
   return { ok: true, folios: moved.length, transactions, sips };
 }

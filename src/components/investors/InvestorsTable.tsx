@@ -539,6 +539,10 @@ export function InvestorsTable({
           setSelected(new Set());
           router.refresh();
         }}
+        onMerged={() => {
+          setSelected(new Set());
+          router.refresh();
+        }}
       />
       {massUpdate && (
         <MassUpdateDialog
