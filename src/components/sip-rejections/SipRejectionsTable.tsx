@@ -15,6 +15,7 @@ import { RecoveryStatusUpdater } from "@/components/sip-rejections/RecoveryStatu
 import { RemarkEditor } from "@/components/sip-rejections/RemarkEditor";
 import { formatINR, formatDate, formatRelative } from "@/lib/utils";
 import { DateField } from "@/components/ui/DateField";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { EmailRecordButton } from "@/components/comms/EmailRecordButton";
 import { OPEN_SIP_STATUSES } from "@/lib/comms/record-email";
 import { SIP_REJ_DEFAULT_COLUMNS } from "@/lib/list-columns/sip-rejection-fields";
@@ -58,8 +59,14 @@ export function SipRejectionsTable({
   colOrder,
   extraCols = [],
   emptyNote,
+  total,
+  query = "",
 }: {
   rows: SipRejectionRow[];
+  /** How many rejections the list's filters match in all (the rows here are one page of them). */
+  total?: number;
+  /** The list's own filters as a query string, no page — for "Select all N matching". */
+  query?: string;
   /** Why the list is empty, from what the transaction feed holds (server-decided). */
   emptyNote?: string | null;
   /** Column keys in the order to draw them (built-in keys and `x:<field>`); server-decided from the person's cookie. */
@@ -77,9 +84,16 @@ export function SipRejectionsTable({
   const [recoveringId, setRecoveringId] = useState<string | null>(null);
   const [recoverySuccess, setRecoverySuccess] = useState<string | null>(null);
 
-  const allSelected = rows.length > 0 && selected.size === rows.length;
+  // "Select all N matching": every rejection the filters match, not just this page's rows.
+  const [allMatching, setAllMatching] = useState<{ count: number; of: number } | null>(null);
+  const [loadingAll, setLoadingAll] = useState(false);
+  const [detail, setDetail] = useState<SipRejectionRow | null>(null);
+
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const moreThanPage = (total ?? rows.length) > rows.length;
 
   function toggle(id: string) {
+    setAllMatching(null);
     setSelected((s) => {
       const n = new Set(s);
       if (n.has(id)) n.delete(id);
@@ -88,7 +102,27 @@ export function SipRejectionsTable({
     });
   }
   function toggleAll() {
+    setAllMatching(null);
     setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
+  }
+
+  async function selectAllMatching() {
+    setLoadingAll(true);
+    try {
+      const res = await fetch(`/api/sip-rejections/ids${query ? `?${query}` : ""}`, { cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        notify.error(j.error ?? "Couldn't load the matching rejections.");
+        return;
+      }
+      const ids = (j.ids ?? []) as string[];
+      setSelected(new Set(ids));
+      setAllMatching({ count: ids.length, of: Number(j.total ?? ids.length) });
+    } catch {
+      notify.error("Network error. Nothing was selected.");
+    } finally {
+      setLoadingAll(false);
+    }
   }
 
   async function handleAutoRecover(id: string) {
@@ -139,6 +173,7 @@ export function SipRejectionsTable({
       }
       setBulk(null);
       setSelected(new Set());
+      setAllMatching(null);
       router.refresh();
     } finally {
       setBusy(false);
@@ -312,6 +347,30 @@ export function SipRejectionsTable({
 
   return (
     <div className="card-surface overflow-hidden">
+      {/* "Select all N matching": offered once every row on this page is ticked and the filters match more. */}
+      {allMatching ? (
+        <div className="flex flex-wrap items-center gap-2 border-b bg-amber-50 px-4 py-1.5 text-xs text-amber-900" role="status">
+          {allMatching.of > allMatching.count ? (
+            <span>
+              Selected the first <b>{allMatching.count.toLocaleString("en-IN")}</b> of <b>{allMatching.of.toLocaleString("en-IN")}</b> matching
+              rejections — the most one action can change. Apply it, then repeat for the rest.
+            </span>
+          ) : (
+            <span>All <b>{allMatching.count.toLocaleString("en-IN")}</b> matching rejections are selected.</span>
+          )}
+          <button type="button" className="font-medium underline" onClick={() => { setSelected(new Set()); setAllMatching(null); }}>
+            Clear selection
+          </button>
+        </div>
+      ) : allSelected && moreThanPage ? (
+        <div className="flex flex-wrap items-center gap-2 border-b bg-secondary/60 px-4 py-1.5 text-xs" role="status">
+          <span>All <b>{rows.length.toLocaleString("en-IN")}</b> on this page are selected.</span>
+          <button type="button" className="font-medium text-primary underline disabled:opacity-50" disabled={loadingAll} onClick={selectAllMatching}>
+            {loadingAll ? "Selecting…" : `Select all ${(total ?? rows.length).toLocaleString("en-IN")} matching`}
+          </button>
+        </div>
+      ) : null}
+
       {/* Bulk toolbar */}
       {selected.size > 0 && (
         <div className="flex items-center gap-2 flex-wrap border-b bg-brand-cyan-light/40 px-4 py-2 text-sm">
@@ -328,7 +387,7 @@ export function SipRejectionsTable({
           <button onClick={() => setBulk("close")} className="btn-ghost text-xs inline-flex items-center gap-1 text-rose-700">
             <Ban className="size-3.5" /> Close (Lost)
           </button>
-          <button onClick={() => setSelected(new Set())} className="text-xs text-muted-foreground hover:underline ml-auto">
+          <button onClick={() => { setSelected(new Set()); setAllMatching(null); }} className="text-xs text-muted-foreground hover:underline ml-auto">
             Clear
           </button>
         </div>
@@ -396,7 +455,13 @@ export function SipRejectionsTable({
                 return (
                   <tr
                     key={r.id}
-                    className={`border-b last:border-0 hover:bg-accent/40 ${isSel ? "bg-brand-cyan-light/30" : ""}`}
+                    onClick={(e) => {
+                      // A click on a control inside the row (link, button, select, field) does its own thing.
+                      if ((e.target as Element).closest("a, button, input, select, textarea, label, [role='button'], [data-floating-popup]")) return;
+                      if (window.getSelection()?.toString()) return; // someone selecting text to copy
+                      setDetail(r);
+                    }}
+                    className={`border-b last:border-0 hover:bg-accent/40 cursor-pointer ${isSel ? "bg-brand-cyan-light/30" : ""}`}
                   >
                     <td className="px-3 py-3">
                       <input
@@ -417,6 +482,92 @@ export function SipRejectionsTable({
           </table>
         </div>
       )}
+
+      <Dialog open={!!detail} onOpenChange={(o) => { if (!o) setDetail(null); }}>
+        {detail && (
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>SIP rejection</DialogTitle>
+              <DialogDescription>
+                {detail.investor_name ?? "Client"} · {formatINR(Number(detail.rejection_amount))} on {formatDate(detail.rejection_date)}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className={`inline-block rounded border px-2 py-0.5 text-xs font-semibold ${STATUS_TONE[detail.recovery_status] ?? "bg-secondary text-muted-foreground border-border"}`}>
+                {STATUS_LABEL[detail.recovery_status] ?? detail.recovery_status}
+              </span>
+              {detail.reason_category && (
+                <span className={`inline-block rounded border px-2 py-0.5 text-xs font-semibold ${CAT_TONE[detail.reason_category] ?? ""}`}>
+                  {CAT_LABEL[detail.reason_category] ?? detail.reason_category}
+                </span>
+              )}
+              {detail.escalation_overdue && <span className="text-xs font-semibold text-rose-600">SLA breached</span>}
+            </div>
+
+            <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+              <DetailItem label="Client">
+                <Link href={`/dashboard/investors/${detail.investor_id}`} className="font-medium hover:underline">
+                  {detail.investor_name ?? "—"}
+                </Link>
+                {detail.investor_pan && <div className="font-mono text-xs text-muted-foreground">{detail.investor_pan}</div>}
+              </DetailItem>
+              <DetailItem label="Amount">
+                <span className="font-semibold tabular-nums text-rose-600">{formatINR(Number(detail.rejection_amount))}</span>
+              </DetailItem>
+              <DetailItem label="SIP scheme" wide>{detail.scheme_name ?? "—"}</DetailItem>
+              <DetailItem label="Fund house (AMC)">{detail.amc_name ?? "—"}</DetailItem>
+              <DetailItem label="Folio"><span className="font-mono">{detail.folio_number ?? "—"}</span></DetailItem>
+              <DetailItem label="Reason from the registrar" wide>
+                <span className="whitespace-pre-wrap break-words">{detail.rejection_reason ?? "—"}</span>
+              </DetailItem>
+              <DetailItem label="Rejected on">{formatDate(detail.rejection_date)}</DetailItem>
+              <DetailItem label="Recorded in the CRM">{formatDate(detail.created_at)}</DetailItem>
+              <DetailItem label="Relationship manager">
+                {detail.rm_name ?? <span className="text-amber-600">Unassigned</span>}
+              </DetailItem>
+              <DetailItem label="Follow-up date">{detail.follow_up_date ? formatDate(detail.follow_up_date) : "—"}</DetailItem>
+              <DetailItem label="Recovery date">{detail.recovery_date ? formatDate(detail.recovery_date) : "—"}</DetailItem>
+              <DetailItem label="Remarks" wide>
+                <span className="whitespace-pre-wrap break-words">{detail.remarks?.trim() ? detail.remarks : "—"}</span>
+              </DetailItem>
+            </dl>
+
+            <DialogFooter>
+              <Link href={`/dashboard/investors/${detail.investor_id}`} className="btn-secondary text-sm">Open client</Link>
+              <DialogClose className="btn-primary text-sm">Close</DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+    </div>
+  );
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  client_contacted: "Client Contacted",
+  bank_issue: "Bank Issue",
+  mandate_issue: "Mandate Issue",
+  reprocessed: "Reprocessed",
+  recovered: "Recovered",
+  not_recoverable: "Not Recoverable",
+};
+const STATUS_TONE: Record<string, string> = {
+  pending: "bg-amber-50 text-amber-700 border-amber-200",
+  client_contacted: "bg-blue-50 text-blue-700 border-blue-200",
+  bank_issue: "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/30",
+  mandate_issue: "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/30",
+  reprocessed: "bg-cyan-50 text-cyan-700 border-cyan-200",
+  recovered: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  not_recoverable: "bg-rose-50 text-rose-700 border-rose-200",
+};
+
+function DetailItem({ label, children, wide }: { label: string; children: ReactNode; wide?: boolean }) {
+  return (
+    <div className={wide ? "sm:col-span-2" : undefined}>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5">{children}</dd>
     </div>
   );
 }

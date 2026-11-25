@@ -1580,8 +1580,11 @@ and `tests/rta-sip-register-import.test.ts`:
   reason; the rejection report knows more column names and skips ₹0 rows; the materialiser is
   NULL-amount safe and looks back by the row's last change, not just its import time.
 - Not fixed: dashboards that read `sip_rejections` vs the transactions ledger can differ; a bounce
-  in both the feed and a rejection report can double-count; the SIP Rejections page is capped at
-  200 rows; the real registrar vocabulary beyond what is listed is unverified without a sample.
+  in both the feed and a rejection report can double-count; the real registrar vocabulary beyond
+  what is listed is unverified without a sample. (The SIP Rejections list was capped at 200 rows with no way to see the rest;
+  since 2026-11-25 it pages 50 at a time with a count of the rows matching the filters, the table is keyed by page so a
+  ticked row never follows you to another page, and "Select all N matching" fetches the ids from `GET /api/sip-rejections/ids`
+  — the page and that route share ONE filter, `lib/sip-rejections/list-filter.ts`; at most 1,000 (the bulk route's limit).)
   A completed file is kept 14 days — re-upload it, or use Re-import on its row, to apply the fixes.
 
 ### The SIP book counted SIPs the registrar had terminated (2026-11-24, Ahpal)
