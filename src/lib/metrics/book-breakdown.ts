@@ -34,6 +34,11 @@ export type BookBreakdown = {
   sips: { active: number; activeAmount: number; activeOfLeftOut: number; activeOfLeftOutAmount: number; ended: number };
   /** Live clients that share a PAN with another record, or have none (a likely duplicate / placeholder). */
   duplicates: { noPan: number; sharedPan: number };
+  /** The newest SIP register imported per registrar: rows read, placed in the book, skipped, and the first reason. */
+  registers: Array<{
+    source: string; fileName: string | null; importedAt: string | null;
+    total: number; imported: number; skipped: number; failed: number; leftOut: number; firstReason: string | null;
+  }>;
 };
 
 const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -90,7 +95,27 @@ export async function loadBookBreakdown(tx: Tx, tenantId: string): Promise<BookB
      WHERE i.tenant_id = ${t} AND i.deleted_at IS NULL AND i.merged_into_id IS NULL AND i.status NOT IN ('closed', 'exited')
   `)).rows[0] as { no_pan: number; shared_pan: number } | undefined;
 
+  const regs = (await tx.execute(sql`
+    SELECT DISTINCT ON (f.source) f.source, f.file_name, f.created_at::text AS at,
+           COALESCE(f.rows_total, 0) AS total, COALESCE(f.rows_imported, 0) AS imported,
+           COALESCE(f.rows_skipped, 0) AS skipped, COALESCE(f.rows_failed, 0) AS failed,
+           (SELECT e->>'reason' FROM jsonb_array_elements(COALESCE(f.errors, '[]'::jsonb)) e
+             WHERE (e->>'row')::int > 0 LIMIT 1) AS reason
+      FROM rta_file_imports f
+     WHERE f.tenant_id = ${t} AND f.deleted_at IS NULL AND f.kind = 'monthly_sip_book' AND f.status IN ('completed', 'partial')
+     ORDER BY f.source, f.created_at DESC
+  `)).rows as Array<Record<string, unknown>>;
+  const registers = regs.map((g) => {
+    const total = num(g.total), imported = num(g.imported), skipped = num(g.skipped), failed = num(g.failed);
+    return {
+      source: String(g.source), fileName: (g.file_name as string) ?? null, importedAt: (g.at as string) ?? null,
+      total, imported, skipped, failed, leftOut: Math.max(0, total - imported - skipped - failed),
+      firstReason: (g.reason as string) ?? null,
+    };
+  });
+
   return {
+    registers,
     live,
     closedOrExited: row("closed"),
     inTrash: row("trash"),
@@ -144,6 +169,17 @@ export function bookBreakdownNotes(b: BookBreakdown): string[] {
   }
   if (b.sips.ended > 0) {
     notes.push(`${n0(b.sips.ended)} SIP registrations are stopped, completed or rejected, and are not in the book. The registrar's SIP count may include some of them.`);
+  }
+  for (const g of b.registers) {
+    const who = g.source === "cams" ? "CAMS" : g.source === "kfintech" ? "KFintech" : g.source;
+    if (g.skipped > 0) {
+      notes.push(
+        `The latest ${who} SIP register read ${n0(g.total)} rows; ${n0(g.skipped)} could not be placed in the book${g.firstReason ? ` — e.g. "${g.firstReason}"` : ""}. A row is filed when its PAN names a client, even before its folio is imported; the rest need the folio master (CAMS WBR9 / WBR4, KFintech MFSD211) — import it, then Re-import the register.`
+      );
+    }
+  }
+  if (b.registers.length === 0) {
+    notes.push("No SIP register (CAMS WBR49, KFintech MFSD243) has been imported, so no SIPs are in the book at all.");
   }
   if (b.duplicates.noPan > 0 || b.duplicates.sharedPan > 0) {
     const bits = [

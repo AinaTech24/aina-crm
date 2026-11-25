@@ -15,6 +15,7 @@ const base: BookBreakdown = {
   folios: { total: 3000, valued: 2900, unvalued: 100 },
   sips: { active: 1500, activeAmount: 6_282_000, activeOfLeftOut: 0, activeOfLeftOutAmount: 0, ended: 300 },
   duplicates: { noPan: 60, sharedPan: 0 },
+  registers: [{ source: "kfintech", fileName: "MFSD243.zip", importedAt: "2026-11-24", total: 1900, imported: 1500, skipped: 400, failed: 0, leftOut: 0, firstReason: "Folio 123 not found — import the folio master first" }],
 };
 
 describe("book breakdown notes", () => {
@@ -24,6 +25,12 @@ describe("book breakdown notes", () => {
     expect(text).toMatch(/100 of 3,000 folios have no value/);
     expect(text).toMatch(/300 SIP registrations are stopped/);
     expect(text).toMatch(/60 live records have no PAN/);
+  });
+
+  it("says how many SIP register rows could not be placed, and why", () => {
+    const text = bookBreakdownNotes(base).join("\n");
+    expect(text).toMatch(/latest KFintech SIP register read 1,900 rows; 400 could not be placed.*Folio 123 not found/);
+    expect(bookBreakdownNotes({ ...base, registers: [] }).join("\n")).toMatch(/No SIP register .* has been imported/);
   });
 
   it("names AUM and SIPs that sit on records the dashboards leave out", () => {
@@ -46,6 +53,7 @@ describe("book breakdown notes", () => {
       folios: { total: 10, valued: 10, unvalued: 0 },
       sips: { ...base.sips, ended: 0 },
       duplicates: { noPan: 0, sharedPan: 0 },
+      registers: [{ ...base.registers[0], skipped: 0, imported: 1900 }],
     };
     expect(bookBreakdownNotes(clean)).toEqual([]);
   });
@@ -63,5 +71,6 @@ describe.skipIf(!TEST_DB)("the breakdown query", () => {
     expect(r.live.clients).toBe(0);
     expect(r.folios.total).toBe(0);
     expect(r.sips.active).toBe(0);
+    expect(r.registers).toEqual([]);
   });
 });

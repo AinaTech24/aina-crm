@@ -1661,6 +1661,12 @@ the folios imported, and a folio with no value or a holdings file never imported
 state, counts unvalued folios, stopped SIPs and PAN-less / shared-PAN records, and the RTA File Imports page shows it ("What these imports
 built"). It explains; it never changes a record.
 
+**A SIP register row is filed even when its folio is not imported yet** (2026-11-25, same firm): `processSipBook` used to skip every row
+whose folio the CRM did not hold ("Folio … not found — import the folio master first"), so a fresh import with a missing or partial folio
+master read a SIP book below the registrar's. Now a row whose PAN names a client is filed with `folio_id` NULL (the folio NUMBER is stored and
+is what matching uses); only an ambiguous folio, or a row with neither folio nor PAN, is held back. The card also shows, per registrar, how many
+rows of the latest register could not be placed and the first reason.
+
 ### Files that arrive by mail but never become an import (2026-11-25)
 
 A firm asking for 14 reports (CAMS WBR9 / 4 / 49 / 2 / 22 / 2C / 9C, KFintech MFSD201 / 211 / 203 / 210 / 230 / 243 / 207)
