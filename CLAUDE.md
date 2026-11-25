@@ -1522,6 +1522,12 @@ client).
   least two words). It needs exactly one such client, one person of that name
   in the file, no PAN client already called that, no conflicting date of
   birth, and minor matches minor.
+- **A shared name is settled by the date of birth** (2026-11-25, a firm with 10,000+ hand-entered clients): when the name is not
+  unique, a registrar row still adopts the firm's PAN-less client if name key AND date of birth are both equal, exactly one person in
+  the file and exactly one PAN-less client in the book carry that pair, and nobody holding a PAN has that name and birthday. A
+  different or missing date of birth never matches on this tier; two clients with the same name and birthday stay a person's call
+  (Merge Clients). Adopted, the client takes the PAN and the registrar's contact, address, nominee and bank details replace the
+  hand-entered ones when the registrar sends them (`masterInvestorSet`) — name, RM, family, tags, notes and status are kept.
 - **History follows the folio.** When an import moves a folio to another
   client, its transactions and SIPs move too (`former-owners.ts`). An emptied
   placeholder, or a twin with the same PAN, is merged into the client that took
