@@ -88,6 +88,8 @@ import { ReviewCadenceEditor } from "@/components/investors/ReviewCadenceEditor"
 import { PortalAccessButton } from "@/components/investors/PortalAccessButton";
 import { RecordBusinessImpact } from "@/components/investors/RecordBusinessImpact";
 import { ClientActiveToggle } from "@/components/investors/ClientActiveToggle";
+import { ClientReportButton } from "@/components/investors/ClientReportButton";
+import { CLIENT_REPORT_FLAG } from "@/lib/investors/client-report-sections";
 import { ClientSummaryStrip } from "@/components/investors/ClientSummaryStrip";
 import { ClientReadinessStrip } from "@/components/investors/ClientReadinessStrip";
 import { PanReveal } from "@/components/investors/PanReveal";
@@ -532,6 +534,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             <SendTemplateButtons type="investor" id={inv.id} name={inv.name} email={inv.email} phone={inv.whatsappPhone || inv.phone} />
             {(can(session.roles, "investor.edit.all", session.permissions) || can(session.roles, "investor.edit.assigned", session.permissions)) && (
               <ClientActiveToggle investorId={inv.id} name={inv.name} status={inv.status ?? null} />
+            )}
+            {license.featureFlags?.[CLIENT_REPORT_FLAG] === true && (
+              <ClientReportButton investorId={inv.id} clientName={inv.name} />
             )}
             <RecordMenu>
               <Link href={`/dashboard/review-meetings/new?investorId=${inv.id}`} className={MENU_ITEM}>
