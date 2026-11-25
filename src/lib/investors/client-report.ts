@@ -124,7 +124,10 @@ export async function buildClientReport(
       FROM sips WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${id}::uuid AND status = 'active'`);
 
   const stats: { label: string; value: string; sub?: string }[] = [];
-  if (show.aum && valuation) {
+  const hasHoldings = !!valuation && valuation.holdings.some((h) => h.netUnits > 0.0005);
+  if (show.aum && valuation && !hasHoldings) {
+    stats.push({ label: "Mutual funds", value: "No holdings", sub: "None on record in the CRM" });
+  } else if (show.aum && valuation) {
     stats.push({ label: "Mutual fund value", value: formatMoney(valuation.currentValue), sub: valuation.asOf ? `NAV as on ${formatDate(valuation.asOf)}` : undefined });
     if (valuation.gain != null) stats.push({ label: "Gain", value: formatMoney(valuation.gain), sub: valuation.absoluteReturn != null ? `${formatPercent(valuation.absoluteReturn * 100)} absolute` : undefined });
     stats.push({ label: "XIRR", value: valuation.xirr != null ? formatPercent(valuation.xirr * 100) : valuation.xirrPartial != null ? `~${formatPercent(valuation.xirrPartial * 100)}` : "Not known", sub: valuation.xirr == null && valuation.xirrPartial == null ? "Needs the transaction history" : "Annualised" });

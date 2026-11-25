@@ -104,7 +104,7 @@ export async function renderClientReportPdf(input: ClientReportInput): Promise<B
     // Footer: a hairline and the confidentiality note; page numbers come last.
     page.drawLine({ start: { x: M, y: FOOTER_TOP - 6 }, end: { x: W - M, y: FOOTER_TOP - 6 }, thickness: 0.5, color: LINE });
     for (const [i, l] of wrap(input.footerNote, font, 6.8, usable).slice(0, 2).entries()) {
-      page.drawText(l, { x: M, y: FOOTER_TOP - 15 - i * 8.5, size: 6.8, font, color: SLATE });
+      page.drawText(l, { x: M, y: FOOTER_TOP - 13 - i * 8.5, size: 6.8, font, color: SLATE });
     }
   };
   const ensure = (h: number) => {
@@ -266,6 +266,6 @@ export async function renderClientReportPdf(input: ClientReportInput): Promise<B
     return `${s}...`;
   }
 
-  drawPageNumbers(doc, font, W, 14);
+  drawPageNumbers(doc, font, W, 10);
   return Buffer.from(await doc.save());
 }
