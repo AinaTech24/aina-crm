@@ -102,7 +102,7 @@ export async function transferFolios(
   const { tenantId, fromId, toId } = a;
   const folioIds = [...new Set(a.folioIds)];
   if (fromId === toId) return { error: "choose two different clients" };
-  if (!folioIds.length) return { error: "choose at least one folio to move" };
+  if (!folioIds.length && !(a.fieldPicks ?? []).length) return { error: "choose at least one folio to move, or a field value to take" };
 
   const people = (await tx.execute(sql`
     SELECT id::text AS id, upper(nullif(trim(pan), '')) AS pan, merged_into_id IS NOT NULL AS merged
@@ -118,16 +118,19 @@ export async function transferFolios(
   }
 
   const fl = sql.join(folioIds.map((i) => sql`${i}::uuid`), sql`, `);
-  const moved = (await tx.execute(sql`
-    UPDATE folios SET investor_id = ${toId}::uuid, updated_at = now()
-     WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${fromId}::uuid AND id IN (${fl})
-    RETURNING id::text AS id
-  `)).rows as Array<{ id: string }>;
+  // No folio ticked is allowed when the operator only picked field values to take.
+  const moved = folioIds.length
+    ? ((await tx.execute(sql`
+        UPDATE folios SET investor_id = ${toId}::uuid, updated_at = now()
+         WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${fromId}::uuid AND id IN (${fl})
+        RETURNING id::text AS id
+      `)).rows as Array<{ id: string }>)
+    : [];
   if (moved.length !== folioIds.length) return { error: "a chosen folio no longer belongs to the first client — reload and try again" };
 
   let transactions = 0;
   let sips = 0;
-  if (a.moveHistory) {
+  if (a.moveHistory && folioIds.length) {
     transactions = ((await tx.execute(sql`
       UPDATE transactions SET investor_id = ${toId}::uuid, updated_at = now()
        WHERE tenant_id = ${tenantId}::uuid AND investor_id = ${fromId}::uuid AND folio_id IN (${fl}) RETURNING id

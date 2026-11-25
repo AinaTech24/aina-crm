@@ -119,7 +119,7 @@ export function FolioTransferDialog({
   }
 
   async function apply() {
-    if (!from || !to || !chosen.length) return;
+    if (!from || !to || (!chosen.length && !takenFromOther.length)) return;
     setBusy(true);
     setErr(null);
     try {
@@ -141,7 +141,8 @@ export function FolioTransferDialog({
         return;
       }
       onOpenChange(false);
-      onDone(`Moved ${j.folios} folio${j.folios === 1 ? "" : "s"} from ${from.name} to ${to.name}.`);
+      const took = takenFromOther.length ? ` ${takenFromOther.length} field value${takenFromOther.length === 1 ? "" : "s"} taken from ${from.name}.` : "";
+      onDone(j.folios > 0 ? `Moved ${j.folios} folio${j.folios === 1 ? "" : "s"} from ${from.name} to ${to.name}.${took}` : `${to.name} now holds ${takenFromOther.length} field value${takenFromOther.length === 1 ? "" : "s"} taken from ${from.name}.`);
     } catch (e: any) {
       setErr(e?.message ?? "Transfer failed");
     } finally {
@@ -296,11 +297,16 @@ export function FolioTransferDialog({
             </button>
             <button
               type="button"
-              disabled={busy || !chosen.length || (panClash && !allowPan)}
+              disabled={busy || (!chosen.length && !takenFromOther.length) || (panClash && !allowPan)}
               onClick={apply}
               className={buttonClass("primary")}
             >
-              {busy && <Loader2 className="size-4 animate-spin" />} Move {chosen.length || ""} folio{chosen.length === 1 ? "" : "s"}
+              {busy && <Loader2 className="size-4 animate-spin" />}{" "}
+              {chosen.length
+                ? `Move ${chosen.length} folio${chosen.length === 1 ? "" : "s"}${takenFromOther.length ? ` + ${takenFromOther.length} value${takenFromOther.length === 1 ? "" : "s"}` : ""}`
+                : takenFromOther.length
+                  ? `Apply ${takenFromOther.length} field value${takenFromOther.length === 1 ? "" : "s"}`
+                  : "Move folios"}
             </button>
           </div>
         </DialogFooter>
