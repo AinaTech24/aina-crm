@@ -17,6 +17,7 @@ import { formatDate, formatRelative } from "@/lib/utils";
 import { REVIEW_MEETING_STATUSES } from "@/db/schema/review_meetings";
 import { BulkTable, type BulkColumn, type BulkAction } from "@/components/common/BulkTable";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Pager } from "@/components/common/Pager";
 import { useToast } from "@/components/ui/Toast";
 import { DeleteMeetingButton } from "./DeleteMeetingButton";
 
@@ -177,13 +178,24 @@ function arrangeColumns(defs: BulkColumn<Row>[], colOrder: string[] | undefined,
 export function MeetingsBulkTable({
   upcoming,
   past,
+  upcomingTotal,
+  pastTotal,
+  upcomingPage,
+  pastPage,
+  pageSize,
   rmOptions,
   toolbar,
   colOrder,
   extraCols = [],
 }: {
+  /** One page of each list; the totals count every meeting the filters match. */
   upcoming: Row[];
   past: Row[];
+  upcomingTotal: number;
+  pastTotal: number;
+  upcomingPage: number;
+  pastPage: number;
+  pageSize: number;
   rmOptions: { value: string; label: string }[];
   /** Column keys in the person's order (built-ins, then `x:<field>` added ones); see lib/list-columns. */
   colOrder?: string[];
@@ -285,7 +297,7 @@ export function MeetingsBulkTable({
   return (
     <div className="space-y-6">
       {/* Upcoming — only shown when there ARE upcoming meetings; collapsed by default. */}
-      {upcoming.length > 0 && (
+      {upcomingTotal > 0 && (
         <div className="card-surface overflow-hidden">
           <button
             type="button"
@@ -295,13 +307,16 @@ export function MeetingsBulkTable({
           >
             <span className="flex items-center gap-2">
               <Calendar className="size-4 text-muted-foreground" /> Upcoming meetings
-              <span className="chip bg-secondary text-muted-foreground text-2xs">{upcoming.length}</span>
+              <span className="chip bg-secondary text-muted-foreground text-2xs">{upcomingTotal}</span>
             </span>
             <ChevronDown className={`size-4 text-muted-foreground transition-transform duration-300 ${upcomingOpen ? "" : "-rotate-90"}`} />
           </button>
           <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${upcomingOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
             <div className="overflow-hidden">
-              <BulkTable rows={upcoming} columns={upcomingCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" rowHref={meetingHref} tableKey="meetings-upcoming" />
+              <BulkTable key={`upcoming-${upcomingPage}`} rows={upcoming} columns={upcomingCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" rowHref={meetingHref} tableKey="meetings-upcoming" />
+              <div className="px-4 pb-3">
+                <Pager param="upage" page={upcomingPage} totalPages={Math.max(1, Math.ceil(upcomingTotal / pageSize))} total={upcomingTotal} pageSize={pageSize} />
+              </div>
             </div>
           </div>
         </div>
@@ -310,16 +325,16 @@ export function MeetingsBulkTable({
       {/* Past — the toolbar (search + filters + columns + view) lives in its header. */}
       <div className="card-surface">
         <div className="border-b border-border px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
-          <span className="font-semibold whitespace-nowrap">Past meetings ({past.length})</span>
+          <span className="font-semibold whitespace-nowrap">Past meetings ({pastTotal})</span>
           {toolbar && <div className="flex-1 min-w-[260px] flex justify-end">{toolbar}</div>}
         </div>
-        {past.length === 0 ? (
+        {pastTotal === 0 ? (
           /* "No past meetings match." was shown for BOTH an empty book and a
              filtered-out list, so a firm with no meetings at all was told its
              filter matched nothing and given no way forward. Split the two. */
           <div className="p-12 text-center">
             <Calendar className="size-8 mx-auto text-muted-foreground/50" />
-            {upcoming.length === 0 ? (
+            {upcomingTotal === 0 ? (
               <>
                 <div className="mt-3 font-semibold">No meetings yet</div>
                 <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
@@ -334,14 +349,19 @@ export function MeetingsBulkTable({
               <>
                 <div className="mt-3 font-semibold">Nothing completed yet</div>
                 <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
-                  {upcoming.length} {upcoming.length === 1 ? "meeting is" : "meetings are"} scheduled.
+                  {upcomingTotal} {upcomingTotal === 1 ? "meeting is" : "meetings are"} scheduled.
                   Once you mark one done it moves here, with its notes.
                 </p>
               </>
             )}
           </div>
         ) : (
-          <BulkTable rows={past.slice(0, 50)} columns={pastCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" scrollBody rowHref={meetingHref} tableKey="meetings-upcoming" />
+          <>
+            <BulkTable key={`past-${pastPage}`} rows={past} columns={pastCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" scrollBody rowHref={meetingHref} tableKey="meetings-upcoming" />
+            <div className="px-4 pb-3 border-t border-border">
+              <Pager param="ppage" page={pastPage} totalPages={Math.max(1, Math.ceil(pastTotal / pageSize))} total={pastTotal} pageSize={pageSize} />
+            </div>
+          </>
         )}
       </div>
     </div>

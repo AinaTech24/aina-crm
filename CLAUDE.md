@@ -831,6 +831,11 @@ Reports → "Bottlenecks — Where Work Waits" (`/dashboard/reports/bottlenecks`
   notified (`task.assigned`), and team attendees newly added get
   `meeting.attendee_added`.
 
+**Upcoming and Past page on their own** (2026-11-25): the page splits them in SQL (upcoming = scheduled / confirmed
+and still to happen), counts each, and reads 25 rows of each (`upage`, `ppage`; `Pager param=`). The old read took 200
+meetings and showed only the first 50 past ones, with no way to see the rest. Today's agenda has its own query (India
+date). A filter change drops both page params, and each table is keyed by its page so a ticked row never follows you.
+
 The meeting page has no notes box and no Outcome card (removed at the firm's
 request), so completing a meeting no longer creates a "write up your notes"
 task. The columns and the server's outcome → lead-journey logic are untouched.
