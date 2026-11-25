@@ -1661,6 +1661,23 @@ registrar's own SIP debits in the feed (last 45 days) and the SIP Book page show
 the registrar"): when each registrar's register was last imported, registers refused in 30 days, SIPs debited but not in
 the book, active SIPs with no debit in 60 days. It explains; it never changes a SIP.
 
+### Why the dashboard differs from the registrar's own totals — "What these imports built" (2026-11-25, Urmi)
+
+The registrar said AUM ₹242.94 Cr, SIP book ₹73.06 L over 1,796 SIPs, 2,344 clients; the dashboard read ₹182.33 Cr, ₹62.82 L and "1,022 clients".
+The three are different questions: the Owner Dashboard's **Clients** headline is clients HOLDING MONEY (AUM > 0) with "N client records"
+beneath it, while the registrar counts every investor it has a folio for; headline AUM and the SIP book count LIVE clients only (`aliveClient`), so
+a closed / exited / trashed / merged record takes its money and SIPs with it; AUM is the CRM's valuation (units × latest NAV, `aum-persist.ts`) of
+the folios imported, and a folio with no value or a holdings file never imported is simply absent. An RTA import never closes a client.
+`lib/metrics/book-breakdown.ts` (`loadBookBreakdown`, `bookBreakdownNotes` — pure, tested) splits clients / AUM / active-SIP amount by record
+state, counts unvalued folios, stopped SIPs and PAN-less / shared-PAN records, and the RTA File Imports page shows it ("What these imports
+built"). It explains; it never changes a record.
+
+**A SIP register row is filed even when its folio is not imported yet** (2026-11-25, same firm): `processSipBook` used to skip every row
+whose folio the CRM did not hold ("Folio … not found — import the folio master first"), so a fresh import with a missing or partial folio
+master read a SIP book below the registrar's. Now a row whose PAN names a client is filed with `folio_id` NULL (the folio NUMBER is stored and
+is what matching uses); only an ambiguous folio, or a row with neither folio nor PAN, is held back. The card also shows, per registrar, how many
+rows of the latest register could not be placed and the first reason.
+
 ### Files that arrive by mail but never become an import (2026-11-25)
 
 A firm asking for 14 reports (CAMS WBR9 / 4 / 49 / 2 / 22 / 2C / 9C, KFintech MFSD201 / 211 / 203 / 210 / 230 / 243 / 207)

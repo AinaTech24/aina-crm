@@ -174,6 +174,30 @@ describe.skipIf(!TEST_DB)("importing a SIP register", () => {
     expect(await bookFor()).toBe(0);
   });
 
+  it("a SIP whose folio is not imported yet is still filed when its PAN names a client — and held back when the row has no PAN", async () => {
+    await reset();
+    const id = randomUUID();
+    await q(sql`INSERT INTO investors (id, tenant_id, name, pan, dedup_pan, status) VALUES (${id}::uuid, ${tenant}::uuid, 'No Folio Yet', 'ZZZZZ9999Z', true, 'active')`);
+    const kfin = [
+      "Folio|SchCode|SchDesc|InvName|PAN|TrType|Freq|STARTDATE|ENDDATE|AMOUNT|TERMINATEDATE|Status",
+      "9090|1746|Scheme X|N|ZZZZZ9999Z|SIP|Monthly|01/03/2026|01/03/2040|7000||Live",
+      "9091|1746|Scheme X|N||SIP|Monthly|01/03/2026|01/03/2040|1000||Live",
+    ].join("\n");
+    const res = await withSystem((tx) => processRtaFile(tx, { tenantId: tenant, source: "kfintech", kind: "monthly_sip_book", text: kfin }));
+    const filed = await q<{ amount: number; folio_id: string | null; investor_id: string }>(
+      sql`SELECT amount::float AS amount, folio_id, investor_id FROM sips WHERE tenant_id = ${tenant}::uuid AND folio_number = '9090'`,
+    );
+    expect(filed).toHaveLength(1);
+    expect(filed[0].amount).toBe(7000);
+    expect(filed[0].folio_id).toBeNull();
+    expect(filed[0].investor_id).toBe(id);
+    expect(await sips("9091")).toHaveLength(0);
+    expect(res.rowsSkipped).toBe(1);
+    expect(await bookFor()).toBe(7000);
+    await q(sql`DELETE FROM sips WHERE tenant_id = ${tenant}::uuid`);
+    await q(sql`DELETE FROM investors WHERE id = ${id}::uuid`);
+  });
+
   it("a register that is entirely cancelled leaves nothing live", async () => {
     await reset();
     await load(register(liveNew));

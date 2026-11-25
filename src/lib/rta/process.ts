@@ -1267,13 +1267,18 @@ async function processSipBook(
     const folioId = picked.folio?.id;
     const amcName = picked.folio?.amc_name || "Unknown AMC";
     const folioInvestorId = picked.folio?.investor_id ?? null;
-    if (!folioId) {
+    // A folio the CRM does not hold yet (the folio master has not been imported, or is partial) must not
+    // cost the client a SIP: when the row carries a PAN, the client is found by it and the SIP is filed with no
+    // folio row — matching is by folio NUMBER, and a later folio import links it. Only an ambiguous folio, or a
+    // row with neither folio nor PAN, is held back (Urmi Financial Services, 2026-11-25: a fresh import read a
+    // SIP book 10 L below the registrar's).
+    if (!folioId && (picked.ambiguous || !r.pan)) {
       skipped++;
       errors.push({
         row: i + 1,
         reason: picked.ambiguous
           ? `Folio ${r.folioNumber} is held at more than one AMC by different clients and this row does not say which — not filed`
-          : `Folio ${r.folioNumber} not found — import the folio master first`,
+          : `Folio ${r.folioNumber} not found and the row has no PAN — import the folio master first`,
       });
       continue;
     }
@@ -1299,7 +1304,7 @@ async function processSipBook(
       errors.push({
         row: i + 1,
         reason: r.pan
-          ? `PAN ${r.pan} not in client master, and folio ${r.folioNumber} is not linked to a client`
+          ? `PAN ${r.pan} not in client master, and folio ${r.folioNumber} is ${folioId ? "not linked to a client" : "not imported"} — import the folio master first`
           : `row has no PAN and folio ${r.folioNumber} is not linked to a client`,
       });
       continue;
@@ -1487,7 +1492,7 @@ async function processSipBook(
             tenant_id, investor_id, folio_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
             amount, frequency, sip_date, start_date, end_date, next_installment_at, mandate_id, status, rm_id, remarks
           ) VALUES (
-            ${args.tenantId}::uuid, ${investorId}::uuid, ${folioId}::uuid, ${r.folioNumber}, ${r.schemeCode}, ${amcName},
+            ${args.tenantId}::uuid, ${investorId}::uuid, ${folioId ?? null}::uuid, ${r.folioNumber}, ${r.schemeCode}, ${amcName},
             ${r.schemeCode}, ${r.schemeName}, ${r.amount}, ${r.frequency}, ${r.sipDate ?? null}, ${r.startDate ?? null}::date,
             ${r.endDate ?? null}::date, ${r.nextInstallmentAt ?? null}::date, ${mandateId}::uuid, 'active', ${rmId}::uuid,
             left(${reg.reason ?? null}::text, 500)
