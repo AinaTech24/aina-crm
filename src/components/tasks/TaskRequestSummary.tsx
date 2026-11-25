@@ -7,6 +7,10 @@
  *
  * Tasks created on 2026-10-01 carry ONE scheme as flat fields
  * (meta.request.scheme / toScheme / units / sipDate …); they show as one row.
+ *
+ * A task from the request table (meta.request.lines, lib/tasks/request-lines)
+ * shows its rows — member, request, scheme, amount, day, folio, mode, note —
+ * and a link to each Business entry it booked.
  */
 
 import Link from "next/link";
@@ -20,6 +24,7 @@ import {
   type RequestDetails,
   type RequestRow,
 } from "@/lib/tasks/request-types";
+import { modeOptions, type RequestLine } from "@/lib/tasks/request-lines";
 
 const FREQ_LABEL: Record<string, string> = Object.fromEntries(FREQUENCIES);
 
@@ -45,6 +50,14 @@ export function TaskRequestSummary({ type, meta }: { type: string | null | undef
   const amount = m.boValue != null && Number.isFinite(Number(m.boValue)) ? Number(m.boValue) : null;
   const mode = m.boChannel === "online" ? "Online" : m.boChannel === "offline" ? "Offline" : null;
   const entryId = typeof m.businessEntryId === "string" ? m.businessEntryId : null;
+
+  const lines = Array.isArray((r as { lines?: unknown }).lines) ? ((r as { lines: RequestLine[] }).lines) : null;
+  if (lines?.length) {
+    const entryIds = [
+      ...new Set([...(Array.isArray(m.businessEntryIds) ? m.businessEntryIds : []), ...(entryId ? [entryId] : [])].filter((x): x is string => typeof x === "string")),
+    ];
+    return <LinesSummary category={category} lines={lines} amount={amount} entryIds={entryIds} label={req?.label ?? "Several requests"} />;
+  }
 
   const legacy = !r.rows?.length ? legacyRow(r, amount) : null;
   const rows: RequestRow[] = r.rows?.length ? r.rows : legacy ? [legacy] : [];
@@ -118,6 +131,96 @@ export function TaskRequestSummary({ type, meta }: { type: string | null | undef
           ))}
         </dl>
       )}
+    </div>
+  );
+}
+
+function LinesSummary({
+  category,
+  lines,
+  amount,
+  entryIds,
+  label,
+}: {
+  category: Exclude<ReturnType<typeof categoryOfType>, "general">;
+  lines: RequestLine[];
+  amount: number | null;
+  entryIds: string[];
+  label: string;
+}) {
+  const family = new Set(lines.map((l) => l.investorId)).size > 1;
+  const has = (f: (l: RequestLine) => unknown) => lines.some((l) => f(l) != null && f(l) !== "" && f(l) !== false);
+  const hasScheme = has((l) => l.schemeName || l.fromSchemeName);
+  const hasUnits = has((l) => l.units ?? (l.allUnits || null));
+  const hasDay = has((l) => l.sipDay || l.frequency);
+  const hasFolio = has((l) => l.folio);
+  const hasMode = has((l) => l.mode);
+  const hasNote = has((l) => l.note);
+  const modeLabel = (l: RequestLine) => modeOptions(l.requestKey).find(([k]) => k === l.mode)?.[1] ?? "—";
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-secondary/40 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge raw>{CATEGORY_LABEL[category]}</Badge>
+        <span className="text-sm font-semibold">{label}</span>
+        <span className="text-xs text-muted-foreground">
+          · {lines.length} {lines.length === 1 ? "row" : "rows"}
+          {amount != null ? ` · total ${formatMoney(amount)}` : ""}
+        </span>
+        {entryIds.length > 0 && (
+          <span className="ml-auto flex flex-wrap gap-x-3">
+            {entryIds.map((id, i) => (
+              <Link key={id} href={`/dashboard/business-entries/${id}`} className="text-xs font-medium text-primary hover:underline">
+                Business entry{entryIds.length > 1 ? ` ${i + 1}` : ""} →
+              </Link>
+            ))}
+          </span>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="text-muted-foreground">
+            <tr>
+              <th className="py-1 pr-3 text-left font-medium">#</th>
+              {family && <th className="py-1 pr-3 text-left font-medium">Member</th>}
+              <th className="py-1 pr-3 text-left font-medium">Request</th>
+              {hasScheme && <th className="py-1 pr-3 text-left font-medium">Scheme / product</th>}
+              <th className="py-1 pr-3 text-right font-medium">Amount</th>
+              {hasUnits && <th className="py-1 pr-3 text-right font-medium">Units</th>}
+              {hasDay && <th className="py-1 pr-3 text-left font-medium">Day · frequency</th>}
+              {hasFolio && <th className="py-1 pr-3 text-left font-medium">Folio / policy</th>}
+              {hasMode && <th className="py-1 pr-3 text-left font-medium">Mode</th>}
+              {hasNote && <th className="py-1 text-left font-medium">Note</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l, i) => (
+              <tr key={i} className="border-t border-border/60 align-top">
+                <td className="py-1.5 pr-3 text-muted-foreground tabular-nums">{i + 1}</td>
+                {family && <td className="max-w-40 truncate py-1.5 pr-3 font-medium" title={l.investorName}>{l.investorName}</td>}
+                <td className="py-1.5 pr-3">{REQUEST_TYPE_BY_KEY[l.requestKey]?.label ?? l.requestKey}</td>
+                {hasScheme && (
+                  <td className="max-w-72 py-1.5 pr-3">
+                    {l.fromSchemeName && <div className="truncate text-muted-foreground" title={l.fromSchemeName}>From {l.fromSchemeName}</div>}
+                    <div className="truncate font-medium" title={l.schemeName}>{l.schemeName || "—"}</div>
+                    {l.amcName && <div className="truncate text-muted-foreground">{l.amcName}</div>}
+                  </td>
+                )}
+                <td className="py-1.5 pr-3 text-right tabular-nums">{l.amount != null ? formatMoney(l.amount) : "—"}</td>
+                {hasUnits && <td className="py-1.5 pr-3 text-right tabular-nums">{l.allUnits ? "All" : l.units ?? "—"}</td>}
+                {hasDay && (
+                  <td className="py-1.5 pr-3">
+                    {[l.sipDay ? `Day ${l.sipDay}` : null, l.frequency ? FREQ_LABEL[l.frequency] ?? l.frequency : null].filter(Boolean).join(" · ") || "—"}
+                  </td>
+                )}
+                {hasFolio && <td className="py-1.5 pr-3">{l.folio ?? "—"}</td>}
+                {hasMode && <td className="py-1.5 pr-3">{l.mode ? modeLabel(l) : "—"}</td>}
+                {hasNote && <td className="max-w-56 py-1.5 text-muted-foreground">{l.note ?? ""}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

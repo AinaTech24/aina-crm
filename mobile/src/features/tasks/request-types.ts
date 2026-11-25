@@ -286,12 +286,17 @@ export const REQUEST_TYPE_BY_KEY: Record<string, RequestType> = Object.fromEntri
 
 export const requestTypesFor = (c: Exclude<TaskCategory, "general">) => REQUEST_TYPES.filter((r) => r.category === c);
 
+/** A task whose request table (lib/tasks/request-lines) holds different
+ *  requests: any row moves money → multi_financial, else multi_service. */
+export const MULTI_FINANCIAL = "multi_financial";
+export const MULTI_SERVICE = "multi_service";
+
 /** Which category a stored task type belongs to. `financial` / `non_financial`
  *  are the old bare category values the form used to save. */
 export function categoryOfType(type: string | null | undefined): TaskCategory {
   if (!type) return "general";
-  if (type === "financial") return "financial";
-  if (type === "non_financial") return "non_financial";
+  if (type === "financial" || type === MULTI_FINANCIAL) return "financial";
+  if (type === "non_financial" || type === MULTI_SERVICE) return "non_financial";
   return REQUEST_TYPE_BY_KEY[type]?.category ?? "general";
 }
 
@@ -300,6 +305,7 @@ export function categoryOfType(type: string | null | undefined): TaskCategory {
 export const FINANCIAL_REQUEST_KEYS: string[] = [
   ...REQUEST_TYPES.filter((r) => r.category === "financial").map((r) => r.key),
   "financial",
+  MULTI_FINANCIAL,
 ];
 
 export const FIELD_LABEL: Record<RequestField, string> = {
