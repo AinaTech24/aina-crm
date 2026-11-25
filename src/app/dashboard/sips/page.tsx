@@ -17,6 +17,7 @@ import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
 import { sipNextDue, indiaToday } from "@/lib/sips/next-due";
 import { clientWhere, sipMonthlySql, textList, type MetricScope } from "@/lib/metrics";
 import { visibleClientSql } from "@/lib/transactions/client-scope";
+import { loadSipReconciliation, reconciliationNotes, type SipReconciliation } from "@/lib/metrics/sip-reconcile";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { readColumnPrefs } from "@/lib/list-columns/server";
@@ -213,7 +214,21 @@ export default async function SipsPage({
     // Values of the fields added as columns, for the rows on this page only.
     const extraValues = await loadSipExtra(tx, rows.map((r) => r.s.id), extraKeys, extraAllowed);
 
+    // The book against the registrar's own SIP debits — firm-wide viewers only, and never fatal.
+    let recon: SipReconciliation | null = null;
+    if (seesAll) {
+      await tx.execute(sql`SAVEPOINT sip_recon`);
+      try {
+        recon = await loadSipReconciliation(tx, session.tenantId);
+        await tx.execute(sql`RELEASE SAVEPOINT sip_recon`);
+      } catch (err) {
+        await tx.execute(sql`ROLLBACK TO SAVEPOINT sip_recon`);
+        console.error("[sips] reconciliation failed", session.tenantId, err);
+      }
+    }
+
     return {
+      recon,
       extraValues,
       activeSips: Number(s.active_sips),
       activeAmount: Number(s.active_amount),
@@ -269,6 +284,8 @@ export default async function SipsPage({
         <Stat icon={AlertTriangle} label="Stopped SIPs" value={data.stoppedAll.toLocaleString("en-IN")} hint="Every SIP the registrar shows as stopped, terminated, rejected or ended. They are not in the Active SIPs count or the Monthly SIP book." />
         <Stat icon={Calendar} label="Expiring (90 days)" value={data.expiringSoon.toLocaleString("en-IN")} hint="Active SIPs whose end date falls in the next 90 days." />
       </div>
+
+      {data.recon && <SipReconCard recon={data.recon} book={data.activeAmount} today={today} />}
 
       <CompactFilterBar
         totalCount={data.filteredTotal}
@@ -521,6 +538,36 @@ function Stat({
         {Icon && <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />}
       </div>
       <div className="text-2xl font-bold mt-1 tabular-nums text-foreground">{value}</div>
+    </div>
+  );
+}
+
+/** How the book compares with what the registrar actually debited, and why they can differ. */
+function SipReconCard({ recon, book, today }: { recon: SipReconciliation; book: number; today: string }) {
+  const notes = reconciliationNotes(recon, today);
+  const regLine = recon.registers
+    .map((g) => `${g.source === "cams" ? "CAMS" : "KFintech"}: ${g.lastImportedAt ? `last SIP register imported ${formatDate(g.lastImportedAt)}` : "no SIP register imported yet"}`)
+    .join(" · ");
+  return (
+    <div className="card-surface p-4 space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold">Check against the registrar</h2>
+        <span className="text-xs text-muted-foreground">{regLine}</span>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        The SIP book comes only from the registrar&apos;s SIP registration report (CAMS WBR49, KFintech MFSD243) — not from the
+        folio or transaction files that build AUM. In the last 45 days the registrar debited{" "}
+        <span className="text-foreground font-medium">{recon.debited.sips.toLocaleString("en-IN")} monthly SIPs</span> worth{" "}
+        <span className="text-foreground font-medium">{formatINR(recon.debited.amount)}</span>; the book holds{" "}
+        <span className="text-foreground font-medium">{formatINR(book)}</span> a month.
+      </p>
+      {notes.length > 0 ? (
+        <ul className="text-sm list-disc pl-5 space-y-1">
+          {notes.map((n) => <li key={n}>{n}</li>)}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">The book and the registrar&apos;s debits agree.</p>
+      )}
     </div>
   );
 }

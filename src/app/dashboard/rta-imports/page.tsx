@@ -42,7 +42,7 @@ export default async function RtaImportsPage() {
       ORDER BY kind, period_end DESC, created_at DESC
     `);
 
-    // Recent history (last 30 imports across all kinds)
+    // Recent history (last 100 imports across all kinds — a firm asking for 14 reports gets that many a day)
     const recent = await tx.execute(sql`
       SELECT
         rfi.id, rfi.source, rfi.kind, rfi.period_start, rfi.period_end,
@@ -53,7 +53,7 @@ export default async function RtaImportsPage() {
       LEFT JOIN users u ON u.id = rfi.uploaded_by
       WHERE rfi.deleted_at IS NULL
       ORDER BY rfi.created_at DESC
-      LIMIT 30
+      LIMIT 100
     `);
 
     // Trash — soft-deleted import records, recoverable.
@@ -70,7 +70,27 @@ export default async function RtaImportsPage() {
       LIMIT 20
     `);
 
+    // Files that ARRIVED by mail but were not imported (no report code the CRM reads, or a download that failed).
+    // They used to be visible only to AINA support, so a firm asking for 14 reports saw some appear and the rest
+    // silently not — never told which, or why.
+    let skipped: Array<{ received_at: string; subject: string | null; filename: string; reason: string | null }> = [];
+    try {
+      await tx.execute(sql`SAVEPOINT rta_skipped`);
+      skipped = (await tx.execute(sql`
+        SELECT m.received_at::text AS received_at, m.subject, a->>'filename' AS filename, a->>'reason' AS reason
+          FROM rta_inbound_messages m, jsonb_array_elements(COALESCE(m.attachments, '[]'::jsonb)) a
+         WHERE m.created_at > now() - interval '14 days'
+           AND a->>'outcome' IN ('unrecognised', 'error')
+         ORDER BY m.created_at DESC
+         LIMIT 30
+      `)).rows as typeof skipped;
+      await tx.execute(sql`RELEASE SAVEPOINT rta_skipped`);
+    } catch {
+      await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_skipped`);
+    }
+
     return {
+      skipped,
       latestByKind: new Map((latest.rows as any[]).map((r) => [r.kind, r])),
       recent: recent.rows as any[],
       trashed: trashed.rows as any[],
@@ -246,6 +266,26 @@ export default async function RtaImportsPage() {
 
       {/* Recent uploads + Trash (select / select-all / move-to-trash / recover /
           delete permanently) — client-side table. */}
+      {data.skipped.length > 0 && (
+        <div className="card-surface p-4 space-y-2">
+          <h2 className="text-sm font-semibold">Received by mail but not imported (last 14 days)</h2>
+          <p className="text-sm text-muted-foreground">
+            These arrived at the firm&apos;s RTA mailbox, but neither the file name nor the mail names a report the CRM reads,
+            or the download failed. They do not appear in the list below. Send support the report code if one of these should import.
+          </p>
+          <ul className="text-sm divide-y">
+            {data.skipped.map((f, i) => (
+              <li key={i} className="py-1.5 flex flex-wrap gap-x-3">
+                <span className="tabular-nums text-muted-foreground">{f.received_at ? new Date(f.received_at).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" }) : "—"}</span>
+                <span className="font-medium break-all">{f.filename}</span>
+                {f.subject && <span className="text-muted-foreground break-all">{f.subject}</span>}
+                {f.reason && <span className="text-muted-foreground">{f.reason}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <RtaImportsTable recent={data.recent as any[]} trashed={data.trashed as any[]} />
     </div>
   );

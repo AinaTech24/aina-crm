@@ -408,9 +408,18 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
     // from the quoted "Forwarded message" block instead (vittmantra, 2026-11-19).
     const forwardedSource = sourceFromSender(msg.from) ? null : sourceFromForwardedBody(msg.html ?? msg.text);
 
+    // A registrar often names the attachment with an opaque token and states the report only in the subject
+    // ("MFSD243 …", "WBR49. SIP/STP procured …"). With ONE importable attachment the mail's own words are
+    // that file's, so they classify it too — as they already did for download links. With several, the
+    // subject could name any of them, so it is not used.
+    const importable = msg.attachments.filter((a) => isImportableAttachment(a.filename));
     for (const att of msg.attachments) {
       if (!isImportableAttachment(att.filename)) continue;
-      const cls = classifyMailback(att.filename, msg.from, forwardedSource);
+      const cls =
+        classifyMailback(att.filename, msg.from, forwardedSource) ??
+        (importable.length === 1
+          ? classifyMailbackFromText(msg.subject, `${msg.text ?? ""}\n${msg.html ?? ""}`, msg.from, forwardedSource)
+          : null);
       if (!cls) {
         console.warn(`[rta-inbox] ${tenantId}: unrecognised attachment ${fileRef(att.filename)} from ${addressRef(msg.from)} — skipped`);
         attLogs.push({
@@ -419,7 +428,7 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
           source: null,
           kind: null,
           outcome: "unrecognised",
-          reason: "Filename carries no recognised CAMS/KFintech report code",
+          reason: `Neither the file name nor the mail names a report code the CRM reads${reportCodeIn(`${att.filename} ${msg.subject ?? ""}`) ? ` (it says ${reportCodeIn(`${att.filename} ${msg.subject ?? ""}`)})` : ""}`,
         });
         continue;
       }
@@ -812,3 +821,9 @@ export function startRtaInboxPollerWorker() {
   return () => clearInterval(handle);
 }
 
+
+/** The registrar report code a name or subject carries ("MFSD207", "WBR9C"), for the "not imported" reason. */
+function reportCodeIn(text: string): string | null {
+  const m = text.match(/\b(MFSD\s*_?\d{3}|WBR\s*_?\d{1,2}[A-Z]?)\b/i);
+  return m ? m[1].replace(/[\s_]/g, "").toUpperCase() : null;
+}
