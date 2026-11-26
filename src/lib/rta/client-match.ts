@@ -34,6 +34,11 @@
  *    exactly one person of that name in the file, nobody with a PAN already
  *    called that, at least two name words, and no conflicting date of birth.
  *    A namesake is a person's call, never the importer's.
+ *  - Where the name is NOT unique the DATE OF BIRTH may decide (2026-11-25, a firm
+ *    with 10,000+ hand-entered clients): the same name key AND the same date of
+ *    birth, with exactly one person in the file and exactly one PAN-less client in
+ *    the book carrying that pair, and nobody who already holds a PAN with that pair.
+ *    A different or missing date of birth never matches on this tier.
  */
 
 import { sql } from "drizzle-orm";
@@ -312,12 +317,14 @@ async function adoptByName(
     if (k) inFile.set(k, (inFile.get(k) ?? 0) + 1);
   }
   const wanted = new Map<string, string>(); // name key → the one unknown key
+  const needed = new Set<string>(); // every name key an unknown key carries (2+ words)
   for (const key of unknown) {
     const nk = nameMatchKey(hints.get(key)?.name);
-    if (wordCount(nk) < 2 || inFile.get(nk) !== 1) continue;
-    wanted.set(nk, key);
+    if (wordCount(nk) < 2) continue;
+    needed.add(nk);
+    if (inFile.get(nk) === 1) wanted.set(nk, key);
   }
-  if (!wanted.size) return out;
+  if (!needed.size) return out;
 
   const candidates = (await tx.execute(sql`
     SELECT id, name, dob, is_minor, rta_nopan_key
@@ -328,39 +335,74 @@ async function adoptByName(
   const byName = new Map<string, typeof candidates>();
   for (const c of candidates) {
     const nk = nameMatchKey(c.name);
-    if (!wanted.has(nk)) continue;
+    if (!needed.has(nk)) continue;
     byName.set(nk, [...(byName.get(nk) ?? []), c]);
   }
   if (!byName.size) return out;
 
   // Someone who already has a PAN and this name could be the person the
-  // PAN-less record describes — that makes it ambiguous, so skip it.
-  const panHolders = new Set<string>();
+  // PAN-less record describes — that makes it ambiguous, so skip it. (Their
+  // date of birth is kept: on the date-of-birth tier only the same birthday blocks.)
+  const panHolders = new Map<string, Set<string>>(); // name key → their dates of birth ('' when unknown)
   const holders = (await tx.execute(sql`
-    SELECT name FROM investors
+    SELECT name, dob FROM investors
      WHERE tenant_id = ${tenantId}::uuid AND pan IS NOT NULL
        AND deleted_at IS NULL AND merged_into_id IS NULL
-  `)).rows as Array<{ name: string | null }>;
+  `)).rows as Array<{ name: string | null; dob: unknown }>;
   for (const h of holders) {
     const nk = nameMatchKey(h.name);
-    if (byName.has(nk)) panHolders.add(nk);
+    if (!byName.has(nk)) continue;
+    const set = panHolders.get(nk) ?? new Set<string>();
+    set.add(day(h.dob) ?? "");
+    panHolders.set(nk, set);
   }
 
-  for (const [nk, cands] of byName) {
-    if (panHolders.has(nk)) continue;
-    const key = wanted.get(nk)!;
-    const hint = hints.get(key) ?? {};
-    // The firm's own record first; a placeholder from an earlier report only
-    // when there is no such record.
+  // The firm's own record first; a placeholder from an earlier report only
+  // when there is no such record.
+  const choose = (cands: typeof candidates) => {
     const firm = cands.filter((c) => !c.rta_nopan_key);
     const placeholders = cands.filter((c) => (c.rta_nopan_key ?? "").startsWith("NOPAN:"));
-    const pick = firm.length === 1 ? firm[0] : firm.length === 0 && placeholders.length === 1 ? placeholders[0] : null;
+    return firm.length === 1 ? firm[0] : firm.length === 0 && placeholders.length === 1 ? placeholders[0] : null;
+  };
+
+  // Tier 1 — an unambiguous name.
+  for (const [nk, cands] of byName) {
+    const key = wanted.get(nk);
+    if (!key || panHolders.has(nk)) continue;
+    const hint = hints.get(key) ?? {};
+    const pick = choose(cands);
     if (!pick) continue;
     const isMinorKey = kind === "pan" ? key.startsWith("MINOR:") : !!hint.isMinor;
     if (isMinorKey !== !!pick.is_minor) continue;
     const a = day(hint.dob), b = day(pick.dob);
     if (a && b && a !== b) continue;
     out.set(key, String(pick.id));
+  }
+
+  // Tier 2 — the name is shared, but name AND date of birth are not.
+  const taken = new Set(out.values());
+  const pairs = new Map<string, string[]>(); // "name key|dob" → unknown keys carrying it
+  for (const key of unknown) {
+    if (out.has(key)) continue;
+    const hint = hints.get(key) ?? {};
+    const nk = nameMatchKey(hint.name);
+    const d = day(hint.dob);
+    if (!d || wordCount(nk) < 2 || !byName.has(nk)) continue;
+    pairs.set(`${nk}|${d}`, [...(pairs.get(`${nk}|${d}`) ?? []), key]);
+  }
+  for (const [pair, keys] of pairs) {
+    if (keys.length !== 1) continue; // two people in the file with the same name and birthday
+    const bar = pair.lastIndexOf("|");
+    const nk = pair.slice(0, bar), d = pair.slice(bar + 1);
+    if (panHolders.get(nk)?.has(d)) continue; // a PAN client with this very name and birthday exists
+    const key = keys[0];
+    const hint = hints.get(key) ?? {};
+    const pick = choose((byName.get(nk) ?? []).filter((c) => day(c.dob) === d && !taken.has(String(c.id))));
+    if (!pick) continue;
+    const isMinorKey = kind === "pan" ? key.startsWith("MINOR:") : !!hint.isMinor;
+    if (isMinorKey !== !!pick.is_minor) continue;
+    out.set(key, String(pick.id));
+    taken.add(String(pick.id));
   }
   return out;
 }

@@ -218,8 +218,20 @@ export async function syncTaskBusinessEntry(
   event: "completed" | "cancelled" | "reopened",
 ): Promise<void> {
   const meta = (task.meta && typeof task.meta === "object" ? task.meta : {}) as Record<string, unknown>;
-  const entryId = typeof meta.businessEntryId === "string" ? meta.businessEntryId : null;
-  if (!entryId) return;
+  // A request table books one entry per member and product (meta.businessEntryIds).
+  const ids = new Set<string>();
+  if (typeof meta.businessEntryId === "string") ids.add(meta.businessEntryId);
+  if (Array.isArray(meta.businessEntryIds)) for (const x of meta.businessEntryIds) if (typeof x === "string") ids.add(x);
+  for (const entryId of ids) await syncOneTaskEntry(tx, ctx, task, event, entryId);
+}
+
+async function syncOneTaskEntry(
+  tx: Tx,
+  ctx: Ctx,
+  task: { id: string; meta: unknown; status?: string | null },
+  event: "completed" | "cancelled" | "reopened",
+  entryId: string,
+): Promise<void> {
   const [entry] = await tx
     .select({ id: businessEntries.id, status: businessEntries.status, investorId: businessEntries.investorId, productType: businessEntries.productType })
     .from(businessEntries)

@@ -79,10 +79,10 @@ describe.skipIf(!TEST_DB)("RTA import matches the clients the firm already has",
     `);
   const folioOwner = async (folio: string) =>
     (await q<{ investor_id: string }>(sql`SELECT investor_id FROM folios WHERE tenant_id = ${tenant}::uuid AND folio_number = ${folio}`))[0]?.investor_id;
-  const insertClient = (id: string, v: { name: string; pan?: string | null; dedupPan?: boolean; rta?: string | null }) =>
+  const insertClient = (id: string, v: { name: string; pan?: string | null; dedupPan?: boolean; rta?: string | null; dob?: string | null }) =>
     q(sql`
-      INSERT INTO investors (id, tenant_id, name, pan, dedup_pan, rta_nopan_key)
-      VALUES (${id}::uuid, ${tenant}::uuid, ${v.name}, ${v.pan ?? null}, ${v.dedupPan ?? true}, ${v.rta ?? null})
+      INSERT INTO investors (id, tenant_id, name, pan, dedup_pan, rta_nopan_key, dob)
+      VALUES (${id}::uuid, ${tenant}::uuid, ${v.name}, ${v.pan ?? null}, ${v.dedupPan ?? true}, ${v.rta ?? null}, ${v.dob ?? null}::date)
     `);
 
   beforeAll(async () => {
@@ -143,6 +143,33 @@ describe.skipIf(!TEST_DB)("RTA import matches the clients the firm already has",
     await insertClient(randomUUID(), { name: "Ramesh Kumar Patel" });
     await insertClient(randomUUID(), { name: "Ramesh Kumar Patel" });
     const s = await run([rec("AAAPR4444D", "RAMESH KUMAR PATEL", "F-NS-1")]);
+    expect(s.investors.created).toBe(1);
+    expect(s.investors.matchedByName).toBe(0);
+  });
+
+  it("two clients share a name: the date of birth picks the right one", async () => {
+    const a = randomUUID(), b = randomUUID();
+    await insertClient(a, { name: "Kiran Mohan Desai", dob: "1970-01-01" });
+    await insertClient(b, { name: "Kiran Mohan Desai", dob: "1985-06-15" });
+    const s = await run([rec("AAAPK8888H", "DESAI KIRAN MOHAN", "F-DB-1", { dob: "1985-06-15" })]);
+    expect(s.investors.created).toBe(0);
+    expect(s.investors.matchedByName).toBe(1);
+    expect((await liveWithPan("AAAPK8888H")).map((r) => r.id)).toEqual([b]);
+    expect(await folioOwner("F-DB-1")).toBe(b);
+  });
+
+  it("a shared name whose birthday matches nobody is not adopted", async () => {
+    await insertClient(randomUUID(), { name: "Hitesh Anil Joshi", dob: "1970-01-01" });
+    await insertClient(randomUUID(), { name: "Hitesh Anil Joshi", dob: "1985-06-15" });
+    const s = await run([rec("AAAPJ9999J", "HITESH ANIL JOSHI", "F-DB-2", { dob: "1990-12-12" })]);
+    expect(s.investors.created).toBe(1);
+    expect(s.investors.matchedByName).toBe(0);
+  });
+
+  it("two clients with the same name AND birthday stay a person's call", async () => {
+    await insertClient(randomUUID(), { name: "Sunil Raj Mehta", dob: "1980-03-03" });
+    await insertClient(randomUUID(), { name: "Sunil Raj Mehta", dob: "1980-03-03" });
+    const s = await run([rec("AAAPS1212K", "SUNIL RAJ MEHTA", "F-DB-3", { dob: "1980-03-03" })]);
     expect(s.investors.created).toBe(1);
     expect(s.investors.matchedByName).toBe(0);
   });

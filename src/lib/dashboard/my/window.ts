@@ -510,6 +510,9 @@ export const FINANCIAL_TASK_TYPES = [
   // SIP rejection follow-ups were already financial on the Operations
   // Dashboard (KIND sip_rejection); now they are here too.
   "financial", "additional_purchase", "sip_modification", "sip_rejection_followup", "pms", "aif",
+  // A request table whose rows are different requests, one of them moving
+  // money (lib/tasks/request-lines, flag taskRequestTable).
+  "multi_financial",
 ] as const;
 
 /**

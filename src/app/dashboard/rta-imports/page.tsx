@@ -15,7 +15,7 @@ import { sql } from "drizzle-orm";
 import { FileText, CheckCircle2, AlertTriangle, Clock, ArrowRight } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { formatDate, formatRelative } from "@/lib/utils";
+import { formatDate, formatRelative, formatINR } from "@/lib/utils";
 import {
   RTA_FILE_TYPES,
   RTA_FILE_TYPE_BY_KIND,
@@ -26,6 +26,7 @@ import {
 import { RtaUploadButton, RtaMailboxSyncButton, RtaUploadStep } from "./client";
 import { RtaImportsTable } from "@/components/rta/RtaImportsTable";
 import { rtaQueueDepth } from "@/lib/rta/queue-status";
+import { loadBookBreakdown, bookBreakdownNotes, type BookBreakdown } from "@/lib/metrics/book-breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -89,8 +90,21 @@ export default async function RtaImportsPage() {
       await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_skipped`);
     }
 
+    // What the imports built: clients / AUM / SIPs by record state, so a firm comparing the dashboard with the
+    // registrar's own totals can see which of the usual reasons applies. A read that fails never hides the page.
+    let breakdown: BookBreakdown | null = null;
+    try {
+      await tx.execute(sql`SAVEPOINT rta_breakdown`);
+      breakdown = await loadBookBreakdown(tx, session.tenantId);
+      await tx.execute(sql`RELEASE SAVEPOINT rta_breakdown`);
+    } catch (err) {
+      await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_breakdown`);
+      console.error("[rta-imports] book breakdown failed", { tenantId: session.tenantId, err });
+    }
+
     return {
       skipped,
+      breakdown,
       latestByKind: new Map((latest.rows as any[]).map((r) => [r.kind, r])),
       recent: recent.rows as any[],
       trashed: trashed.rows as any[],
@@ -286,7 +300,63 @@ export default async function RtaImportsPage() {
         </div>
       )}
 
+      {data.breakdown && <BookBreakdownCard b={data.breakdown} />}
+
       <RtaImportsTable recent={data.recent as any[]} trashed={data.trashed as any[]} />
+    </div>
+  );
+}
+
+function BookBreakdownCard({ b }: { b: BookBreakdown }) {
+  const notes = bookBreakdownNotes(b);
+  const rows: Array<{ label: string; r: { clients: number; aum: number; sip: number }; counted: boolean }> = [
+    { label: "Live clients (counted on the dashboards)", r: b.live, counted: true },
+    { label: "Closed / exited", r: b.closedOrExited, counted: false },
+    { label: "In the Trash", r: b.inTrash, counted: false },
+    { label: "Merged into another client", r: b.mergedAway, counted: false },
+  ];
+  return (
+    <div className="card-surface p-4 space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold">What these imports built — check against the registrar&apos;s totals</h2>
+        <p className="text-sm text-muted-foreground">
+          If the registrar&apos;s own AUM, SIP or client totals differ from the dashboard, this shows where each client, rupee of AUM and SIP is
+          held. Only live clients are counted on the dashboards.
+        </p>
+      </div>
+      <div className="table-scroll">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-muted-foreground">
+              <th className="py-1 pr-3 font-medium">Records</th>
+              <th className="py-1 pr-3 font-medium text-right">Clients</th>
+              <th className="py-1 pr-3 font-medium text-right">AUM</th>
+              <th className="py-1 font-medium text-right">Active SIPs / month</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((x) => (
+              <tr key={x.label} className={x.counted ? "font-medium" : "text-muted-foreground"}>
+                <td className="py-1 pr-3">{x.label}</td>
+                <td className="py-1 pr-3 text-right tabular-nums">{x.r.clients.toLocaleString("en-IN")}</td>
+                <td className="py-1 pr-3 text-right tabular-nums">{formatINR(x.r.aum)}</td>
+                <td className="py-1 text-right tabular-nums">{formatINR(x.r.sip)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {b.live.funded.toLocaleString("en-IN")} live clients hold money · {b.folios.total.toLocaleString("en-IN")} folios ({b.folios.unvalued.toLocaleString("en-IN")} without a value) ·{" "}
+        {b.sips.active.toLocaleString("en-IN")} active SIP registrations · {b.sips.ended.toLocaleString("en-IN")} stopped / completed / rejected
+      </p>
+      {notes.length > 0 ? (
+        <ul className="text-sm list-disc pl-5 space-y-1">
+          {notes.map((n) => <li key={n}>{n}</li>)}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">Every record is live, funded, valued and unique.</p>
+      )}
     </div>
   );
 }

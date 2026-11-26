@@ -169,6 +169,8 @@ export const OPS_TYPES = [
   "kyc_renewal", "nominee_update", "reconciliation", "transaction_execution", "ucc_creation", "onboarding",
   // The New task form's non-financial requests (lib/tasks/request-types.ts).
   "non_financial", "bank_change", "contact_change", "folio_consolidation", "account_statement", "service_other",
+  // A request table of several non-financial / insurance requests (lib/tasks/request-lines).
+  "multi_service",
   // Insurance requests (firms with the insuranceTasks flag) — the insurance back office's queue.
   "ins_quote", "ins_new_policy", "ins_renewal", "ins_premium_collection", "ins_payment", "ins_endorsement",
   "ins_policy_entry", "ins_claim_intimation", "ins_claim_followup", "ins_pre_post_claim", "ins_life_service", "ins_other",
@@ -214,6 +216,7 @@ export const KIND_SQL: SQL = sql`CASE
   WHEN t.type IN ('additional_purchase', 'sip_modification', 'pms', 'aif') THEN t.type
   WHEN t.type IN ('nominee_update', 'bank_change', 'contact_change', 'folio_consolidation', 'account_statement', 'service_other') THEN 'service'
   WHEN t.type = 'onboarding' THEN 'kyc'
+  WHEN t.type IN ('multi_financial', 'multi_service') THEN 'other'
   WHEN ${titleIs("additional purchase")} THEN 'additional_purchase'
   WHEN ${titleIs("\\mnfo\\M|lumpsum|one-time purchase|\\mpurchase\\M")} THEN 'purchase'
   WHEN ${titleIs("redemption|\\mredeem")} THEN 'redemption'
