@@ -55,7 +55,7 @@ describe.skipIf(!TEST_DB)("visitor register against the database", () => {
   afterAll(async () => {
     if (!withSystem) return;
     for (const t of [tenant, other]) {
-      for (const table of ["visitor_entries", "audit_log", "users"]) {
+      for (const table of ["visitor_entries", "audit_log", "subscriptions", "users"]) {
         await q(sql.raw(`DELETE FROM ${table} WHERE tenant_id = '${t}'`)).catch(() => {});
       }
       await q(sql`DELETE FROM tenants WHERE id = ${t}::uuid`).catch(() => {});
@@ -87,10 +87,20 @@ describe.skipIf(!TEST_DB)("visitor register against the database", () => {
   });
 
   it("filters by visit date, both ends included", async () => {
-    expect(await names({ from: "2026-11-25" })).toEqual(["Rohan Desai"]);
-    expect(await names({ to: "2026-11-20" })).toEqual(["Meera Shah"]);
-    expect(await names({ from: "2026-11-20", to: "2026-11-25" })).toHaveLength(2);
-    expect(await names({ from: "2026-12-01" })).toEqual([]);
+    expect(await names({ visit_from: "2026-11-25" })).toEqual(["Rohan Desai"]);
+    expect(await names({ visit_to: "2026-11-20" })).toEqual(["Meera Shah"]);
+    expect(await names({ visit_from: "2026-11-20", visit_to: "2026-11-25" })).toHaveLength(2);
+    expect(await names({ visit_from: "2026-12-01" })).toEqual([]);
+  });
+
+  it("filters by purpose and by whom they met, alone and together", async () => {
+    expect(await names({ purpose: "kyc" })).toEqual(["Meera Shah"]);
+    expect(await names({ purpose: "parked" })).toEqual([]); // that word is in the remarks
+    expect(await names({ with: colleague })).toEqual(["Meera Shah"]);
+    expect(await names({ with: `${colleague},${owner}` })).toEqual(["Meera Shah"]);
+    expect(await names({ with: owner })).toEqual([]);
+    expect(await names({ with: colleague, purpose: "kyc", visit_from: "2026-11-21" })).toEqual([]);
+    expect((await list({ with: owner })).hasAny).toBe(true);
   });
 
   it("meets only an active team member of the same firm", async () => {
@@ -107,6 +117,9 @@ describe.skipIf(!TEST_DB)("visitor register against the database", () => {
     const edited = await run((tx) => svc.updateVisitor(tx, actor, meera.id,
       entry.VisitorPatchBody.parse({ companyName: "", meetingWithUserId: colleague, exitTime: "12:00" })));
     expect(edited).toMatchObject({ companyName: null, meetingWithName: "Kiran Patel", exitTime: "12:00", entryTime: "10:30" });
+    // The filter still offers the colleague who left, because a visit names them.
+    const choices = await run((tx) => svc.listMeetingFilterUsers(tx, tenant));
+    expect(choices.map((u) => u.name)).toEqual(["Kiran Patel", "Owner"]);
     await expect(run((tx) => svc.updateVisitor(tx, actor, meera.id, { exitTime: "09:00" }))).rejects.toMatchObject({ status: 400 });
     await expect(add({ visitorName: "X", visitDate: "2026-11-26", entryTime: "12:00", exitTime: "11:00" })).rejects.toMatchObject({ status: 400 });
   });
@@ -152,6 +165,44 @@ describe.skipIf(!TEST_DB)("visitor register against the database", () => {
         await q(sql`DELETE FROM tenants WHERE id = ${id}::uuid`).catch(() => {});
       }
     }
+  });
+
+  it("exports what the filtered list shows, and the file imports again", async () => {
+    await ensureStarterPackage(q, sql);
+    const { runExport } = await import("@/lib/export/run");
+    const { visitorsExport } = await import("@/lib/export/modules/visitors");
+    const { runSheetImport } = await import("@/lib/imports/sheet/run");
+    const { visitorsImport } = await import("@/lib/imports/sheet/visitors");
+    const session = { tenantId: tenant, userId: owner, roles: ["owner"], name: "Owner", email: "o@t.in" } as any;
+    const fields = visitorsExport.columns.map((c) => c.key);
+    const download = (params: string) => runExport(session, visitorsExport, fields, "csv", new URLSearchParams(params));
+
+    await expect(download("")).rejects.toMatchObject({ status: 404 }); // the switch is still off
+    await q(sql`INSERT INTO subscriptions (tenant_id, package_id, package_key, status, feature_flags_override)
+      SELECT ${tenant}::uuid, p.id, p.key, 'active', '{"visitorRegister": true}'::jsonb FROM packages p WHERE p.key = 'starter'`);
+
+    // Kiran left earlier in this file; an import can only name an active team member.
+    await q(sql`UPDATE users SET status = 'active' WHERE id = ${colleague}::uuid`);
+    const all = await download("");
+    expect(all.rows).toBe(2);
+    const filtered = await download(`with=${colleague}&visit_from=2026-11-20&q=meera`);
+    expect(filtered.rows).toBe(1);
+    const text = filtered.body.toString("utf8");
+    for (const s of ["Visitor Name", "Meeting with", "Meera Shah", "Kiran Patel", "2026-11-20", "10:30", "12:00"]) expect(text).toContain(s);
+
+    const upload = (mode: "check" | "import") => {
+      const form = new FormData();
+      form.append("file", new File([new Uint8Array(all.body)], "visitors.csv"));
+      return runSheetImport(new Request("http://test", { method: "POST", body: form }), session, visitorsImport, mode);
+    };
+    expect(await upload("check")).toMatchObject({ total: 2, valid: 2, invalid: 0, missing: [] });
+    expect((await list()).total).toBe(2); // checking saves nothing
+    expect(await upload("import")).toMatchObject({ imported: 2 });
+    expect((await list()).total).toBe(4);
+    expect((await list({ q: "meera", with: colleague })).total).toBe(2);
+    await q(sql`DELETE FROM visitor_entries WHERE tenant_id = ${tenant}::uuid AND id NOT IN (
+      SELECT DISTINCT entity_id FROM audit_log WHERE tenant_id = ${tenant}::uuid AND action = 'visitor.create')`);
+    expect((await list()).total).toBe(2);
   });
 
   it("deletes from the register but keeps the row, and audits each change", async () => {

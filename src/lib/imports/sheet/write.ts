@@ -61,6 +61,22 @@ export function buildSampleWorkbook(spec: SheetSpec): Buffer {
   return xlsxBytes(sheets);
 }
 
-export function sampleFileName(spec: SheetSpec): string {
-  return `${spec.entity}-import-sample.xlsx`;
+export function sampleFileName(spec: SheetSpec, format: "xlsx" | "csv" = "xlsx"): string {
+  return `${spec.entity}-import-sample.${format}`;
+}
+
+const csvCell = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+
+/**
+ * The sample as a CSV file, for a module that offers one: the headings and the
+ * example rows. A CSV has one sheet, so a module using it must refuse its own
+ * example rows on import (see ./visitors.ts) — they could otherwise be saved.
+ * Starts with a byte-order mark so Excel reads it as UTF-8.
+ */
+export function buildSampleCsv(spec: SheetSpec): Buffer {
+  const lines = [
+    spec.columns.map(sheetHeader),
+    ...spec.examples.map((ex) => spec.columns.map((c) => ex[c.key] ?? "")),
+  ];
+  return Buffer.from("\uFEFF" + lines.map((l) => l.map(csvCell).join(",")).join("\r\n") + "\r\n", "utf8");
 }

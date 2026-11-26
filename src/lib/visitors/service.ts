@@ -4,13 +4,13 @@
  * switch and the permission are the caller's (lib/visitors/access.ts).
  */
 
-import { and, asc, desc, eq, gte, ilike, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { db } from "@/db/client";
 import { users, visitorEntries } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
 import {
-  EXIT_BEFORE_ENTRY, VISITOR_PAGE_SIZE, exitBeforeEntry, toHhMm,
+  EXIT_BEFORE_ENTRY, VISITOR_PAGE_SIZE, exitBeforeEntry, isFiltered, isUuid, toHhMm,
   type VisitorFilter, type VisitorInput, type VisitorPatch,
 } from "./entry";
 
@@ -37,8 +37,6 @@ export type VisitorRow = {
 export type MeetingUser = { id: string; name: string };
 
 const refuse = (message: string, status = 400) => Object.assign(new Error(message), { status });
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const meetingWith = alias(users, "meeting_with");
 const recordedBy = alias(users, "recorded_by");
@@ -75,10 +73,17 @@ const live = (tenantId: string) => [eq(visitorEntries.tenantId, tenantId), isNul
 /** `%` and `_` typed in the search box are text, not wildcards. */
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
-function conditions(tenantId: string, f: VisitorFilter): SQL[] {
+/**
+ * What the list shows under a filter — and so what its Export file holds
+ * (lib/export/modules/visitors.ts). A caller must join "meeting_with" (the
+ * users alias above), which the search box looks in.
+ */
+export function visitorConditions(tenantId: string, f: VisitorFilter): SQL[] {
   const where: SQL[] = live(tenantId);
   if (f.from) where.push(gte(visitorEntries.visitDate, f.from));
   if (f.to) where.push(lte(visitorEntries.visitDate, f.to));
+  if (f.purpose) where.push(ilike(visitorEntries.purpose, like(f.purpose)));
+  if (f.meetingWith.length) where.push(inArray(visitorEntries.meetingWithUserId, f.meetingWith));
   if (f.q) {
     const term = like(f.q);
     const any: SQL[] = [
@@ -105,7 +110,7 @@ export async function listVisitors(
   tenantId: string,
   filter: VisitorFilter,
 ): Promise<{ rows: VisitorRow[]; total: number; page: number; totalPages: number; hasAny: boolean }> {
-  const where = and(...conditions(tenantId, filter));
+  const where = and(...visitorConditions(tenantId, filter));
   const [count] = await tx
     .select({ n: sql<number>`count(*)::int` })
     .from(visitorEntries)
@@ -132,7 +137,7 @@ export async function listVisitors(
     .offset((page - 1) * VISITOR_PAGE_SIZE);
 
   let hasAny = total > 0;
-  if (!hasAny && (filter.q || filter.from || filter.to)) {
+  if (!hasAny && isFiltered(filter)) {
     const some = await tx.select({ id: visitorEntries.id }).from(visitorEntries).where(and(...live(tenantId))).limit(1);
     hasAny = some.length > 0;
   }
@@ -140,7 +145,7 @@ export async function listVisitors(
 }
 
 export async function getVisitor(tx: Tx, tenantId: string, id: string): Promise<VisitorRow | null> {
-  if (!UUID.test(id)) return null;
+  if (!isUuid(id)) return null;
   const [row] = await tx
     .select(columns)
     .from(visitorEntries)
@@ -157,6 +162,22 @@ export async function listMeetingUsers(tx: Tx, tenantId: string): Promise<Meetin
     .select({ id: users.id, name: users.name })
     .from(users)
     .where(and(eq(users.tenantId, tenantId), isNull(users.deletedAt), eq(users.status, "active")))
+    .orderBy(asc(users.name));
+}
+
+/**
+ * The "Meeting with" filter's choices: the active team, and anyone who has since
+ * left but is named on a visit in the register.
+ */
+export async function listMeetingFilterUsers(tx: Tx, tenantId: string): Promise<MeetingUser[]> {
+  const named = tx.select({ id: visitorEntries.meetingWithUserId }).from(visitorEntries).where(and(...live(tenantId)));
+  return tx
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(and(
+      eq(users.tenantId, tenantId),
+      or(and(isNull(users.deletedAt), eq(users.status, "active")), inArray(users.id, named)),
+    ))
     .orderBy(asc(users.name));
 }
 

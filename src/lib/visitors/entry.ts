@@ -131,17 +131,46 @@ export function formatVisitTime(v: string | null | undefined): string {
 
 export const VISITOR_PAGE_SIZE = 25;
 
-export type VisitorFilter = { q: string; from: string; to: string; page: number };
+export type VisitorFilter = {
+  q: string;
+  /** Visit Date range, both ends included. */
+  from: string;
+  to: string;
+  /** Purpose of Visit contains this. */
+  purpose: string;
+  /** Meeting with any of these team members. */
+  meetingWith: string[];
+  page: number;
+};
 
 type Params = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => ((Array.isArray(v) ? v[0] : v) ?? "").trim();
 
-/** URL params → filter. A date that is not a date is ignored; dates picked backwards are swapped. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const isUuid = (v: string) => UUID.test(v);
+
+/**
+ * URL params → filter: `q`, `visit_from`, `visit_to`, `purpose`, `with` (ids,
+ * comma-separated), `page`. A value that is not a date or an id is ignored;
+ * dates picked backwards are swapped.
+ */
 export function parseVisitorFilter(params: Params): VisitorFilter {
   const date = (v: string) => (isRealDate(v) ? v : "");
-  let from = date(one(params.from));
-  let to = date(one(params.to));
+  let from = date(one(params.visit_from));
+  let to = date(one(params.visit_to));
   if (from && to && from > to) [from, to] = [to, from];
   const page = Number.parseInt(one(params.page), 10);
-  return { q: one(params.q).slice(0, 100), from, to, page: Number.isFinite(page) && page > 1 ? page : 1 };
+  return {
+    q: one(params.q).slice(0, 100),
+    from,
+    to,
+    purpose: one(params.purpose).slice(0, 100),
+    meetingWith: one(params.with).split(",").filter(isUuid).slice(0, 100),
+    page: Number.isFinite(page) && page > 1 ? page : 1,
+  };
+}
+
+/** Whether the list is narrowed at all (the page number is not a narrowing). */
+export function isFiltered(f: VisitorFilter): boolean {
+  return !!(f.q || f.from || f.to || f.purpose || f.meetingWith.length);
 }

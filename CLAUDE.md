@@ -2124,6 +2124,15 @@ Table `visitor_entries` (migration 0293). Code `lib/visitors/` (`entry.ts` pure 
   list would hide it from the firm's own users, and every other firm's access editors would show it.
 - **No capability of its own** (same reason): the whole team may read; add / edit / delete need
   `task.edit.all` or `task.edit.assigned`, so a read-only Viewer cannot write.
+- **List**: search and the Filters button (`CompactFilterBar`): Visit Date from–to, Purpose of Visit
+  (contains) and Meeting with (several; includes a colleague who has left if a visit names them). Edit and
+  Delete sit on each row and on the visit's page.
+- **Import** (`/dashboard/visitors/import`, whoever may add a visit): the shared sheet import (`lib/imports/sheet`,
+  spec `specs/visitors.ts`) with an Excel AND a CSV sample (`buildSampleCsv`). A CSV has one sheet, so a row still
+  named "Sample Visitor 1 / 2" is refused. Rows obey the form's rules.
+- **Export** (the shared engine, `lib/export/modules/visitors.ts`; "Export data" permission): the list's search and
+  filters, with the import's headings, so a file imports again. A module behind a firm switch sets `enabled` — the
+  export APIs then treat it as unknown for every other firm.
 - Only the name and visit date are required. Exit time may not be before entry time. "Meeting with" must be an
   active team member when chosen; an old visit keeps a colleague who has since left. Delete is soft
   (`deleted_at`, no restore screen); every write is audited (name and date only).

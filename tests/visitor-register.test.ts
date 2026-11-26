@@ -46,11 +46,15 @@ import { FEATURE_FLAGS, sanitizeFeatureFlagOverride } from "@/config/feature-fla
 import { ALL_NAV_ITEMS, gatedNavKeyForPath } from "@/config/nav-access";
 import { VISITOR_REGISTER_FLAG } from "@/lib/visitors/access";
 import {
-  VISITOR_LABELS, VisitorCreateBody, VisitorPatchBody, exitBeforeEntry, formatVisitTime, parseVisitorFilter,
+  VISITOR_LABELS, VisitorCreateBody, VisitorPatchBody, exitBeforeEntry, formatVisitTime, isFiltered, parseVisitorFilter,
 } from "@/lib/visitors/entry";
 import { requireVisitorPage } from "@/lib/visitors/page";
 import * as collection from "@/app/api/visitors/route";
 import * as item from "@/app/api/visitors/[id]/route";
+import * as importing from "@/app/api/visitors/import/route";
+import * as sample from "@/app/api/visitors/import/sample/route";
+import * as exportList from "@/app/api/export/route";
+import * as exportModule from "@/app/api/export/[module]/route";
 
 const root = join(__dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
@@ -139,10 +143,33 @@ describe("the fields", () => {
     expect(formatVisitTime(null)).toBe("—");
   });
 
-  it("read the search and date filter from the URL", () => {
-    expect(parseVisitorFilter({ q: " shah ", from: "2026-11-30", to: "2026-11-01", page: "3" }))
-      .toEqual({ q: "shah", from: "2026-11-01", to: "2026-11-30", page: 3 });
-    expect(parseVisitorFilter({ from: "yesterday", page: "-2" })).toEqual({ q: "", from: "", to: "", page: 1 });
+  it("read the search and the filters from the URL", () => {
+    const a = "11111111-1111-4111-8111-111111111111";
+    const b = "22222222-2222-4222-8222-222222222222";
+    expect(parseVisitorFilter({
+      q: " shah ", visit_from: "2026-11-30", visit_to: "2026-11-01", purpose: " KYC ", with: `${a},${b}`, page: "3",
+    })).toEqual({ q: "shah", from: "2026-11-01", to: "2026-11-30", purpose: "KYC", meetingWith: [a, b], page: 3 });
+    // Anything that is not a date or an id is ignored, never sent to the database.
+    const junk = parseVisitorFilter({ visit_from: "yesterday", with: "Kiran,' OR 1=1", page: "-2" });
+    expect(junk).toEqual({ q: "", from: "", to: "", purpose: "", meetingWith: [], page: 1 });
+    expect(isFiltered(junk)).toBe(false);
+    expect(isFiltered(parseVisitorFilter({ purpose: "x" }))).toBe(true);
+    expect(isFiltered(parseVisitorFilter({ with: a }))).toBe(true);
+    expect(isFiltered(parseVisitorFilter({ page: "4" }))).toBe(false);
+  });
+
+  it("offers the four filters behind the Filters button, under the names the URL is read by", () => {
+    const page = read("src/app/dashboard/visitors/page.tsx");
+    expect(page).toContain("<CompactFilterBar");
+    expect(page).toContain('type: "date_range", key: "visit"');
+    expect(page).toContain('type: "text", key: "purpose"');
+    expect(page).toContain('type: "multi", key: "with"');
+  });
+
+  it("puts Delete on each row, for those who may edit", () => {
+    const table = read("src/components/visitors/VisitorsTable.tsx");
+    expect(table).toMatch(/canEdit \? \[\{/);
+    expect(table).toContain("deleteUrl={`/api/visitors/${r.id}`}");
   });
 });
 
@@ -150,13 +177,21 @@ describe("the per-firm switch", () => {
   const url = "http://test/api/visitors";
   const body = JSON.stringify({ visitorName: "A", visitDate: "2026-11-26" });
   const ctx = { params: Promise.resolve({ id: "33333333-3333-4333-8333-333333333333" }) };
+  const exportCtx = { params: Promise.resolve({ module: "visitors" }) };
+  const sampleCall = (query: string) => sample.GET(new NextRequest(`${url}/import/sample${query}`));
   const calls: [string, () => Promise<Response>][] = [
     ["list", () => collection.GET(new NextRequest(url))],
     ["add", () => collection.POST(new NextRequest(url, { method: "POST", body }))],
     ["view", () => item.GET(new NextRequest(url), ctx)],
     ["edit", () => item.PATCH(new NextRequest(url, { method: "PATCH", body }), ctx)],
     ["delete", () => item.DELETE(new NextRequest(url, { method: "DELETE" }), ctx)],
+    ["import", () => importing.POST(new Request(`${url}/import?mode=import`, { method: "POST" }))],
+    ["Excel sample", () => sampleCall("")],
+    ["CSV sample", () => sampleCall("?format=csv")],
+    ["export fields", () => exportModule.GET(new NextRequest("http://test/api/export/visitors"), exportCtx)],
+    ["export file", () => exportModule.POST(new NextRequest("http://test/api/export/visitors", { method: "POST", body: JSON.stringify({ fields: ["visitorName"] }) }), exportCtx)],
   ];
+  const exportable = async () => ((await (await exportList.GET()).json()) as { modules: string[] }).modules;
 
   it("is a flag a super admin can set for one firm", () => {
     expect(FEATURE_FLAGS.some((f) => f.key === VISITOR_REGISTER_FLAG && f.type === "boolean")).toBe(true);
@@ -172,6 +207,12 @@ describe("the per-firm switch", () => {
     expect(state.transactions).toBe(0);
   });
 
+  it("off: Export is not offered, though the owner exports other lists", async () => {
+    const modules = await exportable();
+    expect(modules).toContain("leads");
+    expect(modules).not.toContain("visitors");
+  });
+
   it("off: a page is not found", async () => {
     await expect(requireVisitorPage()).rejects.toThrow("NEXT_NOT_FOUND");
   });
@@ -184,7 +225,7 @@ describe("the per-firm switch", () => {
   it("every page runs the gate itself", () => {
     const dir = "src/app/dashboard/visitors";
     const pages = (readdirSync(join(root, dir), { recursive: true }) as string[]).filter((f) => f.endsWith("page.tsx"));
-    expect(pages).toHaveLength(4);
+    expect(pages).toHaveLength(5);
     for (const page of pages) expect(read(`${dir}/${page}`)).toContain("await requireVisitorPage()");
   });
 
@@ -212,8 +253,27 @@ describe("the per-firm switch", () => {
     it("a Viewer reads but cannot add, edit or delete", async () => {
       state.roles = ["viewer"];
       expect((await calls[0][1]()).status).toBe(200);
-      for (const i of [1, 3, 4]) expect((await calls[i][1]()).status).toBe(403);
+      for (const i of [1, 3, 4, 5, 6, 7]) expect((await calls[i][1]()).status).toBe(403);
       await expect(requireVisitorPage()).resolves.toMatchObject({ canEdit: false });
+    });
+
+    it("Export is offered with the Export data permission, and refused without it", async () => {
+      expect(await exportable()).toContain("visitors");
+      expect((await calls[8][1]()).status).toBe(200);
+      state.roles = ["rm"];
+      expect(await exportable()).not.toContain("visitors");
+      for (const i of [8, 9]) expect((await calls[i][1]()).status).toBe(403);
+      state.permissions = ["data.export"];
+      expect(await exportable()).toContain("visitors");
+    });
+
+    it("both samples download for whoever may add a visit", async () => {
+      state.roles = ["rm"];
+      const excel = await sampleCall("");
+      expect(excel.headers.get("content-disposition")).toContain("visitors-import-sample.xlsx");
+      const csv = await sampleCall("?format=csv");
+      expect(csv.headers.get("content-disposition")).toContain("visitors-import-sample.csv");
+      expect(await csv.text()).toContain("Visitor Name *,Email,Mobile Number,Company Name,Visit Date *");
     });
 
     it("a customised permission list without task editing cannot write", async () => {

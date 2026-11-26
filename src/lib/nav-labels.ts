@@ -69,6 +69,7 @@ export const NAV_LABELS: Record<string, string> = {
   "/dashboard/trash": "Trash",
   "/dashboard/visitors": "Visitor Register",
   "/dashboard/visitors/new": "Add visitor",
+  "/dashboard/visitors/import": "Import",
   "/dashboard/automations": "Automations",
   "/dashboard/automations/actions": "Actions",
   "/dashboard/automations/history": "Run history",

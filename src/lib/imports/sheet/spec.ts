@@ -36,7 +36,7 @@ export type ColumnDef = {
 };
 
 export type SheetSpec = {
-  entity: "tasks" | "meetings" | "service-requests";
+  entity: "tasks" | "meetings" | "service-requests" | "visitors";
   /** "Tasks", "Meetings", "Service requests" — page titles and file names. */
   label: string;
   /** "task", "meeting", "service request" — "Imported 12 tasks". */

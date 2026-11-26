@@ -49,6 +49,18 @@ export type ExportModule = {
    * export permission — normally the module's own view permission.
    */
   canView: (session: SessionUser) => boolean;
+  /**
+   * A module only some firms have (a per-firm feature flag). When it answers
+   * false the module does not exist for that firm: not listed, and its export
+   * is "Unknown module".
+   */
+  enabled?: (session: SessionUser) => Promise<boolean>;
+  /**
+   * false: its personal-data columns are people the licence's field permissions
+   * do not describe (not clients or leads), so they are not hidden by them. The
+   * export is still audited as personal data read.
+   */
+  piiGated?: false;
   /** Clients use `investor.bulk_export` instead of `data.export`. */
   exportCapability?: "data.export" | "investor.bulk_export";
   /** FROM (and JOINs) — aliases the columns and `where` refer to. */
