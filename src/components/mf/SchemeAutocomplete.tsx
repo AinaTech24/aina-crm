@@ -12,6 +12,8 @@
  *   committed, and leaving the box reverts it to the last pick. `onClear`
  *   fires when the user starts changing a picked scheme, so the form drops it.
  * - `amc` narrows the list to one AMC (scheme_master.amc_code).
+ * - Scheme names are never cut off: the list wraps them in full, and a picked
+ *   name too long for the box is repeated in full under it.
  * - `source="universe"` searches the whole AMFI list instead — only the Scheme
  *   Master page itself uses it, to ADD a scheme to the master.
  * - `allowFreeText` keeps the old behaviour for a non-MF line (PMS / AIF),
@@ -80,6 +82,19 @@ export function SchemeAutocomplete({
   const ref = useRef<HTMLDivElement>(null);
   const reqId = useRef(0);
   const strict = !allowFreeText;
+
+  // Is the picked name wider than the box? Then it is shown in full under it.
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [clipped, setClipped] = useState(false);
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const check = () => setClipped(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [q]);
 
   // A parent that resets the field (new line, cleared form) re-seeds it —
   // except the empty value our own onClear just caused, mid-typing.
@@ -157,6 +172,8 @@ export function SchemeAutocomplete({
       <div className="relative">
         <Search className={`absolute left-2.5 top-1/2 -translate-y-1/2 ${size === "sm" ? "size-3.5" : "size-4"} text-muted-foreground`} />
         <input
+          ref={inputRef}
+          title={picked && q === picked ? picked : undefined}
           id={id}
           aria-describedby={describedBy}
           role="combobox"
@@ -176,6 +193,10 @@ export function SchemeAutocomplete({
         />
         {busy && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 animate-spin text-brand-cyan" />}
       </div>
+
+      {clipped && !showList && picked && q === picked && (
+        <p className="mt-1 break-words text-2xs text-foreground">{picked}</p>
+      )}
 
       {showList && (
         <ul className="absolute left-0 right-0 top-full mt-1 z-50 max-h-72 overflow-y-auto scrollbar-thin card-elevated bg-card p-1 animate-scale-in">
@@ -198,19 +219,19 @@ export function SchemeAutocomplete({
                 onClick={() => pick(s)}
                 className={`w-full text-left rounded-md px-2.5 py-1.5 transition ${i === active ? "bg-brand-cyan-light/60" : "hover:bg-secondary"}`}
               >
-                <div className="text-xs font-medium text-foreground flex items-center gap-1.5">
-                  <Check className={`size-3 text-brand-cyan shrink-0 ${s.schemeName === picked ? "" : "opacity-0"}`} />
-                  <span className="truncate">{s.schemeName}</span>
+                <div className="text-xs font-medium text-foreground flex items-start gap-1.5">
+                  <Check className={`mt-0.5 size-3 text-brand-cyan shrink-0 ${s.schemeName === picked ? "" : "opacity-0"}`} />
+                  <span className="min-w-0 break-words">{s.schemeName}</span>
+                </div>
+                <div className="mt-0.5 text-2xs text-muted-foreground pl-[1.125rem] flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  {s.amc && <span>{s.amc}</span>}
+                  {s.category && <span>· {s.category}</span>}
+                  {s.nav != null && <span className="tabular-nums whitespace-nowrap">· NAV ₹{s.nav.toFixed(2)}</span>}
                   {s.risk && (
                     <span className={`shrink-0 chip text-2xs leading-none px-1.5 py-0.5 border ${s.risk.tone}`} title={`Risk: ${s.risk.label}`}>
                       {s.risk.label}
                     </span>
                   )}
-                </div>
-                <div className="text-2xs text-muted-foreground pl-[1.125rem] flex items-center gap-2">
-                  {s.amc && <span className="truncate">{s.amc}</span>}
-                  {s.category && <span className="truncate">· {s.category}</span>}
-                  {s.nav != null && <span className="tabular-nums shrink-0">· NAV ₹{s.nav.toFixed(2)}</span>}
                 </div>
               </button>
             </li>
