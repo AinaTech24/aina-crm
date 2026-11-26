@@ -1,18 +1,22 @@
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { ExportButton } from "@/components/export/ExportButton";
 import Link from "next/link";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { Upload, ShieldCheck, ScrollText } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { complianceDocuments, investors, ddqScores, sops } from "@/db/schema";
+import { ddqScores, sops } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { canOpenVault, seesWholeVault, vaultScopeCondition, vaultScopeFragment } from "@/lib/compliance/document-access";
+import { canOpenVault, vaultScopeFragment } from "@/lib/compliance/document-access";
+import { loadVaultFolders } from "@/lib/compliance/vault-folders";
+import { FOLDERS_PER_PAGE, parsePage, parseVaultFilter } from "@/lib/compliance/vault-view";
 import { DocumentsFeed } from "@/components/compliance/DocumentsFeed";
 
 export const dynamic = "force-dynamic";
 
-export default async function DocumentsPage() {
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const session = await requireSession();
+  const sp = await searchParams;
+  const filter = parseVaultFilter(sp.q, sp.category);
 
   // Compliance / back-office / owner see the whole vault; an RM or branch head
   // sees documents filed against their own clients. Anyone else is told so
@@ -25,11 +29,7 @@ export default async function DocumentsPage() {
       </div>
     );
   }
-  const wholeVault = seesWholeVault(session);
-
   const data = await withTenant(session.tenantId, async (tx) => {
-    // Scoped inside the transaction: the per-tenant data wall is a row read.
-    const scope = await vaultScopeCondition(tx, session);
     // Tenant predicate is mandatory under the superuser/RLS-bypass model — without
     // it both queries return EVERY tenant's compliance documents.
     const stats = await tx.execute(sql`
@@ -46,36 +46,8 @@ export default async function DocumentsPage() {
         AND ${await vaultScopeFragment(tx, session)}
     `);
     const s = stats.rows[0] as any;
-    const rows = await tx
-      .select()
-      .from(complianceDocuments)
-      .where(
-        and(
-          eq(complianceDocuments.tenantId, session.tenantId),
-          isNull(complianceDocuments.supersededById),
-          scope
-        )
-      )
-      .orderBy(desc(complianceDocuments.createdAt))
-      .limit(100);
-
-    // Resolve the linked client (investor) name for any doc tagged to one, so
-    // the vault shows "which document for which client".
-    const investorIds = Array.from(
-      new Set(
-        rows
-          .filter((r) => r.relatedEntityType === "investor" && r.relatedEntityId)
-          .map((r) => r.relatedEntityId as string)
-      )
-    );
-    const clientInfo: Record<string, { name: string; email: string | null; phone: string | null; avatarUrl: string | null }> = {};
-    if (investorIds.length) {
-      const names = await tx
-        .select({ id: investors.id, name: investors.name, email: investors.email, phone: investors.phone, avatarUrl: investors.avatarUrl })
-        .from(investors)
-        .where(inArray(investors.id, investorIds));
-      for (const n of names) clientInfo[n.id] = { name: n.name, email: n.email, phone: n.phone, avatarUrl: n.avatarUrl };
-    }
+    // Every folder the viewer may see, a page at a time (nothing is capped to the newest few).
+    const vault = await loadVaultFolders(tx, session, filter, parsePage(sp.page));
 
     // Compliance-readiness signals: latest DDQ score + SOP library size.
     const [ddq] = await tx
@@ -95,8 +67,7 @@ export default async function DocumentsPage() {
       expired: Number(s.expired),
       ddqScore: ddq?.score != null ? Number(ddq.score) : null,
       sopCount: Number(sopCountRow?.n ?? 0),
-      rows,
-      clientInfo,
+      vault,
     };
   });
 
@@ -105,28 +76,6 @@ export default async function DocumentsPage() {
     expiringSoon: data.expiringSoon,
     expired: data.expired,
   };
-
-  const initialRows = data.rows.map((row) => {
-    const cid = row.relatedEntityType === "investor" && row.relatedEntityId ? (row.relatedEntityId as string) : null;
-    const info = cid ? data.clientInfo[cid] : null;
-    return {
-      id: row.id,
-      name: row.name,
-      category: row.category,
-      description: row.description,
-      storageKey: row.storageKey,
-      mimeType: row.mimeType,
-      sizeBytes: row.sizeBytes,
-      issuedOn: row.issuedOn,
-      expiresOn: row.expiresOn,
-      createdAt: row.createdAt,
-      clientId: cid,
-      clientName: info?.name ?? null,
-      clientEmail: info?.email ?? null,
-      clientPhone: info?.phone ?? null,
-      clientAvatar: cid && info?.avatarUrl ? `/api/investors/${cid}/avatar` : null,
-    };
-  });
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -137,7 +86,15 @@ export default async function DocumentsPage() {
           <Upload className="size-4" /> Upload document
         </Link></>} />
 
-      <DocumentsFeed initialRows={initialRows} stats={stats} />
+      <DocumentsFeed
+        folders={data.vault.folders}
+        totalFolders={data.vault.total}
+        page={data.vault.page}
+        pageSize={FOLDERS_PER_PAGE}
+        q={filter.q}
+        category={filter.category}
+        stats={stats}
+      />
     </div>
   );
 }
