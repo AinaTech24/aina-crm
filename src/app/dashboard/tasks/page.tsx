@@ -134,30 +134,40 @@ export default async function TasksPage({
     // Status and the quick tabs apply to the LIST only — the KANBAN's columns
     // ARE the status dimension, so it must show every status (otherwise a
     // lingering status=open from a stat-card click collapses the board to one
-    // column). The tab conditions are kept apart so the Overdue count can be
+    // column). They are kept apart from `conds` so each tab's count can be
     // taken over everything else the user has filtered by.
-    const tabConds: any[] = [];
+    //
+    // What each tab means — ONE definition for its rows and its count.
+    // "" (All open) is everything still open — in progress and blocked included,
+    // they are work too — except when filtering by approval or the dashboard's
+    // state, where pending tasks are usually in progress.
+    // Overdue is the dashboard's overdue-tasks count and the sidebar badge:
+    // not deleted, still to do, due before now (lib/metrics overdueTaskSql).
+    const isOpen = inArray(tasks.status, [...OPEN_STATUSES]);
+    const tabCond: Record<Tab, any> = {
+      "": !approval && !state ? isOpen : sql`true`,
+      overdue: overdueTaskSql("tasks"),
+      today: and(isOpen, sql`${tasks.dueAt} >= now() AND ${DUE_DAY} = ${IST_TODAY}`),
+      upcoming: and(isOpen, sql`${DUE_DAY} > ${IST_TODAY}`),
+      completed: eq(tasks.status, "completed"),
+    };
+    // The dashboard drill-down's state — set aside while a Status filter is on.
+    const stateCond =
+      state === "pending" ? sql`tasks.status IN ('open', 'in_progress') AND NOT ${taskAwaitingSql("tasks")}`
+      : state === "awaiting" ? taskAwaitingSql("tasks")
+      : state === "completed" ? eq(tasks.status, "completed")
+      : null;
+    // What narrows the list shown now but is cleared by clicking a tab (the
+    // Status and Due filters) — see goTab in TaskViewSelect.
+    const listConds: any[] = [];
     if (!isKanban) {
-      if (tab === "completed") tabConds.push(eq(tasks.status, "completed"));
-      // Overdue — the dashboard's overdue-tasks count and the sidebar badge:
-      // not deleted, still to do, due before now (lib/metrics overdueTaskSql).
-      else if (tab === "overdue") tabConds.push(overdueTaskSql("tasks"));
-      else if (tab) tabConds.push(inArray(tasks.status, [...OPEN_STATUSES]));
-      if (tab === "today") tabConds.push(sql`${tasks.dueAt} >= now() AND ${DUE_DAY} = ${IST_TODAY}`);
-      if (tab === "upcoming") tabConds.push(sql`${DUE_DAY} > ${IST_TODAY}`);
       if (statusFilter.length) {
-        conds.push(inArray(tasks.status, statusFilter as any));
-      } else if (!tab && !approval && !state) {
-        // Default: everything still open — in progress and blocked included,
-        // they are work too (this used to mean status = 'open' only). Not when
-        // filtering by approval, where pending tasks are usually in progress.
-        conds.push(inArray(tasks.status, [...OPEN_STATUSES]));
+        listConds.push(inArray(tasks.status, statusFilter as any));
+        if (tab) listConds.push(tabCond[tab]);
+      } else {
+        listConds.push(tabCond[tab]);
+        if (stateCond) listConds.push(stateCond);
       }
-    }
-    if (!isKanban && !statusFilter.length) {
-      if (state === "pending") conds.push(sql`tasks.status IN ('open', 'in_progress') AND NOT ${taskAwaitingSql("tasks")}`);
-      else if (state === "awaiting") conds.push(taskAwaitingSql("tasks"));
-      else if (state === "completed") conds.push(eq(tasks.status, "completed"));
     }
     if (fin === "1") conds.push(inArray(tasks.type, [...FINANCIAL_TASK_TYPES] as any));
     else if (fin === "0") conds.push(sql`(tasks.type IS NULL OR tasks.type NOT IN (${sql.join(FINANCIAL_TASK_TYPES.map((t) => sql`${t}`), sql`, `)}))`);
@@ -198,23 +208,29 @@ export default async function TasksPage({
       if (dueFilter.includes("today")) dueConds.push(sql`due_at::date = current_date`);
       if (dueFilter.includes("overdue")) dueConds.push(sql`due_at < now()`);
       if (dueFilter.includes("sla_risk")) dueConds.push(sql`sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours'`);
-      if (dueConds.length) conds.push(dueConds.length === 1 ? dueConds[0] : or(...dueConds)!);
+      if (dueConds.length) listConds.push(dueConds.length === 1 ? dueConds[0] : or(...dueConds)!);
     }
     // On the India date, as the dashboard counts "created in the period"
     // (lib/metrics/work-summary.ts) — a task keyed at 00:30 IST is that day's.
     const dr = dateRangeCond(sp, "created", "(tasks.created_at AT TIME ZONE 'Asia/Kolkata')::date");
     if (dr) conds.push(dr);
 
-    // Overdue (n) on its tab: every other filter the user set, tab aside.
-    const overdueRow = await tx
-      .select({ c: sql<number>`count(*)::int` })
+    // The (n) on each tab: what clicking it will list — every other filter the
+    // user set, tab, Status and Due aside. One query for all five.
+    const countOf = (t: Tab) => sql<number>`count(*) FILTER (WHERE ${tabCond[t]})::int`;
+    const [tabRow] = await tx
+      .select({
+        all: countOf(""),
+        overdue: countOf("overdue"),
+        today: countOf("today"),
+        upcoming: countOf("upcoming"),
+        completed: countOf("completed"),
+      })
       .from(tasks)
       .leftJoin(users, eq(users.id, tasks.assigneeId))
-      .where(and(...conds, overdueTaskSql("tasks")) as any);
-    const overdueCount = Number(overdueRow[0]?.c ?? 0);
+      .where(and(...conds, !isKanban && stateCond ? stateCond : undefined) as any);
 
-    conds.push(...tabConds);
-    const where = conds.length ? and(...conds) : undefined;
+    const where = and(...conds, ...listConds);
 
     // Sort: soonest-due first with undated last (the natural "what's next"), or
     // by priority, or newest-created. Default fixed `due_at DESC` floated undated
@@ -296,7 +312,17 @@ export default async function TasksPage({
       ORDER BY tag ASC
       LIMIT 100
     `);
-    return { rows, rms: rmRows.rows as any[], total, tags: tagRows.rows as any[], overdueCount };
+    // The tab being shown reads the same as its list (a Status / Due filter
+    // added on top of it narrows both).
+    const tabCounts: Record<Tab, number> = {
+      "": Number(tabRow?.all ?? 0),
+      overdue: Number(tabRow?.overdue ?? 0),
+      today: Number(tabRow?.today ?? 0),
+      upcoming: Number(tabRow?.upcoming ?? 0),
+      completed: Number(tabRow?.completed ?? 0),
+    };
+    if (!isKanban) tabCounts[tab] = total;
+    return { rows, rms: rmRows.rows as any[], total, tags: tagRows.rows as any[], tabCounts };
   });
 
   const rmOptions = (result.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -322,7 +348,7 @@ export default async function TasksPage({
       />
 
       {/* When (quick tabs) · whose (dropdown) · how (List / Board). */}
-      <TaskViewSelect current={view} layout={layout} tab={tab} overdueCount={result.overdueCount} />
+      <TaskViewSelect current={view} layout={layout} tab={tab} counts={result.tabCounts} />
 
       {/* Search + filter + sort + view — rendered inside the table header (list)
           or above the board (kanban). */}
