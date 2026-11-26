@@ -2109,6 +2109,27 @@ parallel system. Migrations 0265 (billing), 0266 (onboarding + legal), 0267
 - A firm purge (`platform_purge_tenant`, redefined in 0266) names the firm in
   `app.purging_tenant` so its immutable invoices and acceptances go with it.
 
+## Visitor Register — one firm's module (2026-11-26, Akshar Invest)
+
+Work → **Visitor Register** (`/dashboard/visitors`): who visited the office — Visitor Name, Email, Mobile
+Number, Company Name, Visit Date, Entry / Exit Time, Purpose of Visit, Meeting with (a team member), Remarks.
+Table `visitor_entries` (migration 0293). Code `lib/visitors/` (`entry.ts` pure rules · `access.ts` · `page.ts` ·
+`service.ts`), API `/api/visitors` and `/api/visitors/[id]`, screens in `components/visitors/`.
+
+- **The firm switch `visitorRegister`** (`config/feature-flags.ts`, group Office, Aina Admin → the firm → Access)
+  is the only gate: off for everyone except Akshar Invest, switched on by migration 0293 (matched by ARN-110756).
+  Off, the menu item is not drawn, every API answers 404 before any read, and
+  every page calls `requireVisitorPage()` itself (a layout check would not stop a page loading). Never a tenant id.
+- **Not in the nav-access catalog** (`config/nav-access.ts`) or `SIDEBAR_REGISTRY`, on purpose: a saved sidebar
+  list would hide it from the firm's own users, and every other firm's access editors would show it.
+- **No capability of its own** (same reason): the whole team may read; add / edit / delete need
+  `task.edit.all` or `task.edit.assigned`, so a read-only Viewer cannot write.
+- Only the name and visit date are required. Exit time may not be before entry time. "Meeting with" must be an
+  active team member when chosen; an old visit keeps a colleague who has since left. Delete is soft
+  (`deleted_at`, no restore screen); every write is audited (name and date only).
+
+---
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

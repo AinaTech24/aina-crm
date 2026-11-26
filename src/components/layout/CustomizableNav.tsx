@@ -32,7 +32,7 @@ import {
   FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, FolderOpen,
   LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
   LifeBuoy, MessageSquareWarning, Zap, GraduationCap,
-  CopyCheck, Settings, Trash2, Landmark, Crosshair,
+  CopyCheck, Settings, Trash2, Landmark, Crosshair, DoorOpen,
   // ── group heading icons (GROUP_ICON) ──
   House, SquareCheckBig, Contact, Compass, BriefcaseBusiness, Lightbulb, UsersRound, Building, Database, Folder,
   type LucideIcon,
@@ -57,7 +57,7 @@ const ICON_LIST: LucideIcon[] = [
   FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, FolderOpen,
   LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
   LifeBuoy, MessageSquareWarning, Zap, GraduationCap,
-  CopyCheck, Settings, Trash2, Landmark, Crosshair,
+  CopyCheck, Settings, Trash2, Landmark, Crosshair, DoorOpen,
 ];
 
 /* Keyed by each icon's lucide `displayName` (the canonical name) — which is

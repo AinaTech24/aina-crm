@@ -67,6 +67,8 @@ export const NAV_LABELS: Record<string, string> = {
   "/dashboard/templates": "Message Templates",
   "/dashboard/transactions": "MF Transactions",
   "/dashboard/trash": "Trash",
+  "/dashboard/visitors": "Visitor Register",
+  "/dashboard/visitors/new": "Add visitor",
   "/dashboard/automations": "Automations",
   "/dashboard/automations/actions": "Actions",
   "/dashboard/automations/history": "Run history",
