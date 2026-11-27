@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { openInfoRequest } from "@/lib/tasks/info-request";
+import { ownsTaskThread } from "@/lib/tasks/comment-access";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
@@ -20,17 +20,9 @@ import { createNotification } from "@/lib/notifications/create";
 import { tasks, taskComments, users } from "@/db/schema";
 import { notifyWatchers } from "@/lib/tasks/watchers";
 import { taskInScope } from "@/lib/tasks/scope";
-import { escalatedTo } from "@/lib/tasks/escalation-ladder";
 import { actAs } from "@/lib/tasks/history";
 
 export const dynamic = "force-dynamic";
-
-function ownsTask(task: { assigneeId: string | null; createdById: string | null; meta?: unknown }, userId: string): boolean {
-  // The person an open "Need information" question is waiting on joins the thread.
-  // So does a manager the escalation ladder brought it to.
-  return task.assigneeId === userId || task.createdById === userId || openInfoRequest(task.meta)?.askedToId === userId
-    || escalatedTo(task.meta, userId);
-}
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -46,7 +38,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);
       if (!task) return null;
-      if (!canViewAll && !ownsTask(task, session.userId)) return null;
+      if (!canViewAll && !ownsTaskThread(task, session.userId)) return null;
       if (!(await taskInScope(tx, session, id))) return null;
       return tx
         .select({ c: taskComments, authorName: users.name, authorAvatarUrl: users.avatarUrl })
@@ -89,7 +81,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);
       if (!task) return "not_found" as const;
-      if (!canViewAll && !ownsTask(task, session.userId)) return "not_found" as const;
+      if (!canViewAll && !ownsTaskThread(task, session.userId)) return "not_found" as const;
       if (!(await taskInScope(tx, session, id))) return "not_found" as const;
 
       // Keep only mention ids that are real users in this tenant.
