@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { tasks, users } from "@/db/schema";
 import { taskScopeSql } from "@/lib/tasks/scope";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
       if (dueFilter.length) {
         const dc: any[] = [];
         if (dueFilter.includes("today")) dc.push(sql`due_at::date = current_date`);
-        if (dueFilter.includes("overdue")) dc.push(sql`due_at < now()`);
+        if (dueFilter.includes("overdue")) dc.push(sql`due_at < ${TASK_TODAY_START}`);
         if (dueFilter.includes("sla_risk")) dc.push(sql`sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours'`);
         if (dc.length) conds.push(dc.length === 1 ? dc[0] : or(...dc)!);
       }

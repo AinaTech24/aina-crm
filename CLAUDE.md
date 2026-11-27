@@ -623,6 +623,21 @@ payment check; online = entry on platform · client confirms · RTA data check �
 payment to client. Every other firm, and every other request, keeps the
 ordinary list. Never hard-code a tenant id for this.
 
+## Tasks — when one is overdue, and when reminders fire (2026-11-27)
+
+One rule, in India time: `lib/tasks/due.ts` (pure) and its SQL twins `lib/tasks/due-sql.ts`; the mobile app's copy is
+`mobile/src/lib/due.ts`.
+
+- **Overdue only once the due DATE has ended in India** — `due_at < ${TASK_TODAY_START}` (SQL) / `isPastDue()`. A task is
+  "due today" all day, whatever time `due_at` holds (a date with no time is stored at midnight UTC, which is why it used to
+  turn overdue at 5:30 am). Never write `due_at < now()` for a task again. SLA clocks (`sla_due_at`) are their own and unchanged.
+- **Reminders from a date with no time count from 10:00 am** (`WORKING_HOUR`, `reminderInstant()`): on the due date 10:00,
+  1 day before 10:00 the day before, 1 h / 3 h before 9:00 / 7:00. A due with its own time counts from that time. Migration
+  0295 moved the reminders still waiting.
+- **Alerts about lateness wait for the working day**: the overdue alert goes from 10:00 the morning after
+  (`TASK_OVERDUE_ALERT_BEFORE`), and the escalation ladder runs only from 10:00 (`workingDayStarted()`), counting its hours
+  from the end of the due date (`dueEndSql`).
+
 ## Tasks — entry date and closed date
 
 2026-10-30. `tasks.entry_date` (migration 0254) is the day the task was ENTERED:

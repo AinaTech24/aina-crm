@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
       SELECT
         COUNT(*) FILTER (WHERE status IN ('open','in_progress'))::int AS open_total,
         COUNT(*) FILTER (
-          WHERE status IN ('open','in_progress') AND due_at < now()
+          WHERE status IN ('open','in_progress') AND due_at < ${TASK_TODAY_START}
         )::int AS overdue_count,
         COUNT(*) FILTER (
           WHERE status IN ('open','in_progress')

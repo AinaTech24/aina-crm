@@ -2,7 +2,8 @@
  * Overdue tasks — ONE definition for the sidebar badge, the dashboard, the
  * team table and the Tasks page's "Overdue" view:
  *
- *   not deleted, still to do (open / in progress / blocked), due before now.
+ *   not deleted, still to do (open / in progress / blocked), and its due DATE has
+ *   ended in India (lib/tasks/due.ts) — a task is "due today" all day.
  *
  * `completed` is the finished status; there is no `done`, and filtering on
  * one silently counts every finished task as still open.
@@ -13,6 +14,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { col, staffWhere, type MetricScope } from "./scope";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export const TASK_OPEN = ["open", "in_progress", "blocked"] as const;
 export const TASK_DEAD = ["completed", "cancelled"] as const;
@@ -21,7 +23,7 @@ export const TASK_DEAD = ["completed", "cancelled"] as const;
 export function overdueTaskSql(alias = "t"): SQL {
   return sql`${col(alias, "deleted_at")} IS NULL
     AND ${col(alias, "status")} IN ('open', 'in_progress', 'blocked')
-    AND ${col(alias, "due_at")} < now()`;
+    AND ${col(alias, "due_at")} < ${TASK_TODAY_START}`;
 }
 
 /**

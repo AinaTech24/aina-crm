@@ -24,6 +24,7 @@ import {
   taskInvestor, taskIsAbout,
 } from "./window";
 import { bookedLinesOnBook, loadBookedFlows } from "./booked";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 /* ─────────────────────────── §9 meetings ─────────────────────────── */
 
@@ -678,7 +679,7 @@ export async function loadMyTasks(tx: Tx, w: MyWindow): Promise<MyTasks> {
            COUNT(*)::int                                                    AS assigned,
            COUNT(*) FILTER (WHERE status = 'completed')::int                AS completed,
            COUNT(*) FILTER (WHERE status NOT IN (${DEAD}))::int             AS pending,
-           COUNT(*) FILTER (WHERE status NOT IN (${DEAD}) AND due_at < now())::int AS overdue
+           COUNT(*) FILTER (WHERE status NOT IN (${DEAD}) AND due_at < ${TASK_TODAY_START})::int AS overdue
       FROM (
         SELECT status, due_at, (type IN (${FIN})) AS fin
           FROM tasks
@@ -704,7 +705,7 @@ export async function loadMyTasks(tx: Tx, w: MyWindow): Promise<MyTasks> {
       FROM tasks t LEFT JOIN investors i ON i.id = ${taskInvestor("t")}
       LEFT JOIN users au ON au.id = t.assignee_id
      WHERE ${staffMatch("assignee_id", w, "t")} AND t.deleted_at IS NULL
-       AND t.status NOT IN (${DEAD}) AND t.due_at < now()
+       AND t.status NOT IN (${DEAD}) AND t.due_at < ${TASK_TODAY_START}
      ORDER BY t.due_at ASC LIMIT 10
   `)).rows as Array<Record<string, unknown>>;
 

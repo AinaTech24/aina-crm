@@ -24,6 +24,7 @@ import { taskScopeSql } from "@/lib/tasks/scope";
 import { meetingScopeSql } from "@/lib/review-meetings/scope";
 import { needsNomineeSql } from "@/lib/investors/type-rules";
 import { noteTenant } from "@/lib/tenant-context";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
         await tx.execute(sql`
           SELECT
             COUNT(*) FILTER (WHERE status IN ('open','in_progress','blocked'))::int AS open_tasks,
-            COUNT(*) FILTER (WHERE status IN ('open','in_progress','blocked') AND due_at < now())::int AS overdue_tasks
+            COUNT(*) FILTER (WHERE status IN ('open','in_progress','blocked') AND due_at < ${TASK_TODAY_START})::int AS overdue_tasks
           FROM tasks WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL AND ${taskScope}
         `)
       ).rows[0] as any;

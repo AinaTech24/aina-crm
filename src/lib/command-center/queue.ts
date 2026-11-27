@@ -19,6 +19,7 @@
 import { sql } from "drizzle-orm";
 import { leadOpenSql } from "@/lib/metrics/leads";
 import { riskBucketSql } from "@/lib/risk-profile/buckets";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export type Severity = "now" | "today" | "soon";
 
@@ -409,7 +410,7 @@ export async function buildCommandQueue(
       WHERE status IN ('open','in_progress','blocked')
         AND deleted_at IS NULL
         AND due_at IS NOT NULL
-        AND due_at < now()
+        AND due_at < ${TASK_TODAY_START}
         ${scope("assignee_id", userId, firmWide)}${cscope("related_investor_id")}
       ORDER BY due_at ASC
       LIMIT 5
@@ -454,7 +455,7 @@ export async function buildCommandQueue(
         WHERE status IN ('open','in_progress','blocked')
           AND deleted_at IS NULL
           AND due_at IS NOT NULL
-          AND due_at < now()
+          AND due_at < ${TASK_TODAY_START}
           AND due_at >= now() - interval '30 days'
           ${scope("assignee_id", userId, firmWide)}${cscope("related_investor_id")}
         ORDER BY due_at ASC

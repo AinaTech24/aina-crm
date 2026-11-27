@@ -17,6 +17,7 @@ import { bookBusinessFromLines, bookBusinessFromTask } from "@/lib/tasks/book-bu
 import { REQUEST_TYPE_BY_KEY } from "@/lib/tasks/request-types";
 import { investorScopeSql } from "@/lib/investors/access";
 import { subTaskAssignedToSql, taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -223,7 +224,7 @@ export async function GET(req: NextRequest) {
         // The India day — the database session runs in UTC, so due_at::date =
         // current_date was off between 00:00 and 05:30 IST.
         if (due === "today") conds.push(sql`(due_at AT TIME ZONE 'Asia/Kolkata')::date = (now() AT TIME ZONE 'Asia/Kolkata')::date`);
-        else if (due === "overdue") conds.push(sql`due_at < now()`);
+        else if (due === "overdue") conds.push(sql`due_at < ${TASK_TODAY_START}`);
         else if (due === "sla_risk") conds.push(sql`sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours'`);
         if (isDate(createdFrom)) conds.push(sql`${tasks.createdAt} >= ${createdFrom}::date`);
         if (isDate(createdTo)) conds.push(sql`${tasks.createdAt} < (${createdTo}::date + interval '1 day')`);

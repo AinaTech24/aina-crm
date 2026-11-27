@@ -22,6 +22,7 @@ import { sql, type SQL } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import type { DataAccess } from "@/lib/dashboards/system/access";
 import { median, percentile, type Stay } from "./bottlenecks-core";
+import { isPastDue } from "@/lib/tasks/due";
 
 export const JOURNEYS = {
   leads: { label: "Lead to client", href: (id: string) => `/dashboard/leads/${id}` },
@@ -154,11 +155,11 @@ export async function loadTaskTurnaround(tx: Tx, tenantId: string, access: DataA
       g.took.push(Math.max(0, (done - new Date(r.created_at).getTime()) / 86_400_000));
       if (r.due_at) {
         g.withDue++;
-        if (done > new Date(r.due_at).getTime()) g.late++;
+        if (isPastDue(r.due_at, new Date(done))) g.late++;
       }
     } else {
       g.open++;
-      if (r.due_at && new Date(r.due_at).getTime() < now) g.overdue++;
+      if (isPastDue(r.due_at, new Date(now))) g.overdue++;
     }
   }
   return [...by.entries()]

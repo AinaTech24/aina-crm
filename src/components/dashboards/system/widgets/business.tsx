@@ -30,6 +30,7 @@ import { Dumbbell } from "../../charts/Dumbbell";
 import { ConcentrationCurve } from "../../charts/ConcentrationCurve";
 import { phaseFraction } from "@/lib/dashboard/my/kpis";
 import { Initials } from "@/components/dashboards/my/Shared";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 /* ─────────────────────────────── pieces ─────────────────────────────── */
 
@@ -562,7 +563,7 @@ async function branchTable(tx: Tx, ctx: WidgetCtx, dashboardHref: string) {
     () => tx.execute(sql`
       SELECT u.branch_id, COUNT(*)::int AS n FROM tasks t JOIN users u ON u.id = t.assignee_id
        WHERE t.tenant_id = ${s.tenantId}::uuid AND t.deleted_at IS NULL
-         AND t.status IN ('open', 'in_progress', 'blocked') AND t.due_at < now()
+         AND t.status IN ('open', 'in_progress', 'blocked') AND t.due_at < ${TASK_TODAY_START}
        GROUP BY u.branch_id`),
     () => getTargetsByBranch(tx, s.tenantId, p.fiscalYear, "net_business"),
   );

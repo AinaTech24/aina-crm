@@ -21,6 +21,7 @@ import { overdueTaskSql, staffWhere, taskAwaitingSql } from "@/lib/metrics";
 import { FINANCIAL_TASK_TYPES } from "@/lib/dashboard/my/window";
 import { subTaskAssignedToSql, taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
 import { escalatedToSql } from "@/lib/tasks/escalation-ladder";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -147,7 +148,7 @@ export default async function TasksPage({
     const tabCond: Record<Tab, any> = {
       "": !approval && !state ? isOpen : sql`true`,
       overdue: overdueTaskSql("tasks"),
-      today: and(isOpen, sql`${tasks.dueAt} >= now() AND ${DUE_DAY} = ${IST_TODAY}`),
+      today: and(isOpen, sql`${DUE_DAY} = ${IST_TODAY}`),
       upcoming: and(isOpen, sql`${DUE_DAY} > ${IST_TODAY}`),
       completed: eq(tasks.status, "completed"),
     };
@@ -206,7 +207,7 @@ export default async function TasksPage({
     if (dueFilter.length) {
       const dueConds: any[] = [];
       if (dueFilter.includes("today")) dueConds.push(sql`due_at::date = current_date`);
-      if (dueFilter.includes("overdue")) dueConds.push(sql`due_at < now()`);
+      if (dueFilter.includes("overdue")) dueConds.push(sql`due_at < ${TASK_TODAY_START}`);
       if (dueFilter.includes("sla_risk")) dueConds.push(sql`sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours'`);
       if (dueConds.length) listConds.push(dueConds.length === 1 ? dueConds[0] : or(...dueConds)!);
     }
@@ -239,7 +240,7 @@ export default async function TasksPage({
       sortKey === "smart"
         ? tab === "completed"
           ? sql`${tasks.completedAt} desc nulls last, ${tasks.updatedAt} desc` // most recently finished first
-          : sql`case when ${tasks.dueAt} < now() and ${tasks.status} in ('open','in_progress','blocked') then 0 else 1 end asc, ${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`
+          : sql`case when ${tasks.dueAt} < ${TASK_TODAY_START} and ${tasks.status} in ('open','in_progress','blocked') then 0 else 1 end asc, ${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`
         : sortKey === "priority"
         ? sql`case ${tasks.priority} when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end asc, ${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`
         : sortKey === "created"

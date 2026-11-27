@@ -24,6 +24,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { mobileFirmAccess, mobileOwnerScope, mobileTaskScope, mobileMeetingScope } from "@/lib/mobile/access";
 import { can } from "@/lib/auth/rbac";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -90,7 +91,7 @@ export async function GET(req: NextRequest) {
           `),
           rows(sql`
             SELECT t.id, t.title, t.due_at, t.priority,
-                   (t.due_at < current_date) AS overdue
+                   (t.due_at < ${TASK_TODAY_START}) AS overdue
             FROM tasks t
             WHERE t.tenant_id = ${session.tenantId}::uuid
               AND t.status IN ('open','in_progress','blocked')

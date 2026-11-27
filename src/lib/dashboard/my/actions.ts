@@ -47,6 +47,7 @@ import {
   type MyWindow,
   taskInvestor,
 } from "./window";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export type Severity = "critical" | "attention" | "normal";
 
@@ -226,7 +227,7 @@ export async function loadActionCentre(tx: Tx, w: MyWindow): Promise<ActionCard[
      WHERE ${staffMatch("assignee_id", w)}
        AND deleted_at IS NULL
        AND status NOT IN (${DEAD_TASK})
-       AND due_at < now()
+       AND due_at < ${TASK_TODAY_START}
   `)).rows[0] as Row | undefined;
   const taskNames = (await tx.execute(sql`
     SELECT t.id, t.title, t.due_at, t.priority, i.name AS client
@@ -235,7 +236,7 @@ export async function loadActionCentre(tx: Tx, w: MyWindow): Promise<ActionCard[
      WHERE ${staffMatch("assignee_id", w, "t")}
        AND t.deleted_at IS NULL
        AND t.status NOT IN (${DEAD_TASK})
-       AND t.due_at < now()
+       AND t.due_at < ${TASK_TODAY_START}
      ORDER BY t.due_at ASC
      LIMIT 6
   `)).rows as Array<Record<string, unknown>>;

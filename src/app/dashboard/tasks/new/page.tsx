@@ -52,6 +52,7 @@ import {
   totalOfLines,
   type RequestLine,
 } from "@/lib/tasks/request-lines";
+import { reminderInstant } from "@/lib/tasks/due";
 
 type TaskTemplate = {
   id: string;
@@ -496,8 +497,7 @@ export default function NewTaskPage() {
       // Reminder — computed relative to the due date.
       if (form.reminder !== "none" && form.dueDate) {
         const offsetMin: Record<string, number> = { at_due: 0, "1h": 60, "3h": 180, "1d": 1440, "2d": 2880, "1w": 10080 };
-        const base = new Date(form.dueDate).getTime();
-        payload.remindAt = new Date(base - (offsetMin[form.reminder] ?? 0) * 60000).toISOString();
+        payload.remindAt = reminderInstant(form.dueDate, offsetMin[form.reminder] ?? 0).toISOString();
       }
       const cleanChecklist = checklist
         .map((c) => ({
@@ -920,12 +920,12 @@ export default function NewTaskPage() {
                   disabled={!form.dueDate}
                 >
                   <option value="none">None</option>
-                  <option value="at_due">At due time</option>
-                  <option value="1h">1 hour before</option>
-                  <option value="3h">3 hours before</option>
-                  <option value="1d">1 day before</option>
-                  <option value="2d">2 days before</option>
-                  <option value="1w">1 week before</option>
+                  <option value="at_due">On the due date, 10:00 am</option>
+                  <option value="1h">1 hour before (9:00 am)</option>
+                  <option value="3h">3 hours before (7:00 am)</option>
+                  <option value="1d">1 day before, 10:00 am</option>
+                  <option value="2d">2 days before, 10:00 am</option>
+                  <option value="1w">1 week before, 10:00 am</option>
                 </SelectField>
               </label>
               <label className="flex items-start gap-2 sm:pt-6 cursor-pointer">

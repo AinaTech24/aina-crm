@@ -57,6 +57,7 @@ import {
   type TaskCategory, type RequestType,
 } from "./request-types";
 import { palette, radius, spacing, fontWeight } from "../../theme/tokens";
+import { reminderIso } from "../../lib/due";
 
 type Row = { key: number; schemeName: string; schemeCode?: string; amcName?: string; assetCategory?: string; fromSchemeName: string; fromSchemeCode?: string; amount: string; units: string; allUnits: boolean; folio: string; sipDay: string; frequency: string };
 type Template = { id: string; name: string; description?: string | null; taskType?: string | null; priority?: string | null; dueOffsetDays?: number | null; subtasks?: Array<{ id: string; text: string }> };
@@ -65,7 +66,7 @@ type CheckItem = { id: string; text: string; assigneeId?: string | null; actionD
 
 const KYC_MODES = [{ key: "online", label: "Online KYC" }, { key: "physical", label: "Physical KYC" }] as const;
 const REMINDERS = [
-  { value: "none", label: "No reminder" }, { value: "at_due", label: "At the due time" }, { value: "1h", label: "1 hour before" },
+  { value: "none", label: "No reminder" }, { value: "at_due", label: "When due (10 am if no time)" }, { value: "1h", label: "1 hour before" },
   { value: "3h", label: "3 hours before" }, { value: "1d", label: "1 day before" }, { value: "2d", label: "2 days before" }, { value: "1w", label: "1 week before" },
 ];
 const REMIND_MIN: Record<string, number> = { at_due: 0, "1h": 60, "3h": 180, "1d": 1440, "2d": 2880, "1w": 10080 };
@@ -269,7 +270,7 @@ export function NewTaskScreen({ params }: { params: Record<string, string | unde
       assigneeId: assigneeId || undefined,
       requiresApproval: requiresApproval || undefined,
     };
-    if (reminder !== "none" && dueAt) payload.remindAt = new Date(Date.parse(dueAt) - (REMIND_MIN[reminder] ?? 0) * 60000).toISOString();
+    if (reminder !== "none" && dueAt) payload.remindAt = reminderIso(dueAt, REMIND_MIN[reminder] ?? 0);
     const items = checklist
       .map((c) => ({
         id: c.id.slice(0, 64), text: c.text.trim(), done: false,

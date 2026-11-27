@@ -95,7 +95,7 @@ export const tasksImport: ImportModule<Prep, Item> = {
     };
     const entryDate = day("entryDate");
     const dueAt = when("dueAt");
-    const remindAt = when("remindAt", "09:00");
+    const remindAt = when("remindAt", "10:00");
     const slaGiven = when("slaDueAt");
     const recurrenceUntil = day("recurrenceUntil");
     if (recurrenceUntil && !recurrence) row.fail("recurrenceUntil", "Fill Repeats as well, or clear this");

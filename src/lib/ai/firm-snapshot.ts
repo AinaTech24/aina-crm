@@ -11,6 +11,7 @@ import type { Tx } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { buildAiScope } from "@/lib/ai/scope";
 import { needsNomineeSql } from "@/lib/investors/type-rules";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export type FirmSnapshot = {
   active_clients: number;
@@ -76,7 +77,7 @@ export async function firmSnapshot(tx: Tx, tenantId: string, session?: SessionUs
     await tx.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE status IN ('open','in_progress','blocked'))::int AS open_tasks,
-        COUNT(*) FILTER (WHERE status IN ('open','in_progress','blocked') AND due_at < now())::int AS overdue_tasks
+        COUNT(*) FILTER (WHERE status IN ('open','in_progress','blocked') AND due_at < ${TASK_TODAY_START})::int AS overdue_tasks
       FROM tasks WHERE tenant_id = ${tenantId}::uuid AND ${sc.task("tasks")}
     `)
   ).rows[0] as any;

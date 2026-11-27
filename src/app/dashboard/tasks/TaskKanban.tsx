@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/Toast";
 import { Avatar } from "@/components/ui/Avatar";
 import { taskChecklist, type Task } from "@/db/schema";
 import { formatDate } from "@/lib/format";
+import { isPastDue } from "@/lib/tasks/due";
 
 interface TaskRow {
   task: Task;
@@ -152,7 +153,7 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
                 {col.items.map((row) => {
                   const t = row.task;
                   const due = fmtDue(t.dueAt);
-                  const overdue = t.dueAt && new Date(t.dueAt as any).getTime() < Date.now() && t.status !== "completed" && t.status !== "cancelled";
+                  const overdue = isPastDue(t.dueAt, new Date()) && t.status !== "completed" && t.status !== "cancelled";
                   const who = row.investorName || row.leadName;
                   const checklist = taskChecklist(t.meta);
                   const checklistDone = checklist.filter((c) => c.done).length;

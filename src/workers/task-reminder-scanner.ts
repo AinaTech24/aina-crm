@@ -3,7 +3,8 @@
  *
  * Every few minutes it sweeps all active tenants and, per task:
  *
- *   OVERDUE   → in-app alert to the assignee (guaranteed) + a one-time
+ *   OVERDUE   → from 10:00 am India the day after the due date (lib/tasks/due.ts):
+ *               in-app alert to the assignee (guaranteed) + a one-time
  *               `task.overdue` event on events_outbox (for the escalation
  *               recipe) + a best-effort email. `overdue_notified_at` dedups.
  *
@@ -42,6 +43,8 @@ import { escalateOverdueRevisits } from "@/lib/opportunities/later";
 import { loadLadder } from "@/lib/tasks/escalation-ladder";
 import { runEscalationLadder } from "@/lib/tasks/escalation-run";
 import { runQaSampling } from "@/lib/qa/sampling";
+import { TASK_OVERDUE_ALERT_BEFORE } from "@/lib/tasks/due-sql";
+import { workingDayStarted } from "@/lib/tasks/due";
 
 function fmtDue(due: string | Date | null): string {
   if (!due) return "";
@@ -75,7 +78,7 @@ async function scanTenantOverdue(tenantId: string): Promise<ScanOut> {
         WHERE t.tenant_id = ${tenantId}::uuid
           AND t.deleted_at IS NULL
           AND t.status IN ('open', 'in_progress', 'blocked')
-          AND t.due_at IS NOT NULL AND t.due_at < now()
+          AND t.due_at IS NOT NULL AND t.due_at < ${TASK_OVERDUE_ALERT_BEFORE}
           AND t.overdue_notified_at IS NULL
         ORDER BY t.due_at ASC
         LIMIT 500
@@ -242,7 +245,8 @@ export async function runTaskReminderScan(): Promise<{ overdue: number; reminder
       console.error(`[task-scan] approval-escalation scan failed for tenant ${t}:`, (err as Error).message);
     }
     try {
-      escalations += await withTenant(t, (tx) => runEscalationLadder(tx, t));
+      // Escalations, like overdue alerts, wait for the working day (lib/tasks/due.ts).
+      if (workingDayStarted()) escalations += await withTenant(t, (tx) => runEscalationLadder(tx, t));
     } catch (err) {
       console.error(`[task-scan] escalation ladder failed for tenant ${t}:`, (err as Error).message);
     }

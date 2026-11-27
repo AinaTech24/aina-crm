@@ -20,6 +20,7 @@ import { TaskRelatedEntities } from "./TaskRelatedEntities";
 import { HowWeDoThis } from "@/components/practice/HowWeDoThis";
 import { formatDate } from "@/lib/format";
 import { DateTimeField } from "@/components/ui/DateTimeField";
+import { reminderInstant } from "@/lib/tasks/due";
 
 interface TaskDetailDrawerProps {
   task: Task & {
@@ -293,7 +294,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
     // Relative to the due date being saved, not the one the task had.
     if (!dueDate) return null;
     const off = REMINDER_OFFSETS_MIN[reminderMode] ?? 0;
-    return new Date(new Date(dueDate).getTime() - off * 60000).toISOString();
+    return reminderInstant(dueDate, off).toISOString();
   }
 
   async function runApproval(action: "submit" | "approve" | "reject") {
@@ -560,12 +561,12 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                 className="w-full"
               >
                 <option value="none">No reminder</option>
-                <option value="at_due" disabled={!dueDate}>At due time</option>
-                <option value="1h" disabled={!dueDate}>1 hour before due</option>
-                <option value="3h" disabled={!dueDate}>3 hours before due</option>
-                <option value="1d" disabled={!dueDate}>1 day before due</option>
-                <option value="2d" disabled={!dueDate}>2 days before due</option>
-                <option value="1w" disabled={!dueDate}>1 week before due</option>
+                <option value="at_due" disabled={!dueDate}>On the due date, 10:00 am</option>
+                <option value="1h" disabled={!dueDate}>1 hour before (9:00 am)</option>
+                <option value="3h" disabled={!dueDate}>3 hours before (7:00 am)</option>
+                <option value="1d" disabled={!dueDate}>1 day before, 10:00 am</option>
+                <option value="2d" disabled={!dueDate}>2 days before, 10:00 am</option>
+                <option value="1w" disabled={!dueDate}>1 week before, 10:00 am</option>
                 <option value="custom">Custom date &amp; time…</option>
               </SelectField>
               {reminderMode === "custom" && (

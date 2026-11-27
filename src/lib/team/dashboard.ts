@@ -16,6 +16,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
 
@@ -90,7 +91,7 @@ export async function getTeamDashboard(
       SELECT
         (SELECT count(*)::int FROM tasks
            WHERE status IN ('open','in_progress','blocked')
-             AND due_at IS NOT NULL AND due_at < now()${taskWho}) AS overdue_tasks,
+             AND due_at IS NOT NULL AND due_at < ${TASK_TODAY_START}${taskWho}) AS overdue_tasks,
         (SELECT count(*)::int FROM tasks
            WHERE status IN ('open','in_progress','blocked')
              AND due_at::date = current_date${taskWho}) AS due_today_tasks,
@@ -208,7 +209,7 @@ export async function getTeamDashboard(
   const taskAgg = (
     await tx.execute(sql`
       SELECT assignee_id,
-        count(*) FILTER (WHERE status IN ('open','in_progress','blocked') AND due_at < now())::int AS overdue,
+        count(*) FILTER (WHERE status IN ('open','in_progress','blocked') AND due_at < ${TASK_TODAY_START})::int AS overdue,
         count(*) FILTER (WHERE status IN ('open','in_progress','blocked') AND due_at::date = current_date)::int AS due_today,
         count(*) FILTER (WHERE status='completed' AND updated_at >= ${fromISO} AND updated_at < ${toEndISO})::int AS completed
       FROM tasks WHERE assignee_id IS NOT NULL
