@@ -74,8 +74,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (file.size > MAX_BYTES) return NextResponse.json({ error: "file exceeds 25 MB" }, { status: 400 });
     const safeName = (file.name || "attachment").replace(/[^\w.\- ]+/g, "_").slice(0, 180);
     const buf = Buffer.from(await file.arrayBuffer());
-    // Tenant-scoped key; a random segment avoids collisions on same-name files.
-    const rand = Math.abs(buf.length ^ (safeName.length * 2654435761)).toString(36) + safeName.length.toString(36);
+    // Tenant-scoped key; a random segment keeps two same-name, same-size files
+    // (several picked at once) from overwriting each other.
+    const rand = crypto.randomUUID().slice(0, 12);
     const storageKey = `tenants/${session.tenantId}/tasks/${id}/${rand}-${safeName}`;
 
     const outcome = await withTenant(session.tenantId, async (tx) => {

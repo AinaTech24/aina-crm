@@ -1,4 +1,7 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
+import { Sparkles, UserRound } from "lucide-react";
+import { loadTenantLicense } from "@/lib/auth/license";
 import { and, eq, isNull } from "drizzle-orm";
 import { openInfoRequest } from "@/lib/tasks/info-request";
 import { withTenant } from "@/db/client";
@@ -7,6 +10,9 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { PageHeaderCard } from "@/components/layout/PageHeaderCard";
 import { TaskDetailPage } from "./TaskDetailPage";
+
+/** Per-firm flag (config/feature-flags.ts): the task page names its client / lead at the top. */
+const TASK_HEADER_SUBJECT_FLAG = "taskHeaderSubject";
 import { taskInScope } from "@/lib/tasks/scope";
 import { escalatedTo } from "@/lib/tasks/escalation-ladder";
 import { dataWallApplies, investorScopeCondition } from "@/lib/investors/access";
@@ -77,9 +83,14 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
       assigneeName: (assignee as Array<{ name: string | null }>)[0]?.name ?? null,
       investorName: (investor as Array<{ name: string | null }>)[0]?.name ?? null,
       leadName: (lead as Array<{ name: string | null }>)[0]?.name ?? null,
+      investorId,
+      leadId,
     };
   });
   if (!data) notFound();
+  // The client / lead the task is about, named at the top (flag taskHeaderSubject).
+  const lic = await loadTenantLicense(session.tenantId, session.roles);
+  const showSubject = lic.featureFlags?.[TASK_HEADER_SUBJECT_FLAG] === true && (!!data.investorName || !!data.leadName);
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -87,7 +98,32 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
         breadcrumb={[{ label: "Tasks", href: "/dashboard/tasks" }, { label: data.task.title }]}
         title={<>{data.task.title}</>}
         subtitle={<>Task {data.task.id.slice(0, 8)}</>}
-      />
+      >
+        {showSubject && (
+          <div className="flex flex-wrap items-center gap-2">
+            {data.investorName && data.investorId && (
+              <Link
+                href={`/dashboard/investors/${data.investorId}`}
+                className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/5 px-3 py-1 text-sm font-semibold text-primary hover:bg-primary/10"
+              >
+                <UserRound className="size-4" />
+                <span className="text-xs font-medium text-muted-foreground">Client</span>
+                {data.investorName}
+              </Link>
+            )}
+            {data.leadName && data.leadId && (
+              <Link
+                href={`/dashboard/leads/${data.leadId}`}
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary/60 px-3 py-1 text-sm font-semibold hover:bg-secondary"
+              >
+                <Sparkles className="size-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">Lead</span>
+                {data.leadName}
+              </Link>
+            )}
+          </div>
+        )}
+      </PageHeaderCard>
       <TaskDetailPage
         task={JSON.parse(JSON.stringify({
           ...data.task,

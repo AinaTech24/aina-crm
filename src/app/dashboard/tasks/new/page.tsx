@@ -40,6 +40,8 @@ import { notify } from "@/components/ui/Toast";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { TaskFilePicker } from "@/components/tasks/TaskFilePicker";
+import { TASK_ATTACHMENTS_FLAG, uploadTaskFiles } from "@/lib/tasks/upload-attachments";
 import { RequestTable, emptyLine, lineNum, type FamilyMember, type LineValues } from "@/components/tasks/RequestTable";
 import {
   TASK_REQUEST_TABLE_FLAG,
@@ -115,6 +117,10 @@ export default function NewTaskPage() {
   const [insuranceTasks, setInsuranceTasks] = useState(false);
   /** The firm's `taskRequestTable` flag: requests are rows in a table (any mix, any family member). */
   const [tableOn, setTableOn] = useState(false);
+  /** The firm's `taskAttachmentsMulti` flag: attach files while creating. */
+  const [filesOn, setFilesOn] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
   /** Table mode: General, or Client requests (the table). */
   const [reqMode, setReqMode] = useState(false);
   const [lines, setLines] = useState<LineValues[]>([]);
@@ -131,6 +137,7 @@ export default function NewTaskPage() {
         setInsuranceTasks(j?.license?.featureFlags?.[INSURANCE_TASKS_FLAG] === true);
         const table = j?.license?.featureFlags?.[TASK_REQUEST_TABLE_FLAG] === true;
         setTableOn(table);
+        setFilesOn(j?.license?.featureFlags?.[TASK_ATTACHMENTS_FLAG] === true);
       } catch {
         /* the flag is optional — the ordinary form still works */
       }
@@ -577,6 +584,19 @@ export default function NewTaskPage() {
       } else if (j.businessNotBooked === "not_allowed") {
         notify.warning("Task created, but your role cannot book Business entries — ask Operations to add it.", "Not booked");
       }
+      // The files picked on the form go up now that the task exists.
+      if (filesOn && files.length && typeof j.id === "string") {
+        setUploadNote(`Uploading ${files.length} ${files.length === 1 ? "file" : "files"}…`);
+        const up = await uploadTaskFiles(j.id, files);
+        if (up.failed.length) {
+          notify.warning(
+            `${up.uploaded.length} of ${files.length} files attached. Not attached: ${up.failed.map((f) => `${f.file.name} (${f.error})`).join(", ")} — add them from the task's Attachments.`,
+            "Task created",
+          );
+        } else {
+          notify.success(`${up.uploaded.length} ${up.uploaded.length === 1 ? "file" : "files"} attached.`, "Task created");
+        }
+      }
       router.push(`/dashboard/tasks`);
     } finally {
       setBusy(false);
@@ -849,6 +869,8 @@ export default function NewTaskPage() {
             ))}
           </div>
         </div>
+
+        {filesOn && <TaskFilePicker files={files} onChange={setFiles} disabled={busy} />}
       </div>
 
       {/* ── Everything else, behind one disclosure. ── */}
@@ -1113,7 +1135,7 @@ export default function NewTaskPage() {
             className="btn-primary"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            {busy ? "Saving…" : "Create task"}
+            {busy ? uploadNote ?? "Saving…" : "Create task"}
           </button>
         </div>
       </div>
