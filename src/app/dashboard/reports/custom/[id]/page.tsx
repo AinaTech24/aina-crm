@@ -49,6 +49,7 @@ type Meta = {
   /** The firm's branch names for the Branch picker; empty when the module has no branch. */
   branches?: string[];
   desks?: Array<{ name: string; branch: string }>;
+  clientPick?: { family: boolean; category: boolean } | null;
   chartOptions?: { target?: number | null; limit?: number | null } | null;
   ast?: Group | null;
   isMine?: boolean;
@@ -250,7 +251,7 @@ export default function ReportViewPage() {
       </PageHeaderCard>
 
       {zohoParity && meta && zFilter && (
-        <ReportFilterBar dateFields={dateFields} showDetailsSwitch={meta.reportType === "summary"} value={zFilter} onApply={applyZFilter} branches={meta.branches ?? []} desks={meta.desks ?? []} />
+        <ReportFilterBar dateFields={dateFields} showDetailsSwitch={meta.reportType === "summary"} value={zFilter} onApply={applyZFilter} branches={meta.branches ?? []} desks={meta.desks ?? []} clientPick={meta.clientPick ?? null} />
       )}
 
       {showFilters && meta && (

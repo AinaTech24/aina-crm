@@ -14,7 +14,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { branches, desks, savedReports, REPORT_SUBJECTS, REPORT_TYPES, REPORT_SHARE_SCOPES } from "@/db/schema";
-import { branchField, deskField } from "@/lib/filter/catalog";
+import { branchField, clientPickFields, deskField } from "@/lib/filter/catalog";
 import { FilterASTSchema } from "@/lib/filter/ast";
 import { assertValidReport } from "@/lib/reports/run";
 import { assertValidCategories, type CategoryColumn } from "@/lib/reports/categories";
@@ -74,6 +74,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       ...row,
       branches: branchNames,
       desks: deskList,
+      // The bar's "Clients" picker: which of its options this subject supports.
+      clientPick: { family: !!clientPickFields(row.subject).family, category: !!clientPickFields(row.subject).category },
       isMine: mayChange(session, row),
       starred: ((row.starredBy as string[] | null) ?? []).includes(session.userId),
     });

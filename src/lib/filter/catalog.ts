@@ -143,6 +143,17 @@ const COMMON_DATE_OPS: FilterOperator[] = [
 
 const COMMON_ENUM_OPS: FilterOperator[] = ["eq", "ne", "in", "not_in", "is_null", "is_not_null"];
 
+/** A client's place in a family (We Care, 2026-11-27): the family's head (families.primary_investor_id),
+ *  a member, or an individual in no family. The report bar's "Clients" picker filters on it. */
+const familyRoleDef = (a: string): FieldDef => ({
+  key: "family_role",
+  label: "Family role",
+  type: "enum",
+  sql: `(CASE WHEN ${a}.family_id IS NULL THEN 'individual' WHEN EXISTS (SELECT 1 FROM families f WHERE f.id = ${a}.family_id AND f.primary_investor_id = ${a}.id) THEN 'head' ELSE 'member' END)`,
+  ops: COMMON_ENUM_OPS,
+  enumValues: ["head", "member", "individual"],
+});
+
 export const investorCatalog: SubjectCatalog = {
   subject: "investor",
   table: "investors",
@@ -185,6 +196,7 @@ export const investorCatalog: SubjectCatalog = {
       writable: true,
       help: "Manually-assigned A/B/C/D client grade.",
     },
+    familyRoleDef("inv"),
     {
       key: "status",
       label: "Status",
@@ -805,6 +817,7 @@ export const newClientCatalog: SubjectCatalog = {
   fields: [
     { key: "onboarded_at", label: "Onboarded on", type: "date", sql: "(nci.onboarded_at AT TIME ZONE 'Asia/Kolkata')::date", ops: COMMON_DATE_OPS },
     { key: "client_name", label: "Client", type: "string", sql: "nci.name", ops: COMMON_STRING_OPS },
+    familyRoleDef("nci"),
     { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = nci.rm_id)", ops: COMMON_STRING_OPS, lookup: "user" },
     { key: "source", label: "Source", type: "string", sql: "NULLIF(btrim(nci.custom_fields->>'cf_zoho_lead_source'), '')", ops: COMMON_STRING_OPS },
     { key: "referred_by", label: "Referred by (client)", type: "string", sql: "NULLIF(btrim(nci.referral_client_name), '')", ops: COMMON_STRING_OPS },
@@ -870,6 +883,7 @@ export const clientGapCatalog: SubjectCatalog = {
   alias: "cg",
   fields: [
     { key: "client_name", label: "Client", type: "string", sql: "cg.name", ops: COMMON_STRING_OPS },
+    familyRoleDef("cg"),
     { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = cg.rm_id)", ops: COMMON_STRING_OPS, lookup: "user" },
     { key: "desk_name", label: "Desk", type: "string", sql: "(SELECT d.name FROM users u JOIN desks d ON d.id = u.desk_id WHERE u.id = cg.rm_id)", ops: COMMON_STRING_OPS, desk: true },
     { key: "branch_name", label: "Branch", type: "string", sql: "(SELECT b.name FROM branches b WHERE b.id = cg.branch_id)", ops: COMMON_STRING_OPS, branch: true },
@@ -917,6 +931,12 @@ export function branchField(subject: string): FieldDef | null {
 /** The field a subject's rows are filtered by for a desk (Anand 1 …) in the Branch picker, if it has one. */
 export function deskField(subject: string): FieldDef | null {
   return CATALOGS[subject]?.fields.find((f) => f.desk) ?? null;
+}
+
+/** The report bar's "Clients" picker (family heads / members / individuals / no category), for a subject that has it. */
+export function clientPickFields(subject: string): { family: FieldDef | null; category: FieldDef | null } {
+  const fields = CATALOGS[subject]?.fields ?? [];
+  return { family: fields.find((f) => f.key === "family_role") ?? null, category: fields.find((f) => f.key === "client_category") ?? null };
 }
 
 export function getCatalog(subject: string): SubjectCatalog {

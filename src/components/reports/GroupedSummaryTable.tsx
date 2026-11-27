@@ -103,6 +103,24 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
   };
   r.tree.forEach((root) => walk(root, 0, [], [true], null));
 
+  // With two or more grouping levels, a total for each value of the last level across every
+  // group above it (Meeting report: "All New", "All Existing" across the RMs — We Care,
+  // 2026-11-27). Sums and counts add up; an average / min / max does not, so it reads "—".
+  const byLast: Array<{ key: string; label: string; node: Node }> = [];
+  if (levels > 1) {
+    const m = new Map<string, { key: string; label: string; node: Node }>();
+    for (const n of nodes) {
+      if (n.children?.length) continue;
+      const t = m.get(n.key) ?? { key: n.key, label: groupLabel(n), node: { key: n.key, count: 0, aggregates: r.aggregateDefs.map(() => 0) } };
+      t.node.count += n.count;
+      r.aggregateDefs.forEach((a, j) => {
+        t.node.aggregates[j] = a.fn === "sum" || a.fn === "count" ? t.node.aggregates[j] + Number(n.aggregates[j] ?? 0) : NaN;
+      });
+      m.set(n.key, t);
+    }
+    if (m.size >= 2 && m.size <= 12) byLast.push(...[...m.values()].sort((a, b) => a.label.localeCompare(b.label)));
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm table-raw">
@@ -195,6 +213,17 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
               </Fragment>
             )
           )}
+          {byLast.map((t, k) => (
+            <tr key={`bl${t.key}`} className={`bg-secondary/30 ${k === 0 ? "border-t-2" : "border-t"}`}>
+              <td colSpan={levels} className="px-4 py-2 font-medium whitespace-nowrap">
+                All {t.label}
+              </td>
+              {values(t.node).map((v, j) => (
+                <td key={j} className="px-3 py-2 text-right tabular-nums font-semibold">{Number.isFinite(v) ? num(v) : "—"}</td>
+              ))}
+              {growth ? <td /> : null}
+            </tr>
+          ))}
           <tr className="border-t-2 bg-primary/5 font-bold">
             <td colSpan={levels} className="px-4 py-2.5">Grand total</td>
             {values({ ...r.grand, key: "", children: [] } as Node).map((v, j) => (

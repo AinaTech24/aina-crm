@@ -27,7 +27,15 @@ const PERIODS: Array<[key: string, label: string]> = [
   ["custom", "Custom range"],
 ];
 
-export type ReportFilter = { field: string; period: string; from: string; to: string; details: boolean; branch?: string };
+export type ReportFilter = { field: string; period: string; from: string; to: string; details: boolean; branch?: string; client?: string };
+
+/** The "Clients" picker (We Care, 2026-11-27). */
+const CLIENT_PICKS: Array<[key: string, label: string, needs: "family" | "category"]> = [
+  ["head", "Family heads", "family"],
+  ["member", "Family members", "family"],
+  ["individual", "Individuals (no family)", "family"],
+  ["nocat", "No category", "category"],
+];
 
 export function reportFilterQuery(f: ReportFilter): string {
   const q = new URLSearchParams();
@@ -47,6 +55,7 @@ export function reportFilterQuery(f: ReportFilter): string {
     if (to) q.set("to", to);
   }
   if (f.branch) q.set("branch", f.branch);
+  if (f.client) q.set("client", f.client);
   q.set("details", f.details ? "1" : "0");
   return q.toString();
 }
@@ -58,8 +67,11 @@ export function ReportFilterBar({
   onApply,
   branches = [],
   desks = [],
+  clientPick,
 }: {
   dateFields: Array<{ key: string; label: string }>;
+  /** Which "Clients" options this report's module supports; absent = no picker. */
+  clientPick?: { family: boolean; category: boolean } | null;
   /** The firm's branch names; empty = this report's module has no branch, so no picker. */
   branches?: string[];
   /** Desks (sub-teams) listed under their branch; a desk is picked as "desk:<name>". */
@@ -75,6 +87,8 @@ export function ReportFilterBar({
     if (apply) onApply(next);
   };
   const customReady = draft.period !== "custom" || (!!draft.from && !!draft.to);
+  const clientPicks = clientPick ? CLIENT_PICKS.filter(([, , needs]) => clientPick[needs]) : [];
+  const clientShown = CLIENT_PICKS.find(([k]) => k === value.client)?.[1];
   const shown =
     value.period === "custom" && value.from && value.to
       ? formatRange(value.from, value.to)
@@ -117,6 +131,15 @@ export function ReportFilterBar({
             </SelectField>
           </label>
         )}
+        {clientPicks.length > 0 && (
+          <label className="text-sm min-w-44">
+            <span className="block text-xs text-muted-foreground mb-1">Clients</span>
+            <SelectField value={draft.client ?? ""} onChange={(e) => set({ client: e.target.value }, customReady)} className="w-full">
+              <option value="">All clients</option>
+              {clientPicks.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </SelectField>
+          </label>
+        )}
         {draft.period === "custom" && (
           <>
             <label className="text-sm w-40">
@@ -137,13 +160,14 @@ export function ReportFilterBar({
             <CalendarRange className="size-3.5" />
             <span className="text-foreground font-medium">{shown}</span>
             {value.branch ? <span className="text-foreground font-medium">· {value.branch.replace(/^desk:/, "")}</span> : null}
+            {clientShown ? <span className="text-foreground font-medium">· {clientShown}</span> : null}
           </span>
-          {(value.period || value.branch) && (
+          {(value.period || value.branch || value.client) && (
             <button
               type="button"
               className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 hover:bg-secondary"
               onClick={() => {
-                const next = { ...draft, period: "", from: "", to: "", branch: "" };
+                const next = { ...draft, period: "", from: "", to: "", branch: "", client: "" };
                 setDraft(next);
                 onApply(next);
               }}
