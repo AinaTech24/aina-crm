@@ -23,6 +23,7 @@ import type { Tx } from "@/db/client";
 import { recordAudit } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
 import { escalationState, levelsReached, loadLadder, ruleFor, type EscalationState, type Ladder, type Level } from "@/lib/tasks/escalation-ladder";
+import { dueEndSql } from "@/lib/tasks/due-sql";
 
 const LEVEL_NAME: Record<Level, string> = { 1: "reporting manager", 2: "branch head", 3: "owner" };
 
@@ -41,7 +42,7 @@ export async function runEscalationLadder(tx: Tx, tenantId: string): Promise<num
   const rows = (await tx.execute(sql`
     SELECT t.id, t.title, t.department, t.type, t.priority, t.meta, t.assignee_id,
            u.name AS assignee_name, u.reporting_manager_id, u.branch_id,
-           EXTRACT(EPOCH FROM (now() - t.due_at)) / 3600.0 AS hours_overdue
+           EXTRACT(EPOCH FROM (now() - ${dueEndSql(sql`t.due_at`)})) / 3600.0 AS hours_overdue
       FROM tasks t
       LEFT JOIN users u ON u.id = t.assignee_id AND u.tenant_id = t.tenant_id
      WHERE t.tenant_id = ${tenantId}::uuid
@@ -49,7 +50,7 @@ export async function runEscalationLadder(tx: Tx, tenantId: string): Promise<num
        AND t.status IN ('open', 'in_progress', 'blocked')
        AND t.due_at IS NOT NULL
        AND t.due_at >= ${ladder.activeSince}::timestamptz
-       AND t.due_at < now() - make_interval(hours => ${floor}::int)
+       AND ${dueEndSql(sql`t.due_at`)} < now() - make_interval(hours => ${floor}::int)
        AND COALESCE(t.meta -> 'escalation' ->> 'done', 'false') <> 'true'
      ORDER BY t.due_at ASC
      LIMIT 500

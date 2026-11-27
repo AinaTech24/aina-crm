@@ -78,7 +78,7 @@ export const teamMembersExport: ExportModule = {
   columns: [
     { key: "name", label: "Name", group: "Person", sql: u("name"), default: true },
     { key: "code", label: "Employee code", group: "Person", sql: u("employee_code") },
-    { key: "email", label: "Email", group: "Person", sql: u("email"), pii: "email", default: true },
+    { key: "email", label: "Email", group: "Person", sql: sql`CASE WHEN u.email LIKE '%@login.invalid' THEN split_part(u.email, '@', 1) ELSE u.email END`, pii: "email", default: true },
     { key: "phone", label: "Mobile", group: "Person", sql: u("phone"), pii: "phone", default: true },
     { key: "roles", label: "Roles", group: "Person", sql: sql`(SELECT string_agg(DISTINCT ${labelOf(sql`r_`, ROLE_LABELS)}, ', ') FROM unnest(u.roles) AS r_)`, default: true },
     { key: "department", label: "Department", group: "Person", sql: humanCode(u("department")), default: true },
@@ -164,7 +164,7 @@ export const attendanceExport: ExportModule = {
   columns: [
     { key: "date", label: "Date", group: "Day", sql: d(a("attendance_date")), kind: "date", default: true },
     { key: "employee", label: "Employee", group: "Day", sql: sql`u.name`, default: true },
-    { key: "email", label: "Employee email", group: "Day", sql: sql`u.email`, pii: "email" },
+    { key: "email", label: "Employee email", group: "Day", sql: sql`CASE WHEN u.email LIKE '%@login.invalid' THEN split_part(u.email, '@', 1) ELSE u.email END`, pii: "email" },
     { key: "code", label: "Employee code", group: "Day", sql: sql`u.employee_code` },
     { key: "department", label: "Department", group: "Day", sql: humanCode(sql`u.department`) },
     { key: "branch", label: "Branch", group: "Day", sql: sql`(SELECT b.name FROM branches b WHERE b.id = u.branch_id)` },

@@ -8,6 +8,7 @@
 import { and, eq } from "drizzle-orm";
 import { investors, users } from "@/db/schema";
 import type { ProposalBrand, ProposalClient, ProposalPreparer } from "./proposal-pdf";
+import { realEmail } from "@/lib/auth/username-login";
 
 type Tx = any;
 
@@ -31,13 +32,14 @@ export async function loadProposalPdfPeople(
   tx: Tx,
   p: { tenantId: string; preparedByUserId?: string | null; investorId?: string | null },
 ): Promise<{ preparedBy: ProposalPreparer | null; client: ProposalClient | null }> {
-  const [preparedBy] = p.preparedByUserId
+  const [preparer] = p.preparedByUserId
     ? await tx
         .select({ name: users.name, euin: users.euin, phone: users.phone, email: users.email, signatureUrl: users.signatureUrl })
         .from(users)
         .where(and(eq(users.id, p.preparedByUserId), eq(users.tenantId, p.tenantId)))
         .limit(1)
     : [];
+  const preparedBy = preparer ? { ...preparer, email: realEmail(preparer.email) } : undefined;
   const [client] = p.investorId
     ? await tx
         .select({

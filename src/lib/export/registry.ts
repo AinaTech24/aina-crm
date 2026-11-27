@@ -23,6 +23,8 @@ import {
 import {
   activitiesExport, expectedInflowsExport, meetingsExport, serviceRequestsExport, tasksExport,
 } from "./modules/work";
+import { visitorsExport } from "./modules/visitors";
+import { couriersExport } from "./modules/couriers";
 
 const ALL: ExportModule[] = [
   clientsExport,
@@ -33,6 +35,7 @@ const ALL: ExportModule[] = [
   sipBookExport, sipRejectionsExport, transactionsExport, businessEntriesExport, fixedDepositsExport,
   goalsExport, financialPlansExport, proposalsExport,
   tasksExport, meetingsExport, serviceRequestsExport, activitiesExport, expectedInflowsExport,
+  visitorsExport, couriersExport,
 ];
 
 export const EXPORT_MODULES: Record<string, ExportModule> = Object.fromEntries(ALL.map((m) => [m.key, m]));

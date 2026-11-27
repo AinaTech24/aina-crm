@@ -21,6 +21,7 @@ import { withTenant } from "@/db/client";
 import { mobileFirmAccess, mobileMeetingScope, mobileMetricScope, mobileTaskScope } from "@/lib/mobile/access";
 import { requireSession } from "@/lib/auth/session";
 import { getActiveClients, getAUM, getOpenLeads, getReviewsDue, getSipBook } from "@/lib/metrics";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export async function GET() {
         soft(getSipBook(tx, scope), { monthly: 0, sips: 0, clients: 0, average: null }),
         soft(getOpenLeads(tx, scope), { open: 0, followUpDue: 0 }),
         soft(getReviewsDue(tx, scope, 0), { overdue: 0, dueThisMonth: 0, due30: 0, unscheduled: 0, rows: [] }),
-        count(sql`SELECT count(*)::int AS v FROM tasks WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at < now() AND ${taskScope}`),
+        count(sql`SELECT count(*)::int AS v FROM tasks WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at < ${TASK_TODAY_START} AND ${taskScope}`),
         count(sql`SELECT count(*)::int AS v FROM tasks WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at >= ${IST_DAY_START} AND due_at < ${IST_DAY_END} AND ${taskScope}`),
         count(sql`SELECT count(*)::int AS v FROM review_meetings m WHERE m.tenant_id = ${session.tenantId}::uuid AND m.status IN ('scheduled','confirmed','in_progress') AND m.meeting_date >= ${IST_DAY_START} AND m.meeting_date < ${IST_DAY_END} AND ${meetingScope}`),
       ]);

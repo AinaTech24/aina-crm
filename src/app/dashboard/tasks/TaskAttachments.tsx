@@ -10,6 +10,15 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Paperclip, Upload, Trash, Download } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
+import { TASK_ATTACHMENTS_FLAG, TASK_FILES_MAX, uploadTaskFiles } from "@/lib/tasks/upload-attachments";
+
+/** The firm's taskAttachmentsMulti flag — asked once per page load. */
+let multiFlag: Promise<boolean> | null = null;
+const loadMultiFlag = () =>
+  (multiFlag ??= fetch("/api/me")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => j?.license?.featureFlags?.[TASK_ATTACHMENTS_FLAG] === true)
+    .catch(() => false));
 
 type Attachment = {
   id: string;
@@ -32,6 +41,34 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
   const [items, setItems] = useState<Attachment[] | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [multi, setMulti] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void loadMultiFlag().then((on) => live && setMulti(on));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  /** Several files in one go (flag): each uploads on its own, three at a time. */
+  async function uploadMany(list: File[]) {
+    if (list.length > TASK_FILES_MAX) {
+      toast.error(`Pick up to ${TASK_FILES_MAX} files at a time`);
+      return;
+    }
+    setUploading(true);
+    try {
+      const up = await uploadTaskFiles(taskId, list);
+      if (up.uploaded.length) {
+        setItems((prev) => [...up.uploaded.map((u) => ({ ...(u.attachment as Attachment), uploaderName: null })), ...(prev ?? [])]);
+      }
+      if (up.failed.length) toast.error(`Not attached: ${up.failed.map((f) => `${f.file.name} (${f.error})`).join(", ")}`);
+      else toast.success(`${up.uploaded.length} ${up.uploaded.length === 1 ? "file" : "files"} attached`);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
 
   useEffect(() => {
     fetch(`/api/tasks/${taskId}/attachments`)
@@ -91,8 +128,13 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
         <input
           ref={fileRef}
           type="file"
+          multiple={multi}
           className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }}
+          onChange={(e) => {
+            const list = Array.from(e.target.files ?? []);
+            if (multi && list.length) void uploadMany(list);
+            else if (list[0]) void upload(list[0]);
+          }}
         />
       </div>
 

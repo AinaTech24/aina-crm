@@ -14,6 +14,7 @@ import {
   clientScope, FINANCIAL_KINDS, inList, istDay, KIND_LABEL, num, numOrNull, OPS_ROLES, opsBase, opsFilter,
   selfOnly, str, textArray, type OpsWindow, type Row, type Tx,
 } from "./window";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 /* ───────────────────────────── §17–18 team workload ───────────────────────────── */
 
@@ -192,14 +193,14 @@ async function loadTaskQueue(tx: Tx, w: OpsWindow, financial: boolean): Promise<
                               OR ${istDay(sql`COALESCE(completed_at, updated_at)`)} >= ${w.from}::date))::int AS opening,
       COUNT(*) FILTER (WHERE is_open)::int AS pending,
       COUNT(*) FILTER (WHERE is_open AND assignee_id IS NOT NULL)::int AS assigned,
-      COUNT(*) FILTER (WHERE is_open AND (sla_state = 'breached' OR (due_at IS NOT NULL AND due_at < now())))::int AS overdue
+      COUNT(*) FILTER (WHERE is_open AND (sla_state = 'breached' OR (due_at IS NOT NULL AND due_at < ${TASK_TODAY_START})))::int AS overdue
     FROM f
   `)).rows[0] as Row | undefined;
   const rows = (await tx.execute(sql`
     WITH ops AS (${opsBase(w)})
     SELECT o.id, o.title, o.kind, o.client, o.investor_id, rmu.name AS rm, b.name AS branch, o.assignee,
            o.created_at, COALESCE(o.due_at, o.sla_due_at) AS due, o.status, o.approval_status, o.age_days,
-           (o.sla_state = 'breached' OR (o.due_at IS NOT NULL AND o.due_at < now())) AS overdue,
+           (o.sla_state = 'breached' OR (o.due_at IS NOT NULL AND o.due_at < ${TASK_TODAY_START})) AS overdue,
            COUNT(*) OVER () AS total
       FROM ops o
       LEFT JOIN users rmu ON rmu.id = o.rm_id

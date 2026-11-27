@@ -22,12 +22,16 @@ import { withSystem } from "@/db/client";
 import { sign2faChallenge } from "@/lib/auth/jwt";
 import { issueSessionToken } from "@/lib/auth/issue-session";
 import { reserveLoginAttempt } from "@/lib/auth/login-limit";
+import { isUsernameLogin, loginLabel, signInKey } from "@/lib/auth/username-login";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const email = String(body.email ?? "").trim().toLowerCase();
+  // An email address, or a username for a login created without one.
+  const email = signInKey(String(body.email ?? ""));
+  // A typed username also matches a login that has since been given an email address.
+  const username = isUsernameLogin(email) ? loginLabel(email) : null;
   const password = String(body.password ?? "");
 
   if (!email || !password) {
@@ -45,7 +49,7 @@ export async function POST(req: NextRequest) {
              u.deleted_at AS user_deleted_at, t.deleted_at AS tenant_deleted_at, t.require_2fa AS tenant_requires_2fa
       FROM users u
       LEFT JOIN tenants t ON t.id = u.tenant_id
-      WHERE lower(u.email) = ${email}
+      WHERE lower(u.email) = ${email} OR lower(u.login_username) = ${username}
       ORDER BY (t.deleted_at IS NULL) DESC, u.created_at DESC
       LIMIT 1
     `);

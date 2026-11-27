@@ -32,6 +32,7 @@ import { phaseFraction } from "../my/kpis";
 import { bookedLinesOnBook, loadBookedFlows } from "../my/booked";
 import { NO_RM, OTHER_BRANCH, type RmLedgerRow } from "./rm-ledger";
 import { inOrder } from "@/lib/metrics/in-order";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 // Every loader here runs inside ONE transaction: queries go one after
 // another (inOrder, lib/metrics/in-order.ts), never Promise.all.
@@ -513,7 +514,7 @@ export async function loadOpsSnapshot(tx: Tx, w: MyWindow): Promise<OpsSnapshot>
           AND sla_resolution_at IS NOT NULL AND sla_resolution_at < now())          AS sr_sla,
       (SELECT COUNT(*)::int FROM tasks
         WHERE ${staffMatch("assignee_id", w)} AND deleted_at IS NULL
-          AND status NOT IN (${DEAD}) AND COALESCE(sla_due_at, due_at) < now()) AS task_sla,
+          AND status NOT IN (${DEAD}) AND (sla_due_at < now() OR (sla_due_at IS NULL AND due_at < ${TASK_TODAY_START}))) AS task_sla,
       (SELECT COUNT(*)::int FROM tasks
         WHERE ${staffMatch("assignee_id", w)} AND deleted_at IS NULL
           AND status NOT IN (${DEAD}) AND type IN ('collect_document','document','documents')) AS docs,
@@ -641,7 +642,7 @@ export async function loadAttention(
                (EXTRACT(EPOCH FROM (now() - COALESCE(t.sla_due_at, t.due_at))) / 86400)::int AS d
           FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id
          WHERE ${staffMatch("assignee_id", w, "t")} AND t.deleted_at IS NULL AND t.status NOT IN (${DEAD})
-           AND COALESCE(t.sla_due_at, t.due_at) < now()`),
+           AND (t.sla_due_at < now() OR (t.sla_due_at IS NULL AND t.due_at < ${TASK_TODAY_START}))`),
       () => q(sql`
         SELECT i.rm_id::text AS oid, u.name AS oname, NULL AS v, NULL::int AS d
           FROM investors i LEFT JOIN users u ON u.id = i.rm_id

@@ -24,6 +24,7 @@ import { DeleteOpportunityButton } from "@/components/opportunities/DeleteOpport
 import { formatDate, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { contactLogAttrs } from "@/lib/activities/contact-log";
+import { isPastDue } from "@/lib/tasks/due";
 
 export const dynamic = "force-dynamic";
 
@@ -151,7 +152,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
               <ul className="mt-3 divide-y divide-border/60">
                 {tasks.map((t) => {
                   const open = ["open", "in_progress", "blocked"].includes(t.status);
-                  const overdue = open && t.due_at && new Date(t.due_at).getTime() < nowMs;
+                  const overdue = open && isPastDue(t.due_at, new Date(nowMs));
                   return (
                     <li key={t.id} className="py-2 text-sm">
                       <Link href={`/dashboard/tasks/${t.id}`} className={cn("font-medium hover:underline", open ? "text-foreground" : "text-muted-foreground line-through")}>

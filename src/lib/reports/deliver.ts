@@ -14,6 +14,7 @@ import { users, type SavedReport } from "@/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import type { CategoryColumn } from "./categories";
 import { aoaToXlsx, fileSlug, reportAoa } from "./workbook";
+import { realEmail } from "@/lib/auth/username-login";
 
 const MAX_EMAIL_ROWS = 50;
 
@@ -140,7 +141,7 @@ export async function reportRecipients(
       .select({ email: users.email })
       .from(users)
       .where(and(eq(users.tenantId, report.tenantId), inArray(users.id, ids), eq(users.status, "active")));
-    for (const r of rows) if (r.email) out.add(r.email.trim().toLowerCase());
+    for (const r of rows) if (realEmail(r.email)) out.add(r.email.trim().toLowerCase());
   }
   return [...out];
 }

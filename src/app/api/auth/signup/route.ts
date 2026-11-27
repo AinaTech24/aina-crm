@@ -14,6 +14,7 @@ import { SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { issueEmailVerification } from "@/lib/auth/email-verification";
 import { enforce } from "@/lib/rate-limit";
 import { createFirmAccount, emailInUse, FirmCreateError } from "@/lib/onboarding/create-firm";
+import { isUsernameLogin } from "@/lib/auth/username-login";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,9 @@ export async function POST(req: NextRequest) {
     );
   }
   // One sign-in per email across the platform — otherwise login is ambiguous.
+  if (isUsernameLogin(ownerEmail)) {
+    return NextResponse.json({ error: "Enter a real email address." }, { status: 400 });
+  }
   if (await emailInUse(ownerEmail)) {
     return NextResponse.json({ error: "Email already in use" }, { status: 409 });
   }

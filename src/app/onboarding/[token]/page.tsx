@@ -15,6 +15,7 @@ import { resolveShareToken } from "@/lib/share-tokens";
 import { getStage } from "@/lib/blueprints/engine";
 import { PrivacyNoticeLink } from "@/components/privacy/PrivacyNoticeLink";
 import { PublicOnboardingVisualizer } from "@/components/public/PublicOnboardingVisualizer";
+import { realEmail } from "@/lib/auth/username-login";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ export default async function PublicOnboardingPage({ params }: { params: Promise
         .from(users)
         .where(eq(users.id, lead.ownerId))
         .limit(1);
-      if (u) rm = u;
+      if (u) rm = { ...u, email: realEmail(u.email) ?? "" };
     }
 
     // Retrieve active stage information + transition history from the blueprint engine

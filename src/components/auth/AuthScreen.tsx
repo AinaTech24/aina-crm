@@ -310,14 +310,16 @@ export function AuthScreen({
             {/* ── LOGIN ── */}
             {mode === "login" && !challenge && !enroll && (
               <form onSubmit={submitLogin} className="mt-8 space-y-4">
-                <FieldShell label="Work email">
+                <FieldShell label="Email or username">
                   <input
-                    type="email"
+                    type="text"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     required
-                    placeholder="you@yourfirm.com"
+                    placeholder="you@yourfirm.com or username"
                     className="input-base"
                   />
                 </FieldShell>

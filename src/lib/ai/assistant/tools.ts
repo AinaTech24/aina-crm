@@ -12,6 +12,7 @@ import { firmSnapshot } from "@/lib/ai/firm-snapshot";
 import { buildAiScope } from "@/lib/ai/scope";
 import type { SessionUser } from "@/lib/auth/session";
 import { needsNomineeSql } from "@/lib/investors/type-rules";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export type AssistantCtx = {
   tenantId: string;
@@ -258,7 +259,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
         async (tx) => {
           const sc = await buildAiScope(tx, ctxSession(ctx));
           const conds: SQL[] = [sql`t.tenant_id = ${ctx.tenantId}::uuid`, sql`t.status IN ('open','in_progress','blocked')`, sc.task("t")];
-          if (a?.overdue_only) conds.push(sql`t.due_at < now()`);
+          if (a?.overdue_only) conds.push(sql`t.due_at < ${TASK_TODAY_START}`);
           if (a?.due_within_days != null) conds.push(sql`t.due_at <= now() + make_interval(days => ${Number(a.due_within_days)})`);
           const limit = clampLimit(a?.limit, 15, 50);
           const r = await tx.execute(sql`

@@ -32,6 +32,11 @@ export function canExportModule(session: SessionUser, mod: ExportModule): boolea
   return can(session.roles, mod.exportCapability ?? "data.export", session.permissions) && mod.canView(session);
 }
 
+/** Whether the firm has this module at all (always, unless it sits behind a per-firm switch). */
+export async function exportModuleEnabled(session: SessionUser, mod: ExportModule): Promise<boolean> {
+  return mod.enabled ? mod.enabled(session) : true;
+}
+
 /** Licence keys checked for each personal-data class. */
 const PII_FIELDS: Record<PiiClass, string[]> = {
   pan: ["pan"],
@@ -44,7 +49,7 @@ const PII_FIELDS: Record<PiiClass, string[]> = {
 
 /** The columns this person may export from this module. */
 export async function exportableColumns(session: SessionUser, mod: ExportModule): Promise<ExportColumn[]> {
-  if (!mod.columns.some((c) => c.pii)) return mod.columns;
+  if (mod.piiGated === false || !mod.columns.some((c) => c.pii)) return mod.columns;
   const license = await loadTenantLicense(session.tenantId, session.roles);
   const subject = mod.piiSubject ?? "investor";
   return mod.columns.filter((c) => !c.pii || PII_FIELDS[c.pii].every((f) => isFieldAllowed(license, subject, f)));
@@ -72,6 +77,7 @@ export async function runExport(
   params: URLSearchParams,
   clientMeta: Record<string, unknown> = {},
 ): Promise<ExportFile> {
+  if (!(await exportModuleEnabled(session, mod))) throw new ExportError("Unknown module", 404);
   if (!canExportModule(session, mod)) throw new ExportError("You don't have permission to export this.", 403);
   const allowed = await exportableColumns(session, mod);
   const byKey = new Map(allowed.map((c) => [c.key, c]));

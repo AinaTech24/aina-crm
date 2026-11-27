@@ -17,7 +17,7 @@
 
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
 import { embedPdfFonts, pdfSanitize } from "@/lib/pdf/fonts";
-import type { StatementBrand } from "@/lib/finance/valuation-pdf";
+import { embedLogo, type StatementBrand } from "@/lib/finance/valuation-pdf";
 
 export type AllocationKey = "equity" | "debt" | "cash" | "commodities" | "alternatives";
 export type RiskAllocation = Partial<Record<AllocationKey, number>>;
@@ -179,6 +179,8 @@ type Ctx = {
   refId: string | null;
   generatedAt: string;
   firmName: string;
+  /** The firm's logo (Organisation profile), or null — a PNG or JPEG. */
+  logo: PDFImage | null;
 };
 
 export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise<Buffer> {
@@ -205,6 +207,8 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
     refId: profileId || null,
     generatedAt: args.generatedAt,
     firmName,
+    // Best-effort: a logo that cannot be fetched or read leaves the header with the name alone.
+    logo: await embedLogo(doc, brand.logoUrl),
   };
 
   // A CATEGORY-ONLY profile: no questionnaire answers on record (set directly by
@@ -658,26 +662,45 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
 
 /* ───────────────────────── page furniture ───────────────────────── */
 
-/** Full masthead: firm name + tagline on the brand bar, ref + date on the right. */
+/**
+ * The firm's logo on a white plate at the left of a brand bar (a dark logo would vanish on a dark
+ * brand colour), scaled to fit `maxW` x `maxH`. Returns where the firm name starts.
+ */
+function drawLogoPlate(page: PDFPage, logo: PDFImage | null, midY: number, maxW: number, maxH: number, pad: number): number {
+  if (!logo) return MARGIN;
+  const k = Math.min(maxW / logo.width, maxH / logo.height);
+  const w = logo.width * k;
+  const h = logo.height * k;
+  page.drawRectangle({ x: MARGIN, y: midY - h / 2 - pad, width: w + pad * 2, height: h + pad * 2, color: WHITE });
+  page.drawImage(logo, { x: MARGIN + pad, y: midY - h / 2, width: w, height: h });
+  return MARGIN + w + pad * 2 + 12;
+}
+
+/** Full masthead: logo, firm name + tagline on the brand bar, ref + date on the right. */
 function drawMasthead(page: PDFPage, ctx: Ctx): number {
   const { helv, bold, primary, brand } = ctx;
   page.drawRectangle({ x: 0, y: H - HEADER_H, width: W, height: HEADER_H, color: primary });
 
-  const nameSize = fitSize(ascii(ctx.firmName), bold, CONTENT_W - 150, 19, 13);
-  page.drawText(ascii(ctx.firmName), {
-    x: MARGIN,
-    y: H - 38,
-    size: nameSize,
-    font: bold,
-    color: WHITE,
+  const right: string[] = [ctx.refId ?? "", fmtDateTimeIst(ctx.generatedAt)].filter(Boolean);
+  const nameX = drawLogoPlate(page, ctx.logo, H - HEADER_H / 2, 96, 42, 5);
+  // The name and tagline stop short of the reference and date on the right.
+  const rightW = Math.max(0, ...right.map((t) => helv.widthOfTextAtSize(ascii(t), 9.5)));
+  const textW = W - MARGIN - rightW - 16 - nameX;
+
+  // A long legal name goes onto a second line rather than being cut.
+  const name = ascii(ctx.firmName);
+  const oneSize = fitSize(name, bold, textW, 19, 13);
+  const two = bold.widthOfTextAtSize(name, oneSize) > textW;
+  const nameSize = two ? 12 : oneSize;
+  const wrapped = two ? wrap(name, bold, nameSize, textW) : [name];
+  const lines = wrapped.length > 2 ? [wrapped[0], wrapped.slice(1).join(" ")] : wrapped;
+  lines.forEach((ln, i) => {
+    page.drawText(truncate(ln, bold, nameSize, textW), { x: nameX, y: H - (two ? 30 : 38) - i * 15, size: nameSize, font: bold, color: WHITE });
   });
 
-  const tagline = brand.arn
-    ? "AMFI Registered Mutual Fund Distributor"
-    : "Mutual Fund Distributor";
-  page.drawText(ascii(tagline), { x: MARGIN, y: H - 57, size: 10, font: bold, color: blend(WHITE, 0.85) });
+  const tagline = ascii(brand.arn ? "AMFI Registered Mutual Fund Distributor" : "Mutual Fund Distributor");
+  page.drawText(tagline, { x: nameX, y: H - (two ? 62 : 57), size: fitSize(tagline, bold, textW, 10, 7), font: bold, color: blend(WHITE, 0.85) });
 
-  const right: string[] = [ctx.refId ?? "", fmtDateTimeIst(ctx.generatedAt)].filter(Boolean);
   right.forEach((t, i) => {
     const s = ascii(t);
     const tw = helv.widthOfTextAtSize(s, 9.5);
@@ -698,9 +721,11 @@ function drawSlimHeader(page: PDFPage, ctx: Ctx) {
   const { bold, helv, primary } = ctx;
   const h = 30;
   page.drawRectangle({ x: 0, y: H - h, width: W, height: h, color: primary });
+  const nameX = drawLogoPlate(page, ctx.logo, H - h / 2, 54, 18, 3);
+  const textW = CONTENT_W - 140 - (nameX - MARGIN);
   const name = ascii(ctx.firmName);
-  const size = fitSize(name, bold, CONTENT_W - 140, 11, 8);
-  page.drawText(name, { x: MARGIN, y: H - 20, size, font: bold, color: WHITE });
+  const size = fitSize(name, bold, textW, 11, 8);
+  page.drawText(truncate(name, bold, size, textW), { x: nameX, y: H - 20, size, font: bold, color: WHITE });
   const r = ascii(ctx.refId ?? "");
   if (r) {
     const rw = helv.widthOfTextAtSize(r, 9);

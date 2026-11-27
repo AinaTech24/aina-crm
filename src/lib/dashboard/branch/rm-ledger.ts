@@ -40,6 +40,7 @@ import {
 } from "../my/window";
 import { bookedLinesOnBook } from "../my/booked";
 import { bookedFigureColumns, readBookedFigures } from "@/lib/metrics/entries";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export const OTHER_BRANCH = "__other__";
 export const NO_RM = "__none__";
@@ -349,11 +350,11 @@ export async function loadRmLedger(
       COUNT(*)::int                                                           AS assigned,
       COUNT(*) FILTER (WHERE t.status = 'completed')::int                     AS done,
       COUNT(*) FILTER (WHERE t.status NOT IN (${DEAD_TASK}))::int             AS open_n,
-      COUNT(*) FILTER (WHERE t.status NOT IN (${DEAD_TASK}) AND t.due_at < now())::int AS overdue,
+      COUNT(*) FILTER (WHERE t.status NOT IN (${DEAD_TASK}) AND t.due_at < ${TASK_TODAY_START})::int AS overdue,
       COUNT(*) FILTER (WHERE t.type IN (${FIN}))::int                         AS fin_assigned,
       COUNT(*) FILTER (WHERE t.type IN (${FIN}) AND t.status = 'completed')::int AS fin_done,
       COUNT(*) FILTER (WHERE t.type IN (${FIN}) AND t.status NOT IN (${DEAD_TASK})
-                         AND t.due_at < now())::int                           AS fin_overdue
+                         AND t.due_at < ${TASK_TODAY_START})::int                           AS fin_overdue
       FROM tasks t
      WHERE ${staffMatch("assignee_id", w, "t")} AND t.deleted_at IS NULL
        AND t.created_at >= ${w.from}::date AND t.created_at < (${w.to}::date + 1)
@@ -363,8 +364,8 @@ export async function loadRmLedger(
   const backlog = (await tx.execute(sql`
     SELECT t.assignee_id::text AS id,
       COUNT(*)::int                                                           AS open_now,
-      COUNT(*) FILTER (WHERE t.due_at < now())::int                           AS overdue_now,
-      COUNT(*) FILTER (WHERE t.type IN (${FIN}) AND t.due_at < now())::int    AS fin_overdue_now
+      COUNT(*) FILTER (WHERE t.due_at < ${TASK_TODAY_START})::int                           AS overdue_now,
+      COUNT(*) FILTER (WHERE t.type IN (${FIN}) AND t.due_at < ${TASK_TODAY_START})::int    AS fin_overdue_now
       FROM tasks t
      WHERE ${staffMatch("assignee_id", w, "t")} AND t.deleted_at IS NULL
        AND t.status NOT IN (${DEAD_TASK})

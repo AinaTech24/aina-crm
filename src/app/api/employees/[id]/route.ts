@@ -22,6 +22,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { offboardUser, type OffboardSummary } from "@/lib/offboarding";
 import { clearSessionRevocationCache, clearDeviceSessionCache } from "@/lib/auth/revocation";
 import { aliveClient } from "@/lib/metrics/scope";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -112,7 +113,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         (SELECT COALESCE(SUM(aum::numeric),0)::numeric FROM investors e WHERE e.rm_id = ${id}::uuid AND ${aliveClient("e")}) AS my_aum,
         (SELECT COALESCE(SUM(active_sip_amount::numeric),0)::numeric FROM investors e WHERE e.rm_id = ${id}::uuid AND ${aliveClient("e")}) AS my_sip,
         (SELECT COUNT(*)::int FROM tasks WHERE assignee_id = ${id}::uuid AND status IN ('open','in_progress')) AS open_tasks,
-        (SELECT COUNT(*)::int FROM tasks WHERE assignee_id = ${id}::uuid AND status IN ('open','in_progress') AND due_at < now()) AS overdue_tasks,
+        (SELECT COUNT(*)::int FROM tasks WHERE assignee_id = ${id}::uuid AND status IN ('open','in_progress') AND due_at < ${TASK_TODAY_START}) AS overdue_tasks,
         (SELECT COUNT(*)::int FROM review_meetings WHERE rm_id = ${id}::uuid AND status IN ('scheduled','confirmed') AND meeting_date >= now()) AS upcoming_meetings
     `);
     return { user: u, stats: stats.rows[0] };

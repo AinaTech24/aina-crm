@@ -21,6 +21,7 @@ import { require as requireCap, areAssignableRoles } from "@/lib/auth/rbac";
 import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
+import { isUsernameLogin } from "@/lib/auth/username-login";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -30,7 +31,7 @@ const Body = z.object({
     .array(
       z.object({
         name: z.string().max(200).optional(),
-        email: z.string().email(),
+        email: z.string().email().refine((e) => !isUsernameLogin(e), "That is not an email address."),
         roles: z.array(z.string()).optional(),
       })
     )

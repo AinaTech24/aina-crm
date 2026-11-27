@@ -13,6 +13,9 @@ export const users = pgTable(
      *  0101). Drives the Branch → Desk → RM roll-up in the monthly MIS reports. */
     deskId: uuid("desk_id"),
     email: text("email").notNull(),
+    /** A username that signs this person in besides `email` (lib/auth/username-login.ts, 0298).
+     *  Unique across the platform (index users_login_username_unique, on lower()). */
+    loginUsername: text("login_username"),
     name: text("name").notNull(),
     phone: text("phone"),
     passwordHash: text("password_hash"),

@@ -279,8 +279,9 @@ function SchemeRow({
 
   const schemeInput = (which: "scheme" | "fromScheme") => {
     const name = which === "scheme" ? row.schemeName : row.fromSchemeName;
+    // A scheme field takes the whole row: scheme names are long, and half a row cut them off.
     return (
-      <div className="min-w-0">
+      <div className="min-w-0 sm:col-span-2">
         <div className="mb-1 text-xs font-medium">{lbl(which)}</div>
         {req.catalog !== false ? (
           <SchemeAutocomplete
@@ -308,7 +309,7 @@ function SchemeRow({
             className="input-base h-8 text-xs"
           />
         )}
-        {which === "scheme" && row.amcName && <div className="mt-0.5 truncate text-2xs text-muted-foreground">{row.amcName}</div>}
+        {which === "scheme" && row.amcName && <div className="mt-0.5 break-words text-2xs text-muted-foreground">{row.amcName}</div>}
       </div>
     );
   };

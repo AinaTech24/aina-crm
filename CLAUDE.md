@@ -623,6 +623,21 @@ payment check; online = entry on platform · client confirms · RTA data check �
 payment to client. Every other firm, and every other request, keeps the
 ordinary list. Never hard-code a tenant id for this.
 
+## Tasks — when one is overdue, and when reminders fire (2026-11-27)
+
+One rule, in India time: `lib/tasks/due.ts` (pure) and its SQL twins `lib/tasks/due-sql.ts`; the mobile app's copy is
+`mobile/src/lib/due.ts`.
+
+- **Overdue only once the due DATE has ended in India** — `due_at < ${TASK_TODAY_START}` (SQL) / `isPastDue()`. A task is
+  "due today" all day, whatever time `due_at` holds (a date with no time is stored at midnight UTC, which is why it used to
+  turn overdue at 5:30 am). Never write `due_at < now()` for a task again. SLA clocks (`sla_due_at`) are their own and unchanged.
+- **Reminders from a date with no time count from 10:00 am** (`WORKING_HOUR`, `reminderInstant()`): on the due date 10:00,
+  1 day before 10:00 the day before, 1 h / 3 h before 9:00 / 7:00. A due with its own time counts from that time. Migration
+  0295 moved the reminders still waiting.
+- **Alerts about lateness wait for the working day**: the overdue alert goes from 10:00 the morning after
+  (`TASK_OVERDUE_ALERT_BEFORE`), and the escalation ladder runs only from 10:00 (`workingDayStarted()`), counting its hours
+  from the end of the due date (`dueEndSql`).
+
 ## Tasks — entry date and closed date
 
 2026-10-30. `tasks.entry_date` (migration 0254) is the day the task was ENTERED:
@@ -2109,6 +2124,62 @@ parallel system. Migrations 0265 (billing), 0266 (onboarding + legal), 0267
 - A firm purge (`platform_purge_tenant`, redefined in 0266) names the firm in
   `app.purging_tenant` so its immutable invoices and acceptances go with it.
 
+## Visitor Register — one firm's module (2026-11-26, Akshar Invest)
+
+Work → **Visitor Register** (`/dashboard/visitors`): who visited the office — Visitor Name, Email, Mobile
+Number, Company Name, Visit Date, Entry / Exit Time, Purpose of Visit, Meeting with (a team member), Remarks.
+Table `visitor_entries` (migration 0293). Code `lib/visitors/` (`entry.ts` pure rules · `access.ts` · `page.ts` ·
+`service.ts`), API `/api/visitors` and `/api/visitors/[id]`, screens in `components/visitors/`.
+
+- **The firm switch `visitorRegister`** (`config/feature-flags.ts`, group Office, Aina Admin → the firm → Access)
+  is the only gate: off for everyone except Akshar Invest, switched on by migration 0293 (matched by ARN-110756).
+  Off, the menu item is not drawn, every API answers 404 before any read, and
+  every page calls `requireVisitorPage()` itself (a layout check would not stop a page loading). Never a tenant id.
+- **Not in the nav-access catalog** (`config/nav-access.ts`) or `SIDEBAR_REGISTRY`, on purpose: a saved sidebar
+  list would hide it from the firm's own users, and every other firm's access editors would show it.
+- **No capability of its own** (same reason): the whole team may read; add / edit / delete need
+  `task.edit.all` or `task.edit.assigned`, so a read-only Viewer cannot write.
+- **List**: search and the Filters button (`CompactFilterBar`): Visit Date from–to, Purpose of Visit
+  (contains) and Meeting with (several; includes a colleague who has left if a visit names them). Edit and
+  Delete sit on each row and on the visit's page.
+- **Import** (`/dashboard/visitors/import`, whoever may add a visit): the shared sheet import (`lib/imports/sheet`,
+  spec `specs/visitors.ts`) with an Excel AND a CSV sample (`buildSampleCsv`). A CSV has one sheet, so a row still
+  named "Sample Visitor 1 / 2" is refused. Rows obey the form's rules.
+- **Export** (the shared engine, `lib/export/modules/visitors.ts`; "Export data" permission): the list's search and
+  filters, with the import's headings, so a file imports again. A module behind a firm switch sets `enabled` — the
+  export APIs then treat it as unknown for every other firm.
+- Only the name and visit date are required. Exit time may not be before entry time. "Meeting with" must be an
+  active team member when chosen; an old visit keeps a colleague who has since left. Delete is soft
+  (`deleted_at`, no restore screen); every write is audited (name and date only).
+
+---
+
+## Couriers — one firm's module (2026-11-27, Akshar Invest)
+
+Work → **Couriers** (`/dashboard/couriers`): incoming and outgoing couriers. Table `courier_entries` (migration
+0294). Code `lib/couriers/` (`entry.ts` pure fields, picklists and rules · `access.ts` · `page.ts` · `service.ts`),
+API `/api/couriers` and `/api/couriers/[id]`, screens in `components/couriers/`. Built like the Visitor Register,
+and the same rules apply to **the firm switch** (`courierRegister`, group Office; on for ARN-110756 by migration 0294;
+off = no menu item, every API 404, every page calls `requireCourierPage()` itself), to **access** (no nav-access
+entry and no capability of its own: the team reads, `task.edit.*` writes, `data.export` exports) and to delete (soft).
+
+- **Fields**: Courier Type (Inward / Outward), Company, Tracking Number, Courier Date, Status, Category (Other asks for
+  a typed name), Description, Remarks; Inward adds the sender's name, company, mobile, email, address and Received Date;
+  Outward the recipient's, plus Dispatch Date, Courier Charges, Payment Mode and Delivered Date. Only type, date and
+  status are required.
+- **Status depends on the type** — Inward: In Transit, Received, Handed Over, Returned; Outward: Pending, Dispatched,
+  In Transit, Delivered, Returned, Lost. Add a value in `entry.ts`; the form, filters, import and export follow.
+- **A courier never holds the other type's details**: `CourierBody` drops them (changing the type on edit removes what
+  was entered, and the form says so). An edit is merged into the courier and checked as a whole (the rules run across
+  fields). Delivered Date may not be before Dispatch Date.
+- **List**: search and the Filters button — Courier Type, Status, Category, Courier Date from–to, Courier Company.
+- **Import** (`/dashboard/couriers/import`): Excel and CSV samples; a row that fills the other type's columns is REFUSED,
+  not trimmed; rows with the sample tracking numbers (SAMPLE-INWARD-1 / SAMPLE-OUTWARD-2) are refused. Importing a file
+  twice adds the couriers twice.
+- **Export** (`lib/export/modules/couriers.ts`): the list's search and filters, the import's headings and words.
+
+---
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |
@@ -3107,6 +3178,15 @@ These have clear hooks in the schema and architecture; pick them up in roadmap o
   (a viewer without it sees it read-only with a note, never a "forbidden" on Save).
   Taking Owner / Admin off YOUR OWN profile asks first: you cannot give it back to
   yourself afterwards, another owner has to.
+- **A team login without an email** (2026-11-27, `lib/auth/username-login.ts`): Add team member → Username & password
+  (`POST /api/employees/create-login`, `settings.users`, seat limit, only an owner makes an owner). The login is active at once.
+  The username is stored in `users.email` as `<username>@login.invalid` (a reserved domain), unique across the platform; both
+  sign-in routes map a typed value with no "@" to it. NEVER mail or print that value: use `realEmail()` for anything sent or
+  shown to a client, `loginLabel()` on screens (the mail adapter and `sendSystemEmail` refuse it as a backstop). No self-service
+  password reset — an admin uses Set password. **Adding an email later** (the card on the person's profile,
+  `POST /api/employees/[id]/email`, username logins only; migration 0298) makes it `users.email` — reset and CRM mail then
+  reach them — and keeps the username in `users.login_username`, which both sign-in routes also match. The address must be
+  unused platform-wide with no pending invite; it starts unverified.
 - **AINA support sets a team member's password** (2026-11-21, Aina Admin → MFD tenants → the firm → Team →
   **Set password**; `POST /api/super-admin/tenants/[id]/set-password`, `platform.tenant.edit`): for when the emailed
   reset link cannot reach the person. It REPLACES the current password (one set here earlier included), signs them

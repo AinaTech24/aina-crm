@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { tasks } from "@/db/schema";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 /**
  * The Tasks stat-ribbon counts (Open / Due today / Overdue / SLA-at-risk),
@@ -10,7 +11,7 @@ import { tasks } from "@/db/schema";
 export const taskKpiSelect = {
   open: sql<number>`count(*) filter (where ${tasks.status} = 'open')::int`,
   today: sql<number>`count(*) filter (where ${tasks.status} = 'open' and ${tasks.dueAt}::date = current_date)::int`,
-  overdue: sql<number>`count(*) filter (where ${tasks.status} = 'open' and ${tasks.dueAt} < now())::int`,
+  overdue: sql<number>`count(*) filter (where ${tasks.status} = 'open' and ${tasks.dueAt} < ${TASK_TODAY_START})::int`,
   slaRisk: sql<number>`count(*) filter (where ${tasks.status} = 'open' and ${tasks.slaDueAt} is not null and ${tasks.slaDueAt} < now() + interval '24 hours')::int`,
 } as const;
 

@@ -1,8 +1,14 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+/**
+ * The Documents vault list: client folders, a page at a time, each opening onto its own paged list
+ * of documents. Search and category live in the URL (`q`, `category`, `page`), so the server
+ * answers over EVERY document the viewer may see (lib/compliance/vault-folders.ts).
+ */
+
+import { useCallback, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { notify } from "@/components/ui/Toast";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   FolderArchive,
   AlertTriangle,
@@ -16,6 +22,7 @@ import {
   ChevronRight,
   Eye,
   ExternalLink,
+  ChevronLeft,
   FileText,
   RefreshCw,
 } from "lucide-react";
@@ -25,36 +32,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { SelectField } from "@/components/ui/SelectField";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
-
-type DocRow = {
-  id: string;
-  name: string;
-  category: string;
-  description: string | null;
-  storageKey: string;
-  mimeType: string | null;
-  sizeBytes: string | null;
-  issuedOn: string | Date | null;
-  expiresOn: string | Date | null;
-  createdAt: string | Date | null;
-  clientId?: string | null;
-  clientName?: string | null;
-  clientEmail?: string | null;
-  clientPhone?: string | null;
-  clientAvatar?: string | null;
-};
-
-type Group = {
-  key: string;
-  clientId: string | null;
-  clientName: string;
-  clientEmail: string | null;
-  clientPhone: string | null;
-  clientAvatar: string | null;
-  docs: DocRow[];
-  expiring: number;
-  expired: number;
-};
+import { Pager } from "@/components/common/Pager";
+import { DOCS_PER_PAGE, ZIP_MAX_DOCS, type VaultDoc, type VaultFolder } from "@/lib/compliance/vault-view";
 
 const CATEGORY_COLORS: Record<string, string> = {
   arn: "bg-purple-50 text-purple-700 border-purple-200",
@@ -72,28 +51,77 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export function DocumentsFeed({
-  initialRows,
+  folders,
+  totalFolders,
+  page,
+  pageSize,
+  q,
+  category,
   stats,
 }: {
-  initialRows: DocRow[];
+  folders: VaultFolder[];
+  totalFolders: number;
+  page: number;
+  pageSize: number;
+  q: string;
+  category: string;
   stats: { total: number; expiringSoon: number; expired: number };
 }) {
   const router = useRouter();
-  const [rows, setRows] = useState<DocRow[]>(initialRows);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const pathname = usePathname();
+  const [filtering, startFiltering] = useTransition();
+  const [searchQuery, setSearchQuery] = useState(q);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletingGroup, setDeletingGroup] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [viewer, setViewer] = useState<ViewerDoc | null>(null);
   const [replacingId, setReplacingId] = useState<string | null>(null);
+  /** Bumped after a delete or replace, so open folders read their documents again. */
+  const [version, setVersion] = useState(0);
   const replaceRef = useRef<HTMLInputElement>(null);
-  const replaceDocRef = useRef<DocRow | null>(null);
+  const replaceDocRef = useRef<VaultDoc | null>(null);
   const [pendingDelete, setPendingDelete] = useState<
-    { kind: "single"; id: string; name: string } | { kind: "group"; group: Group } | null
+    { kind: "single"; id: string; name: string } | { kind: "group"; group: VaultFolder } | null
   >(null);
+  const filtered = !!(q || category);
 
-  function startReplace(doc: DocRow) {
+  // A new search or category starts from the first page of folders.
+  const apply = useCallback(
+    (nextQ: string, nextCategory: string) => {
+      const p = new URLSearchParams();
+      if (nextQ) p.set("q", nextQ);
+      if (nextCategory) p.set("category", nextCategory);
+      const qs = p.toString();
+      startFiltering(() => router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false }));
+    },
+    [pathname, router],
+  );
+
+  // Search as they type (after a pause). `sent` tells our own navigation from Back / Forward,
+  // so a result arriving mid-typing never overwrites what is in the box.
+  const sent = useRef(q);
+  useEffect(() => {
+    if (q !== sent.current) {
+      sent.current = q;
+      setSearchQuery(q);
+    }
+  }, [q]);
+  useEffect(() => {
+    const next = searchQuery.trim().slice(0, 100);
+    if (next === sent.current) return;
+    const timer = setTimeout(() => {
+      sent.current = next;
+      apply(next, category);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery, category, apply]);
+
+  const changed = () => {
+    setVersion((v) => v + 1);
+    router.refresh();
+  };
+
+  function startReplace(doc: VaultDoc) {
     replaceDocRef.current = doc;
     replaceRef.current?.click();
   }
@@ -123,16 +151,7 @@ export function DocumentsFeed({
         notify.error(j.error ?? "Replace failed");
         return;
       }
-      // Swap the old (now-superseded) row for the new version in-place so the
-      // change is visible immediately; refresh reconciles with the server.
-      setRows((prev) =>
-        prev.map((r) =>
-          r.id === doc.id
-            ? { ...r, id: j.id ?? r.id, name: file.name, mimeType: up.contentType ?? file.type, sizeBytes: String(up.sizeBytes ?? file.size), createdAt: new Date().toISOString(), expiresOn: null }
-            : r
-        )
-      );
-      router.refresh();
+      changed();
     } finally {
       setReplacingId(null);
       replaceDocRef.current = null;
@@ -145,8 +164,7 @@ export function DocumentsFeed({
     try {
       const res = await fetch(`/api/compliance/documents?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       if (res.ok) {
-        setRows((prev) => prev.filter((r) => r.id !== id));
-        router.refresh();
+        changed();
       } else {
         notify.error("Failed to delete document.");
       }
@@ -158,8 +176,10 @@ export function DocumentsFeed({
     }
   }
 
-  function downloadAll(g: Group) {
-    const ids = g.docs.map((d) => d.id).join(",");
+  function downloadAll(g: VaultFolder) {
+    // One ZIP holds the newest ZIP_MAX_DOCS (the route's own limit).
+    if (g.ids.length > ZIP_MAX_DOCS) notify.warning(`The ZIP holds the newest ${ZIP_MAX_DOCS} of ${g.ids.length} documents.`);
+    const ids = g.ids.slice(0, ZIP_MAX_DOCS).join(",");
     const a = document.createElement("a");
     a.href = `/api/compliance/documents/download-all?ids=${encodeURIComponent(ids)}`;
     document.body.appendChild(a);
@@ -167,20 +187,19 @@ export function DocumentsFeed({
     a.remove();
   }
 
-  async function deleteAll(g: Group) {
+  async function deleteAll(g: VaultFolder) {
     setDeletingGroup(g.key);
     try {
-      const ids = g.docs.map((d) => d.id);
-      const results = await Promise.allSettled(
-        ids.map((id) => fetch(`/api/compliance/documents?id=${encodeURIComponent(id)}`, { method: "DELETE" }))
-      );
-      const okIds = new Set<string>();
-      results.forEach((r, i) => {
-        if (r.status === "fulfilled" && r.value.ok) okIds.add(ids[i]);
-      });
-      setRows((prev) => prev.filter((r) => !okIds.has(r.id)));
-      router.refresh();
-      if (okIds.size < ids.length) notify.warning(`Deleted ${okIds.size} of ${ids.length}. Some could not be removed.`);
+      let ok = 0;
+      // A few at a time: a folder can hold hundreds.
+      for (let i = 0; i < g.ids.length; i += 8) {
+        const results = await Promise.allSettled(
+          g.ids.slice(i, i + 8).map((id) => fetch(`/api/compliance/documents?id=${encodeURIComponent(id)}`, { method: "DELETE" }))
+        );
+        ok += results.filter((r) => r.status === "fulfilled" && r.value.ok).length;
+      }
+      changed();
+      if (ok < g.ids.length) notify.warning(`Deleted ${ok} of ${g.ids.length}. Some could not be removed.`);
     } catch (err) {
       console.error(err);
       notify.error("Error deleting documents.");
@@ -189,52 +208,74 @@ export function DocumentsFeed({
     }
   }
 
-  // Docs that pass the category filter + search (search also matches client).
-  const visibleDocs = useMemo(() => {
-    const ql = searchQuery.trim().toLowerCase();
-    return rows.filter((d) => {
-      if (categoryFilter !== "all" && d.category !== categoryFilter) return false;
-      if (!ql) return true;
-      return (
-        d.name.toLowerCase().includes(ql) ||
-        (d.description?.toLowerCase().includes(ql) ?? false) ||
-        (d.clientName?.toLowerCase().includes(ql) ?? false) ||
-        (d.clientEmail?.toLowerCase().includes(ql) ?? false)
-      );
-    });
-  }, [rows, searchQuery, categoryFilter]);
-
-  const groups = useMemo<Group[]>(() => {
-    const map = new Map<string, Group>();
-    for (const d of visibleDocs) {
-      const key = d.clientId ?? "__firm__";
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
-          clientId: d.clientId ?? null,
-          clientName: d.clientId ? d.clientName ?? "Client" : "Firm & unassigned documents",
-          clientEmail: d.clientEmail ?? null,
-          clientPhone: d.clientPhone ?? null,
-          clientAvatar: d.clientAvatar ?? null,
-          docs: [],
-          expiring: 0,
-          expired: 0,
-        });
-      }
-      const g = map.get(key)!;
-      g.docs.push(d);
-      const exp = d.expiresOn ? new Date(d.expiresOn) : null;
-      if (exp) {
-        if (exp.getTime() < Date.now()) g.expired++;
-        else if (exp.getTime() - Date.now() < 30 * 24 * 60 * 60 * 1000) g.expiring++;
-      }
-    }
-    return [...map.values()].sort((a, b) => {
-      if (a.clientId === null) return 1; // firm group last
-      if (b.clientId === null) return -1;
-      return a.clientName.localeCompare(b.clientName);
-    });
-  }, [visibleDocs]);
+  const renderDoc = (d: VaultDoc) => {
+    const exp = d.expiresOn ? new Date(d.expiresOn) : null;
+    const expired = exp && exp.getTime() < Date.now();
+    const expiringSoon = exp && !expired && exp.getTime() - Date.now() < 30 * 24 * 60 * 60 * 1000;
+    return (
+      <div key={d.id} className="flex items-center gap-3 px-3 sm:px-4 py-2.5 hover:bg-accent/30">
+        <FileText className="size-4 text-muted-foreground shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium truncate">{d.name}</div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className={`text-2xs font-bold border px-1.5 py-0.5 rounded-full ${CATEGORY_COLORS[d.category] ?? CATEGORY_COLORS.other}`}>
+              {d.category === "kyd" ? "KYC" : d.category.toUpperCase().replace(/_/g, " ")}
+            </span>
+            {exp && (
+              <span className={`text-2xs inline-flex items-center gap-0.5 ${expired ? "text-rose-600 font-semibold" : expiringSoon ? "text-amber-600 font-semibold" : "text-muted-foreground"}`}>
+                {(expired || expiringSoon) && <AlertTriangle className="size-3" />}
+                {expired ? "Expired " : "Expires "}{formatDate(exp)}
+              </span>
+            )}
+            <span className="text-2xs text-muted-foreground">Uploaded {formatRelative(d.createdAt)}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 print:hidden">
+          {deletingId === d.id && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+          <button
+            type="button"
+            onClick={() =>
+              setViewer({
+                name: d.name,
+                mimeType: d.mimeType,
+                src: `/api/compliance/documents/download?id=${encodeURIComponent(d.id)}&inline=1`,
+                downloadHref: `/api/compliance/documents/download?id=${encodeURIComponent(d.id)}`,
+              })
+            }
+            title="View"
+            className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
+          >
+            <Eye className="size-4" />
+          </button>
+          <DownloadButton
+            url={`/api/compliance/documents/download?id=${encodeURIComponent(d.id)}`}
+            title="Download"
+            className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
+          >
+            <Download className="size-4" />
+          </DownloadButton>
+          <button
+            type="button"
+            onClick={() => startReplace(d)}
+            disabled={replacingId === d.id}
+            title="Replace with a newer version"
+            className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors disabled:opacity-50"
+          >
+            {replacingId === d.id ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPendingDelete({ kind: "single", id: d.id, name: d.name })}
+            disabled={deletingId != null}
+            title="Delete"
+            className="size-8 rounded-lg hover:bg-rose-50 border border-border/40 grid place-items-center text-muted-foreground hover:text-rose-600 hover:border-rose-200 transition-colors disabled:opacity-50"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -245,7 +286,7 @@ export function DocumentsFeed({
       <div className="grid grid-cols-3 gap-4">
         <div className="border rounded-lg p-4 bg-card">
           <div className="text-xs text-muted-foreground">Total documents</div>
-          <div className="text-2xl font-bold mt-1">{rows.length}</div>
+          <div className="text-2xl font-bold mt-1">{stats.total.toLocaleString("en-IN")}</div>
         </div>
         <div className="border rounded-lg p-4 bg-card">
           <div className="text-xs text-muted-foreground">Expiring (30d)</div>
@@ -260,7 +301,11 @@ export function DocumentsFeed({
       {/* Filter toolbar */}
       <div className="flex items-center justify-between gap-4 flex-wrap bg-secondary/10 p-3 rounded-lg border border-border/40 print:hidden">
         <div className="flex-1 min-w-[240px] relative">
-          <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+          {filtering ? (
+            <Loader2 className="absolute left-3 top-2.5 size-4 animate-spin text-muted-foreground" />
+          ) : (
+            <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+          )}
           <input
             type="text"
             placeholder="Search by document name, description or client…"
@@ -274,8 +319,12 @@ export function DocumentsFeed({
             <Filter className="size-3.5" /> Category:
           </div>
           <SelectField
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            value={category || "all"}
+            onChange={(e) => {
+              const next = searchQuery.trim().slice(0, 100);
+              sent.current = next;
+              apply(next, e.target.value === "all" ? "" : e.target.value);
+            }}
             className="text-xs font-semibold min-w-[160px]"
           >
             <option value="all">All Categories</option>
@@ -296,15 +345,16 @@ export function DocumentsFeed({
       </div>
 
       {/* Client-grouped accordion */}
-      {groups.length === 0 ? (
+      {folders.length === 0 ? (
         <div className="border rounded-lg bg-card p-12 text-center text-sm text-muted-foreground">
           <FolderArchive className="size-8 mx-auto text-muted-foreground/50" />
-          <div className="mt-2">No documents found.</div>
+          <div className="mt-2">{filtered ? "No client folder or document matches." : "No documents found."}</div>
         </div>
       ) : (
-        <div className="space-y-3">
-          {groups.map((g) => {
-            const isOpen = !!open[g.key];
+        <div className={`space-y-3 ${filtering ? "opacity-60" : ""}`}>
+          {folders.map((g) => {
+            // A search that leaves only a few folders opens them.
+            const isOpen = open[g.key] ?? (filtered && totalFolders <= 3);
             const isFirm = g.clientId === null;
             return (
               <div key={g.key} className="border rounded-lg bg-card overflow-hidden">
@@ -312,7 +362,7 @@ export function DocumentsFeed({
                 <div className="flex items-center gap-3 px-3 sm:px-4 py-3">
                   <button
                     type="button"
-                    onClick={() => setOpen((o) => ({ ...o, [g.key]: !o[g.key] }))}
+                    onClick={() => setOpen((o) => ({ ...o, [g.key]: !isOpen }))}
                     className="flex items-center gap-3 flex-1 min-w-0 text-left"
                     aria-expanded={isOpen}
                   >
@@ -334,7 +384,7 @@ export function DocumentsFeed({
 
                   {/* Counts + alerts */}
                   <div className="hidden sm:flex items-center gap-2 text-xs">
-                    <span className="text-muted-foreground">{g.docs.length} doc{g.docs.length !== 1 ? "s" : ""}</span>
+                    <span className="text-muted-foreground">{g.count} doc{g.count !== 1 ? "s" : ""}</span>
                     {g.expired > 0 && (
                       <span className="inline-flex items-center gap-1 text-rose-600 font-semibold"><AlertTriangle className="size-3" />{g.expired}</span>
                     )}
@@ -357,7 +407,7 @@ export function DocumentsFeed({
                       type="button"
                       onClick={() => setPendingDelete({ kind: "group", group: g })}
                       disabled={deletingGroup === g.key}
-                      title="Delete all documents in this group"
+                      title={filtered ? "Delete the matching documents in this folder" : "Delete all documents in this folder"}
                       className="size-8 rounded-lg hover:bg-rose-50 border border-border/40 grid place-items-center text-muted-foreground hover:text-rose-600 hover:border-rose-200 transition-colors disabled:opacity-50"
                     >
                       {deletingGroup === g.key ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
@@ -379,81 +429,24 @@ export function DocumentsFeed({
                 {/* Expandable body — smooth height via grid-rows */}
                 <div className={`grid transition-all duration-300 ease-in-out ${isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
                   <div className="overflow-hidden">
-                    <div className="border-t divide-y divide-border/60">
-                      {g.docs.map((d) => {
-                        const exp = d.expiresOn ? new Date(d.expiresOn) : null;
-                        const expired = exp && exp.getTime() < Date.now();
-                        const expiringSoon = exp && !expired && exp.getTime() - Date.now() < 30 * 24 * 60 * 60 * 1000;
-                        return (
-                          <div key={d.id} className="flex items-center gap-3 px-3 sm:px-4 py-2.5 hover:bg-accent/30">
-                            <FileText className="size-4 text-muted-foreground shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium truncate">{d.name}</div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className={`text-2xs font-bold border px-1.5 py-0.5 rounded-full ${CATEGORY_COLORS[d.category] ?? CATEGORY_COLORS.other}`}>
-                                  {d.category === "kyd" ? "KYC" : d.category.toUpperCase().replace(/_/g, " ")}
-                                </span>
-                                {exp && (
-                                  <span className={`text-2xs inline-flex items-center gap-0.5 ${expired ? "text-rose-600 font-semibold" : expiringSoon ? "text-amber-600 font-semibold" : "text-muted-foreground"}`}>
-                                    {(expired || expiringSoon) && <AlertTriangle className="size-3" />}
-                                    {expired ? "Expired " : "Expires "}{formatDate(exp)}
-                                  </span>
-                                )}
-                                <span className="text-2xs text-muted-foreground">Uploaded {formatRelative(d.createdAt)}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 print:hidden">
-                              {deletingId === d.id && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setViewer({
-                                    name: d.name,
-                                    mimeType: d.mimeType,
-                                    src: `/api/compliance/documents/download?id=${encodeURIComponent(d.id)}&inline=1`,
-                                    downloadHref: `/api/compliance/documents/download?id=${encodeURIComponent(d.id)}`,
-                                  })
-                                }
-                                title="View"
-                                className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
-                              >
-                                <Eye className="size-4" />
-                              </button>
-                              <DownloadButton
-                                url={`/api/compliance/documents/download?id=${encodeURIComponent(d.id)}`}
-                                title="Download"
-                                className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
-                              >
-                                <Download className="size-4" />
-                              </DownloadButton>
-                              <button
-                                type="button"
-                                onClick={() => startReplace(d)}
-                                disabled={replacingId === d.id}
-                                title="Replace with a newer version"
-                                className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors disabled:opacity-50"
-                              >
-                                {replacingId === d.id ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setPendingDelete({ kind: "single", id: d.id, name: d.name })}
-                                disabled={deletingId != null}
-                                title="Delete"
-                                className="size-8 rounded-lg hover:bg-rose-50 border border-border/40 grid place-items-center text-muted-foreground hover:text-rose-600 hover:border-rose-200 transition-colors disabled:opacity-50"
-                              >
-                                <Trash2 className="size-4" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {isOpen && (
+                      <FolderDocs
+                        key={`${g.key}|${q}|${category}`}
+                        folder={g.key}
+                        q={q}
+                        category={category}
+                        stamp={`${version}:${g.count}:${g.ids[0] ?? ""}`}
+                        renderDoc={renderDoc}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
             );
           })}
+          <div className="print:hidden">
+            <Pager page={page} totalPages={Math.ceil(totalFolders / pageSize)} total={totalFolders} pageSize={pageSize} />
+          </div>
         </div>
       )}
 
@@ -464,7 +457,7 @@ export function DocumentsFeed({
         title={pendingDelete?.kind === "group" ? "Delete all documents?" : "Delete document?"}
         message={
           pendingDelete?.kind === "group"
-            ? `Permanently delete all ${pendingDelete.group.docs.length} document(s) for "${pendingDelete.group.clientName}"? This can't be undone.`
+            ? `Permanently delete ${filtered ? "the" : "all"} ${pendingDelete.group.count} document(s)${filtered ? " matching your search" : ""} for "${pendingDelete.group.clientName}"? This can't be undone.`
             : pendingDelete?.kind === "single"
               ? `Permanently delete "${pendingDelete.name}" from storage and the database? This can't be undone.`
               : ""
@@ -479,6 +472,90 @@ export function DocumentsFeed({
         }}
         onCancel={() => setPendingDelete(null)}
       />
+    </div>
+  );
+}
+
+/** One open folder's documents, read a page at a time. */
+function FolderDocs({
+  folder,
+  q,
+  category,
+  stamp,
+  renderDoc,
+}: {
+  folder: string;
+  q: string;
+  category: string;
+  /** Changes when the folder's documents do, so the page is read again. */
+  stamp: string;
+  renderDoc: (d: VaultDoc) => ReactNode;
+}) {
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<{ docs: VaultDoc[]; total: number; page: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    const ctl = new AbortController();
+    const p = new URLSearchParams({ folder, page: String(page) });
+    if (q) p.set("q", q);
+    if (category) p.set("category", category);
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const res = await fetch(`/api/compliance/documents/folder?${p}`, { cache: "no-store", signal: ctl.signal });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.error ?? `Couldn't load the documents (${res.status})`);
+        setData(j);
+        // The last document of the last page went: the server answers with the page before it.
+        if (j.page !== page) setPage(j.page);
+        setLoading(false);
+      } catch (e) {
+        if (ctl.signal.aborted) return;
+        setError(e instanceof Error ? e.message : "Network error");
+        setLoading(false);
+      }
+    })();
+    return () => ctl.abort();
+  }, [folder, q, category, page, stamp, attempt]);
+
+  const pages = data ? Math.max(1, Math.ceil(data.total / DOCS_PER_PAGE)) : 1;
+
+  return (
+    <div className="border-t">
+      {error ? (
+        <div className="px-4 py-3 text-sm text-destructive">
+          {error}{" "}
+          <button type="button" onClick={() => setAttempt((a) => a + 1)} className="font-medium underline">Try again</button>
+        </div>
+      ) : !data ? (
+        <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" /> Loading documents…
+        </div>
+      ) : (
+        <>
+          <div className={`divide-y divide-border/60 ${loading ? "opacity-60" : ""}`}>{data.docs.map(renderDoc)}</div>
+          {pages > 1 && (
+            <div className="flex items-center justify-between gap-3 border-t px-4 py-2 text-xs print:hidden">
+              <span className="text-muted-foreground">
+                Documents {(data.page - 1) * DOCS_PER_PAGE + 1}–{Math.min(data.total, data.page * DOCS_PER_PAGE)} of {data.total.toLocaleString("en-IN")}
+              </span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => setPage(data.page - 1)} disabled={loading || data.page <= 1} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40">
+                  <ChevronLeft className="size-3.5" /> Prev
+                </button>
+                <span className="px-1 tabular-nums text-muted-foreground">Page {data.page} of {pages}</span>
+                <button type="button" onClick={() => setPage(data.page + 1)} disabled={loading || data.page >= pages} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40">
+                  Next <ChevronRight className="size-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

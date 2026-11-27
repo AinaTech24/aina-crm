@@ -16,6 +16,7 @@ import { REQUEST_TYPES } from "@/lib/tasks/request-types";
 import { INFLOW_SOURCE_LABELS } from "@/db/schema";
 import { d, dIst, dt, inFilter, userName } from "../helpers";
 import type { ExportModule } from "../types";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 // ── shared bits ────────────────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ export const tasksExport: ExportModule = {
       if (tab === "completed") conds.push(sql`tasks.status = 'completed'`);
       else if (tab === "overdue") conds.push(overdueTaskSql("tasks"));
       else if (tab) conds.push(OPEN_TASK);
-      if (tab === "today") conds.push(sql`tasks.due_at >= now() AND ${DUE_DAY} = ${IST_TODAY}`);
+      if (tab === "today") conds.push(sql`${DUE_DAY} = ${IST_TODAY}`);
       if (tab === "upcoming") conds.push(sql`${DUE_DAY} > ${IST_TODAY}`);
       if (statusFilter.length) conds.push(...inFilter(statusFilter.join(","), sql`tasks.status`));
       else if (!tab && !approval && !state) conds.push(OPEN_TASK);
@@ -116,14 +117,14 @@ export const tasksExport: ExportModule = {
     const due = csv(params, "due");
     const dueConds: SQL[] = [];
     if (due.includes("today")) dueConds.push(sql`tasks.due_at::date = current_date`);
-    if (due.includes("overdue")) dueConds.push(sql`tasks.due_at < now()`);
+    if (due.includes("overdue")) dueConds.push(sql`tasks.due_at < ${TASK_TODAY_START}`);
     if (due.includes("sla_risk")) dueConds.push(sql`(tasks.sla_due_at IS NOT NULL AND tasks.sla_due_at < now() + interval '24 hours')`);
     if (dueConds.length) conds.push(sql`(${sql.join(dueConds, sql` OR `)})`);
     const createdDr = dateRangeCond(sp, "created", "(tasks.created_at AT TIME ZONE 'Asia/Kolkata')::date");
     if (createdDr) conds.push(createdDr);
     return conds;
   },
-  orderBy: sql`CASE WHEN tasks.due_at < now() AND tasks.status IN ('open','in_progress','blocked') THEN 0 ELSE 1 END, tasks.due_at ASC NULLS LAST, tasks.created_at DESC`,
+  orderBy: sql`CASE WHEN tasks.due_at < ${TASK_TODAY_START} AND tasks.status IN ('open','in_progress','blocked') THEN 0 ELSE 1 END, tasks.due_at ASC NULLS LAST, tasks.created_at DESC`,
   columns: [
     { key: "title", label: "Title", group: "Task", sql: t("title"), default: true },
     { key: "type", label: "Type", group: "Task", sql: labelled(t("type"), TASK_TYPE_LABEL), default: true },
@@ -131,7 +132,7 @@ export const tasksExport: ExportModule = {
     { key: "department", label: "Department", group: "Task", sql: human(t("department")) },
     { key: "priority", label: "Priority", group: "Task", sql: human(t("priority")), default: true },
     { key: "status", label: "Status", group: "Task", sql: human(t("status")), default: true },
-    { key: "overdue", label: "Overdue", group: "Task", sql: sql`(${OPEN_TASK} AND tasks.due_at < now())`, kind: "bool" },
+    { key: "overdue", label: "Overdue", group: "Task", sql: sql`(${OPEN_TASK} AND tasks.due_at < ${TASK_TODAY_START})`, kind: "bool" },
     { key: "description", label: "Description", group: "Task", sql: t("description") },
     { key: "remarks", label: "Remarks", group: "Task", sql: t("remarks") },
     { key: "tags", label: "Tags", group: "Task", sql: sql`(SELECT string_agg(x, ', ') FROM jsonb_array_elements_text(${jarr(sql`tasks.tags`)}) x)` },

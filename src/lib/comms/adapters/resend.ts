@@ -15,6 +15,7 @@ import nodemailer from "nodemailer";
 import { describeMailError } from "../connection-error";
 import { wrapLinksForTracking } from "../click-tracking";
 import type { TemplateVersion } from "@/db/schema";
+import { isUsernameLogin, realEmail } from "@/lib/auth/username-login";
 
 /** Per-MFD SMTP mailbox — send client email straight from the firm's own server. */
 export interface SmtpConfig {
@@ -69,7 +70,15 @@ export interface SendEmailArgs {
 }
 
 export const emailAdapter = {
-  async send(args: SendEmailArgs): Promise<{ externalId: string; status: "sent" | "queued" }> {
+  async send(input: SendEmailArgs): Promise<{ externalId: string; status: "sent" | "queued" }> {
+    // A team login without an email address (a username) is never a mail address.
+    if (isUsernameLogin(input.recipient)) throw new Error("This team member signs in with a username and has no email address.");
+    const args: SendEmailArgs = {
+      ...input,
+      cc: input.cc?.filter((a) => !isUsernameLogin(a)),
+      bcc: input.bcc?.filter((a) => !isUsernameLogin(a)),
+      replyTo: realEmail(input.replyTo) ?? undefined,
+    };
     const baseFrom =
       args.fromOverride ??
       (args.category === "marketing"

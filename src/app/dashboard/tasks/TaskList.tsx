@@ -13,6 +13,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { taskChecklist, type Task } from "@/db/schema";
 import { Loader2, ListChecks, Trash2, Clock3, ShieldCheck, CalendarClock, Gauge, Check, X, Pencil, ChevronDown } from "lucide-react";
 import { DateField } from "@/components/ui/DateField";
+import { isPastDue } from "@/lib/tasks/due";
 
 // Priority → left-accent stripe colour (row hierarchy at a glance).
 const PRIORITY_ACCENT: Record<string, string> = {
@@ -502,7 +503,7 @@ export function TaskList({ initialRows, currentUserId, initialOpenTaskId, total 
             // A workflow stamps its run id; a task with no creator came from the
             // system too (imports, older automations).
             const automated = !!t.workflowRunId || !t.createdById;
-            const overdue = !!t.dueAt && !isDone && new Date(t.dueAt).getTime() < Date.now();
+            const overdue = !isDone && isPastDue(t.dueAt);
             const investorId = row.investorId ?? t.relatedInvestorId;
             const leadId = row.leadId ?? t.relatedLeadId;
             const related = investorId && row.investorName
@@ -603,7 +604,7 @@ export function TaskList({ initialRows, currentUserId, initialOpenTaskId, total 
                   {t.dueAt ? (
                     <span
                       className={`inline-flex items-center gap-1 ${overdue ? "font-semibold text-destructive" : "text-muted-foreground"}`}
-                      title={`${overdue ? "Overdue — was due" : "Due"} ${new Date(t.dueAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`}
+                      title={`${overdue ? "Overdue — was due" : "Due"} ${new Date(t.dueAt).toLocaleDateString("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" })}`}
                     >
                       <CalendarClock className="size-3" />
                       {dueRelative(t.dueAt)}

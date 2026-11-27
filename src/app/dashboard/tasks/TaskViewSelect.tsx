@@ -39,12 +39,13 @@ export function TaskViewSelect({
   current,
   layout,
   tab,
-  overdueCount,
+  counts,
 }: {
   current: string;
   layout: string;
   tab: string;
-  overdueCount: number;
+  /** How many tasks each tab lists, by tab value ("" = All open). */
+  counts: Record<string, number>;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -113,12 +114,10 @@ export function TaskViewSelect({
                 className={seg(active)}
               >
                 {t.label}
-                {t.value === "overdue" && (
-                  // Red only when something is actually late.
-                  <span className={`tabular-nums ${overdueCount > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
-                    ({overdueCount})
-                  </span>
-                )}
+                {/* Red only when something is actually late. */}
+                <span className={`tabular-nums ${t.value === "overdue" && counts[t.value] > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
+                  ({(counts[t.value] ?? 0).toLocaleString("en-IN")})
+                </span>
               </button>
             );
           })}

@@ -21,7 +21,7 @@ import type { ImportReport } from "@/lib/imports/sheet/run";
 export type ColumnSummary = { header: string; required: boolean; help: string; /** The allowed values, or the format. */ allowed: string };
 
 export function SheetImport({
-  label, singular, backHref, importUrl, sampleUrl, columns, notes, maxRows,
+  label, singular, backHref, importUrl, sampleUrl, sampleCsvUrl, columns, notes, maxRows,
 }: {
   /** "Tasks" */
   label: string;
@@ -30,6 +30,8 @@ export function SheetImport({
   backHref: string;
   importUrl: string;
   sampleUrl: string;
+  /** A module that also offers its sample as CSV. */
+  sampleCsvUrl?: string;
   columns: ColumnSummary[];
   /** Rules that are not about one column. */
   notes: string[];
@@ -94,11 +96,19 @@ export function SheetImport({
             <div className="font-medium">Sample sheet</div>
             <p className="text-sm text-muted-foreground">
               Has every column on its Data sheet, with dropdowns for the choice columns, and an Example sheet to copy from.
+              {sampleCsvUrl && " The CSV sample has the same columns with example rows: replace them with your own."}
             </p>
           </div>
-          <a href={sampleUrl} download className={buttonClass("secondary")}>
-            <Download className="size-4" /> Download sample sheet
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <a href={sampleUrl} download className={buttonClass("secondary")}>
+              <Download className="size-4" /> {sampleCsvUrl ? "Sample Excel (.xlsx)" : "Download sample sheet"}
+            </a>
+            {sampleCsvUrl && (
+              <a href={sampleCsvUrl} download className={buttonClass("secondary")}>
+                <Download className="size-4" /> Sample CSV (.csv)
+              </a>
+            )}
+          </div>
         </div>
         <details className="text-sm">
           <summary className="cursor-pointer select-none text-primary">The {columns.length} columns ({columns.filter((c) => c.required).length} required)</summary>

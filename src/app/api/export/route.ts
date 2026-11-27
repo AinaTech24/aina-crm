@@ -7,14 +7,16 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session";
 import { EXPORT_MODULES } from "@/lib/export/registry";
-import { canExportModule } from "@/lib/export/run";
+import { canExportModule, exportModuleEnabled } from "@/lib/export/run";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     const session = await requireSession();
-    const modules = Object.values(EXPORT_MODULES).filter((m) => canExportModule(session, m)).map((m) => m.key);
+    const mine = Object.values(EXPORT_MODULES).filter((m) => canExportModule(session, m));
+    const on = await Promise.all(mine.map((m) => exportModuleEnabled(session, m)));
+    const modules = mine.filter((_, i) => on[i]).map((m) => m.key);
     return NextResponse.json({ modules });
   } catch (err) {
     return handleApiError(err);

@@ -14,6 +14,9 @@ import { EmployeeEditForm } from "@/components/employees/EmployeeEditForm";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { getEntitlement, currentFyStart } from "@/lib/leave/policy";
 import { aliveClient } from "@/lib/metrics/scope";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
+import { isUsernameLogin, loginLabel, realEmail } from "@/lib/auth/username-login";
+import { LoginEmailCard } from "@/components/employees/LoginEmailCard";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +42,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         (SELECT COALESCE(SUM(aum::numeric),0)::numeric FROM investors e WHERE e.rm_id = ${id}::uuid AND ${aliveClient("e")}) AS my_aum,
         (SELECT COALESCE(SUM(active_sip_amount::numeric),0)::numeric FROM investors e WHERE e.rm_id = ${id}::uuid AND ${aliveClient("e")}) AS my_sip,
         (SELECT COUNT(*)::int FROM tasks WHERE assignee_id = ${id}::uuid AND status IN ('open','in_progress')) AS open_tasks,
-        (SELECT COUNT(*)::int FROM tasks WHERE assignee_id = ${id}::uuid AND status IN ('open','in_progress') AND due_at < now()) AS overdue_tasks,
+        (SELECT COUNT(*)::int FROM tasks WHERE assignee_id = ${id}::uuid AND status IN ('open','in_progress') AND due_at < ${TASK_TODAY_START}) AS overdue_tasks,
         (SELECT COUNT(*)::int FROM review_meetings WHERE rm_id = ${id}::uuid AND status IN ('scheduled','confirmed') AND meeting_date >= now()) AS upcoming_meetings
     `);
 
@@ -175,7 +178,8 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <ChevronLeft className="size-3" /> Back to employees
       </Link>
 
-      <PageHeaderCard title={<><UserCog className="size-6 text-muted-foreground" /> {emp.name}</>} subtitle={<>{emp.email}
+      <PageHeaderCard title={<><UserCog className="size-6 text-muted-foreground" /> {emp.name}</>} subtitle={<>{isUsernameLogin(emp.email) ? `Username: ${loginLabel(emp.email)}` : emp.email}
+            {emp.loginUsername && !isUsernameLogin(emp.email) ? <> · Username: {emp.loginUsername}</> : null}
             {emp.phone ? <> · {emp.phone}</> : null}
             {manager ? <> · Reports to <strong>{manager.name}</strong></> : null}</>} actions={<><span
           className={`chip ${
@@ -196,6 +200,11 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
             className="mt-1.5"
           />
 </PageHeaderCard>
+
+      {/* A login created with a username: its email address is added (or corrected) here. */}
+      {can(session.roles, "settings.users", session.permissions) && (emp.loginUsername || isUsernameLogin(emp.email)) && (
+        <LoginEmailCard userId={emp.id} username={emp.loginUsername ?? loginLabel(emp.email)} email={realEmail(emp.email)} />
+      )}
 
       {/* Stats strip */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
@@ -259,7 +268,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         employee={{
           id: emp.id,
           name: emp.name,
-          email: emp.email,
+          email: loginLabel(emp.email),
           phone: emp.phone ?? "",
           roles: (emp.roles as string[]) ?? [],
           department: (emp as any).department ?? null,

@@ -40,6 +40,8 @@ import { notify } from "@/components/ui/Toast";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { TaskFilePicker } from "@/components/tasks/TaskFilePicker";
+import { TASK_ATTACHMENTS_FLAG, uploadTaskFiles } from "@/lib/tasks/upload-attachments";
 import { RequestTable, emptyLine, lineNum, type FamilyMember, type LineValues } from "@/components/tasks/RequestTable";
 import {
   TASK_REQUEST_TABLE_FLAG,
@@ -52,6 +54,7 @@ import {
   totalOfLines,
   type RequestLine,
 } from "@/lib/tasks/request-lines";
+import { reminderInstant } from "@/lib/tasks/due";
 
 type TaskTemplate = {
   id: string;
@@ -114,6 +117,10 @@ export default function NewTaskPage() {
   const [insuranceTasks, setInsuranceTasks] = useState(false);
   /** The firm's `taskRequestTable` flag: requests are rows in a table (any mix, any family member). */
   const [tableOn, setTableOn] = useState(false);
+  /** The firm's `taskAttachmentsMulti` flag: attach files while creating. */
+  const [filesOn, setFilesOn] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
   /** Table mode: General, or Client requests (the table). */
   const [reqMode, setReqMode] = useState(false);
   const [lines, setLines] = useState<LineValues[]>([]);
@@ -130,6 +137,7 @@ export default function NewTaskPage() {
         setInsuranceTasks(j?.license?.featureFlags?.[INSURANCE_TASKS_FLAG] === true);
         const table = j?.license?.featureFlags?.[TASK_REQUEST_TABLE_FLAG] === true;
         setTableOn(table);
+        setFilesOn(j?.license?.featureFlags?.[TASK_ATTACHMENTS_FLAG] === true);
       } catch {
         /* the flag is optional — the ordinary form still works */
       }
@@ -496,8 +504,7 @@ export default function NewTaskPage() {
       // Reminder — computed relative to the due date.
       if (form.reminder !== "none" && form.dueDate) {
         const offsetMin: Record<string, number> = { at_due: 0, "1h": 60, "3h": 180, "1d": 1440, "2d": 2880, "1w": 10080 };
-        const base = new Date(form.dueDate).getTime();
-        payload.remindAt = new Date(base - (offsetMin[form.reminder] ?? 0) * 60000).toISOString();
+        payload.remindAt = reminderInstant(form.dueDate, offsetMin[form.reminder] ?? 0).toISOString();
       }
       const cleanChecklist = checklist
         .map((c) => ({
@@ -576,6 +583,19 @@ export default function NewTaskPage() {
         notify.success("Booked in Business entries as a draft — it is confirmed when the task is completed.", "Task created");
       } else if (j.businessNotBooked === "not_allowed") {
         notify.warning("Task created, but your role cannot book Business entries — ask Operations to add it.", "Not booked");
+      }
+      // The files picked on the form go up now that the task exists.
+      if (filesOn && files.length && typeof j.id === "string") {
+        setUploadNote(`Uploading ${files.length} ${files.length === 1 ? "file" : "files"}…`);
+        const up = await uploadTaskFiles(j.id, files);
+        if (up.failed.length) {
+          notify.warning(
+            `${up.uploaded.length} of ${files.length} files attached. Not attached: ${up.failed.map((f) => `${f.file.name} (${f.error})`).join(", ")} — add them from the task's Attachments.`,
+            "Task created",
+          );
+        } else {
+          notify.success(`${up.uploaded.length} ${up.uploaded.length === 1 ? "file" : "files"} attached.`, "Task created");
+        }
       }
       router.push(`/dashboard/tasks`);
     } finally {
@@ -849,6 +869,8 @@ export default function NewTaskPage() {
             ))}
           </div>
         </div>
+
+        {filesOn && <TaskFilePicker files={files} onChange={setFiles} disabled={busy} />}
       </div>
 
       {/* ── Everything else, behind one disclosure. ── */}
@@ -920,12 +942,12 @@ export default function NewTaskPage() {
                   disabled={!form.dueDate}
                 >
                   <option value="none">None</option>
-                  <option value="at_due">At due time</option>
-                  <option value="1h">1 hour before</option>
-                  <option value="3h">3 hours before</option>
-                  <option value="1d">1 day before</option>
-                  <option value="2d">2 days before</option>
-                  <option value="1w">1 week before</option>
+                  <option value="at_due">On the due date, 10:00 am</option>
+                  <option value="1h">1 hour before (9:00 am)</option>
+                  <option value="3h">3 hours before (7:00 am)</option>
+                  <option value="1d">1 day before, 10:00 am</option>
+                  <option value="2d">2 days before, 10:00 am</option>
+                  <option value="1w">1 week before, 10:00 am</option>
                 </SelectField>
               </label>
               <label className="flex items-start gap-2 sm:pt-6 cursor-pointer">
@@ -1113,7 +1135,7 @@ export default function NewTaskPage() {
             className="btn-primary"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            {busy ? "Saving…" : "Create task"}
+            {busy ? uploadNote ?? "Saving…" : "Create task"}
           </button>
         </div>
       </div>

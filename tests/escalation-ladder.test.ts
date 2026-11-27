@@ -59,9 +59,13 @@ describe.skipIf(!TEST_DB)("runEscalationLadder", () => {
     q(sql`INSERT INTO users (id, tenant_id, email, name, roles, branch_id, reporting_manager_id, status)
           VALUES (${id}::uuid, ${tenant}::uuid, ${name.toLowerCase().replace(/ /g, ".") + "@" + tenant.slice(0, 8) + ".test"}, ${name},
                   ${`{${roles.join(",")}}`}::text[], ${branch}::uuid, ${manager}::uuid, 'active')`);
-  const task = (id: string, title: string, dueHoursAgo: number) =>
+  // A task due on the India date `daysAgo` days back. "Hours overdue" counts from the END of that
+  // date, so 3 days ago is 48–72 hours overdue whatever time the test runs.
+  const dueOn = (daysAgo: number) =>
+    sql`((date_trunc('day', now() AT TIME ZONE 'Asia/Kolkata') - make_interval(days => ${daysAgo}::int)) AT TIME ZONE 'Asia/Kolkata')`;
+  const task = (id: string, title: string, daysAgo: number) =>
     q(sql`INSERT INTO tasks (id, tenant_id, subject_type, subject_id, type, title, status, priority, assignee_id, due_at)
-          VALUES (${id}::uuid, ${tenant}::uuid, 'user', ${u.rm}::uuid, 'follow_up', ${title}, 'open', 'normal', ${u.rm}::uuid, now() - make_interval(hours => ${dueHoursAgo}::int))`);
+          VALUES (${id}::uuid, ${tenant}::uuid, 'user', ${u.rm}::uuid, 'follow_up', ${title}, 'open', 'normal', ${u.rm}::uuid, ${dueOn(daysAgo)})`);
   const escalation = async (id: string) =>
     ((await q(sql`SELECT meta -> 'escalation' AS e FROM tasks WHERE id = ${id}::uuid`)).rows[0] as { e: Record<string, any> | null }).e;
   const notified = async () =>
@@ -80,12 +84,12 @@ describe.skipIf(!TEST_DB)("runEscalationLadder", () => {
     await user(u.head, "Hari Head", ["branch_head"]);
     await user(u.manager, "Mira Manager", ["rm"]);
     await user(u.rm, "Ravi Rm", ["rm"], u.manager);
-    // Switched on 100 hours ago: 24 / 48 / 72 by default.
-    const ladder = { enabled: true, activeSince: new Date(Date.now() - 100 * 3600_000).toISOString() };
+    // Switched on 200 hours ago: 24 / 48 / 72 by default.
+    const ladder = { enabled: true, activeSince: new Date(Date.now() - 200 * 3600_000).toISOString() };
     await q(sql`INSERT INTO dashboard_settings (tenant_id, settings) VALUES (${tenant}::uuid, jsonb_build_object('escalationLadder', ${JSON.stringify(ladder)}::jsonb))`);
-    await task(t.old, "Due before the ladder", 150);
-    await task(t.late, "Fifty hours late", 50);
-    await task(t.fresh, "Due an hour ago", 1);
+    await task(t.old, "Due before the ladder", 12);
+    await task(t.late, "Two days late", 3);
+    await task(t.fresh, "Due today", 0);
   });
 
   afterAll(async () => {
@@ -96,7 +100,7 @@ describe.skipIf(!TEST_DB)("runEscalationLadder", () => {
     await q(sql`DELETE FROM tenants WHERE id = ${tenant}::uuid`);
   });
 
-  it("climbs a task 50 hours overdue to the manager and the branch head, once", async () => {
+  it("climbs a task 48 to 72 hours overdue to the manager and the branch head, once", async () => {
     await withSystem((tx) => run(tx, tenant));
     const e = await escalation(t.late);
     expect(e?.l1?.to).toEqual([u.manager]);
@@ -113,7 +117,7 @@ describe.skipIf(!TEST_DB)("runEscalationLadder", () => {
   });
 
   it("reaches the owner at 72 hours and is then done", async () => {
-    await q(sql`UPDATE tasks SET due_at = now() - interval '80 hours' WHERE id = ${t.late}::uuid`);
+    await q(sql`UPDATE tasks SET due_at = ${dueOn(5)} WHERE id = ${t.late}::uuid`);
     await withSystem((tx) => run(tx, tenant));
     const e = await escalation(t.late);
     expect(e?.l3?.to).toEqual([u.owner]);

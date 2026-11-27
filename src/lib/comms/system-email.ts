@@ -16,6 +16,7 @@
 import { emailAdapter } from "./adapters/resend";
 import { loadEmailConfig } from "./email-config";
 import { describeMailError } from "./connection-error";
+import { isUsernameLogin } from "@/lib/auth/username-login";
 
 /** `detail`: what went wrong, in words an admin can act on (describeMailError) — for admin screens only. */
 export type SystemEmailResult = { sent: boolean; reason?: string; detail?: string };
@@ -33,6 +34,9 @@ export async function sendSystemEmail(args: {
   /** In-memory attachments (a tax invoice or a signed NDA PDF). */
   attachments?: Array<{ filename: string; content: Buffer }>;
 }): Promise<SystemEmailResult> {
+  if (isUsernameLogin(args.to)) {
+    return { sent: false, reason: "no_email", detail: "This team member signs in with a username and has no email address." };
+  }
   // Resolve the platform SMTP config — DB (Aina Admin → Email) first, env (SMTP_*)
   // as fallback.
   const cfg = await loadEmailConfig();

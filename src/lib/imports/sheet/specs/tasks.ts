@@ -64,7 +64,7 @@ export const tasksSpec: SheetSpec = {
     { key: "entryDate", header: "Entry Date", kind: "date", help: "The day the task was entered. Blank = today." },
     { key: "dueAt", header: "Due Date", kind: "datetime", aliases: ["Due", "Due On"], help: "When it is due. A date, or a date with a time." },
     { key: "slaDueAt", header: "SLA Due Date", kind: "datetime", help: "Blank = set from the priority, as for a task made in the CRM." },
-    { key: "remindAt", header: "Reminder", kind: "datetime", aliases: ["Remind At"], help: "When to remind the assignee. A date with a time (a bare date reminds at 9:00 am)." },
+    { key: "remindAt", header: "Reminder", kind: "datetime", aliases: ["Remind At"], help: "When to remind the assignee. A date with a time (a bare date reminds at 10:00 am)." },
     { key: "clientPan", header: "Client PAN", kind: "client", help: "Links the task to this client. The PAN is the surest way to find them." },
     { key: "clientName", header: "Client Name", kind: "client", aliases: ["Client", "Related Client"], help: "Used when there is no PAN. It must match one client exactly." },
     { key: "leadMobile", header: "Lead Mobile", kind: "lead", help: "Links the task to this lead." },

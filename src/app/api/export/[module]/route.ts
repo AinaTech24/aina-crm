@@ -14,7 +14,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { clientMetaFromHeaders } from "@/lib/audit";
 import { EXPORT_MODULES } from "@/lib/export/registry";
-import { canExportModule, exportableColumns, ExportError, runExport } from "@/lib/export/run";
+import { canExportModule, exportableColumns, ExportError, exportModuleEnabled, runExport } from "@/lib/export/run";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     const { module } = await params;
     const session = await requireSession();
     const mod = EXPORT_MODULES[module];
-    if (!mod) return NextResponse.json({ error: "Unknown module" }, { status: 404 });
+    if (!mod || !(await exportModuleEnabled(session, mod))) return NextResponse.json({ error: "Unknown module" }, { status: 404 });
     if (!canExportModule(session, mod)) return NextResponse.json({ error: "You don't have permission to export this." }, { status: 403 });
     const cols = await exportableColumns(session, mod);
     return NextResponse.json({
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const { module } = await params;
     const session = await requireSession();
     const mod = EXPORT_MODULES[module];
-    if (!mod) return NextResponse.json({ error: "Unknown module" }, { status: 404 });
+    if (!mod || !(await exportModuleEnabled(session, mod))) return NextResponse.json({ error: "Unknown module" }, { status: 404 });
     // The precise gate is canExportModule (inside runExport); this names the
     // capability for the route guard.
     requireCap(session.roles, mod.exportCapability ?? "data.export", session.permissions);

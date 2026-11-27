@@ -11,6 +11,7 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { EmployeeRowActions } from "@/components/employees/EmployeeRowActions";
 import { TeamPresence } from "@/components/employees/TeamPresence";
 import { ExportButton } from "@/components/export/ExportButton";
+import { isUsernameLogin, loginLabel } from "@/lib/auth/username-login";
 
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
@@ -42,7 +43,7 @@ export default async function EmployeesPage({
     const conds: any[] = [sql`u.deleted_at IS NULL`];
     if (q) {
       conds.push(
-        sql`(u.name ILIKE ${`%${q}%`} OR u.email ILIKE ${`%${q}%`} OR u.phone ILIKE ${`%${q}%`} OR u.euin ILIKE ${`%${q}%`})`
+        sql`(u.name ILIKE ${`%${q}%`} OR u.email ILIKE ${`%${q}%`} OR u.login_username ILIKE ${`%${q}%`} OR u.phone ILIKE ${`%${q}%`} OR u.euin ILIKE ${`%${q}%`})`
       );
     }
     if (deptFilter.length) {
@@ -63,7 +64,7 @@ export default async function EmployeesPage({
     const whereSql = conds.length ? sql` WHERE ${sql.join(conds, sql` AND `)}` : sql``;
 
     const employees = await tx.execute(sql`
-      SELECT u.id, u.name, u.email, u.phone, u.roles, u.status,
+      SELECT u.id, u.name, u.email, u.login_username, u.phone, u.roles, u.status,
              u.department, u.joining_date, u.annual_target, u.sip_monthly_target,
              u.reporting_manager_id, mgr.name AS manager_name,
              u.euin, u.nism_expiry_at, u.last_login_at, u.created_at,
@@ -235,7 +236,8 @@ export default async function EmployeesPage({
                         <Link href={`/dashboard/employees/${e.id}`} className="font-medium hover:underline">
                           {e.name}
                         </Link>
-                        <div className="text-2xs text-muted-foreground">{e.email}</div>
+                        <div className="text-2xs text-muted-foreground">{isUsernameLogin(e.email) ? `Username: ${loginLabel(e.email)}` : e.email}</div>
+                        {e.login_username && !isUsernameLogin(e.email) && <div className="text-2xs text-muted-foreground">Username: {e.login_username}</div>}
                         {e.phone && <div className="text-2xs text-muted-foreground font-mono">{e.phone}</div>}
                       </td>
                       {hasDept && (

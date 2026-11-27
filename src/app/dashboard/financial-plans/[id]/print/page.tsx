@@ -8,6 +8,7 @@ import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { PlanPrintHelper } from "@/components/financial-plans/PlanPrintHelper";
 import { FirmLogo } from "@/components/common/FirmLogo";
+import { realEmail } from "@/lib/auth/username-login";
 import {
   recommendedLifeCover,
   emergencyStatus,
@@ -226,7 +227,7 @@ export default async function FinancialPlanPrintPage({
               {preparedBy?.name ?? "—"}
             </div>
             <div className="fp-muted" style={{ fontSize: 10, marginTop: 1 }}>
-              {(preparedBy as any)?.email ?? "—"}{(preparedBy as any)?.euin ? ` · EUIN ${(preparedBy as any).euin}` : ""}
+              {realEmail((preparedBy as any)?.email) ?? "—"}{(preparedBy as any)?.euin ? ` · EUIN ${(preparedBy as any).euin}` : ""}
             </div>
           </div>
           <div className="fp-card" style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "8px 12px" }}>

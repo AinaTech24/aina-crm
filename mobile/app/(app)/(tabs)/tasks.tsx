@@ -37,6 +37,7 @@ import { CountChip, CountChipRow } from "../../../src/features/lists/CountChips"
 import { CollapsingHeader, useCollapsingHeader } from "../../../src/features/lists/CollapsingHeader";
 import { UndoToastHost } from "../../../src/features/lists/UndoToastHost";
 import { statusMessage, statusUndo } from "../../../src/features/lists/taskUndo";
+import { isPastDue } from "../../../src/lib/due";
 
 type TaskView = "" | "to_me" | "by_me" | "approve";
 /** The board shows at most this many (the web's Kanban cap). */
@@ -158,7 +159,7 @@ export default function TasksTab() {
               <View style={{ gap: 2 }}>
                 <Text variant="caption" style={{ fontWeight: fontWeight.semibold }} numberOfLines={2}>{t.title}</Text>
                 {t.investorName || t.leadName ? <Text variant="caption" tone="muted" numberOfLines={1}>{t.investorName ?? t.leadName}</Text> : null}
-                <Text variant="caption" style={{ color: t.dueAt && new Date(t.dueAt).getTime() < Date.now() && t.status !== "completed" ? palette.danger : palette.muted }} numberOfLines={1}>
+                <Text variant="caption" style={{ color: isPastDue(t.dueAt) && t.status !== "completed" ? palette.danger : palette.muted }} numberOfLines={1}>
                   {[t.dueAt ? `Due ${fmtDate(t.dueAt)}` : null, t.priority ? titleCase(t.priority) : null, t.assignee].filter(Boolean).join(" · ")}
                 </Text>
               </View>

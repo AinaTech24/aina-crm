@@ -26,6 +26,7 @@ import { dispatch } from "@/lib/comms/pipeline";
 import { composeAndSendEmail } from "@/lib/comms/compose";
 import { findUndeclaredPlaceholders } from "@/lib/comms/tokens";
 import { assertThreadAccess } from "@/lib/comms/inbox-scope";
+import { realEmail } from "@/lib/auth/username-login";
 
 export const dynamic = "force-dynamic";
 
@@ -245,7 +246,7 @@ export async function POST(req: NextRequest) {
           actorUserId: session.userId,
           threadId: data.threadId ?? null,
           inReplyTo: data.inReplyTo ?? null,
-          replyTo: me?.email ?? null,
+          replyTo: realEmail(me?.email),
         });
       });
       return NextResponse.json(result);

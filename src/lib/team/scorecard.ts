@@ -14,6 +14,7 @@
 
 import { sql } from "drizzle-orm";
 import { currentFiscalYear } from "@/lib/business/sif-status";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
 
@@ -172,7 +173,7 @@ export async function loadScorecard(tx: Tx, tenantId: string, from: string, to: 
   // ── Operations KPIs ─────────────────────────────────────────────────────
   const sla = await ratio(tx, sql`SELECT assigned_to_user_id AS uid, count(*) FILTER (WHERE resolved_at <= sla_resolution_at) AS met, count(*) AS total FROM service_requests WHERE tenant_id=${t}::uuid AND assigned_to_user_id IS NOT NULL AND status IN ('resolved','closed') AND resolved_at >= ${tsLo} AND resolved_at < ${tsHi} AND sla_resolution_at IS NOT NULL GROUP BY assigned_to_user_id`);
   const resolved = await single(tx, sql`SELECT assigned_to_user_id AS uid, count(*) AS v FROM service_requests WHERE tenant_id=${t}::uuid AND assigned_to_user_id IS NOT NULL AND status IN ('resolved','closed') AND resolved_at >= ${tsLo} AND resolved_at < ${tsHi} GROUP BY assigned_to_user_id`);
-  const overdue = await single(tx, sql`SELECT assignee_id AS uid, count(*) AS v FROM tasks WHERE tenant_id=${t}::uuid AND assignee_id IS NOT NULL AND status IN ('open','in_progress','blocked') AND due_at IS NOT NULL AND due_at < now() GROUP BY assignee_id`);
+  const overdue = await single(tx, sql`SELECT assignee_id AS uid, count(*) AS v FROM tasks WHERE tenant_id=${t}::uuid AND assignee_id IS NOT NULL AND status IN ('open','in_progress','blocked') AND due_at IS NOT NULL AND due_at < ${TASK_TODAY_START} GROUP BY assignee_id`);
   const attendance = await ratio(tx, sql`SELECT employee_user_id AS uid, count(*) FILTER (WHERE clock_in_at IS NOT NULL OR status='present') AS met, count(*) AS total FROM attendance WHERE tenant_id=${t}::uuid AND employee_user_id IS NOT NULL AND attendance_date BETWEEN ${from}::date AND ${to}::date GROUP BY employee_user_id`);
 
   const ops = assemble(opsUsers, [

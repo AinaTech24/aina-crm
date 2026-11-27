@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         const scope = await investorScopeSql(tx, session, "i");
         const rows = (
           await tx.execute(sql`
-            SELECT i.id, i.name, i.family_role, f.name AS family_name, (f.primary_investor_id = i.id) AS is_head
+            SELECT i.id, i.name, i.family_role, f.family_name AS family_name, (f.primary_investor_id = i.id) AS is_head
               FROM investors i
               JOIN families f ON f.id = i.family_id
              WHERE i.tenant_id = ${session.tenantId}::uuid

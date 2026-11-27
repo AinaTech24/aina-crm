@@ -21,7 +21,8 @@ function inr(n: number | null | undefined): string {
 
 /** Reminder date = expectedOn - remindDaysBefore, never in the past. */
 export function reminderDateFor(expectedOn: string, remindDaysBefore: number): Date {
-  const due = new Date(`${expectedOn}T09:00:00`);
+  // 10:00 am India time, the CRM's working hour for reminders (lib/tasks/due.ts).
+  const due = new Date(`${expectedOn}T10:00:00+05:30`);
   const d = new Date(due);
   d.setDate(d.getDate() - Math.max(0, remindDaysBefore || 0));
   const now = new Date();

@@ -14,6 +14,7 @@ import { Eye, Pencil, Power, UserMinus, Trash2, Loader2, X, Mail, Phone, Buildin
 import { SetPasswordDialog } from "@/components/common/SetPasswordDialog";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { isUsernameLogin, loginLabel, realEmail } from "@/lib/auth/username-login";
 
 export type EmployeeRow = {
   id: string;
@@ -138,7 +139,7 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
           {busy === "deactivate" ? <Loader2 className="size-4 animate-spin" /> : <Power className="size-4" />}
         </button>
       )}
-      {employee.status === "active" && employee.email && (
+      {employee.status === "active" && realEmail(employee.email) && (
         <button
           onClick={() => setConfirmReset(true)}
           disabled={busy !== null}
@@ -197,7 +198,7 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
               <button onClick={() => setInfo(false)} className="text-muted-foreground hover:text-foreground" aria-label="Close"><X className="size-5" /></button>
             </div>
             <div className="p-5 space-y-2.5 text-sm">
-              <Row icon={Mail} label="Email" value={employee.email} />
+              <Row icon={Mail} label={isUsernameLogin(employee.email) ? "Username" : "Email"} value={loginLabel(employee.email)} />
               <Row icon={Phone} label="Phone" value={employee.phone} />
               <Row icon={Building2} label="Department" value={employee.department ? employee.department.replace(/_/g, " ") : null} />
               <Row icon={Users} label="Manager" value={employee.managerName} />

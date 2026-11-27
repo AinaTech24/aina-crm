@@ -15,6 +15,7 @@ import { familyScopeSql } from "@/lib/families/access";
 import { serviceRequestScopeSql } from "@/lib/service-requests/access";
 import { resolveReportPeriod, type ReportPeriod, type ReportPeriodKey } from "@/lib/reports/period";
 import { StandardReportFilterBar } from "@/components/reports/StandardReportFilterBar";
+import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
 
 /**
  * Row scope every report query runs under — the viewer's client / lead /
@@ -1109,13 +1110,13 @@ const REPORTS: Record<
         u.name,
         COALESCE(u.department, '—') AS department,
         COUNT(t.id) FILTER (WHERE t.status IN ('open','in_progress'))::int AS open_tasks,
-        COUNT(t.id) FILTER (WHERE t.status IN ('open','in_progress') AND t.due_at < now())::int AS overdue_tasks,
+        COUNT(t.id) FILTER (WHERE t.status IN ('open','in_progress') AND t.due_at < ${TASK_TODAY_START})::int AS overdue_tasks,
         COUNT(t.id) FILTER (
           WHERE t.status IN ('open','in_progress') AND t.due_at::date = current_date
         )::int AS due_today,
         COUNT(t.id) FILTER (
           WHERE t.status IN ('open','in_progress')
-            AND t.due_at >= now() AND t.due_at < now() + interval '7 days'
+            AND t.due_at >= ${TASK_TODAY_START} AND t.due_at < now() + interval '7 days'
         )::int AS due_this_week,
         COUNT(t.id) FILTER (
           WHERE t.status = 'completed' AND ${s.inPeriod("t.completed_at")}
@@ -1384,7 +1385,7 @@ const REPORTS: Record<
         ) AS open_tasks,
         (
           SELECT COUNT(*)::int FROM tasks t
-          WHERE t.assignee_id = u.id AND t.status IN ('open','in_progress') AND t.due_at < now()
+          WHERE t.assignee_id = u.id AND t.status IN ('open','in_progress') AND t.due_at < ${TASK_TODAY_START}
         ) AS overdue_tasks,
         (
           SELECT COUNT(*)::int FROM service_requests s
