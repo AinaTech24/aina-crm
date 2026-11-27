@@ -32,6 +32,22 @@ describe.skipIf(!TEST_DB)("POST /api/rta-imports/[id]/diagnose", () => {
     return { status: res.status, json: await res.json() };
   };
 
+  /**
+   * An archive that only its own password passes. The AES check is two bytes, so a wrong form passes
+   * it by chance about once in 65,536 tries — enough, over every form tried here, to fail a run.
+   */
+  async function lockedFixture(): Promise<Uint8Array> {
+    const { diagnoseZip } = await import("@/lib/rta/zip-diagnose");
+    let bytes = await aes("Real#Pass9");
+    for (let again = 0; again < 3; again++) {
+      const wrong = (await diagnoseZip(bytes, ["Typed#Wrong", "Saved#1"])).entries[0].matches.length;
+      const right = (await diagnoseZip(bytes, ["Real#Pass9"])).entries[0].matches.length;
+      if (!wrong && right === 1) break;
+      bytes = await aes("Real#Pass9");
+    }
+    return bytes;
+  }
+
   beforeAll(async () => {
     process.env.DATABASE_URL = TEST_DB!; process.env.APP_DATABASE_URL = ""; process.env.ALLOW_SYSTEM_TX = "1";
     process.env.ENCRYPTION_KEY ||= "0".repeat(64);
@@ -49,7 +65,7 @@ describe.skipIf(!TEST_DB)("POST /api/rta-imports/[id]/diagnose", () => {
       await q(sql`INSERT INTO rta_file_imports (id, tenant_id, source, kind, period_start, period_end, file_name, file_key, status)
                   VALUES (${id}::uuid, ${tenant}::uuid, 'cams', 'daily_transaction_feed', current_date, current_date, ${name}, ${key}, 'rejected')`);
     };
-    await put(ids.locked, "locked.zip", await aes("Real#Pass9"));
+    await put(ids.locked, "locked.zip", await lockedFixture());
     await put(ids.notzip, "notzip.zip", new TextEncoder().encode("Invalid request"));
   }, 60_000);
 
