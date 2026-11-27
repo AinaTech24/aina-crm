@@ -507,6 +507,23 @@ export const PLATFORM_CAPS: PlatformCapability[] = [
   "platform.settings.manage",
 ];
 
+/**
+ * Not a role anyone holds: getSession appends it to session.roles (never to the
+ * token) when the firm's "clientBookEverywhere" switch is on, so every screen's
+ * "View all clients" check passes for its RMs and branch heads. See
+ * lib/auth/shared-book.ts.
+ */
+export const SHARED_BOOK_MARKER = "~shared_client_book";
+
+/**
+ * The viewer's real roles, without the shared-book marker. For checks that let
+ * someone CHANGE other people's work (edit / delete another RM's entry, bulk
+ * actions across the firm): the shared book widens what is seen, never that.
+ */
+export function rolesWithoutSharedBook(roles: string[] | undefined): string[] {
+  return (roles ?? []).filter((r) => r !== SHARED_BOOK_MARKER);
+}
+
 /** Returns true if the caller has the capability via any of their roles OR a custom permission grant. */
 export function can(userRoles: string[] | undefined, cap: Capability, userPermissions?: string[] | null): boolean {
   if (!userRoles?.length) return false;
@@ -527,6 +544,11 @@ export function can(userRoles: string[] | undefined, cap: Capability, userPermis
   if (userPermissions && userPermissions.length > 0) {
     return userPermissions.includes(cap);
   }
+
+  // One shared client book on every screen (per-firm flag
+  // "clientBookEverywhere"): getSession adds this marker for a role-default
+  // user who can see clients, and it reads as "View all clients".
+  if (cap === "investor.view.all" && userRoles.includes(SHARED_BOOK_MARKER)) return true;
 
   // Role-matrix grant.
   const allowed = MATRIX[cap] ?? [];

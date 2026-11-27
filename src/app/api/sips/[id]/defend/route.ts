@@ -15,7 +15,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny, can } from "@/lib/auth/rbac";
+import { requireAny, can, rolesWithoutSharedBook } from "@/lib/auth/rbac";
 import { sips, tasks, investors } from "@/db/schema";
 import { formatINR } from "@/lib/utils";
 import { isClientVisible } from "@/lib/transactions/client-scope";
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           : null;
 
         // RMs may only defend SIPs in their own book.
-        const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
+        const seesAll = can(rolesWithoutSharedBook(session.roles), "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
         if (!seesAll && sip.rmId !== session.userId && investor?.rmId !== session.userId) {
           return { forbidden: true as const };
         }

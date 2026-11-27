@@ -54,6 +54,8 @@ import {
   LineChart,
   DoorOpen,
   Truck,
+  FileText,
+  CalendarClock,
 } from "lucide-react";
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -89,6 +91,7 @@ import { ConfirmProvider } from "@/components/ui/ConfirmProvider";
 import { buildTenantThemeCss } from "@/lib/branding/theme";
 import { overdueTaskSql } from "@/lib/metrics/tasks";
 import { formatDate } from "@/lib/format";
+import { INSURANCE_FOLDER_FLAG } from "@/lib/nav/insurance-folder";
 
 export const dynamic = "force-dynamic";
 
@@ -110,6 +113,9 @@ type NavItem = {
   accessKey?: string;
   /** A per-firm feature flag that must be on (Aina Admin → the firm → feature flags). */
   flag?: string;
+  /** The group this item used to sit in: a saved sidebar that still has it
+   *  there moves it to its new group once (CustomizableNav reconcile). */
+  movedFrom?: string;
 };
 
 type NavSection = { title: string; items: NavItem[] };
@@ -286,6 +292,38 @@ const NAV: NavSection[] = [
     ],
   },
 ];
+
+/**
+ * One Insurance folder (per-firm flag "insuranceFolder"; Investment Options,
+ * 2026-11-27): the policy register leaves Planning Tools and every insurance
+ * page gets its own item in an "Insurance" group after Business — the pages
+ * that are otherwise tabs inside the register. Same hrefs, module and access
+ * keys as before (nav-access.ts already lists all five), so firm and person
+ * grants apply unchanged. The insurance team sees the folder too; the old
+ * single item left them out. Labels are the pages' H1s ("Insurance Policies"
+ * is the register's title under this flag).
+ */
+const INSURANCE_ROLES = ["owner", "rm", "branch_head", "back_office", "ops", "compliance", "insurance_team"];
+const INSURANCE_FOLDER: NavSection = {
+  title: "Insurance",
+  items: [
+    { href: "/dashboard/insurance", label: "Insurance Policies", icon: Shield, module: "insurance", roles: INSURANCE_ROLES, movedFrom: "Planning Tools" },
+    { href: "/dashboard/insurance/renewals", label: "Insurance Renewals", icon: CalendarClock, module: "insurance", roles: INSURANCE_ROLES },
+    { href: "/dashboard/insurance-claims", label: "Insurance Claims", icon: FileText, module: "insurance", roles: INSURANCE_ROLES },
+    { href: "/dashboard/insurance/protection-gap", label: "Protection-Gap Radar", icon: ShieldAlert, module: "insurance", roles: INSURANCE_ROLES },
+    { href: "/dashboard/insurance/commission", label: "Insurance Commission", icon: IndianRupee, module: "insurance", roles: INSURANCE_ROLES },
+  ],
+};
+
+/** NAV with the Insurance folder in place of the single Insurance item. */
+function navWithInsuranceFolder(nav: NavSection[]): NavSection[] {
+  const out: NavSection[] = [];
+  for (const section of nav) {
+    out.push({ ...section, items: section.items.filter((i) => i.href !== "/dashboard/insurance") });
+    if (section.title === "Business") out.push(INSURANCE_FOLDER);
+  }
+  return out;
+}
 
 /**
  * Pages that left the sidebar in the ten-group layout but must stay findable.
@@ -601,7 +639,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }
     return true;
   };
-  const visible = NAV.map((section) => ({ ...section, items: section.items.filter(canSee) }))
+  const navSections = license.featureFlags?.[INSURANCE_FOLDER_FLAG] === true ? navWithInsuranceFolder(NAV) : NAV;
+  const visible = navSections.map((section) => ({ ...section, items: section.items.filter(canSee) }))
     .filter((s) => s.items.length > 0);
 
   // Flatten the role/module-filtered nav into items the client CustomizableNav
@@ -616,6 +655,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       defaultGroup: section.title,
       badge: navBadges[item.href] > 0 ? navBadges[item.href] : undefined,
       beta: !!item.beta || moduleControls[item.accessKey ?? item.href] === "beta",
+      ...(item.movedFrom ? { movedFrom: item.movedFrom } : {}),
     }))
   );
   // The palette searches the menu plus the pages that left it.

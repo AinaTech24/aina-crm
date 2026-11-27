@@ -2,9 +2,11 @@
 
 /**
  * The request table on the New task form (flag `taskRequestTable`) — a
- * Zoho-style subform: one row per request, any mix of financial,
- * non-financial and insurance, each row for the client or a member of their
- * family. A cell the row's request does not use shows "—".
+ * Zoho-style subform: one row per request of the task's type (Financial,
+ * Non-financial or Insurance — the type picks the list), each row for the
+ * client or a member of their family. Only the columns the rows' requests use
+ * are drawn; in a row whose request does not use a drawn column the cell
+ * shows "—".
  * The rules (columns per request, task type, checklist, title) live in
  * lib/tasks/request-lines; this file only draws and edits the rows.
  *
@@ -16,8 +18,11 @@ import { Copy, Plus, Trash2 } from "lucide-react";
 import { ThemeSelect } from "@/components/ui/ThemeSelect";
 import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
 import { formatMoney } from "@/lib/format";
-import { CATEGORY_LABEL, FREQUENCIES, REQUEST_TYPE_BY_KEY, requestTypesFor, type RequestType } from "@/lib/tasks/request-types";
+import { FREQUENCIES, REQUEST_TYPE_BY_KEY, requestTypesFor, type RequestType, type TaskCategory } from "@/lib/tasks/request-types";
 import { lineColumnLabel, lineColumns, modeOptions, type LineMode } from "@/lib/tasks/request-lines";
+
+export type RequestCategory = Exclude<TaskCategory, "general">;
+type LineColumn = ReturnType<typeof lineColumns> extends Set<infer C> ? C : never;
 
 /** A row as edited (strings, so a half-typed number survives). */
 export type LineValues = {
@@ -78,23 +83,44 @@ const NA = <span className="block px-1 text-xs text-muted-foreground">—</span>
 export function RequestTable({
   lines,
   members,
-  insurance,
+  category,
   onChange,
 }: {
   lines: LineValues[];
   /** The client and their family; more than one adds the Member column. */
   members: FamilyMember[];
-  /** Offer insurance requests (the firm's insuranceTasks flag). */
-  insurance: boolean;
+  /** The task's type: only its requests are offered. */
+  category: RequestCategory;
   onChange: (lines: LineValues[]) => void;
 }) {
   const family = members.length > 1;
   const defaultMember = members.find((m) => m.isSelf)?.id ?? members[0]?.id ?? "";
   const setLine = (i: number, patch: Partial<LineValues>) => onChange(lines.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const total = lines.reduce((s, l) => s + (lineNum(l.amount) ?? 0), 0);
-  const groups = (["financial", "non_financial", ...(insurance ? (["insurance"] as const) : [])] as const).map(
-    (c) => [CATEGORY_LABEL[c], requestTypesFor(c)] as const,
-  );
+  const options = requestTypesFor(category);
+
+  // Only the columns some row's request uses.
+  const picked = lines.map((l) => REQUEST_TYPE_BY_KEY[l.requestKey]).filter((r): r is RequestType => !!r);
+  const used = new Set<LineColumn>(picked.flatMap((r) => [...lineColumns(r)]));
+  const show = {
+    scheme: used.has("scheme") || used.has("fromScheme"),
+    amount: used.has("amount") || used.has("units"),
+    day: used.has("sipDay") || used.has("frequency"),
+    folio: used.has("folio"),
+    mode: used.has("mode"),
+  };
+  /** One request's own label when every row using the column agrees, else the general one. */
+  const head = (c: LineColumn, general: string) => {
+    const labels = new Set(picked.filter((r) => lineColumns(r).has(c)).map((r) => lineColumnLabel(c, r)));
+    return labels.size === 1 ? [...labels][0] : general;
+  };
+  const amountHead = [used.has("amount") ? `${head("amount", "Amount")} (₹)` : "", used.has("units") ? "units" : ""].filter(Boolean).join(" / ");
+  const dayHead = [used.has("sipDay") ? head("sipDay", "Day") : "", used.has("frequency") ? "frequency" : ""].filter(Boolean).join(" · ");
+  const minWidth =
+    360 + (family ? 160 : 0) + (show.scheme ? 280 : 0) + (show.amount ? 140 : 0) + (show.day ? 180 : 0) + (show.folio ? 140 : 0) + (show.mode ? 140 : 0);
+  /** Columns left of Amount, and right of it, for the total row. */
+  const beforeAmount = 2 + (family ? 1 : 0) + (show.scheme ? 1 : 0);
+  const afterAmount = 2 + (show.day ? 1 : 0) + (show.folio ? 1 : 0) + (show.mode ? 1 : 0);
 
   /** A new request keeps the row's member and drops what the request does not use. */
   const changeRequest = (i: number, key: string) => {
@@ -124,22 +150,29 @@ export function RequestTable({
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-medium">
           Requests <span className="text-destructive">*</span>
-          <span className="ml-1.5 font-normal text-muted-foreground">· one row per transaction or service request{family ? ", for anyone in the family" : ""}</span>
+          <span className="ml-1.5 font-normal text-muted-foreground">
+            · one row per {category === "financial" ? "transaction" : category === "insurance" ? "insurance request" : "service request"}
+            {family ? ", for anyone in the family" : ""}
+          </span>
         </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="table-raw w-full border-collapse text-xs" style={{ minWidth: 1100 }}>
+        <table className="table-raw w-full border-collapse text-xs" style={{ minWidth }}>
           <thead className="bg-secondary/60 text-left text-muted-foreground">
             <tr>
               <th className="w-8 px-2 py-2 font-medium">#</th>
               {family && <th className="w-40 px-2 py-2 font-medium">Member</th>}
               <th className="w-48 px-2 py-2 font-medium">Request</th>
-              <th className="px-2 py-2 font-medium" style={{ minWidth: 260 }}>Scheme / product</th>
-              <th className="w-32 px-2 py-2 font-medium">Amount (₹) / units</th>
-              <th className="w-44 px-2 py-2 font-medium">Day · frequency</th>
-              <th className="w-32 px-2 py-2 font-medium">Folio / policy no.</th>
-              <th className="w-32 px-2 py-2 font-medium">Mode</th>
+              {show.scheme && (
+                <th className="px-2 py-2 font-medium" style={{ minWidth: 260 }}>
+                  {head("scheme", "Scheme / product")}
+                </th>
+              )}
+              {show.amount && <th className="w-32 px-2 py-2 font-medium">{amountHead}</th>}
+              {show.day && <th className="w-44 px-2 py-2 font-medium">{dayHead}</th>}
+              {show.folio && <th className="w-32 px-2 py-2 font-medium">{head("folio", category === "insurance" ? "Policy no." : "Folio")}</th>}
+              {show.mode && <th className="w-32 px-2 py-2 font-medium">{head("mode", "Mode")}</th>}
               <th className="w-44 px-2 py-2 font-medium">Note</th>
               <th className="relative w-16 px-2 py-2"><span className="sr-only">Row actions</span></th>
             </tr>
@@ -166,18 +199,14 @@ export function RequestTable({
                   <td className="px-2 py-1.5">
                     <ThemeSelect value={l.requestKey} onChange={(v) => changeRequest(i, v)} className={CELL} aria-label={`Row ${i + 1} request`}>
                       <option value="">Select…</option>
-                      {groups.map(([label, list]) => (
-                        <optgroup key={label} label={label}>
-                          {list.map((r) => (
-                            <option key={r.key} value={r.key}>
-                              {r.label}
-                            </option>
-                          ))}
-                        </optgroup>
+                      {options.map((r) => (
+                        <option key={r.key} value={r.key}>
+                          {r.label}
+                        </option>
                       ))}
                     </ThemeSelect>
                   </td>
-                  <td className="px-2 py-1.5">
+                  {show.scheme && <td className="px-2 py-1.5">
                     {cols.has("scheme") || cols.has("fromScheme") ? (
                       <div className="space-y-1.5">
                         {cols.has("fromScheme") && <SchemeCell which="fromScheme" req={req!} line={l} row={i} onChange={(p) => setLine(i, p)} />}
@@ -186,8 +215,8 @@ export function RequestTable({
                     ) : (
                       NA
                     )}
-                  </td>
-                  <td className="px-2 py-1.5">
+                  </td>}
+                  {show.amount && <td className="px-2 py-1.5">
                     {cols.has("amount") || cols.has("units") ? (
                       <div className="space-y-1.5">
                         {cols.has("amount") && (
@@ -221,8 +250,8 @@ export function RequestTable({
                     ) : (
                       NA
                     )}
-                  </td>
-                  <td className="px-2 py-1.5">
+                  </td>}
+                  {show.day && <td className="px-2 py-1.5">
                     {cols.has("sipDay") || cols.has("frequency") ? (
                       <div className="flex gap-1.5">
                         {cols.has("sipDay") && (
@@ -235,8 +264,8 @@ export function RequestTable({
                     ) : (
                       NA
                     )}
-                  </td>
-                  <td className="px-2 py-1.5">
+                  </td>}
+                  {show.folio && <td className="px-2 py-1.5">
                     {cols.has("folio") ? (
                       <input
                         value={l.folio}
@@ -249,8 +278,8 @@ export function RequestTable({
                     ) : (
                       NA
                     )}
-                  </td>
-                  <td className="px-2 py-1.5">
+                  </td>}
+                  {show.mode && <td className="px-2 py-1.5">
                     {cols.has("mode") ? (
                       <ThemeSelect value={l.mode} onChange={(v) => setLine(i, { mode: v as LineValues["mode"] })} className={CELL} aria-label={`Row ${i + 1} ${lineColumnLabel("mode", req)}`}>
                         <option value="">{req?.key === "kyc_renewal" ? "Which KYC?" : "Not set"}</option>
@@ -263,7 +292,7 @@ export function RequestTable({
                     ) : (
                       NA
                     )}
-                  </td>
+                  </td>}
                   <td className="px-2 py-1.5">
                     <input
                       value={l.note}
@@ -302,14 +331,14 @@ export function RequestTable({
               );
             })}
           </tbody>
-          {total > 0 && (
+          {total > 0 && show.amount && (
             <tfoot>
               <tr className="border-t border-border bg-secondary/40 font-medium">
-                <td className="px-2 py-2" colSpan={family ? 4 : 3}>
+                <td className="px-2 py-2" colSpan={beforeAmount}>
                   Total
                 </td>
                 <td className="px-2 py-2 text-right tabular-nums">{formatMoney(total)}</td>
-                <td colSpan={5} />
+                <td colSpan={afterAmount} />
               </tr>
             </tfoot>
           )}

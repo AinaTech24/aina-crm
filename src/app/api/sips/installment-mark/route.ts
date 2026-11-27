@@ -11,14 +11,14 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
+import { can, rolesWithoutSharedBook } from "@/lib/auth/rbac";
 import { visibleClientSql } from "@/lib/transactions/client-scope";
 
 export const dynamic = "force-dynamic";
 
 const MANAGE_ROLES = ["owner", "branch_head", "rm", "back_office", "ops"];
 const seesAllEntries = (s: { roles: string[]; permissions?: string[] | null }) =>
-  can(s.roles, "investor.view.all", s.permissions) || can(s.roles, "reports.business", s.permissions);
+  can(rolesWithoutSharedBook(s.roles), "investor.view.all", s.permissions) || can(s.roles, "reports.business", s.permissions);
 
 const Body = z.object({
   sipId: z.string().uuid(),

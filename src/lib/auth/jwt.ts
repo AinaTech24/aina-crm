@@ -83,6 +83,9 @@ function secretKey(): Uint8Array {
 export async function signSession(user: SessionUser): Promise<string> {
   // Never persist a stale iat from a prior token into a freshly-signed one.
   const { iat: _drop, ...claims } = user;
+  // The shared-book marker is decided per request from the firm's switch
+  // (lib/auth/shared-book.ts) and must never be baked into a token.
+  if (Array.isArray(claims.roles)) claims.roles = claims.roles.filter((r) => r !== "~shared_client_book");
   return await new SignJWT({ ...claims })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()

@@ -14,7 +14,7 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
+import { can, rolesWithoutSharedBook } from "@/lib/auth/rbac";
 import { recordAudit } from "@/lib/audit";
 import { canWorkOpportunities, loadViewableOpportunity } from "@/lib/opportunities/access";
 
@@ -23,7 +23,7 @@ export type DeleteResult = { deleted: Array<{ id: string; product: string; statu
 /** Firm-wide viewers (and owners) may delete any they can see; everyone else only what they own or opened. */
 function mayDelete(session: SessionUser, opp: { ownerId: string | null; createdBy: string | null }): boolean {
   if (!canWorkOpportunities(session)) return false;
-  if (can(session.roles, "investor.view.all", session.permissions) || session.roles.includes("owner")) return true;
+  if (can(rolesWithoutSharedBook(session.roles), "investor.view.all", session.permissions) || session.roles.includes("owner")) return true;
   return opp.ownerId === session.userId || opp.createdBy === session.userId;
 }
 

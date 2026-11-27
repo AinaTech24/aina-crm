@@ -83,6 +83,12 @@ export type NavItemData = {
   badge?: number;
   /** Module is in BETA (platform Module Controls) — shows a "Beta" tag. */
   beta?: boolean;
+  /** The default group this item used to sit in. A saved layout that still
+   *  holds it in a group of that title moves it to `defaultGroup` (a per-firm
+   *  regroup, e.g. the Insurance folder, without a VERSION bump that would
+   *  reset every firm's sidebar). Moved once: after that the saved layout has
+   *  it in its new group and the user may move it freely. */
+  movedFrom?: string;
 };
 
 type Group = { id: string; title: string; items: string[] /* hrefs */ };
@@ -114,6 +120,7 @@ const GROUP_ICON: Record<string, LucideIcon> = {
   team: UsersRound,
   practice: Building,
   "data-admin": Database,
+  insurance: Shield,
 };
 
 /** A named dashboard and its pages (/dashboard/<id>, /manage, /new) are the Dashboard item's. */
@@ -161,6 +168,8 @@ function reconcile(saved: SavedLayout | null, items: NavItemData[]): Group[] {
     id: g.id,
     title: RENAMED_GROUPS[g.title ?? ""] ?? g.title ?? "",
     items: (g.items || []).filter((h) => {
+      const moved = available.get(h)?.movedFrom;
+      if (moved && moved === (RENAMED_GROUPS[g.title ?? ""] ?? g.title)) return false; // re-homed below
       if (available.has(h) && !seen.has(h)) {
         seen.add(h);
         return true;

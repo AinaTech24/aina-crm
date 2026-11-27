@@ -21,7 +21,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap, can } from "@/lib/auth/rbac";
+import { require as requireCap, can, rolesWithoutSharedBook } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { dispatch } from "@/lib/comms/pipeline";
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
     }
-    const seesAll = can(session.roles, "investor.view.all", session.permissions);
+    const seesAll = can(rolesWithoutSharedBook(session.roles), "investor.view.all", session.permissions);
     const meta = clientMetaFromHeaders(req.headers);
     const ids = parsed.data.investorIds ?? null;
 
