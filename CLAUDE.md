@@ -2139,6 +2139,32 @@ Table `visitor_entries` (migration 0293). Code `lib/visitors/` (`entry.ts` pure 
 
 ---
 
+## Couriers — one firm's module (2026-11-27, Akshar Invest)
+
+Work → **Couriers** (`/dashboard/couriers`): incoming and outgoing couriers. Table `courier_entries` (migration
+0294). Code `lib/couriers/` (`entry.ts` pure fields, picklists and rules · `access.ts` · `page.ts` · `service.ts`),
+API `/api/couriers` and `/api/couriers/[id]`, screens in `components/couriers/`. Built like the Visitor Register,
+and the same rules apply to **the firm switch** (`courierRegister`, group Office; on for ARN-110756 by migration 0294;
+off = no menu item, every API 404, every page calls `requireCourierPage()` itself), to **access** (no nav-access
+entry and no capability of its own: the team reads, `task.edit.*` writes, `data.export` exports) and to delete (soft).
+
+- **Fields**: Courier Type (Inward / Outward), Company, Tracking Number, Courier Date, Status, Category (Other asks for
+  a typed name), Description, Remarks; Inward adds the sender's name, company, mobile, email, address and Received Date;
+  Outward the recipient's, plus Dispatch Date, Courier Charges, Payment Mode and Delivered Date. Only type, date and
+  status are required.
+- **Status depends on the type** — Inward: In Transit, Received, Handed Over, Returned; Outward: Pending, Dispatched,
+  In Transit, Delivered, Returned, Lost. Add a value in `entry.ts`; the form, filters, import and export follow.
+- **A courier never holds the other type's details**: `CourierBody` drops them (changing the type on edit removes what
+  was entered, and the form says so). An edit is merged into the courier and checked as a whole (the rules run across
+  fields). Delivered Date may not be before Dispatch Date.
+- **List**: search and the Filters button — Courier Type, Status, Category, Courier Date from–to, Courier Company.
+- **Import** (`/dashboard/couriers/import`): Excel and CSV samples; a row that fills the other type's columns is REFUSED,
+  not trimmed; rows with the sample tracking numbers (SAMPLE-INWARD-1 / SAMPLE-OUTWARD-2) are refused. Importing a file
+  twice adds the couriers twice.
+- **Export** (`lib/export/modules/couriers.ts`): the list's search and filters, the import's headings and words.
+
+---
+
 ## Webhook handlers
 
 | Provider | Path | Verifies |

@@ -53,6 +53,7 @@ import {
   Crosshair,
   LineChart,
   DoorOpen,
+  Truck,
 } from "lucide-react";
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -155,6 +156,8 @@ const NAV: NavSection[] = [
       // One firm's module (Akshar Invest, 2026-11-26): the per-firm flag is its
       // only gate. Not in the nav-access catalog (lib/visitors/access.ts).
       { href: "/dashboard/visitors", label: "Visitor Register", icon: DoorOpen, flag: "visitorRegister" },
+      // Likewise Couriers (Akshar Invest, 2026-11-27; lib/couriers/access.ts).
+      { href: "/dashboard/couriers", label: "Couriers", icon: Truck, flag: "courierRegister" },
       // No "Operations" item: the Operations Dashboard lives in the Dashboard
       // dropdown like every role dashboard (removed from WORK 2026-10-01).
       // /dashboard/operations still redirects there for old links.
