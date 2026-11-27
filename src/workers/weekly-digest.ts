@@ -19,6 +19,7 @@ import { createNotification } from "@/lib/notifications/create";
 import { resolveEmailSender, type EmailSender } from "@/lib/comms/sender";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { captureError } from "@/lib/observability/capture";
+import { realEmail } from "@/lib/auth/username-login";
 
 const MAX_USERS_PER_TENANT = 25;
 
@@ -240,6 +241,7 @@ async function digestTenant(tenantId: string, istDate: string): Promise<{ sent: 
   );
 
   for (const e of emails) {
+    if (!realEmail(e.recipient)) continue; // a username login reads it in the app
     try {
       await emailAdapter.send({
         tenantId: e.tenantId,

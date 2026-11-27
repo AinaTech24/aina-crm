@@ -7,6 +7,8 @@
  * tested without a database.
  */
 
+import { realEmail } from "@/lib/auth/username-login";
+
 export type LeadOwner = {
   name: string | null;
   email: string | null;
@@ -26,7 +28,7 @@ export function leadSubject(
     first_name: name.split(/\s+/)[0] ?? "",
     owner_name: owner?.name ?? "",
     rm_name: owner?.name ?? "",
-    rm_email: owner?.email ?? "",
+    rm_email: realEmail(owner?.email) ?? "",
     rm_phone: owner?.phone ?? "",
     rm_designation: designation,
     rm_signature_url: owner?.signatureUrl ? absolute(owner.signatureUrl) : "",

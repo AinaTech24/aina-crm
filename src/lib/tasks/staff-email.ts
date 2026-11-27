@@ -1,6 +1,7 @@
 import { withTenant } from "@/db/client";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
+import { realEmail } from "@/lib/auth/username-login";
 
 export type StaffEmailJob = { email: string | null; subject: string; text: string; key: string };
 
@@ -11,7 +12,7 @@ export type StaffEmailJob = { email: string | null; subject: string; text: strin
  * channel; email is an enhancement.
  */
 export async function sendStaffEmails(tenantId: string, jobs: StaffEmailJob[]): Promise<void> {
-  const valid = jobs.filter((j) => j.email);
+  const valid = jobs.filter((j) => realEmail(j.email)); // a username login has no mailbox
   if (!valid.length) return;
   let sender: any = null;
   try {

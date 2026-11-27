@@ -14,12 +14,14 @@ import { withSystem } from "@/db/client";
 import { sign2faChallenge } from "@/lib/auth/jwt";
 import { attachSessionCookie } from "@/lib/auth/issue-session";
 import { reserveLoginAttempt } from "@/lib/auth/login-limit";
+import { signInKey } from "@/lib/auth/username-login";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const email = String(body.email ?? "").trim().toLowerCase();
+  // An email address, or a username for a login created without one.
+  const email = signInKey(String(body.email ?? ""));
   const password = String(body.password ?? "");
 
   if (!email || !password) {

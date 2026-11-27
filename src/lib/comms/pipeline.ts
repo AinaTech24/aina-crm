@@ -49,6 +49,7 @@ import { leadSubject } from "@/lib/comms/lead-subject";
 import { privacyContact, privacyNoticePath } from "@/lib/privacy/notice";
 import { MINOR_MARKETING_REASON, isMinorRecord } from "@/lib/privacy/minors";
 import { recordNoticeSentOnce } from "@/lib/privacy/consent";
+import { realEmail } from "@/lib/auth/username-login";
 
 
 export type DispatchChannel = "whatsapp" | "email" | "sms";
@@ -976,7 +977,7 @@ async function loadInvestor(tx: Tx, id: string) {
       .from(users)
       .where(eq(users.id, (i as any).rmId));
     enriched.rm_name = rm?.name ?? "";
-    enriched.rm_email = rm?.email ?? "";
+    enriched.rm_email = realEmail(rm?.email) ?? "";
     enriched.rm_phone = rm?.phone ?? "";
     enriched.rm_designation = CLIENT_FACING_DESIGNATION;
     // Relative keys must be absolute for Gmail/Outlook, same as the firm logo.

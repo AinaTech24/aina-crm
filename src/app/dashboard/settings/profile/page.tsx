@@ -9,6 +9,7 @@ import { primaryRoleLabel } from "@/lib/auth/rbac";
 import { getEntitlement, currentFyStart, LEAVE_TYPE_LABELS } from "@/lib/leave/policy";
 import { formatRelative } from "@/lib/utils";
 import ProfileForm from "./ProfileForm";
+import { loginLabel } from "@/lib/auth/username-login";
 
 export const dynamic = "force-dynamic";
 
@@ -103,7 +104,7 @@ export default async function ProfilePage() {
       {/* Editable details + password */}
       <ProfileForm
         initialName={me?.name ?? ""}
-        email={me?.email ?? ""}
+        email={loginLabel(me?.email)}
         emailVerified={!!me?.emailVerifiedAt}
         initialAvatarUrl={me?.avatarUrl ?? ""}
         initialSignatureUrl={me?.signatureUrl ?? ""}

@@ -21,6 +21,7 @@ import { formatDate, formatINR } from "@/lib/utils";
 import { ProposalPrintHelper } from "@/components/proposals/ProposalPrintHelper";
 import { fvLumpAnnual } from "@/lib/proposals/projections";
 import { fvSip } from "@/lib/goal-planning/calc";
+import { realEmail } from "@/lib/auth/username-login";
 
 export const dynamic = "force-dynamic";
 
@@ -189,7 +190,7 @@ export default async function ProposalPrintPage({
               {preparedBy?.name ?? "—"}
             </div>
             <div className="pp-muted" style={{ fontSize: 12, marginTop: 2 }}>
-              {(preparedBy as any)?.email ?? "—"}{(preparedBy as any)?.euin ? ` · EUIN ${(preparedBy as any).euin}` : ""}
+              {realEmail((preparedBy as any)?.email) ?? "—"}{(preparedBy as any)?.euin ? ` · EUIN ${(preparedBy as any).euin}` : ""}
             </div>
           </div>
         </div>

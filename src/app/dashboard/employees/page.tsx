@@ -11,6 +11,7 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { EmployeeRowActions } from "@/components/employees/EmployeeRowActions";
 import { TeamPresence } from "@/components/employees/TeamPresence";
 import { ExportButton } from "@/components/export/ExportButton";
+import { isUsernameLogin, loginLabel } from "@/lib/auth/username-login";
 
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
@@ -235,7 +236,7 @@ export default async function EmployeesPage({
                         <Link href={`/dashboard/employees/${e.id}`} className="font-medium hover:underline">
                           {e.name}
                         </Link>
-                        <div className="text-2xs text-muted-foreground">{e.email}</div>
+                        <div className="text-2xs text-muted-foreground">{isUsernameLogin(e.email) ? `Username: ${loginLabel(e.email)}` : e.email}</div>
                         {e.phone && <div className="text-2xs text-muted-foreground font-mono">{e.phone}</div>}
                       </td>
                       {hasDept && (

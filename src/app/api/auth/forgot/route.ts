@@ -19,6 +19,7 @@ import { withSystem } from "@/db/client";
 import { enforce } from "@/lib/rate-limit";
 import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
 import { requestBaseUrl } from "@/lib/url/request-base";
+import { isUsernameLogin } from "@/lib/auth/username-login";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest) {
   const parse = Body.safeParse(await req.json().catch(() => ({})));
   if (!parse.success) return NextResponse.json({ ok: true }); // shape-stable
   const email = parse.data.email.toLowerCase();
+  if (isUsernameLogin(email)) return NextResponse.json({ ok: true }); // no mailbox to send to
   // Point the reset link at the host the request came in on (a firm's own
   // white-label domain), falling back to APP_URL. Resolved in request context.
   const baseUrl = await requestBaseUrl();

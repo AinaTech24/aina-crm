@@ -19,6 +19,7 @@ import { withTenant } from "@/db/client";
 import { tenants, users } from "@/db/schema";
 import { MERGE_FIELDS } from "@/lib/email-designer/merge-fields";
 import { firmIntroTokens, readFirmEmailIntro, type FirmEmailIntro } from "@/lib/firm/email-intro";
+import { realEmail } from "@/lib/auth/username-login";
 
 /**
  * A client-facing sign-off states the firm's REGISTRATION, never the sender's
@@ -180,7 +181,7 @@ export async function loadPreviewContext(tenantId: string, userId?: string | nul
   if (me) {
     const inv = (variables.investor ??= {}) as Record<string, unknown>;
     if (me.name) inv.rm_name = me.name;
-    if (me.email) inv.rm_email = me.email;
+    if (realEmail(me.email)) inv.rm_email = me.email;
     if (me.phone) inv.rm_phone = me.phone;
     inv.rm_designation = CLIENT_FACING_DESIGNATION;
     inv.rm_signature_url = absolute(me.signatureUrl ?? "");

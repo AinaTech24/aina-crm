@@ -23,11 +23,12 @@ import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
 import { requestBaseUrl } from "@/lib/url/request-base";
+import { isUsernameLogin } from "@/lib/auth/username-login";
 
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
-  email: z.string().email(),
+  email: z.string().email().refine((e) => !isUsernameLogin(e), "That is not an email address."),
   name: z.string().min(1).optional(),
   roles: z.array(z.string()).min(1),
   branchId: z.string().uuid().optional(),

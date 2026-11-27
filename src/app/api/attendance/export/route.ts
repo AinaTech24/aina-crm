@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
       const r = await tx.execute(sql`
         SELECT
           u.name AS employee_name,
-          u.email AS employee_email,
+          CASE WHEN u.email LIKE '%@login.invalid' THEN split_part(u.email, '@', 1) ELSE u.email END AS employee_email,
           a.attendance_date,
           a.status,
           a.clock_in_at,

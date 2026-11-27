@@ -29,6 +29,7 @@ import { resolveEmailSender, type EmailSender } from "@/lib/comms/sender";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { captureError } from "@/lib/observability/capture";
 import { renderBriefingEmail, type BriefingFirm } from "@/lib/briefing/email";
+import { realEmail } from "@/lib/auth/username-login";
 
 const FIRM_WIDE_ROLES = new Set(["owner", "branch_head"]);
 const MAX_USERS_PER_TENANT = 50;
@@ -166,6 +167,7 @@ async function briefTenant(tenantId: string, istDate: string): Promise<{ sent: n
   // Best-effort email fan-out — a failed send never fails the briefing (the
   // in-app notification is already committed and is the dedupe anchor).
   for (const e of emails) {
+    if (!realEmail(e.recipient)) continue; // a username login reads it in the app
     try {
       await emailAdapter.send({
         tenantId: e.tenantId,

@@ -3178,6 +3178,12 @@ These have clear hooks in the schema and architecture; pick them up in roadmap o
   (a viewer without it sees it read-only with a note, never a "forbidden" on Save).
   Taking Owner / Admin off YOUR OWN profile asks first: you cannot give it back to
   yourself afterwards, another owner has to.
+- **A team login without an email** (2026-11-27, `lib/auth/username-login.ts`): Add team member → Username & password
+  (`POST /api/employees/create-login`, `settings.users`, seat limit, only an owner makes an owner). The login is active at once.
+  The username is stored in `users.email` as `<username>@login.invalid` (a reserved domain), unique across the platform; both
+  sign-in routes map a typed value with no "@" to it. NEVER mail or print that value: use `realEmail()` for anything sent or
+  shown to a client, `loginLabel()` on screens (the mail adapter and `sendSystemEmail` refuse it as a backstop). No self-service
+  password reset — an admin uses Set password.
 - **AINA support sets a team member's password** (2026-11-21, Aina Admin → MFD tenants → the firm → Team →
   **Set password**; `POST /api/super-admin/tenants/[id]/set-password`, `platform.tenant.edit`): for when the emailed
   reset link cannot reach the person. It REPLACES the current password (one set here earlier included), signs them

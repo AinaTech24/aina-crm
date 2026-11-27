@@ -13,6 +13,7 @@ import { v4 as uuid } from "uuid";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { sendSystemEmail, actionEmailHtml, type SystemEmailResult } from "@/lib/comms/system-email";
+import { isUsernameLogin } from "@/lib/auth/username-login";
 
 export function maskEmail(email: string): string {
   const [user, domain] = email.split("@");
@@ -23,6 +24,7 @@ export function maskEmail(email: string): string {
 /** Why a user cannot be sent a reset link, or null when they can. */
 export function resetBlocker(u: { email: string | null; status: string }, inviteWhere: string): string | null {
   if (!u.email) return "This team member has no email address to send the link to.";
+  if (isUsernameLogin(u.email)) return "This team member signs in with a username and has no email — use Set password instead.";
   if (u.status === "invited") return `This team member has not accepted their invite yet — resend the invite ${inviteWhere} instead.`;
   if (u.status !== "active") return `This team member's login is ${u.status}, so a reset link would not let them in.`;
   return null;
