@@ -124,12 +124,14 @@ export function BranchSipPerformance({
 const PENDING = "pending,client_contacted,bank_issue,mandate_issue";
 
 export function BranchSipExceptions({
-  ledger, rmHref, periodLabel, slaDays, book, period,
+  ledger, rmHref, periodLabel, slaDays, showSla = true, book, period,
 }: {
   ledger: RmLedgerRow[];
   rmHref: (id: string) => string;
   periodLabel: string;
   slaDays: number;
+  /** False hides "Pending beyond SLA" and the Past SLA column (We Care, 2026-11-27). */
+  showSla?: boolean;
   /** The view — narrows the rejection register to the same clients. */
   book: { branchId: string; rmId: string | null };
   /** The selected period, applied to the register as rej_from / rej_to. */
@@ -155,9 +157,9 @@ export function BranchSipExceptions({
       subtitle={`Every bounced SIP debit in ${periodLabel}, and whether it has been won back.`}
       icon={<AlertTriangle className="size-4" />}
       action={<SectionLink href={list()}>Open SIP rejections</SectionLink>}
-      note={`Rejections are read from the transaction ledger with the rejection register's recovery status joined on. "Past SLA" means still pending more than ${slaDays} day${slaDays === 1 ? "" : "s"} after the debit bounced — the SLA is set in Settings → Dashboard thresholds.`}
+      note={`Rejections are read from the transaction ledger with the rejection register's recovery status joined on.${showSla ? ` "Past SLA" means still pending more than ${slaDays} day${slaDays === 1 ? "" : "s"} after the debit bounced — the SLA is set in Settings → Dashboard thresholds.` : ""}`}
     >
-      <StatGrid cols={5}>
+      <StatGrid cols={showSla ? 5 : 4}>
         <Stat label="SIP rejections" value={n("sipRejections")} tone={n("sipRejections") > 0 ? "warn" : "neutral"}
               hint={`${formatMoney(n("sipRejectionValue"))} monthly value`} href={list()} />
         <Stat label="Repurchase done" value={n("sipRepurchased")} tone={n("sipRepurchased") > 0 ? "good" : "neutral"}
@@ -166,8 +168,10 @@ export function BranchSipExceptions({
               hint={formatMoney(n("sipPendingValue"))} href={list(`recovery=${PENDING}`)} />
         <Stat label="Without remarks" value={n("sipNoRemarks")} tone={n("sipNoRemarks") > 0 ? "warn" : "neutral"}
               hint="no context recorded" href={list()} />
-        <Stat label="Pending beyond SLA" value={n("sipPastSla")} tone={n("sipPastSla") > 0 ? "bad" : "neutral"}
-              hint={`over ${slaDays} day${slaDays === 1 ? "" : "s"}`} href={list(`recovery=${PENDING}`)} />
+        {showSla && (
+          <Stat label="Pending beyond SLA" value={n("sipPastSla")} tone={n("sipPastSla") > 0 ? "bad" : "neutral"}
+                hint={`over ${slaDays} day${slaDays === 1 ? "" : "s"}`} href={list(`recovery=${PENDING}`)} />
+        )}
       </StatGrid>
       <div className="mt-4">
         <RmTable
@@ -183,8 +187,10 @@ export function BranchSipExceptions({
               tone: (v) => (v ? "bad" : "neutral") },
             { key: "pv", label: "Pending value", get: (r) => r.sipPendingValue, format: "currency" },
             { key: "nr", label: "Without remarks", get: (r) => r.sipNoRemarks, tone: (v) => (v ? "warn" : "neutral") },
-            { key: "sla", label: "Past SLA", get: (r) => r.sipPastSla, tone: (v) => (v ? "bad" : "neutral"),
-              href: (r) => (rmOf(r) ? list(`recovery=${PENDING}`, rmOf(r)) : null) },
+            ...(showSla
+              ? [{ key: "sla", label: "Past SLA", get: (r: RmLedgerRow) => r.sipPastSla, tone: (v: number | null) => (v ? ("bad" as const) : ("neutral" as const)),
+                  href: (r: RmLedgerRow) => (rmOf(r) ? list(`recovery=${PENDING}`, rmOf(r)) : null) }]
+              : []),
           ]}
         />
       </div>

@@ -79,6 +79,7 @@ import {
   MyClientBook, MyContactGap, MyDataQuality, MyKeyClients, MyKpiStrip, MyMonthlySummary, MyRiskDesk,
 } from "./my";
 import { voiceFor, type Voice } from "./my/voice";
+import { zohoImportEnabled } from "@/lib/imports/zoho/access";
 import {
   BranchAcquisition, BranchFunnel, BranchInsurance, BranchInvestmentFlow,
   BranchMeetings, BranchOps, BranchProposals, BranchQueries,
@@ -298,7 +299,7 @@ export async function BranchCommandCentre({
 
         {/* Today · SIP exception centre */}
         <Suspense fallback={<Loading order="sipx" />}>
-          <SipExceptionBand ledgerP={ledgerP} t={t} rmHref={rmHref} periodLabel={periodLabel}
+          <SipExceptionBand ledgerP={ledgerP} t={t} rmHref={rmHref} periodLabel={periodLabel} tenantId={session.tenantId}
             book={{ branchId: branch.id, rmId: oneRm?.id ?? null }} period={{ from: w.from, to: w.to }} />
         </Suspense>
 
@@ -516,16 +517,17 @@ async function MeetingsBand({
 }
 
 async function SipExceptionBand({
-  ledgerP, t, rmHref, periodLabel, book, period,
+  ledgerP, t, rmHref, periodLabel, book, period, tenantId,
 }: {
   ledgerP: Promise<RmLedgerRow[]>; t: DashboardThresholds; rmHref: (id: string) => string; periodLabel: string;
-  book: { branchId: string; rmId: string | null }; period: { from: string; to: string };
+  book: { branchId: string; rmId: string | null }; period: { from: string; to: string }; tenantId: string;
 }) {
-  const ledger = await ledgerP;
+  // We Care (2026-11-27): "Pending beyond SLA" is not wanted for now — their flag hides it.
+  const [ledger, noSla] = await Promise.all([ledgerP, zohoImportEnabled(tenantId).catch(() => false)]);
   return (
     <Cell order="sipx">
       <BranchSipExceptions ledger={ledger} rmHref={rmHref} periodLabel={periodLabel}
-        slaDays={t.sipRejectionSlaDays} book={book} period={period} />
+        slaDays={t.sipRejectionSlaDays} showSla={!noSla} book={book} period={period} />
     </Cell>
   );
 }
