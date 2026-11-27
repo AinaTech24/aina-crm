@@ -14,6 +14,7 @@ import { taskChecklist, type Task } from "@/db/schema";
 import { Loader2, ListChecks, Trash2, Clock3, ShieldCheck, CalendarClock, Gauge, Check, X, Pencil, ChevronDown } from "lucide-react";
 import { DateField } from "@/components/ui/DateField";
 import { isPastDue } from "@/lib/tasks/due";
+import { CollaboratorCount } from "@/components/tasks/CollaboratorNames";
 
 // Priority → left-accent stripe colour (row hierarchy at a glance).
 const PRIORITY_ACCENT: Record<string, string> = {
@@ -85,6 +86,8 @@ const PRIORITY_LABEL: Record<string, string> = { urgent: "Urgent", high: "High",
 interface TaskRow {
   task: Task;
   assignee: string | null;
+  /** Names of the teammates working on it with the assignee. */
+  collaborators?: string[];
   /** Creator's name ("assigned by"). */
   createdBy?: string | null;
   /** Resolved from related_investor_id or the older subject link. */
@@ -624,13 +627,14 @@ export function TaskList({ initialRows, currentUserId, initialOpenTaskId, total 
                 </div>
 
                 {/* Assigned to — avatar + name. */}
-                <div className="w-32 shrink-0 min-w-0 flex items-center gap-2 text-xs" title={`Assigned to ${assigneeLabel}`}>
+                <div className="w-32 shrink-0 min-w-0 flex items-center gap-2 text-xs" title={`Assigned to ${assigneeLabel}${row.collaborators?.length ? ` · with ${row.collaborators.join(", ")}` : ""}`}>
                   {row.assignee ? (
                     <Avatar name={row.assignee} size={24} className="shrink-0" />
                   ) : (
                     <span className="size-6 shrink-0 rounded-full border border-dashed border-border" aria-hidden />
                   )}
                   <span className={`truncate ${row.assignee ? "font-medium text-foreground" : "text-muted-foreground"}`}>{assigneeLabel}</span>
+                  <CollaboratorCount names={row.collaborators} />
                 </div>
 
                 {/* Source — taxonomy, so no colour. */}

@@ -649,6 +649,23 @@ so the opportunity journey, bulk actions and workflows all get it. The task page
 shows Entry Date, and Closed Date once completed. Do not set `completed_at` from
 application code.
 
+## Tasks — collaborators (2026-11-27)
+
+New task and the task page have **Collaborators** beside "Assigned to": teammates who work on the task with the assignee
+(`tasks.collaborator_ids`, migration 0301; at most 10; the assignee is never also listed). Rules in
+`lib/tasks/collaborators.ts` (pure), `collaborators-sql.ts` and `collaborators-server.ts`.
+
+- **"My task" includes a collaborator**: `worksOnSql()` / `worksOnTask()`. Never test `assignee_id` alone to decide who
+  may see or work on a task. That covers the Tasks module (and "Assigned to me"), the task's child routes, the sidebar
+  badge, calendar, search, export and the mobile app's scope; reminders, overdue alerts, comments and status changes
+  reach them.
+- **Not theirs to decide**: deleting the task and changing who is on it stay with the assignee, the creator and
+  `task.edit.all`.
+- **Counted once**: dashboards, reports, scorecards, escalation, QA sampling and the list's Assignee filter still follow
+  the assignee alone. The mobile app has no collaborator picker yet.
+
+---
+
 ## Tasks — the Timeline (2026-11-24)
 
 The task screen's **View Timeline** button (`TaskTimeline.tsx`) opens a popup: when
@@ -680,6 +697,9 @@ when (India time), by whom — grouped by day, with a filter by field.
   `attachment_removed` rows (`changes.attachment` = { from, to }, one side `{ name, size, type }`),
   credited to the uploader, or to `app.user_id` for a removal (the attachment routes call `actAs`).
   A file removed before 0287 is not added.
+- **Editing a comment** (2026-11-27, `PATCH /api/tasks/[id]/comments/[commentId]`): its AUTHOR only (no owner override),
+  on a task they can still open (`ownsTaskThread` / `taskInScope`). The thread shows "edited" when `updated_at` is later than
+  `created_at`; only newly @mentioned teammates are notified. Web only: the mobile app has no edit yet.
 - `GET /api/tasks/[id]/history` follows the same access as opening the task. Tasks that
   predate 0284 show their creation from the task row and a note that earlier edits are not
   itemised. `/api/audit?entityType=task` does NOT check task access — do not build on it.

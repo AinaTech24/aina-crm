@@ -22,6 +22,7 @@ import { mobileFirmAccess, mobileMeetingScope, mobileMetricScope, mobileTaskScop
 import { requireSession } from "@/lib/auth/session";
 import { getActiveClients, getAUM, getOpenLeads, getReviewsDue, getSipBook } from "@/lib/metrics";
 import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
+import { worksOnSql } from "@/lib/tasks/collaborators-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function GET() {
     const roles = session.roles ?? [];
     const seesAll = session.mobile ? mobileFirmAccess(session) : roles.some((r) => FIRM_WIDE.includes(r));
     const scope = seesAll ? { tenantId: session.tenantId } : mobileMetricScope(session);
-    const taskScope = session.mobile ? mobileTaskScope(session) : sql`(assignee_id = ${session.userId} OR ${seesAll})`;
+    const taskScope = session.mobile ? mobileTaskScope(session) : sql`(${worksOnSql(session.userId, "")} OR ${seesAll})`;
     const meetingScope = seesAll ? sql`TRUE` : mobileMeetingScope(session, "m");
 
     const data = await withTenant(session.tenantId, async (tx) => {

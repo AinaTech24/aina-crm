@@ -20,6 +20,7 @@ import { openInfoRequest } from "@/lib/tasks/info-request";
 import { escalatedTo } from "@/lib/tasks/escalation-ladder";
 import { taskInScope } from "@/lib/tasks/scope";
 import { loadTaskTimeline } from "@/lib/tasks/history";
+import { worksOnTask } from "@/lib/tasks/collaborators";
 
 export const dynamic = "force-dynamic";
 
@@ -32,13 +33,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     const timeline = await withTenant(session.tenantId, async (tx) => {
       const [task] = await tx
-        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, meta: tasks.meta })
+        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, collaboratorIds: tasks.collaboratorIds, meta: tasks.meta })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);
       if (!task) return null;
       const mine =
-        task.assigneeId === session.userId ||
+        worksOnTask(task, session.userId) ||
         task.createdById === session.userId ||
         taskChecklist(task.meta).some((c) => c.assigneeId === session.userId) ||
         openInfoRequest(task.meta)?.askedToId === session.userId ||

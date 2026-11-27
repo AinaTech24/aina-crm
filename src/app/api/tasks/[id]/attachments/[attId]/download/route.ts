@@ -13,6 +13,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { tasks, taskAttachments } from "@/db/schema";
 import { getObjectBytes } from "@/lib/storage/s3";
 import { taskInScope } from "@/lib/tasks/scope";
+import { worksOnTask } from "@/lib/tasks/collaborators";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,12 +27,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     const att = await withTenant(session.tenantId, async (tx) => {
       const [t] = await tx
-        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById })
+        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, collaboratorIds: tasks.collaboratorIds })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);
       if (!t) return null;
-      if (!canViewAll && t.assigneeId !== session.userId && t.createdById !== session.userId) return null;
+      if (!canViewAll && !worksOnTask(t, session.userId) && t.createdById !== session.userId) return null;
       if (!(await taskInScope(tx, session, id))) return null;
       const [a] = await tx
         .select()

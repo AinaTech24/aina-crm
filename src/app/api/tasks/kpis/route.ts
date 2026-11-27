@@ -14,6 +14,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { tasks, users } from "@/db/schema";
 import { taskKpiSelect, normalizeTaskKpis } from "@/lib/tasks/kpis";
 import { taskScopeSql } from "@/lib/tasks/scope";
+import { worksOnSql } from "@/lib/tasks/collaborators-sql";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -40,10 +41,10 @@ export async function GET(req: NextRequest) {
       session.tenantId,
       async (tx) => {
         const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
-        if (!canViewAll) conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+        if (!canViewAll) conds.push(or(worksOnSql(session.userId), eq(tasks.createdById, session.userId))!);
         // view.all reaches other people's tasks only when their client / lead is in scope.
         else conds.push(await taskScopeSql(tx, session, "tasks"));
-        if (view === "to_me") conds.push(eq(tasks.assigneeId, session.userId));
+        if (view === "to_me") conds.push(worksOnSql(session.userId));
         else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
         if (q) conds.push(or(ilike(tasks.title, `%${q}%`), ilike(tasks.description, `%${q}%`), ilike(users.name, `%${q}%`))!);
         if (priorityFilter.length) conds.push(inArray(tasks.priority, priorityFilter as any));

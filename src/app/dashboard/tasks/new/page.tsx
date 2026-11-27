@@ -55,6 +55,8 @@ import {
   type RequestLine,
 } from "@/lib/tasks/request-lines";
 import { reminderInstant } from "@/lib/tasks/due";
+import { TeamMultiSelect } from "@/components/common/TeamMultiSelect";
+import { MAX_COLLABORATORS } from "@/lib/tasks/collaborators";
 
 type TaskTemplate = {
   id: string;
@@ -87,6 +89,7 @@ export default function NewTaskPage() {
     entryDate: todayLocal(), // today; the person may change it
     dueDate: defaultDueDate(3),
     assigneeId: "",
+    collaboratorIds: [] as string[],
     remarks: "",
     requiresApproval: false,
     reminder: "none", // none | at_due | 1h | 3h | 1d | 2d | 1w  (relative to due)
@@ -129,12 +132,16 @@ export default function NewTaskPage() {
   const [members, setMembers] = useState<FamilyMember[]>([]);
   /** The title the table last suggested — replaced as rows change, never one the user typed. */
   const lastAutoTitle = useRef("");
+  /** The signed-in user: the assignee when "Assign to" is left blank. */
+  const [myId, setMyId] = useState("");
+  const assignee = form.assigneeId || myId;
   useEffect(() => {
     (async () => {
       try {
         const r = await fetch("/api/me");
         if (!r.ok) return;
         const j = await r.json();
+        setMyId(j?.user?.id ?? "");
         setRedemptionRoute(j?.license?.featureFlags?.redemptionOnlineOffline === true);
         setInsuranceTasks(j?.license?.featureFlags?.[INSURANCE_TASKS_FLAG] === true);
         const table = j?.license?.featureFlags?.[TASK_REQUEST_TABLE_FLAG] === true;
@@ -505,6 +512,8 @@ export default function NewTaskPage() {
         entryDate: form.entryDate || undefined,
         dueAt: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
         assigneeId: form.assigneeId || undefined,
+        // The assignee is already on the task, however they got into this list.
+        collaboratorIds: form.collaboratorIds.filter((id) => id !== assignee),
         remarks: form.remarks || undefined,
         requiresApproval: form.requiresApproval || undefined,
       };
@@ -839,6 +848,20 @@ export default function NewTaskPage() {
               placeholder="Me"
             />
           </label>
+
+          {/* Not a <label>: the picker holds several controls. */}
+          <div className="block">
+            <div className="text-xs font-medium mb-1">
+              Collaborators <span className="ml-1 text-2xs text-muted-foreground font-normal">· optional, work on it too</span>
+            </div>
+            <TeamMultiSelect
+              value={form.collaboratorIds.filter((id) => id !== assignee)}
+              onChange={(ids) => setForm((s) => ({ ...s, collaboratorIds: ids }))}
+              exclude={[assignee]}
+              max={MAX_COLLABORATORS}
+              placeholder="+ Add a collaborator"
+            />
+          </div>
         </div>
 
         {routeOn && (

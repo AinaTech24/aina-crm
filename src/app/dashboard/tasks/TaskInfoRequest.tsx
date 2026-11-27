@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { notify } from "@/components/ui/Toast";
 import { formatDate } from "@/lib/format";
 import { openInfoRequest } from "@/lib/tasks/info-request";
+import { worksOnTask } from "@/lib/tasks/collaborators";
 
 type Person = { id: string; name: string };
 
@@ -24,6 +25,7 @@ export function TaskInfoRequest({
   meta,
   status,
   assigneeId,
+  collaboratorIds = [],
   createdById,
   currentUserId,
   canManageAll,
@@ -33,6 +35,7 @@ export function TaskInfoRequest({
   meta: unknown;
   status: string;
   assigneeId: string | null;
+  collaboratorIds?: string[];
   createdById: string | null;
   currentUserId: string;
   canManageAll: boolean;
@@ -125,7 +128,7 @@ export function TaskInfoRequest({
   }
 
   // Asking is for whoever is doing the task.
-  if (closed || assigneeId !== currentUserId) return null;
+  if (closed || !worksOnTask({ assigneeId, collaboratorIds }, currentUserId)) return null;
 
   if (!asking) {
     return (

@@ -15,10 +15,12 @@ import { Avatar } from "@/components/ui/Avatar";
 import { taskChecklist, type Task } from "@/db/schema";
 import { formatDate } from "@/lib/format";
 import { isPastDue } from "@/lib/tasks/due";
+import { CollaboratorCount } from "@/components/tasks/CollaboratorNames";
 
 interface TaskRow {
   task: Task;
   assignee: string | null;
+  collaborators?: string[];
   investorName: string | null;
   investorAvatarUrl?: string | null;
   leadName: string | null;
@@ -203,6 +205,7 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
                             <span className="inline-flex items-center gap-1 truncate">
                               <User className="size-3 shrink-0" />
                               {row.assignee ? (t.assigneeId === currentUserId ? "You" : row.assignee) : "Unassigned"}
+                              <CollaboratorCount names={row.collaborators} />
                             </span>
                             {due && (
                               <span className={`inline-flex items-center gap-1 tabular-nums ${overdue ? "text-rose-600 font-medium" : ""}`}>

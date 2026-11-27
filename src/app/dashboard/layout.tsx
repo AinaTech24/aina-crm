@@ -92,6 +92,7 @@ import { buildTenantThemeCss } from "@/lib/branding/theme";
 import { overdueTaskSql } from "@/lib/metrics/tasks";
 import { formatDate } from "@/lib/format";
 import { INSURANCE_FOLDER_FLAG } from "@/lib/nav/insurance-folder";
+import { worksOnSql } from "@/lib/tasks/collaborators-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -481,11 +482,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
     const badges = await tx
       .transaction(async (sp) => sp.execute(sql`
         SELECT
-          -- Overdue tasks assigned to ME — lib/metrics/tasks.ts, the same
-          -- definition as every overdue count on the dashboards and My Day.
+          -- Overdue tasks assigned to ME or shared with me — overdue as defined
+          -- in lib/metrics/tasks.ts.
           (SELECT count(*)::int FROM tasks t
             WHERE t.tenant_id = ${session.tenantId}::uuid
-              AND t.assignee_id = ${session.userId}::uuid
+              AND ${worksOnSql(session.userId, "t")}
               AND ${overdueTaskSql("t")}) AS tasks_overdue,
           -- waiting_customer is excluded on purpose: the ball is in the client's court.
           (SELECT count(*)::int FROM service_requests

@@ -22,6 +22,8 @@ import { FINANCIAL_TASK_TYPES } from "@/lib/dashboard/my/window";
 import { subTaskAssignedToSql, taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
 import { escalatedToSql } from "@/lib/tasks/escalation-ladder";
 import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
+import { worksOnSql } from "@/lib/tasks/collaborators-sql";
+import { collaboratorsOf } from "@/lib/tasks/collaborators";
 
 export const dynamic = "force-dynamic";
 
@@ -112,7 +114,8 @@ export default async function TasksPage({
     const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
     if (!canViewAll) {
       conds.push(or(
-        eq(tasks.assigneeId, session.userId),
+        // Assigned to me, or shared with me as a collaborator.
+        worksOnSql(session.userId),
         eq(tasks.createdById, session.userId),
         // A sub-task of it delegated to me.
         subTaskAssignedToSql(sql`${tasks.meta}`, session.userId),
@@ -129,7 +132,7 @@ export default async function TasksPage({
 
     // View-tab scope: tasks assigned TO me, or tasks I assigned (created).
     // "Assigned to me" includes a task whose sub-task was delegated to me.
-    if (view === "to_me") conds.push(or(eq(tasks.assigneeId, session.userId), subTaskAssignedToSql(sql`${tasks.meta}`, session.userId))!);
+    if (view === "to_me") conds.push(or(worksOnSql(session.userId), subTaskAssignedToSql(sql`${tasks.meta}`, session.userId))!);
     else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
 
     // Status and the quick tabs apply to the LIST only — the KANBAN's columns
@@ -323,7 +326,13 @@ export default async function TasksPage({
       completed: Number(tabRow?.completed ?? 0),
     };
     if (!isKanban) tabCounts[tab] = total;
-    return { rows, rms: rmRows.rows as any[], total, tags: tagRows.rows as any[], tabCounts };
+    // The roster above lists active people only, which is who a name is shown for.
+    const nameOf = new Map((rmRows.rows as any[]).map((r) => [String(r.id), String(r.name ?? "—")]));
+    const withNames = rows.map((r) => ({
+      ...r,
+      collaborators: collaboratorsOf(r.task).map((id) => nameOf.get(id) ?? "A former colleague"),
+    }));
+    return { rows: withNames, rms: rmRows.rows as any[], total, tags: tagRows.rows as any[], tabCounts };
   });
 
   const rmOptions = (result.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
