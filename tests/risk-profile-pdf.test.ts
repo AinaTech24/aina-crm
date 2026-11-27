@@ -81,3 +81,29 @@ describe("risk profile PDF", () => {
     expect(t).toContain("based on the responses recorded above");
   });
 });
+
+describe("risk profile PDF header", () => {
+  // A 1 x 1 PNG, as a data URL so nothing is fetched over the network.
+  const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhWMzKwAAAABJRU5ErkJggg==";
+  const withLogo = (logoUrl: string | null) =>
+    renderRiskProfilePdf({
+      profile: { category: "aggressive", totalScore: 4, responses: [], questions, bands, verificationMethod: "rm_entry" },
+      investor: { name: "Harsh Test" },
+      brand: { displayName: "Test Wealth", arn: "123456", logoUrl } as any,
+      generatedAt: "2026-11-27T00:00:00Z",
+    });
+
+  it("draws the firm's logo beside the firm name", async () => {
+    const buf = await withLogo(png);
+    expect(buf.toString("latin1")).toContain("/Subtype /Image");
+    expect(await text(buf)).toContain("Test Wealth");
+  });
+
+  it("keeps the name alone when the firm has no logo, or it cannot be read", async () => {
+    for (const logoUrl of [null, "data:image/png;base64,bm90LWFuLWltYWdl"]) {
+      const buf = await withLogo(logoUrl);
+      expect(buf.toString("latin1")).not.toContain("/Subtype /Image");
+      expect(await text(buf)).toContain("Test Wealth");
+    }
+  });
+});
