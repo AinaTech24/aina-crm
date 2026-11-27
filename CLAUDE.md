@@ -3183,7 +3183,10 @@ These have clear hooks in the schema and architecture; pick them up in roadmap o
   The username is stored in `users.email` as `<username>@login.invalid` (a reserved domain), unique across the platform; both
   sign-in routes map a typed value with no "@" to it. NEVER mail or print that value: use `realEmail()` for anything sent or
   shown to a client, `loginLabel()` on screens (the mail adapter and `sendSystemEmail` refuse it as a backstop). No self-service
-  password reset — an admin uses Set password.
+  password reset — an admin uses Set password. **Adding an email later** (the card on the person's profile,
+  `POST /api/employees/[id]/email`, username logins only; migration 0298) makes it `users.email` — reset and CRM mail then
+  reach them — and keeps the username in `users.login_username`, which both sign-in routes also match. The address must be
+  unused platform-wide with no pending invite; it starts unverified.
 - **AINA support sets a team member's password** (2026-11-21, Aina Admin → MFD tenants → the firm → Team →
   **Set password**; `POST /api/super-admin/tenants/[id]/set-password`, `platform.tenant.edit`): for when the emailed
   reset link cannot reach the person. It REPLACES the current password (one set here earlier included), signs them

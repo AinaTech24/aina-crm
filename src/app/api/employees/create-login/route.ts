@@ -22,7 +22,7 @@ import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { handleApiError } from "@/lib/api/error-handler";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { passwordProblem } from "@/lib/auth/password-gen";
-import { usernameAddress, usernameProblem } from "@/lib/auth/username-login";
+import { loginLabel, usernameAddress, usernameProblem } from "@/lib/auth/username-login";
 import { autoEnrol } from "@/lib/induction/engine";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
     }
 
     const address = usernameAddress(b.username);
+    const username = loginLabel(address);
     const passwordHash = await bcrypt.hash(b.password, 12);
     const userId = uuid();
     const roles = sql`ARRAY[${sql.join(b.roles.map((r) => sql`${r}`), sql`, `)}]::text[]`;
@@ -89,12 +90,12 @@ export async function POST(req: NextRequest) {
     // requests taking the same one at the same moment.
     await withSystem(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${address}))`);
-      const taken = (await tx.execute(sql`SELECT 1 FROM users WHERE lower(email) = ${address} LIMIT 1`)).rows.length;
+      const taken = (await tx.execute(sql`SELECT 1 FROM users WHERE lower(email) = ${address} OR lower(login_username) = ${username} LIMIT 1`)).rows.length;
       if (taken) throw fail("That username is already taken. Try another.", 409);
       await tx.execute(sql`
-        INSERT INTO users (id, tenant_id, branch_id, email, name, phone, password_hash, roles, status,
+        INSERT INTO users (id, tenant_id, branch_id, email, login_username, name, phone, password_hash, roles, status,
                            email_verified_at, activated_at, created_at, updated_at)
-        VALUES (${userId}::uuid, ${session.tenantId}::uuid, ${branchId}, ${address}, ${b.name},
+        VALUES (${userId}::uuid, ${session.tenantId}::uuid, ${branchId}, ${address}, ${username}, ${b.name},
                 ${b.phone || null}, ${passwordHash}, ${roles}, 'active', now(), now(), now(), now())
       `);
     });

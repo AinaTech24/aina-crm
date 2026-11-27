@@ -43,6 +43,20 @@ describe("username logins", () => {
     expect(read("src/lib/comms/pipeline.ts")).toContain("realEmail(rm?.email)");
   });
 
+  it("keeps the username working after an email is added, and guards who may add it", () => {
+    for (const p of ["src/app/api/auth/login/route.ts", "src/app/api/auth/mobile-login/route.ts"]) {
+      expect(read(p)).toContain("OR lower(u.login_username) = ${username}");
+    }
+    const route = read("src/app/api/employees/[id]/email/route.ts");
+    expect(route).toContain('requireCap(session.roles, "settings.users"');
+    expect(route).toContain("login_username = ${name}, email_verified_at = NULL");
+    expect(route).toContain("This team member already signs in with an email address."); // username logins only
+    expect(route).toContain("FROM user_invites"); // a pending invite would take the login over
+    expect(route).toContain("consumed_at = now()"); // open reset links are voided
+    expect(read("src/app/api/employees/create-login/route.ts")).toContain("OR lower(login_username) = ${username}");
+    expect(read("drizzle/migrations/0298_user_login_username.sql")).toContain("ADD COLUMN IF NOT EXISTS login_username");
+  });
+
   it("creates a login only for a user manager, within the seat limit, with a unique username", () => {
     const route = read("src/app/api/employees/create-login/route.ts");
     expect(route).toContain('requireCap(session.roles, "settings.users"');
