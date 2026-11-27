@@ -680,6 +680,9 @@ when (India time), by whom — grouped by day, with a filter by field.
   `attachment_removed` rows (`changes.attachment` = { from, to }, one side `{ name, size, type }`),
   credited to the uploader, or to `app.user_id` for a removal (the attachment routes call `actAs`).
   A file removed before 0287 is not added.
+- **Editing a comment** (2026-11-27, `PATCH /api/tasks/[id]/comments/[commentId]`): its AUTHOR only (no owner override),
+  on a task they can still open (`ownsTaskThread` / `taskInScope`). The thread shows "edited" when `updated_at` is later than
+  `created_at`; only newly @mentioned teammates are notified. Web only: the mobile app has no edit yet.
 - `GET /api/tasks/[id]/history` follows the same access as opening the task. Tasks that
   predate 0284 show their creation from the task row and a note that earlier edits are not
   itemised. `/api/audit?entityType=task` does NOT check task access — do not build on it.
