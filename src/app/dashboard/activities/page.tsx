@@ -13,6 +13,8 @@ import { ContactQuickActions } from "@/components/common/ContactQuickActions";
 import { LogActivityButton } from "@/components/activities/ActivityLogger";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { activityScopeSql } from "@/lib/activities/scope";
+import { activityFacts } from "@/lib/activities/detail";
+import { ActivityRow } from "@/components/activities/ActivityRow";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +57,8 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
       const rows = await tx.execute(sql`
         SELECT a.id, a.subject_type, a.subject_id, a.subject_name, a.subject_phone,
                a.kind, a.direction, a.status, a.subject, a.notes, a.occurred_at,
-               a.duration_sec, a.location_label, a.next_followup_at, u.name AS owner_name
+               a.duration_sec, a.location_label, a.next_followup_at, u.name AS owner_name,
+               a.geo_lat, a.geo_lng, a.created_at
         FROM activities a LEFT JOIN users u ON u.id = a.owner_user_id
         ${whereSql}
         ORDER BY a.occurred_at DESC
@@ -126,8 +129,24 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
               {data.rows.map((a) => {
                 const km = KIND_META[a.kind] ?? KIND_META.other;
                 const Icon = km.icon;
+                const message = a.subject_name ? `Hi ${String(a.subject_name).split(" ")[0]}, ` : undefined;
                 return (
-                  <tr key={a.id} className="border-b last:border-0 hover:bg-secondary/40 align-top">
+                  <ActivityRow
+                    key={a.id}
+                    className="border-b last:border-0 hover:bg-secondary/40 align-top"
+                    detail={{
+                      kindLabel: km.label,
+                      subject: a.subject,
+                      recordLabel: a.subject_type === "investor" ? "Client" : a.subject_type === "lead" ? "Lead" : "Family",
+                      recordName: a.subject_name ?? "(unknown)",
+                      recordHref: hrefFor(a.subject_type, a.subject_id),
+                      phone: a.subject_phone,
+                      message,
+                      logFor: a.subject_type === "family" ? null : { type: a.subject_type, id: a.subject_id, name: a.subject_name ?? "" },
+                      facts: activityFacts(a),
+                      notes: a.notes,
+                    }}
+                  >
                     <td className="px-4 py-3">
                       <span className={`chip text-2xs inline-flex items-center gap-1 ${km.tone}`}><Icon className="size-3" /> {km.label}</span>
                       {a.direction && <div className="text-2xs text-muted-foreground mt-1 capitalize">{a.direction}</div>}
@@ -147,9 +166,9 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
                     <td className="py-3 text-xs whitespace-nowrap">{a.owner_name ?? "—"}</td>
                     <td className="py-3 text-xs whitespace-nowrap">{formatDate(a.occurred_at)}</td>
                     <td className="py-3 pr-4 text-right">
-                      <ContactQuickActions phone={a.subject_phone} message={a.subject_name ? `Hi ${String(a.subject_name).split(" ")[0]}, ` : undefined} show={["whatsapp", "call"]} />
+                      <ContactQuickActions phone={a.subject_phone} message={message} show={["whatsapp", "call"]} />
                     </td>
-                  </tr>
+                  </ActivityRow>
                 );
               })}
             </tbody>
