@@ -103,15 +103,17 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
   };
   r.tree.forEach((root) => walk(root, 0, [], [true], null));
 
-  // With two or more grouping levels, a total for each value of the last level across every
-  // group above it (Meeting report: "All New", "All Existing" across the RMs — We Care,
-  // 2026-11-27). Sums and counts add up; an average / min / max does not, so it reads "—".
+  // With two or more grouping levels, a total for each value of the SECOND level across every
+  // top-level group (Meeting report: "All New", "All Existing" across the RMs; Equity report:
+  // "All Purchase", "All Redemption" — We Care, 2026-11-27). Not the last level: a third level
+  // (Associate) gave "All —". Sums and counts add up; avg / min / max do not, so they read "—".
   const byLast: Array<{ key: string; label: string; node: Node }> = [];
   if (levels > 1) {
     const m = new Map<string, { key: string; label: string; node: Node }>();
-    for (const n of nodes) {
-      if (n.children?.length) continue;
-      const t = m.get(n.key) ?? { key: n.key, label: groupLabel(n), node: { key: n.key, count: 0, aggregates: r.aggregateDefs.map(() => 0) } };
+    for (const n of r.tree.flatMap((root) => root.children ?? [])) {
+      const shown = groupLabel(n);
+      const label = !shown || shown === "—" ? `no ${r.groupLabels[1] ?? "value"}` : shown;
+      const t = m.get(n.key) ?? { key: n.key, label, node: { key: n.key, count: 0, aggregates: r.aggregateDefs.map(() => 0) } };
       t.node.count += n.count;
       r.aggregateDefs.forEach((a, j) => {
         t.node.aggregates[j] = a.fn === "sum" || a.fn === "count" ? t.node.aggregates[j] + Number(n.aggregates[j] ?? 0) : NaN;
