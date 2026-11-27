@@ -470,9 +470,20 @@ export function parseFolioMasterDump(
 
 // ── Active SIP Book ─────────────────────────────────────────────────────
 
+/** What reading a SIP register's lines found — so a line that was not a registration is never lost unseen. */
+export type SipBookParseStats = {
+  /** Non-blank lines after the header. */
+  dataLines: number;
+  /** Lines with fewer cells than the header's widest column (trailing empty cells dropped) — kept, not lost. */
+  shortRows: number;
+  /** Lines with neither a folio nor an amount (a footer or total) — the only lines left out. */
+  blankRows: number;
+};
+
 export function parseSipBook(
   text: string,
-  source: "cams" | "kfintech" | string
+  source: "cams" | "kfintech" | string,
+  stats?: SipBookParseStats,
 ): CanonicalSipRow[] {
   const out: CanonicalSipRow[] = [];
   const lines = text.split(/\r?\n/);
@@ -495,11 +506,21 @@ export function parseSipBook(
     const line = lines[i].trim();
     if (!line) continue;
     const cols = splitLine(line, delim);
+    if (stats) stats.dataLines++;
     // The optional status columns never decide whether a row is long enough.
     const maxIdx = Math.max(...Object.entries(indexMap).filter(([k]) => !OPTIONAL_SIP_COLUMNS.has(k)).map(([, v]) => v));
-    if (cols.length <= maxIdx) continue;
 
     const val = (field: string) => cols[indexMap[field as keyof typeof indexMap]]?.trim() ?? "";
+    // A line SHORTER than the header's widest column used to be dropped without a word — and the
+    // import still read "completed". A live SIP has nothing in its cease-date / target-scheme /
+    // remarks cells, which is exactly what a CSV exporter that trims trailing empty cells cuts off,
+    // while the cancelled ones keep full-length lines. So a short line is read with its missing
+    // cells empty; only a line with neither a folio nor an amount (a footer, a total) is left out.
+    if (!val("folioNumber") && !val("amount")) {
+      if (stats) stats.blankRows++;
+      continue;
+    }
+    if (stats && cols.length <= maxIdx) stats.shortRows++;
 
     // Many CRM-exported active-SIP reports carry only the scheme NAME, no code.
     // Fall back to the name as the code so the SIP row still keys + imports.

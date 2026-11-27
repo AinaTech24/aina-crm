@@ -15,6 +15,7 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { aliveClient } from "./scope";
+import type { SipRegisterSummary } from "@/lib/rta/sip-register-summary";
 
 /** A file name that is a SIP registration report, whatever kind it was filed under. */
 export const SIP_REGISTER_NAME_RE = /MFSD\s*(243|230|313)|WBR\s*49|R49\b|systematic[_ ]?registration|sip[_ ]?regist/i;
@@ -27,6 +28,9 @@ export type RegisterStatus = {
   lastPeriodEnd: string | null;
   /** SIP registers of this registrar refused (password) in the last 30 days. */
   refused: number;
+  /** The newest imported register: its file, and where every live registration of it went (null before this was recorded). */
+  fileName?: string | null;
+  summary?: SipRegisterSummary | null;
 };
 
 export type SipReconciliation = {
@@ -57,9 +61,17 @@ export async function loadSipReconciliation(tx: Tx, tenantId: string): Promise<S
            (SELECT count(*)::int FROM rta_file_imports f
              WHERE f.tenant_id = ${tenantId}::uuid AND f.deleted_at IS NULL AND f.source = s.source
                AND f.status = 'rejected' AND f.created_at > now() - interval '30 days'
-               AND (f.kind = 'monthly_sip_book' OR f.file_name ~* ${SIP_REGISTER_NAME_PG})) AS refused
+               AND (f.kind = 'monthly_sip_book' OR f.file_name ~* ${SIP_REGISTER_NAME_PG})) AS refused,
+           (SELECT f.file_name FROM rta_file_imports f
+             WHERE f.tenant_id = ${tenantId}::uuid AND f.deleted_at IS NULL AND f.source = s.source
+               AND f.kind = 'monthly_sip_book' AND f.status IN ('completed', 'partial') AND f.sip_summary IS NOT NULL
+             ORDER BY f.created_at DESC LIMIT 1) AS file_name,
+           (SELECT f.sip_summary FROM rta_file_imports f
+             WHERE f.tenant_id = ${tenantId}::uuid AND f.deleted_at IS NULL AND f.source = s.source
+               AND f.kind = 'monthly_sip_book' AND f.status IN ('completed', 'partial') AND f.sip_summary IS NOT NULL
+             ORDER BY f.created_at DESC LIMIT 1) AS summary
       FROM (VALUES ('cams'), ('kfintech')) AS s(source)
-  `)).rows as Array<{ source: "cams" | "kfintech"; last_at: string | null; last_period: string | null; refused: number }>;
+  `)).rows as Array<{ source: "cams" | "kfintech"; last_at: string | null; last_period: string | null; refused: number; file_name: string | null; summary: SipRegisterSummary | null }>;
 
   // The newest processed SIP instalment per folio + scheme in the last 45 days (one monthly cycle and a margin).
   const debits = sql`
@@ -105,7 +117,10 @@ export async function loadSipReconciliation(tx: Tx, tenantId: string): Promise<S
   `)).rows[0] as Record<string, unknown> | undefined;
 
   return {
-    registers: regs.map((g) => ({ source: g.source, lastImportedAt: g.last_at, lastPeriodEnd: g.last_period, refused: num(g.refused) })),
+    registers: regs.map((g) => ({
+      source: g.source, lastImportedAt: g.last_at, lastPeriodEnd: g.last_period, refused: num(g.refused),
+      fileName: g.file_name, summary: g.summary ?? null,
+    })),
     debited: { sips: num(r?.debited_n), amount: num(r?.debited_amt) },
     debitedNotInBook: { sips: num(r?.missing_n), amount: num(r?.missing_amt) },
     inBookNotDebited: { sips: num(r?.stale_n), amount: num(r?.stale_amt) },

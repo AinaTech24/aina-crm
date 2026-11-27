@@ -16,9 +16,9 @@ import { randomUUID } from "node:crypto";
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
 const HDR = "AMC_CODE|PRODUCT_CODE|FOLIO_NO|INV_NAME|PAN_NO|AUT_TRNTYP|SCHEME|TARGET_SCH|AUTO_AMOUN|PERIODICIT|PERIOD_DAY|FROM_DATE|TO_DATE|CEASE_DATE|REMARKS";
-type R = Partial<Record<"folio" | "type" | "tgt" | "amt" | "day" | "from" | "cease", string>>;
+type R = Partial<Record<"folio" | "type" | "tgt" | "amt" | "day" | "from" | "to" | "cease", string>>;
 const line = (o: R) =>
-  ["P", "1746", o.folio ?? "1111", "A", "", o.type ?? "P", "Scheme X", o.tgt ?? "", o.amt ?? "5000", "OM", o.day ?? "5", o.from ?? "1/5/2024 12:00 AM", "12/5/2040 12:00 AM", o.cease ?? "", ""].join("|");
+  ["P", "1746", o.folio ?? "1111", "A", "", o.type ?? "P", "Scheme X", o.tgt ?? "", o.amt ?? "5000", "OM", o.day ?? "5", o.from ?? "1/5/2024 12:00 AM", o.to ?? "12/5/2040 12:00 AM", o.cease ?? "", ""].join("|");
 const register = (...rows: R[]) => [HDR, ...rows.map(line)].join("\n");
 
 describe.skipIf(!TEST_DB)("importing a SIP register", () => {
@@ -196,6 +196,43 @@ describe.skipIf(!TEST_DB)("importing a SIP register", () => {
     expect(await bookFor()).toBe(7000);
     await q(sql`DELETE FROM sips WHERE tenant_id = ${tenant}::uuid`);
     await q(sql`DELETE FROM investors WHERE id = ${id}::uuid`);
+  });
+
+  it("a past END date alone does not close a SIP — only evidence does (the nightly pass), never the import", async () => {
+    await reset();
+    await load(register({ to: "1/6/2025 12:00 AM" }));
+    const s = await sips("1111");
+    expect(s.map((x) => x.status)).toEqual(["active"]);
+    expect(await bookFor()).toBe(5000);
+  });
+
+  it("a line shorter than the header (trailing empty cells cut off) is read, not dropped", async () => {
+    await reset();
+    const short = line({ folio: "3333", amt: "7000" }).split("|").slice(0, 13).join("|");
+    const out = await load([HDR, short].join("\n"));
+    expect(out.rowsTotal).toBe(1);
+    expect((await sips("3333")).map((x) => x.amount)).toEqual([7000]);
+    expect(out.summary?.shortRows).toBe(1);
+    expect(await bookFor()).toBe(7000);
+  });
+
+  it("the register's summary accounts for every live registration: in the book, hidden client, not placed", async () => {
+    await reset();
+    const out = await load(register(
+      { folio: "1111", amt: "5000" },                       // Asha — counted
+      { folio: "2222", amt: "3000" },                       // an exited client — kept, not counted
+      { folio: "9999", amt: "2000" },                       // a folio the CRM does not hold, no PAN — not placed
+      { folio: "3333", amt: "1000", cease: "1/6/2025 12:00 AM" }, // cancelled — not live
+      { folio: "3333", amt: "800", type: "SO", tgt: "Target Fund" }, // an STP — not a SIP
+    ));
+    const s = out.summary!;
+    expect(s.live).toEqual({ n: 3, amt: 10000 });
+    expect(s.inBook).toEqual({ n: 1, amt: 5000 });
+    expect(s.hiddenClient).toEqual({ n: 1, amt: 3000 });
+    expect(s.notPlaced).toEqual({ n: 1, amt: 2000 });
+    expect(s.notLive.n).toBe(1);
+    expect(s.notSip).toBe(1);
+    expect(await bookFor()).toBe(5000);
   });
 
   it("a register that is entirely cancelled leaves nothing live", async () => {

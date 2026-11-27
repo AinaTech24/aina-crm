@@ -533,6 +533,7 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
               rows_imported = ${outcome.rowsImported},
               rows_skipped = ${outcome.rowsSkipped},
               rows_failed = ${outcome.rowsFailed},
+              sip_summary = ${outcome.summary ? JSON.stringify(outcome.summary) : null}::jsonb,
               errors = ${JSON.stringify(
                 // Postgres's jsonb parser rejects an embedded NUL character escape outright
                 // ("unsupported Unicode escape sequence") — the same NUL
