@@ -70,6 +70,7 @@ export async function spawnNextOccurrence(
     priority: before.priority,
     status: "open",
     assigneeId: before.assigneeId,
+    collaboratorIds: before.collaboratorIds ?? [],
     createdById: actorUserId,
     dueAt: nextDue,
     slaDueAt,

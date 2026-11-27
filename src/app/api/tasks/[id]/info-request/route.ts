@@ -27,6 +27,7 @@ import { createNotification } from "@/lib/notifications/create";
 import { tasks, taskComments, users } from "@/db/schema";
 import { openInfoRequest, type InfoRequest, type InfoRequestRecord } from "@/lib/tasks/info-request";
 import { actAs } from "@/lib/tasks/history";
+import { worksOnTask } from "@/lib/tasks/collaborators";
 
 export const dynamic = "force-dynamic";
 
@@ -50,11 +51,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const out = await withTenant(session.tenantId, async (tx) => {
       await actAs(tx, session.userId); // the task timeline credits this person
       const [task] = await tx
-        .select({ title: tasks.title, status: tasks.status, meta: tasks.meta, assigneeId: tasks.assigneeId, createdById: tasks.createdById })
+        .select({ title: tasks.title, status: tasks.status, meta: tasks.meta, assigneeId: tasks.assigneeId, createdById: tasks.createdById, collaboratorIds: tasks.collaboratorIds })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);
-      const mine = task && (task.assigneeId === session.userId || task.createdById === session.userId
+      const mine = task && (worksOnTask(task, session.userId) || task.createdById === session.userId
         || openInfoRequest(task.meta)?.askedToId === session.userId);
       if (!task || (!canViewAll && !mine)) return { status: 404, error: "not found" };
       if (task.status === "completed" || task.status === "cancelled") return { status: 400, error: "This task is already closed." };

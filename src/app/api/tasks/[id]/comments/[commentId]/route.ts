@@ -44,7 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const outcome = await withTenant(session.tenantId, async (tx) => {
       await actAs(tx, session.userId); // the task timeline credits this person
       const [task] = await tx
-        .select({ title: tasks.title, assigneeId: tasks.assigneeId, createdById: tasks.createdById, meta: tasks.meta })
+        .select({ title: tasks.title, assigneeId: tasks.assigneeId, createdById: tasks.createdById, collaboratorIds: tasks.collaboratorIds, meta: tasks.meta })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);

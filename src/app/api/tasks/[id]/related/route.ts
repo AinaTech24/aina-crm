@@ -21,6 +21,7 @@ import { taskChecklist } from "@/db/schema";
 import { taskInScope } from "@/lib/tasks/scope";
 import { dataWallApplies, investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
+import { worksOnTask } from "@/lib/tasks/collaborators";
 
 export const dynamic = "force-dynamic";
 
@@ -46,13 +47,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     const out = await withTenant(session.tenantId, async (tx) => {
       const t = (await tx.execute(sql`
-        SELECT t.id, t.assignee_id, t.created_by_id, t.meta, t.subject_type, t.subject_id,
+        SELECT t.id, t.assignee_id, t.collaborator_ids, t.created_by_id, t.meta, t.subject_type, t.subject_id,
                t.related_investor_id, t.related_lead_id, t.related_meeting_id, t.related_service_request_id
           FROM tasks t
          WHERE t.id = ${id}::uuid AND t.tenant_id = ${session.tenantId}::uuid AND t.deleted_at IS NULL
       `)).rows[0] as Record<string, any> | undefined;
       if (!t) return null;
-      const own = t.assignee_id === session.userId || t.created_by_id === session.userId;
+      const own = worksOnTask({ assigneeId: t.assignee_id, collaboratorIds: t.collaborator_ids }, session.userId)
+        || t.created_by_id === session.userId;
       const sub = taskChecklist(t.meta).some((c) => c.assigneeId === session.userId);
       if (!canViewAll && !own && !sub) return null;
       if (!(await taskInScope(tx, session, id))) return null;

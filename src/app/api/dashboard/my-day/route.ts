@@ -25,6 +25,7 @@ import { requireSession } from "@/lib/auth/session";
 import { mobileFirmAccess, mobileOwnerScope, mobileTaskScope, mobileMeetingScope } from "@/lib/mobile/access";
 import { can } from "@/lib/auth/rbac";
 import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
+import { worksOnSql } from "@/lib/tasks/collaborators-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -98,7 +99,7 @@ export async function GET(req: NextRequest) {
               AND t.deleted_at IS NULL
               AND t.due_at >= ${owedFrom}
               AND t.due_at < ${dayEnd}
-              AND ${session.mobile ? mobileTaskScope(session, "t") : sql`(t.assignee_id = ${uid}::uuid OR ${seesAll})`}
+              AND ${session.mobile ? mobileTaskScope(session, "t") : sql`(${worksOnSql(uid, "t")} OR ${seesAll})`}
             ORDER BY t.due_at ASC
             LIMIT 50
           `),
@@ -145,7 +146,7 @@ export async function GET(req: NextRequest) {
                    AND t.deleted_at IS NULL
                    AND t.due_at >= (CASE WHEN d::date = current_date THEN '-infinity'::timestamptz ELSE d END)
                    AND t.due_at < d + interval '1 day'
-                   AND ${session.mobile ? mobileTaskScope(session, "t") : sql`(t.assignee_id = ${uid}::uuid OR ${seesAll})`}
+                   AND ${session.mobile ? mobileTaskScope(session, "t") : sql`(${worksOnSql(uid, "t")} OR ${seesAll})`}
               )::int AS tasks
             FROM generate_series(date_trunc('day', now()), date_trunc('day', now()) + interval '13 days', interval '1 day') d
             ORDER BY d ASC

@@ -88,6 +88,17 @@ export async function offboardUser(params: {
     reassignedTasks = r.rows.length;
   }
 
+  // Someone who has left is no longer a collaborator on open work, and whoever
+  // inherited a task is not listed on it twice.
+  await tx.execute(sql`
+    UPDATE tasks
+    SET collaborator_ids = collaborator_ids - ${userId}::text - COALESCE(assignee_id::text, ''),
+        updated_at = now()
+    WHERE tenant_id = ${tenantId}::uuid
+      AND status IN ('open', 'in_progress', 'blocked')
+      AND (collaborator_ids ? ${userId} OR collaborator_ids ? assignee_id::text)
+  `);
+
   // 3. Reassign upcoming meetings.
   let reassignedMeetings = 0;
   if (reassignTarget) {

@@ -77,6 +77,9 @@ export async function loadTaskTimeline(tx: Tx, tenantId: string, taskId: string)
         else if (ID_FIELDS_LEADS.includes(field)) take(ids.leads, v);
         else if (ID_FIELDS_SR.includes(field)) take(ids.sr, v);
         else if (ID_FIELDS_TASKS.includes(field)) take(ids.tasks, v);
+        else if (field === "collaborator_ids" && Array.isArray(v)) {
+          for (const id of v) take(userIds, id);
+        }
         else if (field === "checklist" && Array.isArray(v)) {
           for (const item of v as Array<{ assigneeId?: string | null }>) take(userIds, item?.assigneeId);
         }

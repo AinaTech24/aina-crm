@@ -18,6 +18,10 @@ import { REQUEST_TYPE_BY_KEY } from "@/lib/tasks/request-types";
 import { investorScopeSql } from "@/lib/investors/access";
 import { subTaskAssignedToSql, taskClientVisibleSql, taskLeadVisibleSql, taskScopeSql } from "@/lib/tasks/scope";
 import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
+import { worksOnSql } from "@/lib/tasks/collaborators-sql";
+import { MAX_COLLABORATORS, cleanCollaborators } from "@/lib/tasks/collaborators";
+import { assertCollaborators } from "@/lib/tasks/collaborators-server";
+import { notifyCollaboratorsAdded } from "@/lib/tasks/collaborator-notify";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +57,8 @@ const Body = z.object({
    *  column. Defaults to 'open' for the normal create flow. */
   status: z.enum(["open", "in_progress", "blocked", "completed", "cancelled"]).default("open"),
   assigneeId: z.string().uuid().optional(),
+  /** Teammates who work on it with the assignee. */
+  collaboratorIds: z.array(z.string().uuid()).max(MAX_COLLABORATORS).optional(),
   dueAt: z.string().optional(),
   /** The day the task was entered, YYYY-MM-DD — blank means today. */
   entryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -196,11 +202,11 @@ export async function GET(req: NextRequest) {
       async (tx) => {
         const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
         if (session.mobile) conds.push(mobileTaskScope(session));
-        if (!canViewAll) conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId), subTaskAssignedToSql(sql`${tasks.meta}`, session.userId))!);
+        if (!canViewAll) conds.push(or(worksOnSql(session.userId), eq(tasks.createdById, session.userId), subTaskAssignedToSql(sql`${tasks.meta}`, session.userId))!);
         // view.all reaches other people's tasks only when their client / lead
         // is in the viewer's scope (lib/tasks/scope.ts).
         else conds.push(await taskScopeSql(tx, session, "tasks"));
-        if (view === "to_me") conds.push(or(eq(tasks.assigneeId, session.userId), subTaskAssignedToSql(sql`${tasks.meta}`, session.userId))!);
+        if (view === "to_me") conds.push(or(worksOnSql(session.userId), subTaskAssignedToSql(sql`${tasks.meta}`, session.userId))!);
         else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
         // Kanban shows every status; the list defaults to open when no status
         // filter — UNLESS an approval filter is active (pending-approval tasks
@@ -321,6 +327,8 @@ export async function POST(req: NextRequest) {
         .where(and(eq(users.id, assigneeId), eq(users.tenantId, session.tenantId)))
         .limit(1);
       if (!u) throw Object.assign(new Error("assignee not found in this firm"), { status: 400 });
+      const collaboratorIds = cleanCollaborators(body.collaboratorIds, assigneeId);
+      await assertCollaborators(tx, session, collaboratorIds, canEditAll);
 
       // Sub-tasks delegated to teammates: each delegate must be in this firm;
       // their name is kept on the item for display (as the task drawer does).
@@ -416,6 +424,7 @@ export async function POST(req: NextRequest) {
         priority: body.priority,
         status: body.status,
         assigneeId,
+        collaboratorIds,
         createdById: session.userId,
         entryDate: body.entryDate ?? null, // null → the database sets today (India)
         dueAt: body.dueAt ? new Date(body.dueAt) : null,
@@ -488,10 +497,15 @@ export async function POST(req: NextRequest) {
           meta: { task_id: id, assigned_by: session.userId, priority: body.priority },
         });
       }
+      // Collaborators are told the task is shared with them.
+      const sharedWith = collaboratorIds.filter((c) => c !== session.userId);
+      if (sharedWith.length) {
+        await notifyCollaboratorsAdded(tx, { tenantId: session.tenantId, taskId: id, title: body.title, actorId: session.userId, userIds: sharedWith });
+      }
       // Each teammate a sub-task was delegated to hears about it (not the
       // creator, and not the task's own assignee, who was notified above).
       for (const [delegateId] of delegates) {
-        if (delegateId === session.userId || delegateId === assigneeId) continue;
+        if (delegateId === session.userId || delegateId === assigneeId || collaboratorIds.includes(delegateId)) continue;
         await createNotification(tx, {
           tenantId: session.tenantId,
           userId: delegateId,

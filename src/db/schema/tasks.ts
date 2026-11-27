@@ -56,6 +56,8 @@ export const tasks = pgTable(
 
     assigneeId: uuid("assignee_id").references(() => users.id),
     createdById: uuid("created_by_id").references(() => users.id),
+    /** Teammates working on it with the assignee (migration 0301, lib/tasks/collaborators.ts). */
+    collaboratorIds: jsonb("collaborator_ids").$type<string[]>().notNull().default([]),
 
     /** The day the task was entered (migration 0254). Defaults to today; the form may set another day. */
     entryDate: date("entry_date"),

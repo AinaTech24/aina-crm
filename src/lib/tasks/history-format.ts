@@ -35,7 +35,7 @@ export type ChangeLine = {
 const TZ = "Asia/Kolkata";
 
 const FIELD_ORDER = [
-  "title", "description", "remarks", "type", "department", "priority", "status", "assignee_id",
+  "title", "description", "remarks", "type", "department", "priority", "status", "assignee_id", "collaborator_ids",
   "entry_date", "due_at", "sla_due_at", "remind_at", "completed_at",
   "requires_approval", "approval_status", "approval_note", "approved_by",
   "estimate_minutes", "blocked_by_task_id", "recurrence", "recurrence_until",
@@ -52,6 +52,7 @@ export const FIELD_LABELS: Record<string, string> = {
   priority: "Priority",
   status: "Status",
   assignee_id: "Assigned To",
+  collaborator_ids: "Collaborators",
   entry_date: "Entry Date",
   due_at: "Due Date",
   sla_due_at: "SLA Due Date",
@@ -146,6 +147,9 @@ export function formatValue(field: string, v: unknown, lookups: TimelineLookups)
   if (blank(v)) return null;
   if (ENUM_LABELS[field]) return ENUM_LABELS[field][String(v)] ?? humanise(String(v));
   if (USER_FIELDS.has(field)) return lookups.users.get(String(v)) ?? "a removed user";
+  if (field === "collaborator_ids" && Array.isArray(v)) {
+    return v.map((id) => lookups.users.get(String(id)) ?? "a removed user").join(", ");
+  }
   if (RECORD_FIELDS.has(field)) return lookups.records.get(String(v)) ?? "a record that is no longer available";
   if (DATE_FIELDS.has(field)) return formatDay(v) ?? String(v);
   if (field === "due_at" || field === "sla_due_at") return formatDue(v) ?? String(v);

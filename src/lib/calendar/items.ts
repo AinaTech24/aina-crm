@@ -21,6 +21,7 @@ import { dataWallApplies, investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
 import { meetingSubjectVisibleSql } from "@/lib/review-meetings/scope";
 import { taskScopeSql } from "@/lib/tasks/scope";
+import { worksOnSql } from "@/lib/tasks/collaborators-sql";
 
 export type CalendarKind = "task" | "follow_up" | "meeting" | "review" | "sip" | "campaign" | "compliance";
 
@@ -75,7 +76,7 @@ export async function getCalendarItems(
   // Per-source ownership predicates (empty for managers).
   const taskScope = scope.tasksAll
     ? sql``
-    : sql` AND (assignee_id = ${scope.userId}::uuid OR created_by_id = ${scope.userId}::uuid)`;
+    : sql` AND (${worksOnSql(scope.userId, "")} OR created_by_id = ${scope.userId}::uuid)`;
   const leadScope = scope.leadsAll ? sql`` : sql` AND owner_id = ${scope.userId}::uuid`;
   const invScope = scope.investorsAll ? sql`` : sql` AND rm_id = ${scope.userId}::uuid`;
   // A meeting is on my calendar when I own it or attend it.

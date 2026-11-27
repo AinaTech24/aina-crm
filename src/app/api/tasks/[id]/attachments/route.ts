@@ -20,14 +20,15 @@ import { tasks, taskAttachments, users } from "@/db/schema";
 import { putObject } from "@/lib/storage/s3";
 import { taskInScope } from "@/lib/tasks/scope";
 import { actAs } from "@/lib/tasks/history";
+import { worksOnTask } from "@/lib/tasks/collaborators";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
-function ownsTask(t: { assigneeId: string | null; createdById: string | null }, userId: string): boolean {
-  return t.assigneeId === userId || t.createdById === userId;
+function ownsTask(t: { assigneeId: string | null; collaboratorIds: string[]; createdById: string | null }, userId: string): boolean {
+  return worksOnTask(t, userId) || t.createdById === userId;
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -38,7 +39,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const canViewAll = can(session.roles, "task.view.all", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
       const [t] = await tx
-        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById })
+        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, collaboratorIds: tasks.collaboratorIds })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);
@@ -82,7 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const outcome = await withTenant(session.tenantId, async (tx) => {
       await actAs(tx, session.userId); // the task timeline credits this person
       const [t] = await tx
-        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById })
+        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, collaboratorIds: tasks.collaboratorIds })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);

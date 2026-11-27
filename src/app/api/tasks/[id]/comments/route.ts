@@ -21,6 +21,7 @@ import { tasks, taskComments, users } from "@/db/schema";
 import { notifyWatchers } from "@/lib/tasks/watchers";
 import { taskInScope } from "@/lib/tasks/scope";
 import { actAs } from "@/lib/tasks/history";
+import { collaboratorsOf } from "@/lib/tasks/collaborators";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     const rows = await withTenant(session.tenantId, async (tx) => {
       const [task] = await tx
-        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, meta: tasks.meta })
+        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, collaboratorIds: tasks.collaboratorIds, meta: tasks.meta })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const outcome = await withTenant(session.tenantId, async (tx) => {
       await actAs(tx, session.userId); // the task timeline credits this person
       const [task] = await tx
-        .select({ title: tasks.title, assigneeId: tasks.assigneeId, createdById: tasks.createdById, meta: tasks.meta })
+        .select({ title: tasks.title, assigneeId: tasks.assigneeId, createdById: tasks.createdById, collaboratorIds: tasks.collaboratorIds, meta: tasks.meta })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);
@@ -130,8 +131,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           meta: { task_id: id, comment_id: inserted.id },
         });
       }
-      // Then the task's assignee + creator (if not already covered / the author).
-      for (const uid of [task.assigneeId, task.createdById]) {
+      // Then everyone working on the task + its creator (if not already covered / the author).
+      for (const uid of [task.assigneeId, ...collaboratorsOf(task), task.createdById]) {
         if (!uid || notified.has(uid)) continue;
         notified.add(uid);
         await createNotification(tx, {

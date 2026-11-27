@@ -19,11 +19,12 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { tasks, taskTimeLogs, users } from "@/db/schema";
 import { taskInScope } from "@/lib/tasks/scope";
+import { worksOnTask } from "@/lib/tasks/collaborators";
 
 export const dynamic = "force-dynamic";
 
-function ownsTask(t: { assigneeId: string | null; createdById: string | null }, userId: string): boolean {
-  return t.assigneeId === userId || t.createdById === userId;
+function ownsTask(t: { assigneeId: string | null; collaboratorIds: string[]; createdById: string | null }, userId: string): boolean {
+  return worksOnTask(t, userId) || t.createdById === userId;
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -37,7 +38,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const [t] = await tx
         .select({
           assigneeId: tasks.assigneeId,
-          createdById: tasks.createdById,
+          createdById: tasks.createdById, collaboratorIds: tasks.collaboratorIds,
           estimateMinutes: tasks.estimateMinutes,
           timeSpentMinutes: tasks.timeSpentMinutes,
           startedAt: tasks.startedAt,
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const outcome = await withTenant(session.tenantId, async (tx) => {
       const [t] = await tx
-        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, startedAt: tasks.startedAt, timeSpentMinutes: tasks.timeSpentMinutes })
+        .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, collaboratorIds: tasks.collaboratorIds, startedAt: tasks.startedAt, timeSpentMinutes: tasks.timeSpentMinutes })
         .from(tasks)
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1);

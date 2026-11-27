@@ -649,6 +649,23 @@ so the opportunity journey, bulk actions and workflows all get it. The task page
 shows Entry Date, and Closed Date once completed. Do not set `completed_at` from
 application code.
 
+## Tasks — collaborators (2026-11-27)
+
+New task and the task page have **Collaborators** beside "Assigned to": teammates who work on the task with the assignee
+(`tasks.collaborator_ids`, migration 0301; at most 10; the assignee is never also listed). Rules in
+`lib/tasks/collaborators.ts` (pure), `collaborators-sql.ts` and `collaborators-server.ts`.
+
+- **"My task" includes a collaborator**: `worksOnSql()` / `worksOnTask()`. Never test `assignee_id` alone to decide who
+  may see or work on a task. That covers the Tasks module (and "Assigned to me"), the task's child routes, the sidebar
+  badge, calendar, search, export and the mobile app's scope; reminders, overdue alerts, comments and status changes
+  reach them.
+- **Not theirs to decide**: deleting the task and changing who is on it stay with the assignee, the creator and
+  `task.edit.all`.
+- **Counted once**: dashboards, reports, scorecards, escalation, QA sampling and the list's Assignee filter still follow
+  the assignee alone. The mobile app has no collaborator picker yet.
+
+---
+
 ## Tasks — the Timeline (2026-11-24)
 
 The task screen's **View Timeline** button (`TaskTimeline.tsx`) opens a popup: when

@@ -34,6 +34,8 @@ import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
 import { notifyWatchers } from "@/lib/tasks/watchers";
 import { tasks, users } from "@/db/schema";
 import { taskInScopeSql } from "@/lib/tasks/scope";
+import { worksOnSql } from "@/lib/tasks/collaborators-sql";
+import { collaboratorsOf } from "@/lib/tasks/collaborators";
 
 export const dynamic = "force-dynamic";
 
@@ -92,13 +94,17 @@ export async function POST(req: NextRequest) {
           .limit(1);
         if (!u) throw Object.assign(new Error("assignee not found in this firm"), { status: 400 });
         patch.assigneeId = value;
+        // The new assignee is no longer also a collaborator.
+        patch.collaboratorIds = sql`${tasks.collaboratorIds} - ${value}::text`;
       }
 
       // Exclude already-trashed tasks from every bulk action.
       const conds: any[] = [eq(tasks.tenantId, session.tenantId), inArray(tasks.id, ids), isNull(tasks.deletedAt)];
       // Assigned-only editors can only touch their own tasks.
       if (!canEditAll) {
-        conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+        // Collaborators may move a task along, not reassign or delete it.
+        const mine = action === "assign" || action === "delete" ? eq(tasks.assigneeId, session.userId) : worksOnSql(session.userId);
+        conds.push(or(mine, eq(tasks.createdById, session.userId))!);
       } else {
         // edit.all reaches only tasks whose client / lead is in scope.
         conds.push(await taskInScopeSql(tx, session, "tasks"));
@@ -225,10 +231,26 @@ export async function POST(req: NextRequest) {
               meta: { task_id: before.id, changed_by: session.userId, from_status: before.status, to_status: to },
             });
           }
+          const told = new Set([session.userId, before.createdById ?? ""]);
+          const shared = collaboratorsOf(before);
+          for (const userId of shared.length ? [before.assigneeId, ...shared] : []) {
+            if (!userId || told.has(userId)) continue;
+            told.add(userId);
+            await createNotification(tx, {
+              tenantId: session.tenantId,
+              userId,
+              kind: "task.status_changed",
+              title: `Task ${human(to)}: ${before.title}`,
+              body: `${by} moved it to “${human(to)}”`,
+              linkUrl: `/dashboard/tasks/${before.id}`,
+              severity: to === "completed" ? "success" : "info",
+              meta: { task_id: before.id, changed_by: session.userId, from_status: before.status, to_status: to },
+            });
+          }
           await notifyWatchers(tx, {
             tenantId: session.tenantId,
             taskId: before.id,
-            exclude: new Set([session.userId, before.createdById ?? "", before.assigneeId ?? ""]),
+            exclude: new Set([...told, before.assigneeId ?? ""]),
             kind: "task.status_changed",
             title: `Task ${human(to)}: ${before.title}`,
             body: `${by} moved it to “${human(to)}”`,
