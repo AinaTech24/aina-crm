@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PrivacyConsentCheckbox } from "@/components/privacy/PrivacyConsentCheckbox";
-import { CheckCircle2, FileText, Loader2, Upload, X, PenLine, ImageUp, Save, Check } from "lucide-react";
+import { CheckCircle2, FileText, Loader2, Upload, X, PenLine, ImageUp, Save, Check, ArrowLeft, ArrowRight, ScanText } from "lucide-react";
 import { isFieldVisible, validateNomineeAllocations, type KycField } from "@/lib/onboarding/kyc-fields";
 import { DateField } from "@/components/ui/DateField";
 
@@ -35,6 +35,17 @@ export function PublicDocsForm({
   const [consent, setConsent] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  // Documents first (2026-11-27): the client uploads, we read the details off
+  // the documents (/api/public/docs/extract — no AI, nothing stored), and the
+  // second step asks only for what the documents did not show.
+  const [step, setStep] = useState<"docs" | "details">("docs");
+  const [reading, setReading] = useState<Record<string, "reading" | "read" | "none">>({});
+  const [readNote, setReadNote] = useState<Record<string, string>>({});
+  /** Field key → the document it was read from ("PAN card"). */
+  const [fromDoc, setFromDoc] = useState<Record<string, string>>({});
+  /** Live copies for readDocument, which can finish for two files at once. */
+  const autoRef = useRef<Record<string, { label: string; rank: number }>>({});
+  const valuesRef = useRef<Record<string, string>>({});
 
   // ── Save-draft persistence ────────────────────────────────────────────────
   // The form is long (KYC fields + several uploads) and the link needs no login,
@@ -50,8 +61,9 @@ export function PublicDocsForm({
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
-      const d = JSON.parse(raw) as { fieldValues?: Record<string, string>; extraNotes?: string; signature?: string; savedAt?: number };
+      const d = JSON.parse(raw) as { fieldValues?: Record<string, string>; fromDoc?: Record<string, string>; extraNotes?: string; signature?: string; savedAt?: number };
       if (d.fieldValues && typeof d.fieldValues === "object") setFieldValues(d.fieldValues);
+      if (d.fromDoc && typeof d.fromDoc === "object") setFromDoc(d.fromDoc);
       if (typeof d.extraNotes === "string") setExtraNotes(d.extraNotes);
       if (typeof d.signature === "string") setSignature(d.signature);
       if (d.savedAt) {
@@ -71,7 +83,7 @@ export function PublicDocsForm({
     const t = setTimeout(() => {
       try {
         const savedAt = Date.now();
-        localStorage.setItem(DRAFT_KEY, JSON.stringify({ fieldValues, extraNotes, signature, savedAt }));
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ fieldValues, fromDoc, extraNotes, signature, savedAt }));
         setDraftSavedAt(savedAt);
       } catch {
         /* storage full / disabled — silent */
@@ -79,12 +91,12 @@ export function PublicDocsForm({
     }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fieldValues, extraNotes, signature]);
+  }, [fieldValues, fromDoc, extraNotes, signature]);
 
   function saveDraftNow() {
     try {
       const savedAt = Date.now();
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ fieldValues, extraNotes, signature, savedAt }));
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ fieldValues, fromDoc, extraNotes, signature, savedAt }));
       setDraftSavedAt(savedAt);
       setDraftNotice("Saved on this device. You can close this page and return to the same link on this browser to finish.");
     } catch {
@@ -94,22 +106,95 @@ export function PublicDocsForm({
 
   function setFile(key: string, file: File | null) {
     setFiles((p) => ({ ...p, [key]: file }));
+    if (file) void readDocument(key, file);
+    else {
+      setReading((p) => ({ ...p, [key]: undefined as never }));
+      setReadNote((p) => ({ ...p, [key]: "" }));
+    }
+  }
+
+  /** The fields this link asks for — a document can only fill these. */
+  const askedKeys = useMemo(() => new Set(requiredFields.map((f) => f.key)), [requiredFields]);
+
+  /** Read the details off one uploaded document and fill the empty fields with them. */
+  async function readDocument(docKey: string, file: File) {
+    if (!/^(application\/pdf|image\/(png|jpe?g))$/.test(file.type) || file.size > 10 * 1024 * 1024) return;
+    setReading((p) => ({ ...p, [docKey]: "reading" }));
+    setReadNote((p) => ({ ...p, [docKey]: "" }));
+    try {
+      const fd = new FormData();
+      fd.append("tokenId", tokenId);
+      fd.append("docKey", docKey);
+      fd.append("file", file);
+      const r = await fetch("/api/public/docs/extract", { method: "POST", body: fd });
+      const j = (await r.json().catch(() => ({}))) as { kind?: string | null; label?: string | null; fields?: Record<string, string> };
+      const label = j.label ?? null;
+      // A PAN beats an Aadhaar for the name and date of birth; anything the
+      // client typed themselves is never overwritten.
+      const rank = j.kind === "pan" ? 3 : j.kind === "aadhaar" ? 2 : 1;
+      const got = Object.entries(j.fields ?? {}).filter(([k, v]) => askedKeys.has(k) && v);
+      const decided: Array<[string, string]> = [];
+      if (label) {
+        for (const [k, v] of got) {
+          const cur = autoRef.current[k];
+          if ((valuesRef.current[k] ?? "").trim() && !cur) continue;
+          if (cur && cur.rank > rank) continue;
+          autoRef.current[k] = { label, rank };
+          decided.push([k, v]);
+        }
+      }
+      if (decided.length) {
+        setFieldValues((prev) => ({ ...prev, ...Object.fromEntries(decided) }));
+        setFromDoc((prev) => ({ ...prev, ...Object.fromEntries(decided.map(([k]) => [k, label!])) }));
+      }
+      const names = decided.map(([k]) => requiredFields.find((f) => f.key === k)?.label.replace(/\s*\(.*\)\s*$/, "") ?? k);
+      setReading((p) => ({ ...p, [docKey]: got.length ? "read" : "none" }));
+      setReadNote((p) => ({
+        ...p,
+        [docKey]: decided.length
+          ? `Read from your ${label}: ${names.join(", ")}`
+          : got.length
+            ? `Read your ${label} — its details match what we already have.`
+            : "We couldn't read details from this file — you can type them in the next step.",
+      }));
+    } catch {
+      setReading((p) => ({ ...p, [docKey]: "none" }));
+      setReadNote((p) => ({ ...p, [docKey]: "We couldn't read details from this file — you can type them in the next step." }));
+    }
   }
   function setField(key: string, value: string) {
     setFieldValues((p) => ({ ...p, [key]: value }));
+    // The client's own correction wins over any document read later.
+    delete autoRef.current[key];
   }
+
+  useEffect(() => {
+    valuesRef.current = fieldValues;
+  }, [fieldValues]);
+  // A restored draft's document-filled fields stay replaceable by a better document.
+  useEffect(() => {
+    for (const [k, label] of Object.entries(fromDoc)) if (!autoRef.current[k]) autoRef.current[k] = { label, rank: 1 };
+  }, [fromDoc]);
+
+  const docsReady = requiredDocs.every((d) => !d.required || !!files[d.key]);
+  const stillReading = Object.values(reading).includes("reading");
 
   // Group VISIBLE fields by section (showIf-driven conditionals collapse as
   // the user fills the form). Recomputes when values change.
-  const sections = useMemo(() => {
+  const { readFields, sections } = useMemo(() => {
     const map = new Map<string, KycField[]>();
+    const read: KycField[] = [];
     for (const f of requiredFields) {
       if (!isFieldVisible(f, fieldValues)) continue;
+      if (fromDoc[f.key]) {
+        read.push(f);
+        continue;
+      }
       if (!map.has(f.section)) map.set(f.section, []);
       map.get(f.section)!.push(f);
     }
-    return Array.from(map.entries());
-  }, [requiredFields, fieldValues]);
+    return { readFields: read, sections: Array.from(map.entries()) };
+  }, [requiredFields, fieldValues, fromDoc]);
 
   function firstMissingField(): KycField | null {
     for (const f of requiredFields) {
@@ -249,17 +334,93 @@ export function PublicDocsForm({
     );
   }
 
+  if (step === "docs") {
+    return (
+      <div className="space-y-4">
+        <div className="bg-white rounded-xl shadow p-6">
+          <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Step 1 of 2</div>
+          <h1 className="page-title mt-1">Start with your documents</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Hi{recipientName ? ` ${recipientName}` : ""} — upload your documents first. We&apos;ll read your details from
+            them, so in the next step you only check them and answer what they don&apos;t show.
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl shadow p-6 space-y-3">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Upload your documents</h2>
+            <p className="text-2xs text-muted-foreground mt-0.5">PDF, JPG or PNG up to 10 MB each. A clear, straight photo reads best.</p>
+          </div>
+          {requiredDocs.map((d) => (
+            <DocRow
+              key={d.key}
+              doc={d}
+              value={files[d.key] ?? null}
+              onChange={(f) => setFile(d.key, f)}
+              status={reading[d.key]}
+              note={readNote[d.key]}
+            />
+          ))}
+
+          {draftNotice && (
+            <div className="text-2xs text-sky-800 bg-sky-50 border border-sky-200 rounded-md p-2 flex items-start gap-1.5">
+              <Save className="size-3.5 mt-0.5 shrink-0" />
+              <span>{draftNotice}</span>
+            </div>
+          )}
+
+          {!docsReady && <p className="text-2xs text-muted-foreground">Upload the documents marked * to continue.</p>}
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setStep("details");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            disabled={!docsReady || stillReading}
+            className="w-full rounded-md bg-brand-cyan text-white px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {stillReading ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+            {stillReading ? "Reading your documents…" : "Continue"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow p-6">
-        <h1 className="page-title">Complete your account opening</h1>
+        <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Step 2 of 2</div>
+        <h1 className="page-title mt-1">Check your details</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Hi{recipientName ? ` ${recipientName}` : ""} — please fill in your details and upload the documents below
-          to start your investment account. It only takes a few minutes.
+          {readFields.length
+            ? "We filled in what your documents show — please check it, then answer the rest."
+            : "We couldn't read details from your documents, so please fill them in below."}
         </p>
+        <button type="button" onClick={() => setStep("docs")} className="mt-3 text-xs font-medium text-brand-cyan inline-flex items-center gap-1 hover:underline">
+          <ArrowLeft className="size-3.5" /> Back to documents
+        </button>
       </div>
 
-      {/* ─── KYC data fields ─────────────────────────────────────────── */}
+      {/* ─── Read from the documents ─────────────────────────────────── */}
+      {readFields.length > 0 && (
+        <div className="bg-white rounded-xl shadow p-6 space-y-3">
+          <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+            <ScanText className="size-4 text-brand-cyan" /> From your documents — please check
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {readFields.map((f) => (
+              <FieldRow key={f.key} field={f} value={fieldValues[f.key] ?? ""} onChange={(val) => setField(f.key, val)} source={fromDoc[f.key]} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ─── What the documents don't show ───────────────────────────── */}
+      {sections.length > 0 && readFields.length > 0 && (
+        <h2 className="px-1 text-sm font-bold text-foreground">A few more details</h2>
+      )}
       {sections.map(([section, fields]) => (
         <div key={section} className="bg-white rounded-xl shadow p-6 space-y-3">
           <h2 className="text-sm font-bold text-foreground">{section}</h2>
@@ -271,18 +432,9 @@ export function PublicDocsForm({
         </div>
       ))}
 
-      {/* ─── Document uploads ────────────────────────────────────────── */}
       <div className="bg-white rounded-xl shadow p-6 space-y-3">
-        <div>
-          <h2 className="text-sm font-bold text-foreground">Upload your documents</h2>
-          <p className="text-2xs text-muted-foreground mt-0.5">Files: PDF, JPG, PNG up to 10 MB each.</p>
-        </div>
-        {requiredDocs.map((d) => (
-          <DocRow key={d.key} doc={d} value={files[d.key] ?? null} onChange={(f) => setFile(d.key, f)} />
-        ))}
-
         <label className="block">
-          <div className="text-xs font-semibold mb-1 mt-2">Any other documents / notes (optional)</div>
+          <div className="text-xs font-semibold mb-1">Anything else (optional)</div>
           <textarea
             value={extraNotes}
             onChange={(e) => setExtraNotes(e.target.value)}
@@ -420,7 +572,7 @@ function SignatureUpload({ value, onChange }: { value: File | null; onChange: (f
   );
 }
 
-function FieldRow({ field, value, onChange }: { field: KycField; value: string; onChange: (v: string) => void }) {
+function FieldRow({ field, value, onChange, source }: { field: KycField; value: string; onChange: (v: string) => void; source?: string }) {
   const labelEl = (
     <div className="text-xs font-medium text-foreground mb-1">
       {field.label}
@@ -451,12 +603,28 @@ function FieldRow({ field, value, onChange }: { field: KycField; value: string; 
           className={cls}
         />
       )}
-      {field.helpText && <div className="text-2xs text-muted-foreground mt-1">{field.helpText}</div>}
+      {source ? (
+        <div className="text-2xs text-muted-foreground mt-1">From your {source} — correct it if it&apos;s wrong.</div>
+      ) : (
+        field.helpText && <div className="text-2xs text-muted-foreground mt-1">{field.helpText}</div>
+      )}
     </label>
   );
 }
 
-function DocRow({ doc, value, onChange }: { doc: RequiredDoc; value: File | null; onChange: (f: File | null) => void }) {
+function DocRow({
+  doc,
+  value,
+  onChange,
+  status,
+  note,
+}: {
+  doc: RequiredDoc;
+  value: File | null;
+  onChange: (f: File | null) => void;
+  status?: "reading" | "read" | "none";
+  note?: string;
+}) {
   return (
     <div className="border rounded-lg p-3 flex items-center gap-3">
       <FileText className="size-5 text-brand-cyan" />
@@ -466,6 +634,14 @@ function DocRow({ doc, value, onChange }: { doc: RequiredDoc; value: File | null
           {doc.required && <span className="text-rose-600 ml-1">*</span>}
         </div>
         {value && <div className="text-2xs text-muted-foreground truncate">{value.name} · {(value.size / 1024).toFixed(0)} KB</div>}
+        {value && status === "reading" && (
+          <div className="text-2xs text-muted-foreground flex items-center gap-1 mt-0.5">
+            <Loader2 className="size-3 animate-spin" /> Reading your details…
+          </div>
+        )}
+        {value && status && status !== "reading" && note && (
+          <div className={`text-2xs mt-0.5 ${status === "read" ? "text-emerald-700" : "text-muted-foreground"}`}>{note}</div>
+        )}
       </div>
       {value ? (
         <button onClick={() => onChange(null)} className="text-rose-600 hover:bg-rose-50 rounded p-1">
