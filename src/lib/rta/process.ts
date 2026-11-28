@@ -23,7 +23,8 @@ import {
   type CanonicalTransaction,
 } from "@/lib/integrations/cams-feed-parser";
 import type { RtaFileKind, RtaSource } from "@/db/schema/rta_imports";
-import { refreshActiveSipAmount } from "@/lib/metrics/sip";
+import { refreshActiveSipAmount, monthlySipAmount } from "@/lib/metrics/sip";
+import { emptySummary, add as addTo, type SipRegisterSummary } from "./sip-register-summary";
 import { markSystematicTransfers, NOT_A_SIP_REMARK } from "@/lib/finance/sip-lifecycle";
 import {
   parseSipRejectionReport,
@@ -325,6 +326,8 @@ export type ProcessOutcome = {
   errors: Array<{ row: number; reason: string }>;
   periodStart: string;
   periodEnd: string;
+  /** SIP registers: where every live registration went (lib/rta/sip-register-summary.ts). */
+  summary?: SipRegisterSummary;
 };
 
 /**
@@ -1130,7 +1133,14 @@ async function processSipBook(
   tx: Tx,
   args: { tenantId: string; source: RtaSource; text: string }
 ): Promise<ProcessOutcome> {
-  const rows: CanonicalSipRow[] = parseSipBook(args.text, args.source);
+  const parseStats = { dataLines: 0, shortRows: 0, blankRows: 0 };
+  const rows: CanonicalSipRow[] = parseSipBook(args.text, args.source, parseStats);
+  // Where every live registration of this register went (the SIP Book page reads it).
+  const summary = emptySummary();
+  summary.dataLines = parseStats.dataLines;
+  summary.shortRows = parseStats.shortRows;
+  summary.blankRows = parseStats.blankRows;
+  summary.rows = rows.length;
   const errors: Array<{ row: number; reason: string }> = [];
   let imported = 0;
   let skipped = 0;
@@ -1221,6 +1231,7 @@ async function processSipBook(
         stoppedAsTransfer += stopped.rows.length;
       }
       leaveOut(notASipLabel(regType, !!r.targetScheme));
+      summary.notSip++;
       continue;
     }
     // What the registrar says about the registration. A CAMS cease date stops a SIP, and so does an
@@ -1230,18 +1241,22 @@ async function processSipBook(
     // "active" (the 9 Oct 2026 rule recorded the status as a label and never acted on it), and a
     // re-import could not correct them. Expired / matured reads "completed"; the rest "stopped".
     // "Live" and no status at all leave a SIP as it was (lib/rta/sip-registrar-status).
-    const reg = registrarSipState(
-          // CAMS has no Status column: a SIP end date (TO_DATE) already passed means the registration ended.
-          r.registrarStatus ? r : { ...r, registrarEndDate: r.registrarEndDate ?? r.endDate },
-          args.source,
-          todayIst,
-        );
+    // A SIP's own END date (CAMS TO_DATE, KFintech ENDDATE) is NOT evidence that it stopped: an AMC keeps
+    // collecting under an extended registration, and only the nightly pass (completeExpiredSips) closes a SIP
+    // — on positive evidence: past its end date, instalment history held, nothing collected for 120 days.
+    // Closing it here on the date alone (the 24 Nov 2026 rule) erased live SIPs from the book of every firm
+    // whose registrar prints no Status column: Akshar and Urmi read BELOW the registrar's own figure.
+    // Only what the registrar SAYS (a status, remarks, a cease / terminate date) ends one here.
+    const reg = registrarSipState(r, args.source, todayIst);
     const sipStatus: "active" | "stopped" | "completed" =
       r.ceaseDate && r.ceaseDate <= todayIst
         ? "stopped"
         : !reg.explicitLive && reg.status !== "active"
           ? reg.status === "completed" ? "completed" : "stopped"
           : "active";
+    const isLive = sipStatus === "active";
+    const monthly = monthlySipAmount(r.amount, r.frequency);
+    addTo(isLive ? summary.live : summary.notLive, monthly);
 
     // The folio + scheme are what actually key a SIP. PAN is NOT required:
     // KFintech leaves the PAN column blank on a real minority of rows (minor
@@ -1251,6 +1266,7 @@ async function processSipBook(
     // empty PAN, and an empty `errors` array to explain it.
     if (!r.folioNumber || !r.schemeCode) {
       skipped++;
+      if (isLive) addTo(summary.notPlaced, monthly);
       errors.push({
         row: i + 1,
         reason: `row carries no ${!r.folioNumber ? "folio number" : "scheme"} — a SIP cannot be keyed without it`,
@@ -1274,6 +1290,7 @@ async function processSipBook(
     // SIP book 10 L below the registrar's).
     if (!folioId && (picked.ambiguous || !r.pan)) {
       skipped++;
+      if (isLive) addTo(summary.notPlaced, monthly);
       errors.push({
         row: i + 1,
         reason: picked.ambiguous
@@ -1301,6 +1318,7 @@ async function processSipBook(
     }
     if (!investorId) {
       skipped++;
+      if (isLive) addTo(summary.notPlaced, monthly);
       errors.push({
         row: i + 1,
         reason: r.pan
@@ -1448,6 +1466,7 @@ async function processSipBook(
           }
           await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
           leaveOut("SIPs already closed in the CRM (cease date, completed or stopped)");
+          if (isLive) addTo(summary.closedHere, monthly);
           continue;
         }
         existingId = match.id;
@@ -1505,12 +1524,14 @@ async function processSipBook(
         hiddenSips++;
         hiddenClients.add(investorId);
       }
+      if (isLive) addTo(standing ? summary.inBook : summary.hiddenClient, monthly);
       imported++;
       await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
     } catch (e: any) {
       await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
       await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed++;
+      if (isLive) addTo(summary.failed, monthly);
       errors.push({ row: i + 1, reason: e.message ?? "SIP import failed" });
     }
   }
@@ -1553,6 +1574,7 @@ async function processSipBook(
     errors,
     periodStart: today(),
     periodEnd: today(),
+    summary,
   };
 }
 

@@ -106,6 +106,8 @@ export const rtaFileImports = pgTable(
 
     /** First few row-level errors, surfaced to the user. */
     errors: jsonb("errors").$type<Array<{ row: number; reason: string }>>(),
+    /** SIP registers: where every live registration went (migration 0303; lib/rta/sip-register-summary.ts). */
+    sipSummary: jsonb("sip_summary"),
     /** Rich reconciliation summary (investors/folios created vs updated, AUM,
      *  per-AMC breakdown, data-drift) so the import detail shows what changed. */
     summary: jsonb("summary").$type<Record<string, any>>(),

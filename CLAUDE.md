@@ -1673,6 +1673,29 @@ registrar status as well (`stopped`; Expired / matured → `completed`); "Live" 
 Re-import the register (RTA File Imports → Re-import) to correct existing rows. Not done: a SIP the CRM holds that a later
 register simply no longer LISTS is left as it is — a register can be partial (per ARN), so absence is not a cancellation.
 
+### A past END date does NOT close a SIP — corrected 2026-11-27 (Akshar, Urmi: the book read BELOW the registrar's figure)
+
+The 24 Nov rule below ("CAMS has no Status column — derived …", and migration 0288's second statement) completed a SIP on its
+END date alone. That was wrong and is withdrawn: an AMC keeps collecting under an extended registration, and the platform's own
+rule (`completeExpiredSips`, `lib/finance/sip-lifecycle.ts`, run nightly) closes a SIP only on POSITIVE evidence — past its end date
+(+7 days), instalment history held for the folio, nothing collected for 120 days — because overstating a book slightly, visibly,
+beats silently erasing live SIPs. `processSipBook` now ends a SIP only on what the registrar SAYS (a Status, remarks, a cease or
+terminate date); the CAMS `TO_DATE` fallback is gone. **Migration 0304** reopens every 'completed' SIP with a past end date that lacks
+that evidence (never one the registrar's words ended, never a deceased client's) and recomputes the cache;
+`tests/reopen-sips-closed-by-end-date.test.ts` runs the file. Do not put an end-date-only close back.
+
+**A short line is not a lost line** (same day): `parseSipBook` used to drop, silently, any line with fewer cells than the header's
+widest column — and the import still read "completed". A live SIP has empty cease-date / target / remarks cells, which a CSV
+exporter that trims trailing empties cuts off, so live rows could vanish while cancelled ones (full length) stayed. Such a line is
+now read with its missing cells empty (`SipBookParseStats`: lines, short, blank). The same `cols.length <= maxIdx` drop still
+exists in the other parsers (folio master, holdings, feeds) — check them if AUM or clients fall short of a file.
+
+**Where every rupee of a register went** (migration 0303, `rta_file_imports.sip_summary`, `lib/rta/sip-register-summary.ts`,
+pure and tested): `processSipBook` tallies the registrar's LIVE registrations in monthly-equivalent rupees — in the book, under a
+client the dashboards do not count, closed here, not placed (no folio / client), refused — and the SIP Book page's "Check against
+the registrar" card shows, per registrar, "the register lists N live SIPs worth ₹X; M (₹Y) are in the book, K (₹Z) are not" with the
+reason for each bucket, largest first. Filled by the NEXT import of a register (Re-import a kept one to see it).
+
 ### CAMS has no Status column — derived, and counted as "Stopped SIPs" (2026-11-24)
 
 KFintech's register says Live / Terminated; CAMS WBR49 does not. `processSipBook` now hands CAMS's SIP end date

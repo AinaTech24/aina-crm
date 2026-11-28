@@ -8,6 +8,7 @@ import { sips, investors, mandates, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatINR, formatDate } from "@/lib/utils";
+import { summaryHeadline, summaryNotes } from "@/lib/rta/sip-register-summary";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
@@ -561,6 +562,19 @@ function SipReconCard({ recon, book, today }: { recon: SipReconciliation; book: 
         <span className="text-foreground font-medium">{formatINR(recon.debited.amount)}</span>; the book holds{" "}
         <span className="text-foreground font-medium">{formatINR(book)}</span> a month.
       </p>
+      {recon.registers.filter((g) => g.summary).map((g) => (
+        <div key={g.source} className="rounded-md bg-secondary/70 p-3 space-y-1">
+          <p className="text-sm font-medium">
+            {g.source === "cams" ? "CAMS" : "KFintech"} register{g.fileName ? ` · ${g.fileName}` : ""}
+          </p>
+          <p className="text-sm">{summaryHeadline(g.summary!)}</p>
+          {summaryNotes(g.summary!).length > 0 && (
+            <ul className="text-sm list-disc pl-5 space-y-1 text-muted-foreground">
+              {summaryNotes(g.summary!).map((n) => <li key={n}>{n}</li>)}
+            </ul>
+          )}
+        </div>
+      ))}
       {notes.length > 0 ? (
         <ul className="text-sm list-disc pl-5 space-y-1">
           {notes.map((n) => <li key={n}>{n}</li>)}
