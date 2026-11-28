@@ -7,6 +7,7 @@ import { RmSelector } from "@/components/common/RmSelector";
 import { TeamMultiSelect } from "@/components/common/TeamMultiSelect";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { formatDate as formatIst } from "@/lib/format";
 
 /** 15-minute time slots across the day, labelled in 12-hour form. */
 const TIME_SLOTS: Array<{ value: string; label: string }> = (() => {
@@ -406,7 +407,7 @@ export function ScheduleMeetingForm({
               <li key={c.id}>
                 • {c.subject || labelType(c.meeting_type)}
                 {c.name ? ` with ${c.name}` : ""} —{" "}
-                {new Date(c.meeting_date).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                {formatIst(c.meeting_date, "dateTime")}
                 {" "}({c.duration_minutes || "30"} min)
               </li>
             ))}

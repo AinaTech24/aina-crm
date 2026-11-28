@@ -24,6 +24,7 @@ import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { readColumnPrefs } from "@/lib/list-columns/server";
 import { EXTRA_PREFIX, orderKeys } from "@/lib/list-columns/prefs";
 import { allowedMeetingExtraKeys, loadMeetingExtra, meetingExtraOptions } from "@/lib/list-columns/meeting-fields";
+import { formatDate as formatIst } from "@/lib/format";
 
 type MeetingRow = Parameters<typeof MeetingsKanban>[0]["meetings"][number];
 
@@ -323,7 +324,7 @@ export default async function ReviewMeetingsPage({
                 className="min-w-[210px] rounded-lg border border-border p-3 hover:border-foreground/20 hover:bg-secondary/50 transition-colors"
               >
                 <div className="text-lg font-bold tabular-nums">
-                  {new Date(m.meeting_date).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
+                  {formatIst(m.meeting_date, "time")}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <Avatar

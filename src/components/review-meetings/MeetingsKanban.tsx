@@ -172,7 +172,7 @@ export function MeetingsKanban({ meetings }: { meetings: Row[] }) {
                       <span className="tabular-nums">
                         {formatDate(new Date(m.meeting_date), "dayMonth")}
                         {" · "}
-                        {new Date(m.meeting_date).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
+                        {formatDate(m.meeting_date, "time")}
                       </span>
                       <span className="chip bg-secondary text-2xs">{MODE_LABEL[m.meeting_mode] ?? m.meeting_mode}</span>
                     </div>

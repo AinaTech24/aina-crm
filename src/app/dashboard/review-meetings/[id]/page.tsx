@@ -13,6 +13,7 @@ import { DeleteMeetingButton } from "@/components/review-meetings/DeleteMeetingB
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { canSeeMeeting } from "@/lib/review-meetings/scope";
 import { dataWallApplies } from "@/lib/investors/access";
+import { formatDate as formatIst } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -98,7 +99,7 @@ export default async function ReviewMeetingDetailPage({
             {subjectKind}
           </span>
           <div className="text-sm text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
-            <span>{new Date(data.meeting.meetingDate).toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short" })}</span>
+            <span>{formatIst(data.meeting.meetingDate, "weekday") + ", " + formatIst(data.meeting.meetingDate, "time")}</span>
             <span>·</span>
             <span className="capitalize">{data.meeting.meetingMode.replace(/_/g, " ")}</span>
             {data.rm && (

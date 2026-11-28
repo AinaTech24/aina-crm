@@ -23,6 +23,7 @@ import {
   Lightbulb,
 } from "lucide-react";
 import { formatDate, formatINR } from "@/lib/utils";
+import { formatDate as formatIst } from "@/lib/format";
 
 type PrepPack = {
   meeting: { id: string; scheduledAt: string };
@@ -68,7 +69,7 @@ function titleCase(s: string): string {
 function toPlainText(p: PrepPack): string {
   const lines: string[] = [];
   lines.push(`MEETING PREP PACK — ${p.client.name}`);
-  lines.push(`Meeting: ${new Date(p.meeting.scheduledAt).toLocaleString("en-IN", { dateStyle: "full", timeStyle: "short" })}`);
+  lines.push(`Meeting: ${formatIst(p.meeting.scheduledAt, "dateTime")}`);
   lines.push("");
   lines.push("CLIENT SNAPSHOT");
   if (p.client.kind === "investor") {
