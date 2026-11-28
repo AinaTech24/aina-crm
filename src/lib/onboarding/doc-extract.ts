@@ -242,7 +242,9 @@ export function detectKind(text: string): DocKind | null {
  * client's: rename the keys. Documents of people whose details the form does
  * not ask for (a karta's or guardian's Aadhaar) fill nothing.
  */
-export function forSlot(docKey: string, fields: Record<string, string>): Record<string, string> {
+export function forSlot(slotKey: string, fields: Record<string, string>): Record<string, string> {
+  // "guardian_aadhar_back" is the back of the guardian's Aadhaar — same owner.
+  const docKey = slotKey.replace(/_back$/, "");
   const pick = (map: Record<string, string>) =>
     Object.fromEntries(Object.entries(map).flatMap(([from, to]) => (fields[from] ? [[to, fields[from]]] : [])));
   if (docKey === "guardian_pan") return pick({ name_as_per_pan: "guardian_name", pan: "guardian_pan" });

@@ -116,6 +116,10 @@ describe("routing a document to the right fields", () => {
     expect(extractFromText(PAN_NEW, "karta_pan").fields).toEqual({ authorised_person_name: "Rahul Kumar Sharma", authorised_person_pan: "ABCPS1234K" });
     expect(extractFromText(AADHAAR_FRONT, "guardian_aadhar").fields).toEqual({});
   });
+  it("the back of an Aadhaar is read as an Aadhaar, and a guardian's back side fills nothing", () => {
+    expect(extractFromText(AADHAAR_BACK, "aadhar_back").fields).toMatchObject({ address_city: "Ahmedabad", address_pincode: "380009" });
+    expect(extractFromText(AADHAAR_BACK, "guardian_aadhar_back").fields).toEqual({});
+  });
   it("an unreadable photo gives nothing, not guesses", () => {
     expect(extractFromText("|||  ~~ blurry ~~ ", "pan").fields).toEqual({});
   });

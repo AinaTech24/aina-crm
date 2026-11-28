@@ -8,6 +8,10 @@ import { DateField } from "@/components/ui/DateField";
 
 type RequiredDoc = { key: string; label: string; required?: boolean };
 
+/** An Aadhaar slot takes the front and the back as two files (the back carries the address). */
+const isAadhaarDoc = (key: string) => /aadha?r/i.test(key);
+const baseLabel = (label: string) => label.replace(/\s*\(\s*front\s*(&|and)\s*back\s*\)/i, "").trim();
+
 export function PublicDocsForm({
   tokenId,
   recipientName,
@@ -236,7 +240,14 @@ export function PublicDocsForm({
       }
       // The files the client attached.
       const chosen = requiredDocs
-        .map((d) => ({ docKey: d.key, label: d.label, file: files[d.key] }))
+        .flatMap((d) =>
+          isAadhaarDoc(d.key)
+            ? [
+                { docKey: d.key, label: `${baseLabel(d.label)} — front`, file: files[d.key] },
+                { docKey: `${d.key}_back`, label: `${baseLabel(d.label)} — back`, file: files[`${d.key}_back`] },
+              ]
+            : [{ docKey: d.key, label: d.label, file: files[d.key] }]
+        )
         .filter((x): x is { docKey: string; label: string; file: File } => !!x.file);
       // Wet-signature photo (signed on blank paper) rides the same upload
       // pipeline — stored as a compliance document tagged "signature_image".
@@ -351,16 +362,43 @@ export function PublicDocsForm({
             <h2 className="text-sm font-bold text-foreground">Upload your documents</h2>
             <p className="text-2xs text-muted-foreground mt-0.5">PDF, JPG or PNG up to 10 MB each. A clear, straight photo reads best.</p>
           </div>
-          {requiredDocs.map((d) => (
-            <DocRow
-              key={d.key}
-              doc={d}
-              value={files[d.key] ?? null}
-              onChange={(f) => setFile(d.key, f)}
-              status={reading[d.key]}
-              note={readNote[d.key]}
-            />
-          ))}
+          {requiredDocs.map((d) =>
+            isAadhaarDoc(d.key) ? (
+              <div key={d.key} className="border rounded-lg p-3 space-y-2">
+                <div>
+                  <div className="font-medium text-sm">
+                    {baseLabel(d.label)}
+                    {d.required && <span className="text-rose-600 ml-1">*</span>}
+                  </div>
+                  <p className="text-2xs text-muted-foreground mt-0.5">
+                    Upload the front and the back separately. An e-Aadhaar PDF already has both sides — upload it as the front.
+                  </p>
+                </div>
+                {[
+                  { key: d.key, label: "Front side", required: d.required },
+                  { key: `${d.key}_back`, label: "Back side (address)", required: false },
+                ].map((side) => (
+                  <DocRow
+                    key={side.key}
+                    doc={side}
+                    value={files[side.key] ?? null}
+                    onChange={(f) => setFile(side.key, f)}
+                    status={reading[side.key]}
+                    note={readNote[side.key]}
+                  />
+                ))}
+              </div>
+            ) : (
+              <DocRow
+                key={d.key}
+                doc={d}
+                value={files[d.key] ?? null}
+                onChange={(f) => setFile(d.key, f)}
+                status={reading[d.key]}
+                note={readNote[d.key]}
+              />
+            )
+          )}
 
           {draftNotice && (
             <div className="text-2xs text-sky-800 bg-sky-50 border border-sky-200 rounded-md p-2 flex items-start gap-1.5">
