@@ -1,5 +1,5 @@
 /**
- * Migration 0300 (2026-11-27): SIPs closed on their END DATE alone are put back — and nothing the registrar said ended,
+ * Migration 0304 (2026-11-27): SIPs closed on their END DATE alone are put back — and nothing the registrar said ended,
  * nothing with positive evidence that it stopped, and no deceased client's, is touched. Runs the migration file itself.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
-describe.skipIf(!TEST_DB)("migration 0300 — reopen SIPs closed by end date alone", () => {
+describe.skipIf(!TEST_DB)("migration 0304 — reopen SIPs closed by end date alone", () => {
   const tenant = randomUUID();
   const inv = randomUUID();
   const dead = randomUUID();
@@ -48,7 +48,7 @@ describe.skipIf(!TEST_DB)("migration 0300 — reopen SIPs closed by end date alo
     await addSip("F-EXPIRED", { remarks: "KFintech: Expired" });                 // the registrar said so
     await addSip("F-DEAD", { investor: dead });                                  // a deceased client's
 
-    const file = readFileSync(join(process.cwd(), "drizzle/migrations/0300_reopen_sips_closed_by_end_date.sql"), "utf8");
+    const file = readFileSync(join(process.cwd(), "drizzle/migrations/0304_reopen_sips_closed_by_end_date.sql"), "utf8");
     await withSystem(async (tx) => { await tx.execute(sql.raw(file)); });
   });
 
