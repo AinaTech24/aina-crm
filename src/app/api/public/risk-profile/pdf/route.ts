@@ -75,9 +75,10 @@ export async function GET(req: NextRequest) {
         phone = s?.phone ?? null;
       } else {
         const s = (await tx.execute(
-          sql`SELECT name, email, phone FROM leads WHERE id = ${tk.subjectId}::uuid LIMIT 1`
+          sql`SELECT name, pan, email, phone FROM leads WHERE id = ${tk.subjectId}::uuid LIMIT 1`
         )).rows[0] as any;
         name = s?.name ?? "Client";
+        pan = s?.pan ?? null;
         email = s?.email ?? null;
         phone = s?.phone ?? null;
       }

@@ -107,3 +107,41 @@ describe("risk profile PDF header", () => {
     }
   });
 });
+
+describe("risk profile PDF client details", () => {
+  const withClient = async (investor: Record<string, unknown>) =>
+    text(
+      await renderRiskProfilePdf({
+        profile: { category: "aggressive", totalScore: 4, responses: [], questions, bands, verificationMethod: "rm_entry" },
+        investor: { name: "Harsh Test", ...investor },
+        brand: { displayName: "Test Wealth", arn: "123456" } as any,
+        generatedAt: "2026-11-28T00:00:00Z",
+      }),
+    );
+
+  it("prints the client's PAN, mobile and email", async () => {
+    const t = await withClient({ pan: "ABCDE1234F", phone: "9876543210", email: "harsh@example.test" });
+    expect(t).toContain("PAN: ABCDE1234F");
+    expect(t).toContain("Mobile: 9876543210");
+    expect(t).toContain("Email: harsh@example.test");
+  });
+
+  it("keeps a long email whole", async () => {
+    const email = "harshvardhan.jitendrabhai.panchal@familyoffice-example.co.in";
+    expect(await withClient({ pan: null, phone: null, email })).toContain(`Email: ${email}`);
+  });
+
+  it("never prints a guardian's PAN held in an import key", async () => {
+    const t = await withClient({ pan: "MINOR:ABCDE1234F:HARSH TEST", phone: null, email: null });
+    expect(t).not.toContain("ABCDE1234F");
+    expect(t).toContain("PAN: -");
+    expect(t).toContain("Mobile: -");
+  });
+
+  it("leaves out a field the reader may not see", async () => {
+    const t = await withClient({ phone: "9876543210" });
+    expect(t).toContain("Mobile: 9876543210");
+    expect(t).not.toContain("PAN:");
+    expect(t).not.toContain("Email:");
+  });
+});

@@ -83,23 +83,17 @@ function PdfModal({ profileId, name, onClose }: { profileId: string; name: strin
 
 export function RiskProfileName({
   name,
-  pan,
   profileId,
   isMinor = false,
   guardianName = null,
 }: {
   name: string;
-  /** Already MASKED by the server (displayPan) — never the raw column, which
-   *  can hold an import key like MINOR:<guardian PAN>:<NAME>. */
-  pan: string | null;
   profileId: string | null;
   isMinor?: boolean;
   guardianName?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   return (
-    // One block, so the masked PAN sits UNDER the name rather than beside it
-    // when the parent row is a flex container (the Risk Profiles table is).
     <div className="min-w-0">
       <div className="flex items-center gap-1.5">
         {profileId ? (
@@ -125,7 +119,6 @@ export function RiskProfileName({
           </Tooltip>
         )}
       </div>
-      {pan && <div className="text-xs text-muted-foreground font-mono">{pan}</div>}
       {open && profileId && <PdfModal profileId={profileId} name={name} onClose={() => setOpen(false)} />}
     </div>
   );

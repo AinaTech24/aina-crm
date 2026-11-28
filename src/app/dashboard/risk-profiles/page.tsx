@@ -22,6 +22,8 @@ import { resolveAgeBands } from "@/lib/risk-profile/age-bands";
 import { Avatar } from "@/components/ui/Avatar";
 import { PdfRow } from "@/components/common/ClickableRow";
 import { riskProfileBaseSql } from "@/lib/metrics/risk";
+import { loadTenantLicense } from "@/lib/auth/license";
+import { isFieldAllowed } from "@/lib/auth/field-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +66,8 @@ export default async function RiskProfilesPage({
   const canViewAll = can(session.roles, "investor.view.all", session.permissions);
   // Bulk suggesting labels hundreds of clients at once — same gate as editing a profile.
   const canManage = can(session.roles, "risk_profile.manage", session.permissions);
+  // The PAN column follows the firm's licence, as on the Clients list.
+  const showPan = isFieldAllowed(await loadTenantLicense(session.tenantId, session.roles), "investor", "pan");
   const sp = await searchParams;
   // Default tab: Not profiled. Old ?filter=needs_review / suggested links map
   // onto the bucket that now holds those clients.
@@ -243,6 +247,7 @@ export default async function RiskProfilesPage({
                       </th>
                     )}
                     <th className="text-left px-4 py-2 font-medium">Investor</th>
+                    {showPan && <th className="text-left py-2 pr-3 font-medium">PAN</th>}
                     <th className="text-left py-2 font-medium">Category</th>
                     <th className="text-left py-2 font-medium">Score</th>
                     <th className="text-left py-2 font-medium">Last signed</th>
@@ -277,13 +282,17 @@ export default async function RiskProfilesPage({
                             <Avatar src={r.avatar_url ? `/api/investors/${r.id}/avatar` : null} name={r.name} size={26} />
                             <RiskProfileName
                               name={r.name}
-                              pan={r.pan_display}
                               profileId={r.profile_id ?? null}
                               isMinor={r.is_minor}
                               guardianName={r.guardian_name ?? null}
                             />
                           </div>
                         </td>
+                        {showPan && (
+                          <td className="py-3 pr-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
+                            {r.pan_display ?? "—"}
+                          </td>
+                        )}
                         <td className="py-3">
                           {r.risk_profile ? (
                             <span

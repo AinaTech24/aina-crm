@@ -18,6 +18,7 @@
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
 import { embedPdfFonts, pdfSanitize } from "@/lib/pdf/fonts";
 import { embedLogo, type StatementBrand } from "@/lib/finance/valuation-pdf";
+import { ownPan } from "@/lib/investors/pan-display";
 
 export type AllocationKey = "equity" | "debt" | "cash" | "commodities" | "alternatives";
 export type RiskAllocation = Partial<Record<AllocationKey, number>>;
@@ -109,6 +110,8 @@ export type RiskProfilePdfData = {
 
 export type RiskProfileInvestor = {
   name: string | null;
+  /** PAN, email and mobile print under the profile details. null = not on
+   *  record (a dash); left out = this reader may not see it, so no cell. */
   pan?: string | null;
   address?: PostalAddress | null;
   email?: string | null;
@@ -284,7 +287,11 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
     const x = MARGIN + 14 + i * (CONTENT_W / 3);
     page.drawText(ascii(`${k}: ${v}`), { x, y: y - 19, size: 8.5, font: helv, color: SLATE });
   });
-  y -= metaH + 26;
+  y -= metaH;
+
+  // ── Client details ───────────────────────────────────────────────────────
+  y = drawClientDetails(page, ctx, y, investor);
+  y -= 26;
 
   // ── Risk assessment summary + gauge ──────────────────────────────────────
   y = sectionRule(page, ctx, y, "RISK ASSESSMENT SUMMARY");
@@ -746,6 +753,39 @@ function drawFooterBar(page: PDFPage, ctx: Ctx) {
 }
 
 /** Centred small-caps section title with a rule either side. */
+/**
+ * PAN, mobile and email, in a strip joined to the one above. An email too long
+ * for its column takes a line of its own, so it is never cut short.
+ */
+function drawClientDetails(page: PDFPage, ctx: Ctx, y: number, investor: RiskProfileInvestor): number {
+  const size = 8.5;
+  const cells: Array<[label: string, value: string]> = [];
+  // Only the client's OWN PAN: the stored value can be an import key holding a
+  // guardian's PAN (lib/investors/pan-display.ts).
+  if (investor.pan !== undefined) cells.push(["PAN", ownPan(investor.pan) ?? "-"]);
+  if (investor.phone !== undefined) cells.push(["Mobile", investor.phone?.trim() || "-"]);
+  if (investor.email !== undefined) cells.push(["Email", investor.email?.trim() || "-"]);
+  if (!cells.length) return y;
+
+  // Columns line up with the strip above; the last cell has the rest of the width.
+  const step = CONTENT_W * 0.27;
+  const placed = cells.map(([label, value], i) => ({ text: ascii(`${label}: ${value}`), x: MARGIN + 14 + i * step, line: 0 }));
+  const last = placed[placed.length - 1];
+  if (last.x + ctx.helv.widthOfTextAtSize(last.text, size) > MARGIN + CONTENT_W - 8) {
+    last.x = MARGIN + 14;
+    last.line = placed.length > 1 ? 1 : 0;
+  }
+  const height = 30 + 14 * last.line;
+  page.drawRectangle({ x: MARGIN, y: y - height, width: CONTENT_W, height, color: PAPER, borderColor: LINE, borderWidth: 0.8 });
+  for (const c of placed) {
+    // Shrinks only an address longer than the whole strip.
+    const room = MARGIN + CONTENT_W - 8 - c.x;
+    const fit = Math.min(size, (size * room) / ctx.helv.widthOfTextAtSize(c.text, size));
+    page.drawText(c.text, { x: c.x, y: y - 19 - 14 * c.line, size: fit, font: ctx.helv, color: SLATE });
+  }
+  return y - height;
+}
+
 function sectionRule(page: PDFPage, ctx: Ctx, y: number, title: string): number {
   const { bold, primary } = ctx;
   const t = ascii(title);

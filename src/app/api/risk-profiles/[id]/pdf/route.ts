@@ -15,6 +15,7 @@ import { renderRiskProfilePdf } from "@/lib/risk-profile/risk-profile-pdf";
 import { loadActiveTemplate } from "@/lib/risk-profile/template";
 import { loadSignatureImage } from "@/lib/risk-profile/signature-image";
 import { riskSubjectScopeSql } from "@/lib/risk-profile/access";
+import { isFieldAllowed } from "@/lib/auth/field-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -42,11 +43,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           r.final_category, r.total_score, r.responses, r.profile_date, r.age,
           r.signed_at, r.signed_by_name, r.next_review_at, r.verification_method, r.document_url, r.created_at,
           r.verified_email, r.email_verified_at, r.client_ip, r.otp_transaction_id, r.provisional, r.rm_remarks,
-          i.name AS investor_name, i.pan AS investor_pan,
-          i.address AS investor_address, i.email AS investor_email, i.phone AS investor_phone,
+          COALESCE(i.name, ld.name) AS investor_name, COALESCE(i.pan, ld.pan) AS investor_pan,
+          i.address AS investor_address, COALESCE(i.email, ld.email) AS investor_email,
+          COALESCE(i.phone, ld.phone) AS investor_phone,
           i.id AS investor_id, u.name AS rm_name
         FROM risk_profile_responses r
         LEFT JOIN investors i ON i.id = r.investor_id
+        -- A lead's profile is stored under the lead's id in the same column.
+        LEFT JOIN leads ld ON ld.id = r.investor_id AND ld.tenant_id = r.tenant_id
         LEFT JOIN users u ON u.id = i.rm_id
         WHERE r.id = ${id}::uuid AND r.tenant_id = ${session.tenantId}::uuid
           AND ${ownerScope}
@@ -86,6 +90,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         ? tpl.questions.reduce((s, q) => s + Math.max(...q.options.map((o) => o.score)), 0)
         : null;
 
+      const license = await loadTenantLicense(session.tenantId, session.roles);
+      // A field the firm's licence hides is left off the PDF, as on the screens.
+      const allowed = (field: "pan" | "email" | "phone") => isFieldAllowed(license, "investor", field);
+
       const pdf = await renderRiskProfilePdf({
         profile: {
           category: row.final_category ?? null,
@@ -100,7 +108,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           verificationMethod: row.verification_method ?? null,
           // A profile with no answers says how it was recorded instead of
           // printing an empty questionnaire and a client signature.
-          markNoAnswers: (await loadTenantLicense(session.tenantId, session.roles)).featureFlags?.riskPdfNoAnswers === true,
+          markNoAnswers: license.featureFlags?.riskPdfNoAnswers === true,
           provisional: row.provisional === true,
           note: row.rm_remarks ?? null,
           verification: {
@@ -120,10 +128,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         },
         investor: {
           name: row.investor_name ?? "Client",
-          pan: row.investor_pan ?? null,
+          pan: allowed("pan") ? (row.investor_pan ?? null) : undefined,
           address: row.investor_address ?? null,
-          email: row.investor_email ?? null,
-          phone: row.investor_phone ?? null,
+          email: allowed("email") ? (row.investor_email ?? null) : undefined,
+          phone: allowed("phone") ? (row.investor_phone ?? null) : undefined,
         },
         brand: {
           displayName: t?.display_name,
