@@ -14,6 +14,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { subscriptions, packages, subscriptionEvents } from "@/db/schema";
 import { getBillingUsage } from "@/lib/billing/usage";
+import { userLimit } from "@/lib/billing/user-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -37,7 +38,7 @@ export async function GET() {
           : [];
         const u = p
           ? await getBillingUsage(tx, session.tenantId, {
-              seatLimit: s?.seatsOverride ?? p.maxUsers,
+              seatLimit: userLimit(s, p),
               investorLimit: p.maxInvestors,
               storageGb: p.storageLimitGb,
               messageCap: Number((p.featureFlags as any)?.maxMessagesPerMonth ?? 0),

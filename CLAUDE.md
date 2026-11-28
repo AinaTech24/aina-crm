@@ -2124,6 +2124,9 @@ parallel system. Migrations 0265 (billing), 0266 (onboarding + legal), 0267
   then Billing + Support only; paying late adds the grace days pro-rata and
   starts the cycle that day. A failed / cancelled mandate only changes
   `mandate_status`. Seats bought (`seats_override`) are the user limit.
+- **A user allowance without a price change** (`subscriptions.user_limit_override`, migration 0302): the user limit is the
+  higher of it and seats bought / the package (`userLimit()`, `lib/billing/user-limit.ts`). Prices, invoices and renewals
+  never read it. Set by migration (We Care Freedom Wealth, ARN-249212: 70); there is no admin screen for it yet.
 - **Renewal re-pricing** (`lib/billing/renewal-review.ts`, worker daily 03:20):
   7 days before each renewal, the tier from the CRM's AUM (nightly firm
   snapshot → live metric → declared, said so), once per firm per renewal date,

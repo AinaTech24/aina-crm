@@ -22,6 +22,7 @@ import { loadPricingSettings } from "@/lib/billing/pricing-settings";
 import { loadAumBillingView, loadInvoices, type AumBillingView, type BillingInvoiceRow } from "@/lib/billing/billing-view";
 import { CYCLE_LABEL, cycleLabel, inr } from "@/lib/billing/aum-pricing";
 import { aumSourceText } from "@/lib/billing/renewal-review";
+import { userLimit } from "@/lib/billing/user-limit";
 
 const STATUS_TONE: Record<string, Tone> = {
   trial: "info",
@@ -50,7 +51,7 @@ export default async function BillingPage() {
       : [];
     const u = p
       ? await getBillingUsage(tx, session.tenantId, {
-          seatLimit: s?.seatsOverride ?? p.maxUsers,
+          seatLimit: userLimit(s, p),
           investorLimit: p.maxInvestors,
           storageGb: p.storageLimitGb,
           messageCap: Number((p.featureFlags as any)?.maxMessagesPerMonth ?? 0),
@@ -161,7 +162,7 @@ export default async function BillingPage() {
             <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t text-sm">
               <Row label="Billing cycle" value={sub.billingCycle ?? "—"} />
               <Row label="Setup (one-time)" value={`₹${(pkg.setupCostPaise / 100).toLocaleString("en-IN")}`} />
-              <Row label="Users" value={String(sub.seatsOverride ?? pkg.maxUsers)} />
+              <Row label="Users" value={String(userLimit(sub, pkg))} />
               <Row label="Max investors" value={String(pkg.maxInvestors)} />
               <Row label="Storage" value={`${pkg.storageLimitGb} GB`} />
               <Row label="Next renewal" value={sub.nextRenewalAt ? formatDate(sub.nextRenewalAt) : "—"} />
