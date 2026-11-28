@@ -9,6 +9,7 @@
  * confidence for OCR (noisier) vs a clean PDF text layer.
  */
 
+import { tmpdir } from "node:os";
 import { extractText, getDocumentProxy } from "unpdf";
 
 export type ExtractedText = {
@@ -30,7 +31,9 @@ export async function extractDocumentText(
 
   // Image → OCR. Lazy-load tesseract so the (common) PDF path never pays for it.
   const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("eng");
+  // The English model downloads once and is cached in the temp folder (the
+  // app directory is not writable for the app user in the container).
+  const worker = await createWorker("eng", 1, { cachePath: tmpdir() });
   try {
     const { data } = await worker.recognize(buffer);
     return { text: data.text ?? "", method: "ocr", pages: 1 };

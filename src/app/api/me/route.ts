@@ -23,7 +23,7 @@ import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { ALL_CAPABILITIES, can, primaryRoleLabel, ROLE_LABELS } from "@/lib/auth/rbac";
+import { ALL_CAPABILITIES, can, primaryRoleLabel, ROLE_LABELS, rolesWithoutSharedBook } from "@/lib/auth/rbac";
 import { loadTenantLicense } from "@/lib/auth/license";
 
 export const dynamic = "force-dynamic";
@@ -56,8 +56,10 @@ export async function GET() {
         name: session.name,
         email: session.email,
         avatarUrl,
-        roles,
-        roleLabel: primaryRoleLabel(roles),
+        // The shared-book marker (lib/auth/shared-book.ts) shows in
+        // capabilities, never as a role.
+        roles: rolesWithoutSharedBook(roles),
+        roleLabel: primaryRoleLabel(rolesWithoutSharedBook(roles)),
         branchId: session.branchId ?? null,
         tenantId: session.tenantId,
         isPlatformAdmin: !!session.isPlatformAdmin,

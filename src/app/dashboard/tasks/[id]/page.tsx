@@ -17,6 +17,7 @@ import { taskInScope } from "@/lib/tasks/scope";
 import { escalatedTo } from "@/lib/tasks/escalation-ladder";
 import { dataWallApplies, investorScopeCondition } from "@/lib/investors/access";
 import { loadViewableLead } from "@/lib/leads/access";
+import { worksOnTask } from "@/lib/tasks/collaborators";
 
 /**
  * One task as a full page — the same editor as the task list's dialog
@@ -45,7 +46,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
       .limit(1))[0];
     if (!task) return null;
     const mine =
-      task.assigneeId === session.userId ||
+      worksOnTask(task, session.userId) ||
       task.createdById === session.userId ||
       taskChecklist(task.meta).some((c) => c.assigneeId === session.userId) ||
       // The person an open "Need information" question is waiting on.

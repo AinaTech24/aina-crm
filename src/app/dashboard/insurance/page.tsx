@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { loadTenantLicense } from "@/lib/auth/license";
+import { INSURANCE_FOLDER_FLAG } from "@/lib/nav/insurance-folder";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
@@ -90,6 +92,8 @@ export default async function InsurancePage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  // The Insurance folder names this page "Insurance Policies" in the menu.
+  const insuranceFolder = (await loadTenantLicense(session.tenantId, session.roles)).featureFlags?.[INSURANCE_FOLDER_FLAG] === true;
   // Policies carry nominee PII, client PAN, premium + commission — require the
   // view capability (the page had NO gate) and scope non-managers to their own
   // book (a client they manage OR a policy they sold).
@@ -325,7 +329,7 @@ export default async function InsurancePage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <PageHeaderCard title={<><Shield className="size-6 text-muted-foreground" /> Insurance</>} actions={<><div className="flex items-center gap-2">
+      <PageHeaderCard title={<><Shield className="size-6 text-muted-foreground" /> {insuranceFolder ? "Insurance Policies" : "Insurance"}</>} actions={<><div className="flex items-center gap-2">
           <ExportButton module="insurance" />
           <Link href="/dashboard/insurance/import" className="btn-secondary"><FileUp className="size-4" /> Import</Link>
           <Link href="/dashboard/insurance/new" className="btn-primary">

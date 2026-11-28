@@ -83,6 +83,12 @@ export type NavItemData = {
   badge?: number;
   /** Module is in BETA (platform Module Controls) — shows a "Beta" tag. */
   beta?: boolean;
+  /** The default group this item used to sit in. A saved layout that still
+   *  holds it in a group of that title moves it to `defaultGroup` (a per-firm
+   *  regroup, e.g. the Insurance folder, without a VERSION bump that would
+   *  reset every firm's sidebar). Moved once: after that the saved layout has
+   *  it in its new group and the user may move it freely. */
+  movedFrom?: string;
 };
 
 type Group = { id: string; title: string; items: string[] /* hrefs */ };
@@ -114,6 +120,7 @@ const GROUP_ICON: Record<string, LucideIcon> = {
   team: UsersRound,
   practice: Building,
   "data-admin": Database,
+  insurance: Shield,
 };
 
 /** A named dashboard and its pages (/dashboard/<id>, /manage, /new) are the Dashboard item's. */
@@ -161,6 +168,8 @@ function reconcile(saved: SavedLayout | null, items: NavItemData[]): Group[] {
     id: g.id,
     title: RENAMED_GROUPS[g.title ?? ""] ?? g.title ?? "",
     items: (g.items || []).filter((h) => {
+      const moved = available.get(h)?.movedFrom;
+      if (moved && moved === (RENAMED_GROUPS[g.title ?? ""] ?? g.title)) return false; // re-homed below
       if (available.has(h) && !seen.has(h)) {
         seen.add(h);
         return true;
@@ -168,19 +177,54 @@ function reconcile(saved: SavedLayout | null, items: NavItemData[]): Group[] {
       return false;
     }),
   }));
-  // Append newly-available items to a group matching their default title.
+  // Append newly-available items to a group matching their default title. A
+  // group the saved layout lacks goes where the default puts it (after the
+  // nearest default group before it), not at the bottom.
+  const order = defaultGroupOrder(items);
   for (const it of items) {
     if (seen.has(it.href)) continue;
     const title = it.defaultGroup ?? "";
     let g = groups.find((x) => x.title === title);
     if (!g) {
       g = { id: title === "" ? "main" : slug(title), title, items: [] };
-      groups.push(g);
+      groups.splice(slotFor(groups, order, title), 0, g);
     }
     g.items.push(it.href);
     seen.add(it.href);
   }
   return groups;
+}
+
+const defaultGroupOrder = (items: NavItemData[]) => [...new Set(items.map((i) => i.defaultGroup ?? ""))];
+
+/** Index just after the nearest default group before `title` that `groups` has; else the end. */
+function slotFor(groups: Group[], order: string[], title: string): number {
+  for (let k = order.indexOf(title) - 1; k >= 0; k--) {
+    const prev = groups.findIndex((x) => x.title === order[k]);
+    if (prev >= 0) return prev + 1;
+  }
+  return groups.length;
+}
+
+/**
+ * Once per person: a group that holds a re-homed item (`movedFrom`, e.g. the
+ * Insurance folder) is put in its default place, even in a layout saved while
+ * it sat at the bottom. Returns the ids placed now; after that the person may
+ * drag the group anywhere.
+ */
+function placeRegrouped(groups: Group[], items: NavItemData[], done: Set<string>): string[] {
+  const order = defaultGroupOrder(items);
+  const placed: string[] = [];
+  for (const it of items) {
+    if (!it.movedFrom) continue;
+    const i = groups.findIndex((g) => g.items.includes(it.href));
+    if (i < 0 || done.has(groups[i].id) || groups[i].title !== it.defaultGroup) continue;
+    const [g] = groups.splice(i, 1);
+    groups.splice(slotFor(groups, order, g.title), 0, g);
+    placed.push(g.id);
+    done.add(g.id);
+  }
+  return placed;
 }
 
 export function CustomizableNav({
@@ -222,7 +266,24 @@ export function CustomizableNav({
   useEffect(() => {
     try {
       const raw = localStorage.getItem(storageKey);
-      setLayout(reconcile(raw ? (JSON.parse(raw) as SavedLayout) : null, items));
+      const next = reconcile(raw ? (JSON.parse(raw) as SavedLayout) : null, items);
+      // Re-homed groups go to their default place once (see placeRegrouped).
+      const placedKey = `${storageKey}:placed`;
+      let done = new Set<string>();
+      try {
+        const p = JSON.parse(localStorage.getItem(placedKey) ?? "[]");
+        if (Array.isArray(p)) done = new Set(p.filter((x): x is string => typeof x === "string"));
+      } catch {
+        /* unreadable: place again */
+      }
+      if (placeRegrouped(next, items, done).length) {
+        try {
+          localStorage.setItem(placedKey, JSON.stringify([...done]));
+        } catch {
+          /* storage off: harmless, it is placed again next load */
+        }
+      }
+      setLayout(next);
     } catch {
       setLayout(buildDefault(items));
     }

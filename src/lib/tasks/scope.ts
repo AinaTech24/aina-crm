@@ -1,8 +1,8 @@
 /**
  * Who may see which task.
  *
- *   - Their own tasks — assigned to them, created by them, or with a sub-task
- *     delegated to them — always (unchanged).
+ *   - Their own tasks — assigned to them, shared with them as a collaborator,
+ *     created by them, or with a sub-task delegated to them — always.
  *   - With `task.view.all`, also every other task whose client / lead is one
  *     they may see. A task reaches its client through TWO links
  *     (`taskInvestor` / `taskLead`, CLAUDE.md) and both are read. An owner who
@@ -27,6 +27,7 @@ import { can } from "@/lib/auth/rbac";
 import { clientScopeNarrows, dataWallApplies, investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
 import { taskInvestor, taskLead } from "@/lib/dashboard/my/window";
+import { worksOnSql } from "@/lib/tasks/collaborators-sql";
 
 export function canViewAllTasks(session: SessionUser) {
   return can(session.roles, "task.view.all", session.permissions);
@@ -44,7 +45,7 @@ export function subTaskAssignedToSql(metaCol: SQL, userId: string): SQL {
 
 function own(session: SessionUser, alias: string): SQL {
   const c = (x: string) => sql.raw(`${alias}.${x}`);
-  return sql`(${c("assignee_id")} = ${session.userId}::uuid OR ${c("created_by_id")} = ${session.userId}::uuid
+  return sql`(${worksOnSql(session.userId, alias)} OR ${c("created_by_id")} = ${session.userId}::uuid
     OR ${c("meta")}->'checklist' @> ${JSON.stringify([{ assigneeId: session.userId }])}::jsonb
     OR (${c("meta")} -> 'escalation' -> 'to') ? ${session.userId})`;
 }

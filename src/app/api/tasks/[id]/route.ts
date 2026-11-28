@@ -28,10 +28,14 @@ import { actAs } from "@/lib/tasks/history";
 import { sopsForTask } from "@/lib/practice/sop-links";
 import { syncTaskBusinessEntry } from "@/lib/business/create-entry";
 import { tasks, users, taskChecklist } from "@/db/schema";
+import { MAX_COLLABORATORS, cleanCollaborators, collaboratorsOf, sameMembers, worksOnTask } from "@/lib/tasks/collaborators";
+import { assertCollaborators } from "@/lib/tasks/collaborators-server";
+import { notifyCollaboratorsAdded } from "@/lib/tasks/collaborator-notify";
 
 export const dynamic = "force-dynamic";
 
-/** A view.assigned/edit.assigned user may only touch tasks they own. */
+/** The assignee or the creator: who may delete it and change who is on it.
+ *  Reading and editing are also open to collaborators (worksOnTask). */
 function ownsTask(task: { assigneeId: string | null; createdById: string | null }, userId: string): boolean {
   return task.assigneeId === userId || task.createdById === userId;
 }
@@ -48,6 +52,8 @@ const Patch = z.object({
   status: z.enum(["open", "in_progress", "blocked", "completed", "cancelled"]).optional(),
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
   assigneeId: z.string().uuid().optional(),
+  /** The whole list of collaborators (an empty list removes them all). */
+  collaboratorIds: z.array(z.string().uuid()).max(MAX_COLLABORATORS).optional(),
   dueAt: z.string().optional(),
   entryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   slaDueAt: z.string().nullable().optional(),
@@ -126,7 +132,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     // Assigned-only viewers can't read other people's tasks — unless a sub-task
     // is delegated to them (then they may open + update the parent task).
     // …or an open "Need information" question is waiting on them (read only).
-    if (!canViewAll && !ownsTask(row, session.userId) && !isSubtaskAssignee(row, session.userId)
+    if (!canViewAll && !ownsTask(row, session.userId) && !worksOnTask(row, session.userId) && !isSubtaskAssignee(row, session.userId)
         && openInfoRequest(row.meta)?.askedToId !== session.userId) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
@@ -205,9 +211,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
         .limit(1))[0];
       if (!before) return null;
-      // Assigned-only editors may only touch their own tasks — or a task where a
-      // sub-task is delegated to them (so a delegate can update their step).
-      if (!canEditAll && !ownsTask(before, session.userId) && !isSubtaskAssignee(before, session.userId)) {
+      // Assigned-only editors may only touch their own tasks, tasks shared with
+      // them, or a task where a sub-task is delegated to them.
+      if (!canEditAll && !ownsTask(before, session.userId) && !worksOnTask(before, session.userId) && !isSubtaskAssignee(before, session.userId)) {
         return { forbidden: true as const };
       }
       // edit.all reaches only tasks whose client / lead is in scope.
@@ -231,6 +237,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           .limit(1);
         if (!u) return { badAssignee: true as const };
       }
+
+      // ── Who is on the task ────────────────────────────────────────────
+      // The assignee is never also a collaborator. A collaborator works on the
+      // task but does not decide who else is on it.
+      const previousCollaborators = collaboratorsOf(before);
+      const nextAssigneeId = parse.data.assigneeId ?? before.assigneeId;
+      const nextCollaborators = cleanCollaborators(parse.data.collaboratorIds ?? previousCollaborators, nextAssigneeId);
+      const assigneeChanges = parse.data.assigneeId !== undefined && parse.data.assigneeId !== before.assigneeId;
+      const askedToChange = parse.data.collaboratorIds !== undefined
+        && !sameMembers(cleanCollaborators(parse.data.collaboratorIds, nextAssigneeId), cleanCollaborators(previousCollaborators, nextAssigneeId));
+      if (!canEditAll && !ownsTask(before, session.userId)
+          && (askedToChange || (assigneeChanges && previousCollaborators.includes(session.userId)))) {
+        return { workersForbidden: true as const };
+      }
+      const addedCollaborators = nextCollaborators.filter((c) => !previousCollaborators.includes(c));
+      await assertCollaborators(tx, session, addedCollaborators, canEditAll);
+      if (sameMembers(nextCollaborators, previousCollaborators)) delete patch.collaboratorIds;
+      else patch.collaboratorIds = nextCollaborators;
 
       // Actor name — used by both the approval and the generic notifications.
       const actorName =
@@ -312,6 +336,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (approvalNotif) {
         await createNotification(tx, { tenantId: session.tenantId, ...approvalNotif, meta: { task_id: id } });
       }
+      // The sign-off is news to everyone who worked on it.
+      if (approvalAction === "approve" || approvalAction === "reject") {
+        for (const userId of nextCollaborators.filter((c) => c !== session.userId && c !== approvalNotif?.userId)) {
+          const approved = approvalAction === "approve";
+          await createNotification(tx, {
+            tenantId: session.tenantId,
+            userId,
+            kind: approved ? "task.approved" : "task.rejected",
+            title: `${approved ? "Approved" : "Reopened"}: ${before.title}`,
+            body: `${actorName} ${approved ? "approved this task" : "reopened this task for changes"}`,
+            severity: approved ? "success" : "warning",
+            linkUrl: `/dashboard/tasks/${id}`,
+            meta: { task_id: id },
+          });
+        }
+      }
+      const newlyShared = addedCollaborators.filter((c) => c !== session.userId);
+      if (newlyShared.length) {
+        await notifyCollaboratorsAdded(tx, { tenantId: session.tenantId, taskId: id, title: before.title, actorId: session.userId, userIds: newlyShared });
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -368,14 +412,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
-      // (2b) Watchers (followers) → notify on a status change, skipping anyone
-      //      already covered above (actor / creator / assignee).
+      // (2b) The others working on it, then watchers (followers) → notify on a
+      //      status change, skipping anyone already covered above.
       if (!approvalHandled && parse.data.status !== undefined && parse.data.status !== before.status) {
         const human = (s: string) => s.replace(/_/g, " ");
+        const told = new Set([session.userId, before.createdById ?? ""]);
+        // Only a shared task: on any other, the assignee is not pinged for this.
+        const workers = nextCollaborators.length ? [nextAssigneeId, ...nextCollaborators] : [];
+        for (const userId of workers) {
+          if (!userId || told.has(userId)) continue;
+          told.add(userId);
+          await createNotification(tx, {
+            tenantId: session.tenantId,
+            userId,
+            kind: "task.status_changed",
+            title: `Task ${human(parse.data.status)}: ${before.title}`,
+            body: `${actorName} moved it to “${human(parse.data.status)}”`,
+            linkUrl: `/dashboard/tasks/${id}`,
+            severity: parse.data.status === "completed" ? "success" : "info",
+            meta: { task_id: id, changed_by: session.userId, from_status: before.status, to_status: parse.data.status },
+          });
+        }
         await notifyWatchers(tx, {
           tenantId: session.tenantId,
           taskId: id,
-          exclude: new Set([session.userId, before.createdById ?? "", before.assigneeId ?? ""]),
+          exclude: new Set([...told, before.assigneeId ?? ""]),
           kind: "task.status_changed",
           title: `Task ${human(parse.data.status!)}: ${before.title}`,
           body: `${actorName} moved it to “${human(parse.data.status!)}”`,
@@ -440,6 +501,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
     if ("forbidden" in result) return NextResponse.json({ error: "you can only edit tasks assigned to you" }, { status: 403 });
+    if ("workersForbidden" in result) {
+      return NextResponse.json({ error: "Only the assigned person or the task's creator can change who works on it." }, { status: 403 });
+    }
     if ("badAssignee" in result) return NextResponse.json({ error: "assignee not found in this firm" }, { status: 400 });
     return NextResponse.json(result);
   } catch (err: any) {

@@ -17,6 +17,7 @@ import { INFLOW_SOURCE_LABELS } from "@/db/schema";
 import { d, dIst, dt, inFilter, userName } from "../helpers";
 import type { ExportModule } from "../types";
 import { TASK_TODAY_START } from "@/lib/tasks/due-sql";
+import { worksOnSql } from "@/lib/tasks/collaborators-sql";
 
 // ── shared bits ────────────────────────────────────────────────────────────
 
@@ -64,12 +65,12 @@ export const tasksExport: ExportModule = {
     const conds: SQL[] = [sql`tasks.tenant_id = ${session.tenantId}::uuid`, sql`tasks.deleted_at IS NULL`];
     // Same rule as the list: firm-wide with task.view.all, else what I'm
     // assigned or created.
-    if (!canViewAll) conds.push(sql`(tasks.assignee_id = ${session.userId}::uuid OR tasks.created_by_id = ${session.userId}::uuid)`);
+    if (!canViewAll) conds.push(sql`(${worksOnSql(session.userId)} OR tasks.created_by_id = ${session.userId}::uuid)`);
 
     const rawView = sp.view ?? "";
     const isKanban = rawView === "kanban" || sp.layout === "kanban";
     const view = rawView === "kanban" ? "" : rawView;
-    if (view === "to_me") conds.push(sql`tasks.assignee_id = ${session.userId}::uuid`);
+    if (view === "to_me") conds.push(worksOnSql(session.userId));
     else if (view === "by_me") conds.push(sql`tasks.created_by_id = ${session.userId}::uuid`);
 
     const statusFilter = csv(params, "status");

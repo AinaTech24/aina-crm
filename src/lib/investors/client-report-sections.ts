@@ -39,3 +39,25 @@ export function parseClientReportSections(raw: string | null | undefined): Clien
   const keys = ALL_CLIENT_REPORT_SECTIONS.filter((k) => asked.has(k));
   return keys.length ? keys : ALL_CLIENT_REPORT_SECTIONS;
 }
+
+/**
+ * Which insurance policies the report prints (Investment Options, 2026-11-27):
+ * the dialog asks for statuses and types once "Insurance policies" is ticked.
+ * `null` = no filter (every policy, as before).
+ *   ?insStatus=active,lapsed   ?insType=health,term
+ */
+export type PolicyFilter = { statuses: string[] | null; types: string[] | null };
+
+const KEY_RE = /^[a-z][a-z0-9_]{0,39}$/;
+/** Stands for a policy whose type was never recorded. */
+export const NO_POLICY_TYPE = "none";
+
+function keyList(raw: string | null | undefined): string[] | null {
+  if (raw == null || raw === "") return null;
+  const keys = [...new Set(String(raw).split(",").map((s) => s.trim()).filter((s) => KEY_RE.test(s)))].slice(0, 40);
+  return keys.length ? keys : null;
+}
+
+export function parsePolicyFilter(sp: { get(name: string): string | null }): PolicyFilter {
+  return { statuses: keyList(sp.get("insStatus")), types: keyList(sp.get("insType")) };
+}

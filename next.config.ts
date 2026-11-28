@@ -88,7 +88,9 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return { beforeFiles: [{ source: "/", destination: "/landing/index.html" }], afterFiles: [], fallback: [] };
   },
-  serverExternalPackages: ["pg", "bullmq", "ioredis"],
+  // tesseract.js starts its OCR worker from a file path; bundled, that path
+  // points into .next and OCR of every image upload failed (2026-11-27).
+  serverExternalPackages: ["pg", "bullmq", "ioredis", "tesseract.js"],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**" },

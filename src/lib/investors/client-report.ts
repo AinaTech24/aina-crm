@@ -37,7 +37,7 @@ import { productLabel } from "@/lib/opportunities/products";
 import { attendeeIs } from "@/lib/review-meetings/attendees";
 import { formatDate, formatMoney, formatMoneyFull, formatPercent, humanise } from "@/lib/format";
 import type { ReportBlock, ReportColumn } from "./client-report-pdf";
-import type { ClientReportSection } from "./client-report-sections";
+import { NO_POLICY_TYPE, type ClientReportSection, type PolicyFilter } from "./client-report-sections";
 
 type Row = Record<string, any>;
 
@@ -84,6 +84,8 @@ type Ctx = {
   idList: SQL;
   nameOf: (investorId: unknown) => string;
   valuations: Map<string, InvestorValuation>;
+  /** The insurance section's status / type choice (null = every policy). */
+  policyFilter: PolicyFilter | null;
 };
 
 /** The Member column, first in each table of a family report. */
@@ -132,6 +134,7 @@ async function makeCtx(
     idList: sql.join(members.map((m) => sql`${m.id}::uuid`), sql`, `),
     nameOf: (id) => (id ? names.get(String(id)) ?? "" : "Family"),
     valuations,
+    policyFilter: null,
   };
 }
 
@@ -428,17 +431,39 @@ async function goalsSection(c: Ctx, blocks: ReportBlock[]) {
     : { t: "empty", text: "No goals on record." });
 }
 
+/** SQL for the status / type choice; and the words that say what was chosen. */
+function policyFilterSql(f: PolicyFilter | null): SQL {
+  const parts: SQL[] = [];
+  if (f?.statuses?.length) parts.push(sql`status IN (${sql.join(f.statuses.map((s) => sql`${s}`), sql`, `)})`);
+  if (f?.types?.length) {
+    const real = f.types.filter((t) => t !== NO_POLICY_TYPE);
+    const none = f.types.includes(NO_POLICY_TYPE);
+    const inReal = real.length ? sql`policy_type IN (${sql.join(real.map((t) => sql`${t}`), sql`, `)})` : sql`FALSE`;
+    parts.push(none ? sql`(${inReal} OR policy_type IS NULL OR policy_type = '')` : inReal);
+  }
+  return parts.length ? sql` AND ${sql.join(parts, sql` AND `)}` : sql``;
+}
+
+function policyFilterNote(f: PolicyFilter | null): string {
+  const bits: string[] = [];
+  if (f?.statuses?.length) bits.push(f.statuses.map((s) => POLICY_STATUS_LABEL[s] ?? label(s)).join(", "));
+  if (f?.types?.length) bits.push(f.types.map((t) => (t === NO_POLICY_TYPE ? "Type not recorded" : policyTypeLabel(t))).join(", "));
+  return bits.join(" · ");
+}
+
 async function insuranceSection(c: Ctx, blocks: ReportBlock[]) {
+  const filtered = !!(c.policyFilter?.statuses?.length || c.policyFilter?.types?.length);
   const list = await rows(c.tx, sql`
     SELECT investor_id, policy_number, insurer, plan_name, policy_type, sum_assured, annual_premium, premium_frequency,
            policy_start_date, risk_cover_start_date, maturity_date, next_premium_due_date, last_premium_date,
            policy_term_years, premium_paying_term_years, lives_covered, nominee_name, nominee_relation, riders,
            details, remarks, lapse_reason, status
-      FROM insurance_policies WHERE tenant_id = ${c.tenantId}::uuid AND investor_id IN (${c.idList})
+      FROM insurance_policies WHERE tenant_id = ${c.tenantId}::uuid AND investor_id IN (${c.idList})${policyFilterSql(c.policyFilter)}
      ORDER BY (status = ANY(${LIVE_POLICY})) DESC, COALESCE(risk_cover_start_date, policy_start_date) DESC NULLS LAST`);
-  blocks.push({ t: "h1", text: "Insurance policies", note: list.length ? `${list.length} on record` : undefined });
+  blocks.push({ t: "h1", text: "Insurance policies", note: list.length ? `${list.length} ${filtered ? "selected" : "on record"}` : undefined });
+  if (filtered) blocks.push({ t: "para", muted: true, text: `Showing: ${policyFilterNote(c.policyFilter)}` });
   if (!list.length) {
-    blocks.push({ t: "empty", text: "No insurance policy on record in the CRM." });
+    blocks.push({ t: "empty", text: filtered ? "No policy matches the statuses and types chosen." : "No insurance policy on record in the CRM." });
     return;
   }
   blocks.push(table(
@@ -725,7 +750,7 @@ export async function buildClientReport(
   license: LicenseState | null,
   id: string,
   sections: ClientReportSection[],
-  opts: { clientCopy: boolean },
+  opts: { clientCopy: boolean; policyFilter?: PolicyFilter | null },
 ): Promise<ClientReport | null> {
   const inv = await loadViewableInvestor(tx, session, id).catch((e: { status?: number }) => {
     if (e?.status === 403) return null;
@@ -734,6 +759,7 @@ export async function buildClientReport(
   if (!inv || inv.deletedAt) return null;
   const i: Row = inv;
   const c = await makeCtx(tx, session, license, [{ id, inv: i, role: "" }], null, false, sections.includes("portfolio") || showFor(license).aum);
+  c.policyFilter = opts.policyFilter ?? null;
   const { show } = c;
   const blocks: ReportBlock[] = [];
 
@@ -814,7 +840,7 @@ export async function buildFamilyReport(
   license: LicenseState | null,
   familyId: string,
   sections: ClientReportSection[],
-  opts: { clientCopy: boolean },
+  opts: { clientCopy: boolean; policyFilter?: PolicyFilter | null },
 ): Promise<ClientReport | null> {
   if (!(await loadViewableFamily(tx, session, familyId))) return null;
   const [fam] = await rows(tx, sql`
@@ -844,6 +870,7 @@ export async function buildFamilyReport(
     return { clientName: familyName, subtitles: [familyName, `As on ${formatDate(new Date(), "dateTime")}`], blocks, pii: piiOf(showFor(license), []) };
   }
   const c = await makeCtx(tx, session, license, members, familyId, true, true);
+  c.policyFilter = opts.policyFilter ?? null;
   const { show } = c;
   const t = await totals(c);
 
@@ -908,5 +935,62 @@ export async function buildFamilyReport(
     subtitles: [familyName, opts.clientCopy ? "Family copy" : "Complete family record", `As on ${formatDate(new Date(), "dateTime")}`],
     blocks,
     pii: piiOf(show, members),
+  };
+}
+
+// ── Insurance choice for the download dialog ────────────────────────────
+
+export type PolicyFacets = {
+  statuses: Array<{ key: string; label: string; n: number }>;
+  types: Array<{ key: string; label: string; n: number }>;
+};
+
+/**
+ * The statuses and types of the policies this report would print, with
+ * counts, for the dialog's "which policies" choice. Same access as the
+ * report: the client (or family) must be viewable and the viewer must hold an
+ * insurance capability; otherwise null.
+ */
+export async function insuranceFacets(
+  tx: Tx,
+  session: SessionUser,
+  target: { investorId: string } | { familyId: string },
+): Promise<PolicyFacets | null> {
+  if (!capsFor(session).insurance) return null;
+  let ids: string[];
+  if ("investorId" in target) {
+    const inv = await loadViewableInvestor(tx, session, target.investorId).catch(() => null);
+    if (!inv) return null;
+    ids = [inv.id];
+  } else {
+    if (!(await loadViewableFamily(tx, session, target.familyId))) return null;
+    const m = await tx
+      .select({ id: investors.id })
+      .from(investors)
+      .where(and(eq(investors.tenantId, session.tenantId), eq(investors.familyId, target.familyId), isNull(investors.deletedAt), isNull(investors.mergedIntoId)));
+    ids = m.map((r) => r.id);
+  }
+  if (!ids.length) return { statuses: [], types: [] };
+  const list = await rows(tx, sql`
+    SELECT status, NULLIF(policy_type, '') AS policy_type, count(*)::int AS n
+      FROM insurance_policies
+     WHERE tenant_id = ${session.tenantId}::uuid AND investor_id IN (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
+     GROUP BY 1, 2`);
+  const statuses = new Map<string, number>();
+  const types = new Map<string, number>();
+  for (const r of list) {
+    const st = txt(r.status) || "active";
+    const ty = txt(r.policy_type) || NO_POLICY_TYPE;
+    statuses.set(st, (statuses.get(st) ?? 0) + Number(r.n));
+    types.set(ty, (types.get(ty) ?? 0) + Number(r.n));
+  }
+  const statusOrder = Object.keys(POLICY_STATUS_LABEL);
+  return {
+    statuses: [...statuses]
+      .sort((a, b) => (statusOrder.indexOf(a[0]) + 1 || 99) - (statusOrder.indexOf(b[0]) + 1 || 99))
+      .map(([key, n]) => ({ key, label: POLICY_STATUS_LABEL[key] ?? label(key), n })),
+    types: [...types]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([key, n]) => ({ key, label: key === NO_POLICY_TYPE ? "Type not recorded" : policyTypeLabel(key), n })),
   };
 }

@@ -103,6 +103,26 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
   };
   r.tree.forEach((root) => walk(root, 0, [], [true], null));
 
+  // With two or more grouping levels, a total for each value of the SECOND level across every
+  // top-level group (Meeting report: "All New", "All Existing" across the RMs; Equity report:
+  // "All Purchase", "All Redemption" — We Care, 2026-11-27). Not the last level: a third level
+  // (Associate) gave "All —". Sums and counts add up; avg / min / max do not, so they read "—".
+  const byLast: Array<{ key: string; label: string; node: Node }> = [];
+  if (levels > 1) {
+    const m = new Map<string, { key: string; label: string; node: Node }>();
+    for (const n of r.tree.flatMap((root) => root.children ?? [])) {
+      const shown = groupLabel(n);
+      const label = !shown || shown === "—" ? `no ${r.groupLabels[1] ?? "value"}` : shown;
+      const t = m.get(n.key) ?? { key: n.key, label, node: { key: n.key, count: 0, aggregates: r.aggregateDefs.map(() => 0) } };
+      t.node.count += n.count;
+      r.aggregateDefs.forEach((a, j) => {
+        t.node.aggregates[j] = a.fn === "sum" || a.fn === "count" ? t.node.aggregates[j] + Number(n.aggregates[j] ?? 0) : NaN;
+      });
+      m.set(n.key, t);
+    }
+    if (m.size >= 2 && m.size <= 12) byLast.push(...[...m.values()].sort((a, b) => a.label.localeCompare(b.label)));
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm table-raw">
@@ -195,6 +215,17 @@ export function GroupedSummaryTable({ r }: { r: GroupedSummary }) {
               </Fragment>
             )
           )}
+          {byLast.map((t, k) => (
+            <tr key={`bl${t.key}`} className={`bg-secondary/30 ${k === 0 ? "border-t-2" : "border-t"}`}>
+              <td colSpan={levels} className="px-4 py-2 font-medium whitespace-nowrap">
+                All {t.label}
+              </td>
+              {values(t.node).map((v, j) => (
+                <td key={j} className="px-3 py-2 text-right tabular-nums font-semibold">{Number.isFinite(v) ? num(v) : "—"}</td>
+              ))}
+              {growth ? <td /> : null}
+            </tr>
+          ))}
           <tr className="border-t-2 bg-primary/5 font-bold">
             <td colSpan={levels} className="px-4 py-2.5">Grand total</td>
             {values({ ...r.grand, key: "", children: [] } as Node).map((v, j) => (

@@ -124,6 +124,9 @@ export const subscriptions = pgTable(
 
     /** Seat & resource overrides (null = use package defaults) */
     seatsOverride: integer("seats_override"),
+    /** An allowance of users that changes no price (0302); the limit is the higher of this and the
+     *  bought / package number (lib/billing/user-limit.ts). */
+    userLimitOverride: integer("user_limit_override"),
     storageOverrideGb: integer("storage_override_gb"),
     modulesOverride: jsonb("modules_override").$type<string[]>(),
     allowedFields: jsonb("allowed_fields").$type<string[]>(),

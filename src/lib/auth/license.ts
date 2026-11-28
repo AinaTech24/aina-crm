@@ -18,6 +18,7 @@ import { subscriptions, packages } from "@/db/schema";
 import { isPlatformAdmin } from "@/lib/platform";
 import { aumLicenseView, type RenewalState } from "@/lib/billing/renewal";
 import { loadPricingSettings } from "@/lib/billing/pricing-settings";
+import { userLimit } from "@/lib/billing/user-limit";
 
 export type LicenseState = {
   status: "pending" | "trial" | "active" | "past_due" | "suspended" | "expired" | "cancelled" | "no_subscription";
@@ -172,8 +173,9 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
     allowedDashboardWidgets,
     // Package flags + per-tenant overrides (migration 0163) — the override wins.
     featureFlags: { ...((pkg?.featureFlags as Record<string, any>) ?? {}), ...((sub.featureFlagsOverride as Record<string, any>) ?? {}) },
-    // Seats bought (the subscription's seat count) are the user limit; else the package's.
-    maxUsers: sub.seatsOverride ?? pkg?.maxUsers ?? 1,
+    // Seats bought (the subscription's seat count) are the user limit, else the package's — or the
+    // firm's own allowance when that is higher.
+    maxUsers: userLimit(sub, pkg),
     maxInvestors: pkg?.maxInvestors ?? 100,
     trialEndsAt: sub.trialEndsAt ? new Date(sub.trialEndsAt) : null,
     licenseEndAt: sub.licenseEndAt ? new Date(sub.licenseEndAt) : null,

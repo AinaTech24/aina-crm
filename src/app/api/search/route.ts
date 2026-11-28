@@ -24,6 +24,7 @@ import { investorScopeSql } from "@/lib/investors/access";
 import { leadScopeSql } from "@/lib/leads/access";
 import { captureError } from "@/lib/observability/capture";
 import { displayPan, isMinorKey } from "@/lib/investors/pan-display";
+import { worksOnSql } from "@/lib/tasks/collaborators-sql";
 
 export const dynamic = "force-dynamic";
 
@@ -158,7 +159,7 @@ export async function GET(req: NextRequest) {
       const taskScope = cap("task.view.all")
         ? sql`TRUE`
         : cap("task.view.assigned")
-          ? sql`(t.assignee_id = ${session.userId} OR t.created_by_id = ${session.userId})`
+          ? sql`(${worksOnSql(session.userId, "t")} OR t.created_by_id = ${session.userId})`
           : sql`FALSE`;
       // A task about a client / lead outside the caller's book still shows (task
       // scope is the tasks module's), but never that person's name — and is not

@@ -20,7 +20,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { savedReports } from "@/db/schema";
 import { FilterASTSchema, and as astAnd, type FilterAST } from "@/lib/filter/ast";
-import { branchField, deskField } from "@/lib/filter/catalog";
+import { branchField, clientPickFields, deskField } from "@/lib/filter/catalog";
 import { runDetailed, runMatrix, runSummary, type DrillValue } from "@/lib/reports/run";
 import { reportSubjectScope } from "@/lib/reports/scope";
 import { canSeeSavedReport } from "@/lib/reports/visibility";
@@ -38,14 +38,24 @@ const ViewBody = z.object({
 });
 type View = z.infer<typeof ViewBody>;
 /** The URL-only part of a view: the date-range bar and Show details. */
-type UrlView = { dateField: string | null; from: string | null; to: string | null; details: string | null; branch: string | null };
+type UrlView = { dateField: string | null; from: string | null; to: string | null; details: string | null; branch: string | null; client: string | null };
 const urlView = (url: URL): UrlView => ({
   dateField: url.searchParams.get("dateField"),
   from: url.searchParams.get("from"),
   to: url.searchParams.get("to"),
   details: url.searchParams.get("details"),
   branch: url.searchParams.get("branch")?.trim().slice(0, 120) || null,
+  client: url.searchParams.get("client"),
 });
+
+/** The bar's "Clients" picker: family heads / members / individuals, or clients with no A/B/C/D category. */
+function clientPickAst(subject: string, pick: string | null): FilterAST | null {
+  if (!pick) return null;
+  const { family, category } = clientPickFields(subject);
+  if (pick === "nocat") return category ? ({ type: "predicate", field: { kind: "attr", path: category.key }, op: "is_null", value: null } as FilterAST) : null;
+  if (family && ["head", "member", "individual"].includes(pick)) return { type: "predicate", field: { kind: "attr", path: family.key }, op: "eq", value: pick } as FilterAST;
+  return null;
+}
 
 async function run(id: string, view: View, uv: UrlView) {
   const session = await requireSession();
@@ -73,7 +83,9 @@ async function run(id: string, view: View, uv: UrlView) {
     const bf = uv.branch ? (isDesk ? deskField(r.subject) : branchField(r.subject)) : null;
     const pick = isDesk ? uv.branch!.slice(5) : uv.branch;
     const branchAst = bf && pick ? ({ type: "predicate", field: { kind: "attr", path: bf.key }, op: "eq", value: pick } as FilterAST) : null;
-    const extraAst = branchAst ? (dated ? astAnd(dated, branchAst) : astAnd(branchAst)) : dated;
+    const clientAst = clientPickAst(r.subject, uv.client);
+    const parts = [dated, branchAst, clientAst].filter((x): x is FilterAST => !!x);
+    const extraAst = parts.length > 1 ? astAnd(...parts) : (parts[0] ?? null);
     const base = {
       subject: r.subject,
       ast: r.ast as FilterAST | null,

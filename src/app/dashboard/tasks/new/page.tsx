@@ -55,6 +55,8 @@ import {
   type RequestLine,
 } from "@/lib/tasks/request-lines";
 import { reminderInstant } from "@/lib/tasks/due";
+import { TeamMultiSelect } from "@/components/common/TeamMultiSelect";
+import { MAX_COLLABORATORS } from "@/lib/tasks/collaborators";
 
 type TaskTemplate = {
   id: string;
@@ -87,6 +89,7 @@ export default function NewTaskPage() {
     entryDate: todayLocal(), // today; the person may change it
     dueDate: defaultDueDate(3),
     assigneeId: "",
+    collaboratorIds: [] as string[],
     remarks: "",
     requiresApproval: false,
     reminder: "none", // none | at_due | 1h | 3h | 1d | 2d | 1w  (relative to due)
@@ -121,18 +124,24 @@ export default function NewTaskPage() {
   const [filesOn, setFilesOn] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
-  /** Table mode: General, or Client requests (the table). */
-  const [reqMode, setReqMode] = useState(false);
+  /** Table mode: the type of task. General has no table; Financial,
+   *  Non-financial and Insurance each offer only their own requests. */
+  const [tableCat, setTableCat] = useState<TaskCategory>("general");
+  const reqMode = tableCat !== "general";
   const [lines, setLines] = useState<LineValues[]>([]);
   const [members, setMembers] = useState<FamilyMember[]>([]);
   /** The title the table last suggested — replaced as rows change, never one the user typed. */
   const lastAutoTitle = useRef("");
+  /** The signed-in user: the assignee when "Assign to" is left blank. */
+  const [myId, setMyId] = useState("");
+  const assignee = form.assigneeId || myId;
   useEffect(() => {
     (async () => {
       try {
         const r = await fetch("/api/me");
         if (!r.ok) return;
         const j = await r.json();
+        setMyId(j?.user?.id ?? "");
         setRedemptionRoute(j?.license?.featureFlags?.redemptionOnlineOffline === true);
         setInsuranceTasks(j?.license?.featureFlags?.[INSURANCE_TASKS_FLAG] === true);
         const table = j?.license?.featureFlags?.[TASK_REQUEST_TABLE_FLAG] === true;
@@ -186,8 +195,8 @@ export default function NewTaskPage() {
     // request in the picker (an old bare "financial" opens the category only).
     const tplCategory = categoryOfType(t.taskType);
     if (tableOn && t.taskType && tplCategory !== "general") {
-      // Table mode: the template's request becomes the first row.
-      setReqMode(true);
+      // Table mode: the template's type and request become the first row.
+      setTableCat(tplCategory);
       setLines([emptyLine(form.relatedInvestorId, REQUEST_TYPE_BY_KEY[t.taskType] ? t.taskType : "")]);
     } else if (t.taskType && tplCategory !== "general") {
       setCategory(tplCategory);
@@ -340,10 +349,15 @@ export default function NewTaskPage() {
     setLines((ls) => ls.map((l) => (ids.has(l.investorId) ? l : { ...l, investorId: id })));
   }
 
-  function changeReqMode(on: boolean) {
-    if (on === reqMode) return;
-    setReqMode(on);
-    if (on && lines.length === 0) setLines([emptyLine(form.relatedInvestorId)]);
+  function changeTableCat(c: TaskCategory) {
+    if (c === tableCat) return;
+    setTableCat(c);
+    const on = c !== "general";
+    // Rows of another type go: keep who each row is for, start the request again.
+    if (on) {
+      const kept = lines.filter((l) => !l.requestKey || REQUEST_TYPE_BY_KEY[l.requestKey]?.category === c);
+      setLines(kept.length ? kept : [emptyLine(lines[0]?.investorId || form.relatedInvestorId)]);
+    }
     if (!on) {
       if (autoChecklistKey) {
         setChecklist([]);
@@ -498,6 +512,8 @@ export default function NewTaskPage() {
         entryDate: form.entryDate || undefined,
         dueAt: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
         assigneeId: form.assigneeId || undefined,
+        // The assignee is already on the task, however they got into this list.
+        collaboratorIds: form.collaboratorIds.filter((id) => id !== assignee),
         remarks: form.remarks || undefined,
         requiresApproval: form.requiresApproval || undefined,
       };
@@ -740,25 +756,32 @@ export default function NewTaskPage() {
             <div>
               <div className="mb-1 text-xs font-medium">Type of task</div>
               <div className="inline-flex gap-0.5 rounded-lg border border-border bg-card p-0.5" role="radiogroup" aria-label="Type of task">
-                {([[false, "General"], [true, "Client requests"]] as const).map(([on, label]) => (
+                {(
+                  [
+                    ["general", "General"],
+                    ["financial", "Financial"],
+                    ["non_financial", "Non-financial"],
+                    ...(insuranceTasks ? ([["insurance", "Insurance"]] as const) : []),
+                  ] as const
+                ).map(([c, label]) => (
                   <button
-                    key={label}
+                    key={c}
                     type="button"
                     role="radio"
-                    aria-checked={reqMode === on}
-                    onClick={() => changeReqMode(on)}
-                    className={`rounded-md px-3 py-1 text-xs font-medium transition ${reqMode === on ? "bg-primary text-primary-foreground" : "hover:bg-secondary"}`}
+                    aria-checked={tableCat === c}
+                    onClick={() => changeTableCat(c)}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition ${tableCat === c ? "bg-primary text-primary-foreground" : "hover:bg-secondary"}`}
                   >
                     {label}
                   </button>
                 ))}
               </div>
             </div>
-            {reqMode && (
+            {tableCat !== "general" && (
               <RequestTable
                 lines={lines}
                 members={members.length ? members : form.relatedInvestorId ? [{ id: form.relatedInvestorId, name: form.relatedInvestorName, role: "", isSelf: true }] : []}
-                insurance={insuranceTasks}
+                category={tableCat}
                 onChange={setLines}
               />
             )}
@@ -825,6 +848,20 @@ export default function NewTaskPage() {
               placeholder="Me"
             />
           </label>
+
+          {/* Not a <label>: the picker holds several controls. */}
+          <div className="block">
+            <div className="text-xs font-medium mb-1">
+              Collaborators <span className="ml-1 text-2xs text-muted-foreground font-normal">· optional, work on it too</span>
+            </div>
+            <TeamMultiSelect
+              value={form.collaboratorIds.filter((id) => id !== assignee)}
+              onChange={(ids) => setForm((s) => ({ ...s, collaboratorIds: ids }))}
+              exclude={[assignee]}
+              max={MAX_COLLABORATORS}
+              placeholder="+ Add a collaborator"
+            />
+          </div>
         </div>
 
         {routeOn && (

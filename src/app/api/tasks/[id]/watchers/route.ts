@@ -16,16 +16,17 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { tasks, taskWatchers, users } from "@/db/schema";
 import { createNotification } from "@/lib/notifications/create";
 import { taskInScope } from "@/lib/tasks/scope";
+import { worksOnTask } from "@/lib/tasks/collaborators";
 
 export const dynamic = "force-dynamic";
 
-function ownsTask(t: { assigneeId: string | null; createdById: string | null }, userId: string): boolean {
-  return t.assigneeId === userId || t.createdById === userId;
+function ownsTask(t: { assigneeId: string | null; collaboratorIds: string[]; createdById: string | null }, userId: string): boolean {
+  return worksOnTask(t, userId) || t.createdById === userId;
 }
 
 async function loadTask(tx: any, tenantId: string, id: string) {
   const [t] = await tx
-    .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, title: tasks.title })
+    .select({ assigneeId: tasks.assigneeId, createdById: tasks.createdById, collaboratorIds: tasks.collaboratorIds, title: tasks.title })
     .from(tasks)
     .where(and(eq(tasks.id, id), eq(tasks.tenantId, tenantId)))
     .limit(1);

@@ -21,12 +21,13 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { auditLog, tenants } from "@/db/schema";
-import { buildFamilyReport } from "@/lib/investors/client-report";
+import { buildFamilyReport, insuranceFacets } from "@/lib/investors/client-report";
 import { reportPdfResponse } from "@/lib/investors/report-response";
 import {
   CLIENT_COPY_SECTIONS,
   CLIENT_REPORT_FLAG,
   parseClientReportSections,
+  parsePolicyFilter,
 } from "@/lib/investors/client-report-sections";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "The family report is not switched on for your firm." }, { status: 404 });
     }
 
+    // ?facets=insurance — the policies' statuses and types with counts, for
+    // the dialog's "which policies" choice (JSON, not the PDF).
+    if (req.nextUrl.searchParams.get("facets") === "insurance") {
+      const facets = await withTenant(session.tenantId, (tx) => insuranceFacets(tx, session, { familyId: id }), {
+        userId: session.userId, branchId: session.branchId, roles: session.roles,
+      });
+      if (!facets) return NextResponse.json({ error: "not found" }, { status: 404 });
+      return NextResponse.json(facets);
+    }
+
     const clientCopy = req.nextUrl.searchParams.get("copy") === "client";
     let sections = parseClientReportSections(req.nextUrl.searchParams.get("sections")).filter((s) => s !== "family");
     if (clientCopy) sections = sections.filter((s) => CLIENT_COPY_SECTIONS.includes(s));
@@ -54,7 +65,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const built = await withTenant(
       session.tenantId,
       async (tx) => {
-        const report = await buildFamilyReport(tx, session, license, id, sections, { clientCopy });
+        const report = await buildFamilyReport(tx, session, license, id, sections, { clientCopy, policyFilter: parsePolicyFilter(req.nextUrl.searchParams) });
         if (!report) return null;
         const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
         await tx.insert(auditLog).values({

@@ -13,7 +13,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
+import { can, rolesWithoutSharedBook } from "@/lib/auth/rbac";
 import { isClientVisible } from "@/lib/transactions/client-scope";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
@@ -96,7 +96,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         .limit(1);
       if (!before) return "not_found" as const;
       // RMs may only edit their own bookings.
-      if (!seesAllEntries(session) && before.rmId !== session.userId) return "forbidden" as const;
+      if (!seesAllEntries({ ...session, roles: rolesWithoutSharedBook(session.roles) }) && before.rmId !== session.userId) return "forbidden" as const;
       // Viewer scope: their own booking, or one on a client they may see.
       if (before.rmId !== session.userId && !(await isClientVisible(tx, session, before.investorId))) return "not_found" as const;
       // …and it may only be re-pointed at a client they may see.
@@ -227,7 +227,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .limit(1);
       if (!before) return "not_found" as const;
       // RMs may only cancel or delete their own bookings.
-      if (!seesAllEntries(session) && before.rmId !== session.userId) return "forbidden" as const;
+      if (!seesAllEntries({ ...session, roles: rolesWithoutSharedBook(session.roles) }) && before.rmId !== session.userId) return "forbidden" as const;
       // Viewer scope: their own booking, or one on a client they may see.
       if (before.rmId !== session.userId && !(await isClientVisible(tx, session, before.investorId))) return "not_found" as const;
       if (mode === "delete") {

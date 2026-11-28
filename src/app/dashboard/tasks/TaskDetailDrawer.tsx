@@ -21,6 +21,9 @@ import { HowWeDoThis } from "@/components/practice/HowWeDoThis";
 import { formatDate } from "@/lib/format";
 import { DateTimeField } from "@/components/ui/DateTimeField";
 import { reminderInstant } from "@/lib/tasks/due";
+import { TeamMultiSelect } from "@/components/common/TeamMultiSelect";
+import { CollaboratorNames } from "@/components/tasks/CollaboratorNames";
+import { MAX_COLLABORATORS, cleanCollaborators, collaboratorsOf, worksOnTask } from "@/lib/tasks/collaborators";
 
 interface TaskDetailDrawerProps {
   task: Task & {
@@ -67,8 +70,12 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectNote, setRejectNote] = useState("");
   const [approvalBusy, setApprovalBusy] = useState(false);
-  const isAssignee = task.assigneeId === currentUserId;
+  // A collaborator works on the task as the assignee does.
+  const isAssignee = worksOnTask(task, currentUserId);
   const isApprover = task.createdById === currentUserId || canManageAll;
+  // Who is on the task is decided by the assignee, the creator or a manager.
+  const mayChangeWorkers = canManageAll || task.assigneeId === currentUserId || task.createdById === currentUserId;
+  const mayReassign = mayChangeWorkers || !collaboratorsOf(task).includes(currentUserId);
 
   // Per-task reminder state. Default to "custom" (pre-filled) when one is set so
   // saving preserves it; otherwise "none".
@@ -83,6 +90,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
   const [status, setStatus] = useState(task.status);
   const [priority, setPriority] = useState(task.priority);
   const [assigneeId, setAssigneeId] = useState(task.assigneeId ?? "");
+  const [collaboratorIds, setCollaboratorIds] = useState<string[]>(() => collaboratorsOf(task));
   const [entryDate, setEntryDate] = useState<string>(() => {
     const e = (task as { entryDate?: string | null }).entryDate;
     if (e) return String(e).slice(0, 10);
@@ -212,6 +220,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
     setStatus(task.status);
     setPriority(task.priority);
     setAssigneeId(task.assigneeId ?? "");
+    setCollaboratorIds(collaboratorsOf(task));
     setDueDate(task.dueAt ? new Date(task.dueAt).toISOString().split("T")[0] : "");
     setSlaDate(task.slaDueAt ? new Date(task.slaDueAt).toISOString().split("T")[0] : "");
     setRemarksHistory(task.remarks ?? "");
@@ -253,6 +262,8 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
         // not sent: a save keeps the task's department, which the Operations
         // Dashboard reads to decide what is operations work.
         assigneeId: assigneeId || undefined,
+        // Sent only when this person may change it.
+        collaboratorIds: mayChangeWorkers ? cleanCollaborators(collaboratorIds, assigneeId) : undefined,
         entryDate: entryDate || undefined,
         dueAt: dueDate ? new Date(dueDate).toISOString() : undefined,
         slaDueAt: slaDate ? new Date(slaDate).toISOString() : null,
@@ -422,6 +433,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
             meta={task.meta}
             status={task.status}
             assigneeId={task.assigneeId ?? null}
+            collaboratorIds={collaboratorsOf(task)}
             createdById={task.createdById ?? null}
             currentUserId={currentUserId}
             canManageAll={canManageAll}
@@ -594,7 +606,23 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
               value={assigneeId || null}
               onChange={(id) => setAssigneeId(id ?? "")}
               placeholder="Unassigned (defaults to creator)"
+              disabled={!mayReassign}
             />
+          </div>
+
+          <div>
+            <div className="text-2xs uppercase font-bold text-muted-foreground block mb-1">Collaborators</div>
+            {mayChangeWorkers ? (
+              <TeamMultiSelect
+                value={cleanCollaborators(collaboratorIds, assigneeId)}
+                onChange={setCollaboratorIds}
+                exclude={[assigneeId]}
+                max={MAX_COLLABORATORS}
+                placeholder="+ Add a collaborator"
+              />
+            ) : (
+              <CollaboratorNames ids={collaboratorIds} />
+            )}
           </div>
 
           <hr className="border-slate-100" />
@@ -897,16 +925,19 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
 
         {/* Footer controls */}
         <div className={`px-5 py-4 border-t border-border bg-secondary flex justify-between gap-3 flex-shrink-0 ${isPage ? "sticky bottom-0 z-10 rounded-b-xl" : ""}`}>
-          <button
-            type="button"
-            onClick={() => setConfirmCancelOpen(true)}
-            disabled={loading}
-            className="px-3 py-1.5 border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold rounded-md flex items-center gap-1 bg-white"
-          >
-            <Trash className="size-3.5" /> Cancel Task
-          </button>
-          
-          <div className="flex gap-2">
+          {/* A collaborator cannot remove the task, so is not offered it. */}
+          {mayReassign && (
+            <button
+              type="button"
+              onClick={() => setConfirmCancelOpen(true)}
+              disabled={loading}
+              className="px-3 py-1.5 border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold rounded-md flex items-center gap-1 bg-white"
+            >
+              <Trash className="size-3.5" /> Cancel Task
+            </button>
+          )}
+
+          <div className="flex gap-2 ml-auto">
             <button
               type="button"
               onClick={onClose}

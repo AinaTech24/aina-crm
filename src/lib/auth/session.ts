@@ -28,6 +28,7 @@ import {
   type SessionUser,
 } from "./jwt";
 import { isSessionOrDeviceRevoked } from "./revocation";
+import { withSharedClientBook } from "./shared-book";
 
 // Re-export the Edge-safe surface so existing `@/lib/auth/session` imports
 // (signSession in the auth routes, verifySession/SESSION_COOKIE, the type) are
@@ -76,7 +77,7 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
     await assertMobileRecordPath(session, pathname);
   }
 
-  return session;
+  return withSharedClientBook(session);
 });
 
 /**

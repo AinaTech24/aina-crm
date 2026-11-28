@@ -22,7 +22,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny, can } from "@/lib/auth/rbac";
+import { requireAny, can, rolesWithoutSharedBook } from "@/lib/auth/rbac";
 import { familyScopeSql } from "@/lib/families/access";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
     // Someone who does not see the whole firm cleans up only their own families.
-    const seesAll = can(session.roles, "investor.view.all", session.permissions);
+    const seesAll = can(rolesWithoutSharedBook(session.roles), "investor.view.all", session.permissions);
     const meta = clientMetaFromHeaders(req.headers);
     const ctx = { userId: session.userId, branchId: session.branchId, roles: session.roles };
 

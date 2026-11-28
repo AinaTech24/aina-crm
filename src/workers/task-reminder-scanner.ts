@@ -70,7 +70,7 @@ async function scanTenantOverdue(tenantId: string): Promise<ScanOut> {
     const ladderOn = (await loadLadder(tx, tenantId)).enabled;
     const rows = (
       await tx.execute(sql`
-        SELECT t.id, t.title, t.due_at, t.priority, t.assignee_id,
+        SELECT t.id, t.title, t.due_at, t.priority, t.assignee_id, t.collaborator_ids,
                u.name AS assignee_name, u.email AS assignee_email, u.phone AS assignee_phone,
                u.reporting_manager_id AS assignee_rm_id
         FROM tasks t
@@ -86,7 +86,7 @@ async function scanTenantOverdue(tenantId: string): Promise<ScanOut> {
     ).rows as Array<{
       id: string; title: string; due_at: string; priority: string;
       assignee_id: string | null; assignee_name: string | null; assignee_email: string | null;
-      assignee_phone: string | null; assignee_rm_id: string | null;
+      assignee_phone: string | null; assignee_rm_id: string | null; collaborator_ids: string[] | null;
     }>;
 
     for (const r of rows) {
@@ -99,6 +99,18 @@ async function scanTenantOverdue(tenantId: string): Promise<ScanOut> {
           title: `Overdue: ${r.title}`,
           body: `This task was due ${fmtDue(r.due_at)} and is still open. Action it or reschedule.`,
           linkUrl: "/dashboard/tasks?due=overdue",
+          meta: { task_id: r.id },
+        });
+      }
+      for (const userId of r.collaborator_ids ?? []) {
+        await createNotification(tx, {
+          tenantId,
+          userId,
+          kind: "task.overdue",
+          severity: "warning",
+          title: `Overdue: ${r.title}`,
+          body: `This task you are working on was due ${fmtDue(r.due_at)} and is still open.`,
+          linkUrl: `/dashboard/tasks/${r.id}`,
           meta: { task_id: r.id },
         });
       }
@@ -143,7 +155,7 @@ async function scanTenantReminders(tenantId: string): Promise<ScanOut> {
   const count = await withTenant(tenantId, async (tx) => {
     const rows = (
       await tx.execute(sql`
-        SELECT t.id, t.title, t.due_at, t.assignee_id, u.email AS assignee_email
+        SELECT t.id, t.title, t.due_at, t.assignee_id, t.collaborator_ids, u.email AS assignee_email
         FROM tasks t
         LEFT JOIN users u ON u.id = t.assignee_id
         WHERE t.tenant_id = ${tenantId}::uuid
@@ -154,7 +166,7 @@ async function scanTenantReminders(tenantId: string): Promise<ScanOut> {
         ORDER BY t.remind_at ASC
         LIMIT 500
       `)
-    ).rows as Array<{ id: string; title: string; due_at: string | null; assignee_id: string | null; assignee_email: string | null }>;
+    ).rows as Array<{ id: string; title: string; due_at: string | null; assignee_id: string | null; assignee_email: string | null; collaborator_ids: string[] | null }>;
 
     for (const r of rows) {
       if (r.assignee_id) {
@@ -166,6 +178,18 @@ async function scanTenantReminders(tenantId: string): Promise<ScanOut> {
           title: `Reminder: ${r.title}`,
           body: r.due_at ? `Due ${fmtDue(r.due_at)}.` : "You set a reminder for this task.",
           linkUrl: "/dashboard/tasks?view=assigned_to_me",
+          meta: { task_id: r.id },
+        });
+      }
+      for (const userId of r.collaborator_ids ?? []) {
+        await createNotification(tx, {
+          tenantId,
+          userId,
+          kind: "task.reminder",
+          severity: "info",
+          title: `Reminder: ${r.title}`,
+          body: r.due_at ? `Due ${fmtDue(r.due_at)}.` : "A reminder was set on a task you are working on.",
+          linkUrl: `/dashboard/tasks/${r.id}`,
           meta: { task_id: r.id },
         });
       }
